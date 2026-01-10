@@ -1,0 +1,19 @@
+[package]
+name = "evdev-hotkey"
+version = "0.1.0"
+edition = "2021"
+authors = ["Josh Thomas <josh@joshthomas.dev>"]
+description = "Global hotkey listener for Linux using evdev (X11 + Wayland)"
+license = "MIT"
+repository = "https://github.com/joshuadavidthomas/evdev-hotkey"
+keywords = ["hotkey", "global-shortcut", "evdev", "linux", "input"]
+categories = ["os::linux-apis", "api-bindings"]
+readme = "README.md"
+
+[dependencies]
+evdev = "0.13"
+libc = "0.2"
+tracing = "0.1"
+
+[dev-dependencies]
+# For examples only
