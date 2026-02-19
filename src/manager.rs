@@ -8,13 +8,109 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 /// Callback storage type
 type Callback = Arc<dyn Fn() + Send + Sync>;
 
+#[derive(Clone, Default)]
+pub(crate) enum ReleaseBehavior {
+    #[default]
+    Disabled,
+    SameAsPress,
+    Custom(Callback),
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum RepeatBehavior {
+    #[default]
+    Ignore,
+    Trigger,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum PressDispatchState {
+    #[default]
+    Pending,
+    Dispatched,
+}
+
+#[derive(Clone)]
+pub(crate) struct HotkeyCallbacks {
+    pub(crate) on_press: Callback,
+    pub(crate) on_release: Option<Callback>,
+    pub(crate) min_hold: Option<Duration>,
+    pub(crate) repeat_behavior: RepeatBehavior,
+}
+
+#[derive(Clone, Default)]
+pub struct HotkeyOptions {
+    release_behavior: ReleaseBehavior,
+    min_hold: Option<Duration>,
+    repeat_behavior: RepeatBehavior,
+}
+
+impl HotkeyOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn on_release(mut self) -> Self {
+        self.release_behavior = ReleaseBehavior::SameAsPress;
+        self
+    }
+
+    pub fn on_release_callback<F>(mut self, callback: F) -> Self
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        self.release_behavior = ReleaseBehavior::Custom(Arc::new(callback));
+        self
+    }
+
+    pub fn min_hold(mut self, min_hold: Duration) -> Self {
+        self.min_hold = Some(min_hold);
+        self
+    }
+
+    pub fn trigger_on_repeat(mut self, trigger_on_repeat: bool) -> Self {
+        self.repeat_behavior = if trigger_on_repeat {
+            RepeatBehavior::Trigger
+        } else {
+            RepeatBehavior::Ignore
+        };
+        self
+    }
+
+    fn build_callbacks<F>(self, callback: F) -> HotkeyCallbacks
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let press_callback: Callback = Arc::new(callback);
+        let release_callback = match self.release_behavior {
+            ReleaseBehavior::Disabled => None,
+            ReleaseBehavior::SameAsPress => Some(press_callback.clone()),
+            ReleaseBehavior::Custom(callback) => Some(callback),
+        };
+
+        HotkeyCallbacks {
+            on_press: press_callback,
+            on_release: release_callback,
+            min_hold: self.min_hold,
+            repeat_behavior: self.repeat_behavior,
+        }
+    }
+}
+
 /// Hotkey registration with modifiers
 pub(crate) struct HotkeyRegistration {
-    pub(crate) callback: Callback,
+    pub(crate) callbacks: HotkeyCallbacks,
+}
+
+pub(crate) struct ActiveHotkeyPress {
+    pub(crate) registration_key: HotkeyKey,
+    pub(crate) pressed_at: Instant,
+    pub(crate) press_dispatch_state: PressDispatchState,
 }
 
 /// Key used to identify hotkey registrations: (target_key, normalized_modifiers)
@@ -116,12 +212,25 @@ impl HotkeyManager {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        let callback = Arc::new(callback);
+        self.register_with_options(key, modifiers, HotkeyOptions::new(), callback)
+    }
+
+    pub fn register_with_options<F>(
+        &self,
+        key: KeyCode,
+        modifiers: &[KeyCode],
+        options: HotkeyOptions,
+        callback: F,
+    ) -> Result<Handle, Error>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
         let hotkey_key = (key, normalize_modifiers(modifiers));
+        let callbacks = options.build_callbacks(callback);
 
         {
             let mut registrations = self.inner.registrations.lock().unwrap();
-            registrations.insert(hotkey_key.clone(), HotkeyRegistration { callback });
+            registrations.insert(hotkey_key.clone(), HotkeyRegistration { callbacks });
         }
 
         Ok(Handle {
@@ -162,6 +271,7 @@ impl HotkeyManagerInner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[test]
     fn normalizes_left_and_right_variants() {
@@ -175,5 +285,66 @@ mod tests {
             normalized,
             vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
         );
+    }
+
+    #[test]
+    fn explicit_release_callback_overrides_press_callback_for_release() {
+        let press_called = Arc::new(AtomicBool::new(false));
+        let release_called = Arc::new(AtomicBool::new(false));
+
+        let press_called_clone = press_called.clone();
+        let release_called_clone = release_called.clone();
+
+        let options = HotkeyOptions::new()
+            .on_release()
+            .on_release_callback(move || {
+                release_called_clone.store(true, Ordering::SeqCst);
+            });
+
+        let callbacks = options.build_callbacks(move || {
+            press_called_clone.store(true, Ordering::SeqCst);
+        });
+
+        (callbacks.on_press)();
+        callbacks.on_release.as_ref().unwrap()();
+
+        assert!(press_called.load(Ordering::SeqCst));
+        assert!(release_called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn options_can_enable_release_and_repeat() {
+        let options = HotkeyOptions::new()
+            .on_release()
+            .trigger_on_repeat(true)
+            .min_hold(Duration::from_millis(50));
+
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = called.clone();
+        let callbacks = options.build_callbacks(move || {
+            called_clone.store(true, Ordering::SeqCst);
+        });
+
+        assert!(callbacks.on_release.is_some());
+        assert!(matches!(callbacks.repeat_behavior, RepeatBehavior::Trigger));
+        assert_eq!(callbacks.min_hold, Some(Duration::from_millis(50)));
+
+        (callbacks.on_press)();
+        assert!(called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn on_release_reuses_press_callback_when_enabled() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let count_clone = count.clone();
+
+        let callbacks = HotkeyOptions::new().on_release().build_callbacks(move || {
+            count_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        (callbacks.on_press)();
+        callbacks.on_release.as_ref().unwrap()();
+
+        assert_eq!(count.load(Ordering::SeqCst), 2);
     }
 }

@@ -93,6 +93,30 @@ let handle = manager.register(
 handle.unregister()?;
 ```
 
+### Press / Release and Hold Options
+
+```rust
+use evdev::KeyCode;
+use evdev_hotkey::{HotkeyManager, HotkeyOptions};
+use std::time::Duration;
+
+let manager = HotkeyManager::new()?;
+
+let _handle = manager.register_with_options(
+    KeyCode::KEY_F1,
+    &[KeyCode::KEY_LEFTCTRL],
+    HotkeyOptions::new()
+        .on_release_callback(|| println!("Released"))
+        .min_hold(Duration::from_millis(500))
+        .trigger_on_repeat(false),
+    || {
+        println!("Pressed (only after min hold)");
+    },
+)?;
+```
+
+`register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, or repeat behavior control. Use `.on_release()` if you want release to reuse the same callback as press.
+
 ### Using Modifier Keys
 
 The crate uses `evdev::KeyCode` for both the target key and modifiers:
