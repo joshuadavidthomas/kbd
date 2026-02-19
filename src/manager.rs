@@ -1,6 +1,7 @@
 use crate::backend::{build_backend, resolve_backend, Backend};
 use crate::error::Error;
 use crate::hotkey::{Hotkey, HotkeySequence};
+use crate::mode::{ModeBuilder, ModeController, ModeDefinition, ModeOptions, ModeRegistry};
 
 use evdev::KeyCode;
 use std::collections::HashMap;
@@ -12,7 +13,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 /// Callback storage type
-type Callback = Arc<dyn Fn() + Send + Sync>;
+pub(crate) type Callback = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone, Default)]
 pub(crate) enum ReleaseBehavior {
@@ -90,7 +91,7 @@ impl HotkeyOptions {
         self
     }
 
-    fn build_callbacks<F>(self, callback: F) -> HotkeyCallbacks
+    pub(crate) fn build_callbacks<F>(self, callback: F) -> HotkeyCallbacks
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -194,6 +195,7 @@ impl HotkeyManagerBuilder {
 
 pub(crate) struct ActiveHotkeyPress {
     pub(crate) registration_key: HotkeyKey,
+    pub(crate) mode_name: Option<String>,
     pub(crate) pressed_at: Instant,
     pub(crate) press_dispatch_state: PressDispatchState,
 }
@@ -215,7 +217,7 @@ pub(crate) fn is_modifier_key(key: KeyCode) -> bool {
     )
 }
 
-fn validate_hotkey_binding(key: KeyCode, modifiers: &[KeyCode]) -> Result<(), Error> {
+pub(crate) fn validate_hotkey_binding(key: KeyCode, modifiers: &[KeyCode]) -> Result<(), Error> {
     if is_modifier_key(key) {
         return Err(Error::InvalidHotkey(format!(
             "modifier keys cannot be used as the primary hotkey key: {:?}",
@@ -323,6 +325,7 @@ impl SequenceHandle {
 struct HotkeyManagerInner {
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+    mode_registry: ModeRegistry,
     next_sequence_id: AtomicU64,
     backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
     stop_flag: Arc<AtomicBool>,
@@ -395,12 +398,14 @@ impl HotkeyManager {
         backend: Backend,
         options: ManagerRuntimeOptions,
     ) -> Result<Self, Error> {
+        let mode_registry = ModeRegistry::new();
         let backend_impl: Arc<dyn crate::backend::HotkeyBackend> =
-            build_backend(backend, options.grab)?.into();
+            build_backend(backend, options.grab, mode_registry.clone())?.into();
 
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
             sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+            mode_registry,
             next_sequence_id: AtomicU64::new(1),
             backend_impl: backend_impl.clone(),
             stop_flag: Arc::new(AtomicBool::new(false)),
@@ -578,6 +583,52 @@ impl HotkeyManager {
         })
     }
 
+    /// Define a named mode with its bindings and options.
+    pub fn define_mode<F>(
+        &self,
+        name: &str,
+        options: ModeOptions,
+        build_fn: F,
+    ) -> Result<(), Error>
+    where
+        F: FnOnce(&mut ModeBuilder) -> Result<(), Error>,
+    {
+        let _operation_guard = self.inner.operation_lock.lock().unwrap();
+
+        if self.inner.stop_flag.load(Ordering::SeqCst) {
+            return Err(Error::ManagerStopped);
+        }
+
+        {
+            let definitions = self.inner.mode_registry.definitions.lock().unwrap();
+            if definitions.contains_key(name) {
+                return Err(Error::ModeAlreadyDefined(name.to_string()));
+            }
+        }
+
+        let mut builder = ModeBuilder::new(self.mode_controller());
+        build_fn(&mut builder)?;
+
+        let definition = ModeDefinition {
+            options,
+            bindings: builder.bindings,
+        };
+
+        self.inner
+            .mode_registry
+            .definitions
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), definition);
+
+        Ok(())
+    }
+
+    /// Get a mode controller for push/pop operations from callbacks.
+    pub fn mode_controller(&self) -> ModeController {
+        ModeController::new(self.inner.mode_registry.clone())
+    }
+
     pub fn replace<F>(
         &self,
         key: KeyCode,
@@ -697,6 +748,8 @@ impl HotkeyManager {
 
             self.inner.registrations.lock().unwrap().clear();
             self.inner.sequence_registrations.lock().unwrap().clear();
+            self.inner.mode_registry.definitions.lock().unwrap().clear();
+            self.inner.mode_registry.stack.lock().unwrap().clear();
         }
 
         if let Some(listener) = self.inner.listener.lock().unwrap().take() {
@@ -1211,6 +1264,7 @@ mod tests {
             inner: Arc::new(HotkeyManagerInner {
                 registrations: Arc::new(Mutex::new(HashMap::new())),
                 sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+                mode_registry: ModeRegistry::new(),
                 next_sequence_id: AtomicU64::new(1),
                 backend_impl,
                 stop_flag: Arc::new(AtomicBool::new(false)),
@@ -1866,6 +1920,7 @@ mod tests {
             inner: Arc::new(HotkeyManagerInner {
                 registrations: Arc::new(Mutex::new(HashMap::new())),
                 sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+                mode_registry: ModeRegistry::new(),
                 next_sequence_id: AtomicU64::new(1),
                 backend_impl: Arc::new(FakeBackend),
                 stop_flag: Arc::new(AtomicBool::new(false)),
@@ -1939,5 +1994,146 @@ mod tests {
         .unwrap();
 
         assert!(matches!(err, Error::AlreadyRegistered { .. }));
+    }
+
+    #[test]
+    fn define_mode_stores_bindings() {
+        let manager = manager_with_fake_backend();
+
+        manager
+            .define_mode("resize", ModeOptions::new(), |m| {
+                m.register(KeyCode::KEY_H, &[], || {})?;
+                m.register(KeyCode::KEY_J, &[], || {})?;
+                Ok(())
+            })
+            .unwrap();
+
+        let definitions = manager.inner.mode_registry.definitions.lock().unwrap();
+        let definition = definitions.get("resize").unwrap();
+        assert_eq!(definition.bindings.len(), 2);
+    }
+
+    #[test]
+    fn define_mode_rejects_duplicate_name() {
+        let manager = manager_with_fake_backend();
+
+        manager
+            .define_mode("resize", ModeOptions::new(), |_m| Ok(()))
+            .unwrap();
+
+        let err = manager
+            .define_mode("resize", ModeOptions::new(), |_m| Ok(()))
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::ModeAlreadyDefined(_)));
+    }
+
+    #[test]
+    fn define_mode_validates_bindings() {
+        let manager = manager_with_fake_backend();
+
+        let err = manager
+            .define_mode("bad", ModeOptions::new(), |m| {
+                m.register(KeyCode::KEY_LEFTCTRL, &[], || {})?;
+                Ok(())
+            })
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::InvalidHotkey(_)));
+    }
+
+    #[test]
+    fn define_mode_stores_options() {
+        let manager = manager_with_fake_backend();
+
+        manager
+            .define_mode(
+                "launch",
+                ModeOptions::new().oneshot().swallow(),
+                |_m| Ok(()),
+            )
+            .unwrap();
+
+        let definitions = manager.inner.mode_registry.definitions.lock().unwrap();
+        let definition = definitions.get("launch").unwrap();
+        assert!(definition.options.oneshot);
+        assert!(definition.options.swallow);
+    }
+
+    #[test]
+    fn mode_controller_push_and_pop_through_manager() {
+        let manager = manager_with_fake_backend();
+
+        manager
+            .define_mode("test_mode", ModeOptions::new(), |_m| Ok(()))
+            .unwrap();
+
+        let mc = manager.mode_controller();
+        assert!(mc.active_mode().is_none());
+
+        mc.push("test_mode");
+        assert_eq!(mc.active_mode(), Some("test_mode".to_string()));
+
+        mc.pop();
+        assert!(mc.active_mode().is_none());
+    }
+
+    #[test]
+    fn same_key_in_different_modes_no_conflict() {
+        let manager = manager_with_fake_backend();
+
+        manager
+            .define_mode("mode_a", ModeOptions::new(), |m| {
+                m.register(KeyCode::KEY_F, &[], || {})?;
+                Ok(())
+            })
+            .unwrap();
+
+        manager
+            .define_mode("mode_b", ModeOptions::new(), |m| {
+                m.register(KeyCode::KEY_F, &[], || {})?;
+                Ok(())
+            })
+            .unwrap();
+
+        // Both modes registered KEY_F without conflict
+        let definitions = manager.inner.mode_registry.definitions.lock().unwrap();
+        assert!(definitions.get("mode_a").unwrap().bindings.contains_key(&(KeyCode::KEY_F, vec![])));
+        assert!(definitions.get("mode_b").unwrap().bindings.contains_key(&(KeyCode::KEY_F, vec![])));
+    }
+
+    #[test]
+    fn mode_builder_provides_mode_controller() {
+        let manager = manager_with_fake_backend();
+
+        manager
+            .define_mode("test", ModeOptions::new(), |_m| Ok(()))
+            .unwrap();
+
+        let result = manager.define_mode("nested", ModeOptions::new(), |m| {
+            let mc = m.mode_controller();
+            // Controller should be functional
+            mc.push("test");
+            assert_eq!(mc.active_mode(), Some("test".to_string()));
+            mc.pop();
+            Ok(())
+        });
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn define_mode_rejected_after_manager_stopped() {
+        let manager = manager_with_fake_backend();
+        manager.unregister_all().unwrap();
+
+        let err = manager
+            .define_mode("late", ModeOptions::new(), |_m| Ok(()))
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::ManagerStopped));
     }
 }
