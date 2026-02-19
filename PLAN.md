@@ -89,6 +89,14 @@ Backend selection must respect compile-time availability:
 - do not silently fall back when the caller explicitly requests a backend;
   return the backend-specific initialization error instead
 
+Success criteria checklist (Phase 1.1 is complete only when all are checked):
+- [ ] A concrete `PortalBackend` implementation exists (not a stub) and can register/unregister hotkeys through XDG GlobalShortcuts.
+- [ ] `HotkeyManager::new()` prefers portal when the portal is both available and functional, otherwise falls back to evdev automatically.
+- [ ] Portal probing occurs before any evdev permission/device checks, so portal-capable environments do not fail due to `/dev/input` access constraints.
+- [ ] Explicit backend requests are strict: `with_backend(Backend::Portal)` and `with_backend(Backend::Evdev)` never silently switch to the other backend.
+- [ ] Compile-time feature gating behavior is verified for all combinations (`evdev` only, `portal` only, both).
+- [ ] Integration tests cover runtime selection/fallback paths and feature-gated error cases.
+
 Progress update (implemented so far):
 - Added backend abstraction with `Backend` selection and explicit `with_backend(...)` API.
 - Added clear `BackendUnavailable(...)` errors for non-compiled backend requests.
@@ -96,6 +104,14 @@ Progress update (implemented so far):
   startup failure surfacing, and callback panic containment.
 - Added focused regression tests for backend resolution, modifier normalization,
   and listener callback panic handling.
+- Added compile-time backend feature gating (`evdev`, `portal`) and strict backend
+  request behavior (`BackendUnavailable` when portal is not compiled in).
+- Added backend-specific initialization errors (`BackendInit(...)`) so explicit portal
+  requests fail clearly until the portal backend implementation lands.
+- Added D-Bus portal probing logic and regression tests to verify portal owner/interface
+  checks before backend selection.
+- Added `HotkeyManager::new()` fallback behavior so automatic backend selection falls back
+  to evdev if portal initialization fails, while explicit backend requests remain strict.
 
 ### 1.2 Release / hold events
 
