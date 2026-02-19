@@ -6,12 +6,11 @@ use std::path::PathBuf;
 pub(crate) fn is_keyboard_device(device: &Device) -> bool {
     device
         .supported_keys()
-        .map(|keys| {
+        .is_some_and(|keys| {
             keys.contains(KeyCode::KEY_A)
                 && keys.contains(KeyCode::KEY_Z)
                 && keys.contains(KeyCode::KEY_ENTER)
         })
-        .unwrap_or(false)
 }
 
 pub(crate) fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {

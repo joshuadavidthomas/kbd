@@ -77,17 +77,13 @@ impl HotkeyOptions {
         self
     }
 
-    pub fn trigger_on_repeat(mut self, trigger_on_repeat: bool) -> Self {
-        self.repeat_behavior = if trigger_on_repeat {
-            RepeatBehavior::Trigger
-        } else {
-            RepeatBehavior::Ignore
-        };
+    pub fn trigger_on_repeat(mut self) -> Self {
+        self.repeat_behavior = RepeatBehavior::Trigger;
         self
     }
 
-    pub fn passthrough(mut self, passthrough: bool) -> Self {
-        self.passthrough = passthrough;
+    pub fn passthrough(mut self) -> Self {
+        self.passthrough = true;
         self
     }
 
@@ -183,8 +179,8 @@ impl HotkeyManagerBuilder {
         self
     }
 
-    pub fn grab(mut self, grab: bool) -> Self {
-        self.options.grab = grab;
+    pub fn grab(mut self) -> Self {
+        self.options.grab = true;
         self
     }
 
@@ -897,7 +893,7 @@ mod tests {
     fn options_can_enable_release_and_repeat() {
         let options = HotkeyOptions::new()
             .on_release()
-            .trigger_on_repeat(true)
+            .trigger_on_repeat()
             .min_hold(Duration::from_millis(50));
 
         let called = Arc::new(AtomicBool::new(false));
@@ -917,7 +913,7 @@ mod tests {
     #[test]
     fn passthrough_option_is_stored_in_callbacks() {
         let callbacks = HotkeyOptions::new()
-            .passthrough(true)
+            .passthrough()
             .build_callbacks(|| {});
         assert!(callbacks.passthrough);
     }
