@@ -568,4 +568,45 @@ mod tests {
 
         assert_eq!(press_count.load(Ordering::SeqCst), 2);
     }
+
+    #[test]
+    fn repeat_event_is_ignored_when_not_enabled() {
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let p = press_count.clone();
+
+        let callbacks = HotkeyCallbacks {
+            on_press: Arc::new(move || {
+                p.fetch_add(1, Ordering::SeqCst);
+            }),
+            on_release: None,
+            min_hold: None,
+            repeat_behavior: RepeatBehavior::Ignore,
+        };
+
+        let mut registrations = HashMap::new();
+        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            1,
+            now,
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            2,
+            now + Duration::from_millis(1),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 1);
+    }
 }

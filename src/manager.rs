@@ -271,7 +271,7 @@ impl HotkeyManagerInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[test]
     fn normalizes_left_and_right_variants() {
@@ -331,5 +331,20 @@ mod tests {
 
         (callbacks.on_press)();
         assert!(called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn on_release_reuses_press_callback_when_enabled() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let count_clone = count.clone();
+
+        let callbacks = HotkeyOptions::new().on_release().build_callbacks(move || {
+            count_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        (callbacks.on_press)();
+        callbacks.on_release.as_ref().unwrap()();
+
+        assert_eq!(count.load(Ordering::SeqCst), 2);
     }
 }
