@@ -1,7 +1,5 @@
-use crate::device::find_keyboard_devices;
+use crate::backend::{build_backend, resolve_backend, Backend};
 use crate::error::Error;
-use crate::listener::spawn_listener_thread;
-use crate::permission::{check_input_group, get_permission_error_message};
 
 use evdev::KeyCode;
 use std::collections::HashMap;
@@ -19,8 +17,25 @@ pub(crate) struct HotkeyRegistration {
     pub(crate) callback: Callback,
 }
 
-/// Key used to identify hotkey registrations: (target_key, sorted_modifiers)
+/// Key used to identify hotkey registrations: (target_key, normalized_modifiers)
 pub type HotkeyKey = (KeyCode, Vec<KeyCode>);
+
+fn canonical_modifier(key: KeyCode) -> KeyCode {
+    match key {
+        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => KeyCode::KEY_LEFTCTRL,
+        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => KeyCode::KEY_LEFTALT,
+        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => KeyCode::KEY_LEFTSHIFT,
+        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => KeyCode::KEY_LEFTMETA,
+        _ => key,
+    }
+}
+
+pub(crate) fn normalize_modifiers(modifiers: &[KeyCode]) -> Vec<KeyCode> {
+    let mut normalized: Vec<KeyCode> = modifiers.iter().copied().map(canonical_modifier).collect();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
 
 /// Handle for unregistering a specific hotkey
 #[derive(Clone)]
@@ -51,19 +66,28 @@ struct HotkeyManagerInner {
 /// Global hotkey manager for Linux
 pub struct HotkeyManager {
     inner: Arc<HotkeyManagerInner>,
+    active_backend: Backend,
 }
 
 impl HotkeyManager {
     /// Create a new hotkey manager
     pub fn new() -> Result<Self, Error> {
-        // Check permissions
-        let has_permission = check_input_group()?;
-        if !has_permission {
-            return Err(Error::PermissionDenied(get_permission_error_message()));
-        }
+        Self::with_backend_internal(None)
+    }
 
-        // Find keyboards
-        let keyboards = find_keyboard_devices()?;
+    /// Create a manager with an explicit backend.
+    pub fn with_backend(backend: Backend) -> Result<Self, Error> {
+        Self::with_backend_internal(Some(backend))
+    }
+
+    /// Returns the backend selected for this manager instance.
+    pub fn active_backend(&self) -> Backend {
+        self.active_backend
+    }
+
+    fn with_backend_internal(requested_backend: Option<Backend>) -> Result<Self, Error> {
+        let selected_backend = resolve_backend(requested_backend)?;
+        let backend_impl = build_backend(selected_backend)?;
 
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
@@ -71,16 +95,15 @@ impl HotkeyManager {
             listener: Mutex::new(None),
         });
 
-        // Spawn listener thread
-        let listener = spawn_listener_thread(
-            keyboards,
-            inner.registrations.clone(),
-            inner.stop_flag.clone(),
-        )?;
+        let listener =
+            backend_impl.start_listener(inner.registrations.clone(), inner.stop_flag.clone())?;
 
         *inner.listener.lock().unwrap() = Some(listener);
 
-        Ok(HotkeyManager { inner })
+        Ok(HotkeyManager {
+            inner,
+            active_backend: selected_backend,
+        })
     }
 
     /// Register a hotkey with a callback
@@ -94,13 +117,7 @@ impl HotkeyManager {
         F: Fn() + Send + Sync + 'static,
     {
         let callback = Arc::new(callback);
-
-        // Sort modifiers for consistent key generation
-        let mut sorted_modifiers = modifiers.to_vec();
-        sorted_modifiers.sort();
-        sorted_modifiers.dedup();
-
-        let hotkey_key = (key, sorted_modifiers);
+        let hotkey_key = (key, normalize_modifiers(modifiers));
 
         {
             let mut registrations = self.inner.registrations.lock().unwrap();
@@ -139,5 +156,24 @@ impl HotkeyManagerInner {
     fn remove_hotkey(&self, key: &HotkeyKey) -> Result<(), Error> {
         self.registrations.lock().unwrap().remove(key);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_left_and_right_variants() {
+        let normalized = normalize_modifiers(&[
+            KeyCode::KEY_RIGHTCTRL,
+            KeyCode::KEY_LEFTCTRL,
+            KeyCode::KEY_RIGHTSHIFT,
+        ]);
+
+        assert_eq!(
+            normalized,
+            vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
+        );
     }
 }

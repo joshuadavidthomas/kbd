@@ -28,7 +28,7 @@ These items make the crate a credible alternative to existing options.
 
 ### 1.1 Unified backend: XDG portal + evdev with automatic fallback
 
-**Status: Not Started** · **Priority: Critical — this is the moat**
+**Status: In Progress** · **Priority: Critical — this is the moat**
 
 Try the XDG GlobalShortcuts portal first (no root needed where available).
 Fall back to evdev when the portal is unavailable or unsupported (common on
@@ -507,7 +507,7 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | Item | Description | Status |
 |------|-------------|--------|
 | **Phase 1** | **Foundation** | |
-| 1.1 | Backend trait + evdev backend (refactor current code) | Not Started |
+| 1.1 | Backend trait + evdev backend (refactor current code) | In Progress |
 | 1.2 | Release/hold events | Not Started |
 | 1.3 | String parsing | Not Started |
 | 1.4 | Conflict detection | Not Started |

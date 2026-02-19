@@ -9,11 +9,11 @@ Global hotkey listener for Linux using evdev. Works on both X11 and Wayland.
 - **Simple API**: Type-safe with `evdev::KeyCode` - no string parsing
 - **Automatic device discovery**: No need to manually glob for keyboard devices
 - **Permission checking**: Helpful error messages guide users through setup
-- **No dependencies**: Uses only `evdev` and `libc`
+- **Lightweight dependencies**: Uses `evdev`, `libc`, and `tracing`
 
 ## Requirements
 
-You must be in the `input` group to read keyboard devices:
+Your user must be allowed to read `/dev/input/event*` devices. On many systems this means being in the `input` group:
 
 ```bash
 sudo usermod -aG input $USER
@@ -25,7 +25,7 @@ sudo usermod -aG input $USER
 ```toml
 [dependencies]
 evdev-hotkey = "0.1"
-evdev = "0.12"
+evdev = "0.13"
 ```
 
 ## Usage
@@ -136,7 +136,7 @@ let _handle2 = manager.register(
 
 This crate is **Linux-only**. For macOS or Windows, consider:
 - macOS: `hotkey` crate
-- Windows: `global-hotkey` crate (X11 only, not Wayland)
+- Windows: use a native Windows hotkey crate (this crate is Linux-only)
 
 ## How It Works
 
