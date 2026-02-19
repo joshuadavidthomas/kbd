@@ -88,6 +88,15 @@ impl ModeStack {
         self.layers.len()
     }
 
+    pub(crate) fn remove_topmost(&mut self, name: &str) -> bool {
+        if let Some(index) = self.layers.iter().rposition(|am| am.name == name) {
+            self.layers.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
     pub(crate) fn clear(&mut self) {
         self.layers.clear();
     }
@@ -195,8 +204,6 @@ fn dispatch_mode_press(
             registration,
             oneshot,
         } => {
-            stack.touch_top(now);
-
             let press_dispatch_state = registration
                 .callbacks
                 .min_hold
@@ -215,7 +222,7 @@ fn dispatch_mode_press(
                 hotkey_key.0,
                 ActiveHotkeyPress {
                     registration_key: hotkey_key.clone(),
-                    mode_name: Some(mode_name),
+                    mode_name: Some(mode_name.clone()),
                     pressed_at: now,
                     press_dispatch_state,
                 },
@@ -227,8 +234,10 @@ fn dispatch_mode_press(
             }
 
             if oneshot {
-                stack.pop();
+                stack.remove_topmost(&mode_name);
             }
+
+            stack.touch_top(now);
 
             ModeEventDispatch::Handled {
                 callbacks,
@@ -567,6 +576,33 @@ mod tests {
     fn mode_stack_pop_empty_returns_none() {
         let mut stack = ModeStack::default();
         assert_eq!(stack.pop(), None);
+    }
+
+    #[test]
+    fn mode_stack_remove_topmost_targets_named_mode() {
+        let mut stack = ModeStack::default();
+        let t0 = Instant::now();
+
+        stack.push("bottom".to_string(), t0);
+        stack.push("middle".to_string(), t0);
+        stack.push("top".to_string(), t0);
+
+        assert!(stack.remove_topmost("middle"));
+        assert_eq!(stack.depth(), 2);
+        assert_eq!(stack.top(), Some("top"));
+
+        stack.pop();
+        assert_eq!(stack.top(), Some("bottom"));
+    }
+
+    #[test]
+    fn mode_stack_remove_topmost_returns_false_for_unknown() {
+        let mut stack = ModeStack::default();
+        let t0 = Instant::now();
+        stack.push("only".to_string(), t0);
+
+        assert!(!stack.remove_topmost("nonexistent"));
+        assert_eq!(stack.depth(), 1);
     }
 
     #[test]
@@ -1019,6 +1055,47 @@ mod tests {
         dispatch_callbacks(callbacks);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
         assert!(stack.is_empty());
+    }
+
+    #[test]
+    fn mode_dispatch_oneshot_removes_matched_mode_not_top() {
+        let mut stack = ModeStack::default();
+        let t0 = Instant::now();
+
+        // Push oneshot base, then a non-swallow overlay on top
+        stack.push("base_oneshot".to_string(), t0);
+        stack.push("overlay".to_string(), t0);
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let key = (KeyCode::KEY_G, vec![]);
+
+        let mut definitions = HashMap::new();
+        definitions.insert(
+            "base_oneshot".to_string(),
+            make_definition(
+                ModeOptions::new().oneshot(),
+                vec![(key.clone(), make_registration(counter.clone()))],
+            ),
+        );
+        // overlay has no bindings and no swallow, so KEY_G falls through to base
+        definitions.insert(
+            "overlay".to_string(),
+            make_definition(ModeOptions::new(), vec![]),
+        );
+
+        let mut active_presses = HashMap::new();
+        let dispatch =
+            dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
+
+        let ModeEventDispatch::Handled { callbacks, .. } = dispatch else {
+            panic!("expected Handled");
+        };
+        dispatch_callbacks(callbacks);
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+
+        // base_oneshot should be removed, overlay should remain
+        assert_eq!(stack.depth(), 1);
+        assert_eq!(stack.top(), Some("overlay"));
     }
 
     #[test]
