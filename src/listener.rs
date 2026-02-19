@@ -470,7 +470,6 @@ fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
 
         #[cfg(not(feature = "grab"))]
         {
-            let _ = path;
             return Err("event grabbing support is not compiled in".to_string());
         }
     }
@@ -847,7 +846,7 @@ fn listener_loop(
                         _ => {}
                     }
 
-                    if should_forward_key_event_in_grab_mode(config.grab, false, false) {
+                    if config.grab {
                         if let Some(forwarder) = key_event_forwarder.as_mut() {
                             if let Err(err) = forwarder.forward_key_event(key, value) {
                                 tracing::warn!("Failed forwarding modifier key event: {}", err);
