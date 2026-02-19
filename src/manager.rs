@@ -729,9 +729,9 @@ fn validate_runtime_options(backend: Backend, options: ManagerRuntimeOptions) ->
 
     #[cfg(not(feature = "grab"))]
     {
-        return Err(Error::UnsupportedFeature(
+        Err(Error::UnsupportedFeature(
             "event grabbing support is not compiled in (enable the `grab` feature)".to_string(),
-        ));
+        ))
     }
 
     #[cfg(feature = "grab")]

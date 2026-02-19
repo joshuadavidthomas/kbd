@@ -81,7 +81,7 @@ fn create_key_event_forwarder(
 
     #[cfg(feature = "grab")]
     {
-        return Ok(Some(Box::new(UinputForwarder::new()?)));
+        Ok(Some(Box::new(UinputForwarder::new()?)))
     }
 
     #[cfg(not(feature = "grab"))]
@@ -605,6 +605,24 @@ fn should_forward_key_event_in_grab_mode(
     grab_enabled && (!matched_hotkey || passthrough)
 }
 
+fn suppress_sequence_followup_key_event(
+    suppressed_keys: &mut HashSet<KeyCode>,
+    key: KeyCode,
+    value: i32,
+    suppress_current_key_press: bool,
+) -> bool {
+    if value == 1 && suppress_current_key_press {
+        suppressed_keys.insert(key);
+    }
+
+    let suppress_followup = value != 1 && suppressed_keys.contains(&key);
+    if value == 0 && suppress_followup {
+        suppressed_keys.remove(&key);
+    }
+
+    suppress_followup
+}
+
 fn collect_non_modifier_dispatch(
     key: KeyCode,
     value: i32,
@@ -745,6 +763,7 @@ fn listener_loop(
 ) {
     let mut modifier_tracker = ModifierTracker::default();
     let mut sequence_runtime = SequenceRuntime::default();
+    let mut suppressed_sequence_keys = HashSet::new();
 
     loop {
         if stop_flag.load(Ordering::SeqCst) {
@@ -862,15 +881,30 @@ fn listener_loop(
                         &registrations_guard,
                     ));
 
-                    let non_modifier_dispatch = collect_non_modifier_dispatch(
+                    let suppress_followup = suppress_sequence_followup_key_event(
+                        &mut suppressed_sequence_keys,
                         key,
                         value,
-                        now,
-                        &active_modifiers,
-                        &registrations_guard,
-                        &mut devices[device_index].active_presses,
                         sequence_dispatch.suppress_current_key_press,
                     );
+
+                    let non_modifier_dispatch = if suppress_followup {
+                        NonModifierDispatch {
+                            callbacks: Vec::new(),
+                            matched_hotkey: true,
+                            passthrough: false,
+                        }
+                    } else {
+                        collect_non_modifier_dispatch(
+                            key,
+                            value,
+                            now,
+                            &active_modifiers,
+                            &registrations_guard,
+                            &mut devices[device_index].active_presses,
+                            sequence_dispatch.suppress_current_key_press,
+                        )
+                    };
 
                     let should_forward_event = should_forward_key_event_in_grab_mode(
                         config.grab,
@@ -1814,6 +1848,36 @@ mod tests {
 
         assert_eq!(press_count.load(Ordering::SeqCst), 1);
         assert_eq!(release_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn suppressed_sequence_followup_events_are_consumed_until_release() {
+        let key = KeyCode::KEY_A;
+        let mut suppressed = HashSet::new();
+
+        assert!(!suppress_sequence_followup_key_event(
+            &mut suppressed,
+            key,
+            1,
+            true,
+        ));
+        assert!(suppressed.contains(&key));
+
+        assert!(suppress_sequence_followup_key_event(
+            &mut suppressed,
+            key,
+            2,
+            false,
+        ));
+        assert!(suppressed.contains(&key));
+
+        assert!(suppress_sequence_followup_key_event(
+            &mut suppressed,
+            key,
+            0,
+            false,
+        ));
+        assert!(!suppressed.contains(&key));
     }
 
     #[test]
