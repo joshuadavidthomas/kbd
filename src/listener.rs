@@ -1,8 +1,8 @@
 use crate::device::is_keyboard_device;
 use crate::error::Error;
 use crate::manager::{
-    is_modifier_key, normalize_modifiers, ActiveHotkeyPress, HotkeyKey, HotkeyRegistration,
-    PressDispatchState, RepeatBehavior, SequenceId, SequenceRegistration,
+    is_modifier_key, normalize_modifiers, ActiveHotkeyPress, Callback, HotkeyKey,
+    HotkeyRegistration, PressDispatchState, RepeatBehavior, SequenceId, SequenceRegistration,
 };
 use crate::mode::{
     dispatch_mode_key_event, find_registration_for_active_press, pop_timed_out_modes,
@@ -24,8 +24,6 @@ use std::sync::{
 };
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
-
-type Callback = Arc<dyn Fn() + Send + Sync>;
 
 pub(crate) struct ListenerState {
     pub(crate) registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,

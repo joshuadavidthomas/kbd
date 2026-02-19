@@ -18,7 +18,6 @@ pub enum Error {
     InvalidSequence(String),
     InvalidHotkey(String),
     ModeAlreadyDefined(String),
-    ModeNotDefined(String),
 }
 
 impl fmt::Display for Error {
@@ -44,7 +43,6 @@ impl fmt::Display for Error {
             Error::ModeAlreadyDefined(name) => {
                 write!(f, "Mode is already defined: {}", name)
             }
-            Error::ModeNotDefined(name) => write!(f, "Mode is not defined: {}", name),
         }
     }
 }
