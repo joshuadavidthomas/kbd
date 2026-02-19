@@ -10,6 +10,11 @@ keywords = ["hotkey", "global-shortcut", "evdev", "linux", "input"]
 categories = ["os::linux-apis", "api-bindings"]
 readme = "README.md"
 
+[features]
+default = ["evdev"]
+evdev = []
+portal = []
+
 [dependencies]
 evdev = "0.13"
 libc = "0.2"
