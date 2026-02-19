@@ -130,19 +130,24 @@ fn listener_loop(
 
                         // Check for registered hotkeys on key press (value == 1)
                         if value == 1 {
-                            let registrations_guard = registrations.lock().unwrap();
-
-                            // Find matching registration by checking all entries with this target key
-                            for ((target_key, required_modifiers), registration) in
-                                registrations_guard.iter()
-                            {
-                                if *target_key == key {
-                                    // Check if active modifiers satisfy the required modifiers
-                                    if modifiers_satisfied(required_modifiers, &active_modifiers) {
-                                        (registration.callback)();
-                                        break; // Only trigger first matching hotkey
-                                    }
-                                }
+                            // Clone the callback while holding the lock, then release
+                            // the lock before invoking it. This prevents deadlocks if
+                            // the callback calls register/unregister.
+                            let callback = {
+                                let registrations_guard = registrations.lock().unwrap();
+                                registrations_guard
+                                    .iter()
+                                    .find(|((target_key, required_modifiers), _)| {
+                                        *target_key == key
+                                            && modifiers_satisfied(
+                                                required_modifiers,
+                                                &active_modifiers,
+                                            )
+                                    })
+                                    .map(|(_, registration)| registration.callback.clone())
+                            };
+                            if let Some(callback) = callback {
+                                callback();
                             }
                         }
                     }
