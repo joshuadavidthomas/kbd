@@ -710,8 +710,7 @@ fn collect_non_modifier_dispatch(
                     let hold_satisfied = registration
                         .callbacks
                         .min_hold
-                        .map(|min_hold| now.duration_since(active.pressed_at) >= min_hold)
-                        .unwrap_or(true);
+                        .is_none_or(|min_hold| now.duration_since(active.pressed_at) >= min_hold);
 
                     if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger
                         && hold_satisfied

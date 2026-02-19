@@ -114,7 +114,7 @@ pub(crate) struct HotkeyRegistration {
     pub(crate) callbacks: HotkeyCallbacks,
 }
 
-pub type SequenceId = u64;
+pub(crate) type SequenceId = u64;
 
 #[derive(Clone)]
 pub(crate) struct SequenceRegistration {
@@ -197,7 +197,7 @@ pub(crate) struct ActiveHotkeyPress {
 }
 
 /// Key used to identify hotkey registrations: (target_key, normalized_modifiers)
-pub type HotkeyKey = (KeyCode, Vec<KeyCode>);
+pub(crate) type HotkeyKey = (KeyCode, Vec<KeyCode>);
 
 pub(crate) fn is_modifier_key(key: KeyCode) -> bool {
     matches!(

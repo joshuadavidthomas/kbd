@@ -327,8 +327,7 @@ fn dispatch_mode_repeat(
     let hold_satisfied = registration
         .callbacks
         .min_hold
-        .map(|min_hold| now.duration_since(active.pressed_at) >= min_hold)
-        .unwrap_or(true);
+        .is_none_or(|min_hold| now.duration_since(active.pressed_at) >= min_hold);
 
     let mut callbacks = Vec::new();
     if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger && hold_satisfied {
