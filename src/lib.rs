@@ -1,6 +1,6 @@
 pub use backend::Backend;
 pub use error::Error;
-pub use manager::{Handle, HotkeyManager};
+pub use manager::{Handle, HotkeyManager, HotkeyOptions};
 
 mod backend;
 mod device;

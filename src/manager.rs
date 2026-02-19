@@ -8,13 +8,68 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 /// Callback storage type
 type Callback = Arc<dyn Fn() + Send + Sync>;
 
+#[derive(Clone, Default)]
+pub(crate) struct HotkeyCallbacks {
+    pub(crate) on_press: Option<Callback>,
+    pub(crate) on_release: Option<Callback>,
+    pub(crate) min_hold: Option<Duration>,
+    pub(crate) trigger_on_repeat: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct HotkeyOptions {
+    on_release: bool,
+    min_hold: Option<Duration>,
+    trigger_on_repeat: bool,
+}
+
+impl HotkeyOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn on_release(mut self) -> Self {
+        self.on_release = true;
+        self
+    }
+
+    pub fn min_hold(mut self, min_hold: Duration) -> Self {
+        self.min_hold = Some(min_hold);
+        self
+    }
+
+    pub fn trigger_on_repeat(mut self, trigger_on_repeat: bool) -> Self {
+        self.trigger_on_repeat = trigger_on_repeat;
+        self
+    }
+
+    fn build_callbacks<F>(self, callback: F) -> HotkeyCallbacks
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let callback = Arc::new(callback);
+        HotkeyCallbacks {
+            on_press: Some(callback.clone()),
+            on_release: self.on_release.then_some(callback),
+            min_hold: self.min_hold,
+            trigger_on_repeat: self.trigger_on_repeat,
+        }
+    }
+}
+
 /// Hotkey registration with modifiers
 pub(crate) struct HotkeyRegistration {
-    pub(crate) callback: Callback,
+    pub(crate) callbacks: HotkeyCallbacks,
+}
+
+pub(crate) struct ActiveHotkeyPress {
+    pub(crate) registration_key: HotkeyKey,
+    pub(crate) pressed_at: Instant,
 }
 
 /// Key used to identify hotkey registrations: (target_key, normalized_modifiers)
@@ -116,12 +171,25 @@ impl HotkeyManager {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        let callback = Arc::new(callback);
+        self.register_with_options(key, modifiers, HotkeyOptions::new(), callback)
+    }
+
+    pub fn register_with_options<F>(
+        &self,
+        key: KeyCode,
+        modifiers: &[KeyCode],
+        options: HotkeyOptions,
+        callback: F,
+    ) -> Result<Handle, Error>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
         let hotkey_key = (key, normalize_modifiers(modifiers));
+        let callbacks = options.build_callbacks(callback);
 
         {
             let mut registrations = self.inner.registrations.lock().unwrap();
-            registrations.insert(hotkey_key.clone(), HotkeyRegistration { callback });
+            registrations.insert(hotkey_key.clone(), HotkeyRegistration { callbacks });
         }
 
         Ok(Handle {
@@ -162,6 +230,7 @@ impl HotkeyManagerInner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
     fn normalizes_left_and_right_variants() {
@@ -175,5 +244,27 @@ mod tests {
             normalized,
             vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
         );
+    }
+
+    #[test]
+    fn options_can_enable_release_and_repeat() {
+        let options = HotkeyOptions::new()
+            .on_release()
+            .trigger_on_repeat(true)
+            .min_hold(Duration::from_millis(50));
+
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = called.clone();
+        let callbacks = options.build_callbacks(move || {
+            called_clone.store(true, Ordering::SeqCst);
+        });
+
+        assert!(callbacks.on_press.is_some());
+        assert!(callbacks.on_release.is_some());
+        assert!(callbacks.trigger_on_repeat);
+        assert_eq!(callbacks.min_hold, Some(Duration::from_millis(50)));
+
+        callbacks.on_press.unwrap()();
+        assert!(called.load(Ordering::SeqCst));
     }
 }

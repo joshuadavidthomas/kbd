@@ -99,7 +99,7 @@ Progress update (implemented so far):
 
 ### 1.2 Release / hold events
 
-**Status: Not Started** · **Priority: High — low effort, high value**
+**Status: Complete** · **Priority: High — low effort, high value**
 
 The evdev layer already delivers key release (value=0) and repeat (value=2)
 events. The current code ignores them. Expose them to enable:
