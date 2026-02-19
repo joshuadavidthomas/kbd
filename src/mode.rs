@@ -135,13 +135,11 @@ pub(crate) fn pop_timed_out_modes(
 
     loop {
         let should_pop = mode_stack.layers.last().and_then(|top| {
-            definitions
-                .get(&top.name)
-                .and_then(|def| {
-                    def.options
-                        .timeout
-                        .map(|timeout| now.duration_since(top.last_activity) >= timeout)
-                })
+            definitions.get(&top.name).and_then(|def| {
+                def.options
+                    .timeout
+                    .map(|timeout| now.duration_since(top.last_activity) >= timeout)
+            })
         });
 
         match should_pop {
@@ -155,41 +153,13 @@ pub(crate) fn pop_timed_out_modes(
     popped
 }
 
-// Result of mode event dispatch
-pub(crate) struct ModeEventDispatch {
-    pub(crate) callbacks: Vec<Callback>,
-    pub(crate) handled: bool,
-    pub(crate) swallowed: bool,
-    pub(crate) passthrough: bool,
-}
-
-impl ModeEventDispatch {
-    pub(crate) fn pass_through() -> Self {
-        Self {
-            callbacks: Vec::new(),
-            handled: false,
-            swallowed: false,
-            passthrough: false,
-        }
-    }
-
-    fn swallowed() -> Self {
-        Self {
-            callbacks: Vec::new(),
-            handled: false,
-            swallowed: true,
-            passthrough: false,
-        }
-    }
-
-    fn handled(callbacks: Vec<Callback>, passthrough: bool) -> Self {
-        Self {
-            callbacks,
-            handled: true,
-            swallowed: false,
-            passthrough,
-        }
-    }
+pub(crate) enum ModeEventDispatch {
+    PassThrough,
+    Swallowed,
+    Handled {
+        callbacks: Vec<Callback>,
+        passthrough: bool,
+    },
 }
 
 pub(crate) fn dispatch_mode_key_event(
@@ -204,7 +174,7 @@ pub(crate) fn dispatch_mode_key_event(
         1 => dispatch_mode_press(hotkey_key, now, definitions, stack, active_presses),
         0 => dispatch_mode_release(hotkey_key.0, now, definitions, stack, active_presses),
         2 => dispatch_mode_repeat(hotkey_key.0, now, definitions, active_presses),
-        _ => ModeEventDispatch::pass_through(),
+        _ => ModeEventDispatch::PassThrough,
     }
 }
 
@@ -216,7 +186,7 @@ fn dispatch_mode_press(
     active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
 ) -> ModeEventDispatch {
     if stack.is_empty() {
-        return ModeEventDispatch::pass_through();
+        return ModeEventDispatch::PassThrough;
     }
 
     match lookup_hotkey_in_modes(hotkey_key, stack, definitions) {
@@ -260,13 +230,16 @@ fn dispatch_mode_press(
                 stack.pop();
             }
 
-            ModeEventDispatch::handled(callbacks, passthrough)
+            ModeEventDispatch::Handled {
+                callbacks,
+                passthrough,
+            }
         }
         ModeLookupResult::Swallowed => {
             stack.touch_top(now);
-            ModeEventDispatch::swallowed()
+            ModeEventDispatch::Swallowed
         }
-        ModeLookupResult::PassThrough => ModeEventDispatch::pass_through(),
+        ModeLookupResult::PassThrough => ModeEventDispatch::PassThrough,
     }
 }
 
@@ -282,7 +255,7 @@ fn dispatch_mode_release(
         .is_some_and(|active| active.mode_name.is_some());
 
     if !is_mode_press {
-        return ModeEventDispatch::pass_through();
+        return ModeEventDispatch::PassThrough;
     }
 
     let active = active_presses.remove(&key).unwrap();
@@ -292,7 +265,10 @@ fn dispatch_mode_release(
         .get(mode_name)
         .and_then(|def| def.bindings.get(&active.registration_key))
     else {
-        return ModeEventDispatch::handled(Vec::new(), false);
+        return ModeEventDispatch::Handled {
+            callbacks: Vec::new(),
+            passthrough: false,
+        };
     };
 
     let passthrough = registration.callbacks.passthrough;
@@ -314,7 +290,10 @@ fn dispatch_mode_release(
         stack.touch_top(now);
     }
 
-    ModeEventDispatch::handled(callbacks, passthrough)
+    ModeEventDispatch::Handled {
+        callbacks,
+        passthrough,
+    }
 }
 
 fn dispatch_mode_repeat(
@@ -328,7 +307,7 @@ fn dispatch_mode_repeat(
         .is_some_and(|active| active.mode_name.is_some());
 
     if !is_mode_press {
-        return ModeEventDispatch::pass_through();
+        return ModeEventDispatch::PassThrough;
     }
 
     let active = active_presses.get_mut(&key).unwrap();
@@ -338,7 +317,10 @@ fn dispatch_mode_repeat(
         .get(mode_name)
         .and_then(|def| def.bindings.get(&active.registration_key))
     else {
-        return ModeEventDispatch::handled(Vec::new(), false);
+        return ModeEventDispatch::Handled {
+            callbacks: Vec::new(),
+            passthrough: false,
+        };
     };
 
     let passthrough = registration.callbacks.passthrough;
@@ -354,7 +336,10 @@ fn dispatch_mode_repeat(
         active.press_dispatch_state = PressDispatchState::Dispatched;
     }
 
-    ModeEventDispatch::handled(callbacks, passthrough)
+    ModeEventDispatch::Handled {
+        callbacks,
+        passthrough,
+    }
 }
 
 /// Look up a registration for an active press, checking mode definitions
@@ -407,12 +392,7 @@ impl ModeController {
     }
 
     pub fn push(&self, name: &str) {
-        let has_definition = self
-            .registry
-            .definitions
-            .lock()
-            .unwrap()
-            .contains_key(name);
+        let has_definition = self.registry.definitions.lock().unwrap().contains_key(name);
 
         if !has_definition {
             tracing::warn!("Attempted to push undefined mode: {name}");
@@ -860,15 +840,17 @@ mod tests {
         let mut definitions = HashMap::new();
         definitions.insert(
             "timed".to_string(),
-            make_definition(ModeOptions::new().timeout(Duration::from_millis(100)), vec![]),
+            make_definition(
+                ModeOptions::new().timeout(Duration::from_millis(100)),
+                vec![],
+            ),
         );
 
         let popped = pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(50));
         assert!(popped.is_empty());
         assert!(!stack.is_empty());
 
-        let popped =
-            pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(150));
+        let popped = pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(150));
         assert_eq!(popped, vec!["timed".to_string()]);
         assert!(stack.is_empty());
     }
@@ -883,19 +865,21 @@ mod tests {
         let mut definitions = HashMap::new();
         definitions.insert(
             "bottom".to_string(),
-            make_definition(ModeOptions::new().timeout(Duration::from_millis(100)), vec![]),
+            make_definition(
+                ModeOptions::new().timeout(Duration::from_millis(100)),
+                vec![],
+            ),
         );
         definitions.insert(
             "top".to_string(),
-            make_definition(ModeOptions::new().timeout(Duration::from_millis(50)), vec![]),
+            make_definition(
+                ModeOptions::new().timeout(Duration::from_millis(50)),
+                vec![],
+            ),
         );
 
-        let popped =
-            pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(150));
-        assert_eq!(
-            popped,
-            vec!["top".to_string(), "bottom".to_string()]
-        );
+        let popped = pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(150));
+        assert_eq!(popped, vec!["top".to_string(), "bottom".to_string()]);
         assert!(stack.is_empty());
     }
 
@@ -908,20 +892,21 @@ mod tests {
         let mut definitions = HashMap::new();
         definitions.insert(
             "timed".to_string(),
-            make_definition(ModeOptions::new().timeout(Duration::from_millis(100)), vec![]),
+            make_definition(
+                ModeOptions::new().timeout(Duration::from_millis(100)),
+                vec![],
+            ),
         );
 
         // Touch at 80ms resets
         stack.touch_top(t0 + Duration::from_millis(80));
 
         // At 150ms from t0 (70ms from touch), not expired
-        let popped =
-            pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(150));
+        let popped = pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(150));
         assert!(popped.is_empty());
 
         // At 200ms from t0 (120ms from touch), expired
-        let popped =
-            pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(200));
+        let popped = pop_timed_out_modes(&mut stack, &definitions, t0 + Duration::from_millis(200));
         assert_eq!(popped, vec!["timed".to_string()]);
     }
 
@@ -946,11 +931,13 @@ mod tests {
         );
 
         let mut active_presses = HashMap::new();
-        let dispatch = dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
+        let dispatch =
+            dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
 
-        assert!(dispatch.handled);
-        assert!(!dispatch.swallowed);
-        dispatch_callbacks(dispatch.callbacks);
+        let ModeEventDispatch::Handled { callbacks, .. } = dispatch else {
+            panic!("expected Handled");
+        };
+        dispatch_callbacks(callbacks);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
         assert!(active_presses.contains_key(&KeyCode::KEY_H));
     }
@@ -982,7 +969,10 @@ mod tests {
         // Press
         let press_dispatch =
             dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
-        dispatch_callbacks(press_dispatch.callbacks);
+        let ModeEventDispatch::Handled { callbacks, .. } = press_dispatch else {
+            panic!("expected Handled");
+        };
+        dispatch_callbacks(callbacks);
 
         // Release
         let release_dispatch = dispatch_mode_key_event(
@@ -993,7 +983,10 @@ mod tests {
             &mut stack,
             &mut active_presses,
         );
-        dispatch_callbacks(release_dispatch.callbacks);
+        let ModeEventDispatch::Handled { callbacks, .. } = release_dispatch else {
+            panic!("expected Handled");
+        };
+        dispatch_callbacks(callbacks);
 
         assert_eq!(press_count.load(Ordering::SeqCst), 1);
         assert_eq!(release_count.load(Ordering::SeqCst), 1);
@@ -1018,9 +1011,13 @@ mod tests {
         );
 
         let mut active_presses = HashMap::new();
-        let dispatch = dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
+        let dispatch =
+            dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
 
-        dispatch_callbacks(dispatch.callbacks);
+        let ModeEventDispatch::Handled { callbacks, .. } = dispatch else {
+            panic!("expected Handled");
+        };
+        dispatch_callbacks(callbacks);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
         assert!(stack.is_empty());
     }
@@ -1048,8 +1045,7 @@ mod tests {
             &mut active_presses,
         );
 
-        assert!(dispatch.swallowed);
-        assert!(!dispatch.handled);
+        assert!(matches!(dispatch, ModeEventDispatch::Swallowed));
     }
 
     #[test]
@@ -1068,8 +1064,7 @@ mod tests {
             &mut active_presses,
         );
 
-        assert!(!dispatch.handled);
-        assert!(!dispatch.swallowed);
+        assert!(matches!(dispatch, ModeEventDispatch::PassThrough));
     }
 
     #[test]
@@ -1086,10 +1081,10 @@ mod tests {
 
         let key = (KeyCode::KEY_Q, vec![]);
         let mut active_presses = HashMap::new();
-        let dispatch = dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
+        let dispatch =
+            dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
 
-        assert!(!dispatch.handled);
-        assert!(!dispatch.swallowed);
+        assert!(matches!(dispatch, ModeEventDispatch::PassThrough));
     }
 
     // ModeController tests
@@ -1097,11 +1092,10 @@ mod tests {
     #[test]
     fn mode_controller_push_pop_roundtrip() {
         let registry = ModeRegistry::new();
-        registry
-            .definitions
-            .lock()
-            .unwrap()
-            .insert("test".to_string(), make_definition(ModeOptions::new(), vec![]));
+        registry.definitions.lock().unwrap().insert(
+            "test".to_string(),
+            make_definition(ModeOptions::new(), vec![]),
+        );
 
         let controller = ModeController::new(registry);
 
@@ -1132,12 +1126,8 @@ mod tests {
         let controller = ModeController::new(registry);
         let mut builder = ModeBuilder::new(controller);
 
-        builder
-            .register(KeyCode::KEY_H, &[], || {})
-            .unwrap();
-        builder
-            .register(KeyCode::KEY_J, &[], || {})
-            .unwrap();
+        builder.register(KeyCode::KEY_H, &[], || {}).unwrap();
+        builder.register(KeyCode::KEY_J, &[], || {}).unwrap();
 
         assert_eq!(builder.bindings.len(), 2);
     }
@@ -1148,14 +1138,9 @@ mod tests {
         let controller = ModeController::new(registry);
         let mut builder = ModeBuilder::new(controller);
 
-        builder
-            .register(KeyCode::KEY_H, &[], || {})
-            .unwrap();
+        builder.register(KeyCode::KEY_H, &[], || {}).unwrap();
 
-        let err = builder
-            .register(KeyCode::KEY_H, &[], || {})
-            .err()
-            .unwrap();
+        let err = builder.register(KeyCode::KEY_H, &[], || {}).err().unwrap();
 
         assert!(matches!(err, Error::AlreadyRegistered { .. }));
     }

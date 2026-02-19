@@ -584,12 +584,7 @@ impl HotkeyManager {
     }
 
     /// Define a named mode with its bindings and options.
-    pub fn define_mode<F>(
-        &self,
-        name: &str,
-        options: ModeOptions,
-        build_fn: F,
-    ) -> Result<(), Error>
+    pub fn define_mode<F>(&self, name: &str, options: ModeOptions, build_fn: F) -> Result<(), Error>
     where
         F: FnOnce(&mut ModeBuilder) -> Result<(), Error>,
     {
@@ -2106,8 +2101,16 @@ mod tests {
 
         // Both modes registered KEY_F without conflict
         let definitions = manager.inner.mode_registry.definitions.lock().unwrap();
-        assert!(definitions.get("mode_a").unwrap().bindings.contains_key(&(KeyCode::KEY_F, vec![])));
-        assert!(definitions.get("mode_b").unwrap().bindings.contains_key(&(KeyCode::KEY_F, vec![])));
+        assert!(definitions
+            .get("mode_a")
+            .unwrap()
+            .bindings
+            .contains_key(&(KeyCode::KEY_F, vec![])));
+        assert!(definitions
+            .get("mode_b")
+            .unwrap()
+            .bindings
+            .contains_key(&(KeyCode::KEY_F, vec![])));
     }
 
     #[test]
