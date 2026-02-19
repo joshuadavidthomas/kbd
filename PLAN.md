@@ -28,7 +28,7 @@ These items make the crate a credible alternative to existing options.
 
 ### 1.1 Unified backend: XDG portal + evdev with automatic fallback
 
-**Priority: Critical — this is the moat**
+**Status: Not Started** · **Priority: Critical — this is the moat**
 
 Try the XDG GlobalShortcuts portal first (no root needed where available).
 Fall back to evdev when the portal is unavailable or unsupported (common on
@@ -91,7 +91,7 @@ Backend selection must respect compile-time availability:
 
 ### 1.2 Release / hold events
 
-**Priority: High — low effort, high value**
+**Status: Not Started** · **Priority: High — low effort, high value**
 
 The evdev layer already delivers key release (value=0) and repeat (value=2)
 events. The current code ignores them. Expose them to enable:
@@ -115,7 +115,7 @@ manager.register(
 
 ### 1.3 String parsing for hotkey definitions
 
-**Priority: High — table stakes**
+**Status: Not Started** · **Priority: High — table stakes**
 
 Both competitors have this. Users need it for config files, CLI tools, and
 anywhere hotkeys are defined by end users rather than hardcoded.
@@ -131,7 +131,7 @@ Case-insensitive, supports common aliases (`Super`/`Meta`/`Win`,
 
 ### 1.4 Conflict detection
 
-**Priority: High — correctness**
+**Status: Not Started** · **Priority: High — correctness**
 
 The current code silently overwrites duplicate registrations. This is a bug
 magnet. Instead:
@@ -152,7 +152,7 @@ non-deterministic callback selection.
 
 ### 1.5 Device hotplug
 
-**Priority: High — reliability**
+**Status: Not Started** · **Priority: High — reliability**
 
 Keyboards get unplugged, Bluetooth devices reconnect. The listener should
 handle this without restarting.
@@ -167,7 +167,10 @@ modifiers do not get stuck active.
 
 ### 1.6 Event loop architecture (latency + CPU correctness)
 
-**Priority: High — production behavior**
+**Status: In Progress** · **Priority: High — production behavior**
+
+> Current state: Basic sleep-based polling loop (5ms interval) with non-blocking
+> reads. Needs migration to poll/epoll-driven model.
 
 The current polling-style listener design is simple but can waste CPU and add
 latency jitter under load. Move to a poll/epoll-driven wait model for device
@@ -186,7 +189,7 @@ These features differentiate from every existing Rust crate.
 
 ### 2.1 Key sequences / chords
 
-**Priority: Critical — no Rust crate has this**
+**Status: Not Started** · **Priority: Critical — no Rust crate has this**
 
 Multi-step hotkey combos with configurable timeout:
 
@@ -227,7 +230,7 @@ Edge cases to handle:
 
 ### 2.2 Event grabbing / interception
 
-**Priority: High — essential for real hotkey daemons**
+**Status: Not Started** · **Priority: High — essential for real hotkey daemons**
 
 Use `EVIOCGRAB` (evdev's `device.grab()`) to exclusively capture keyboard
 input. When grabbed, events don't reach other applications. Re-emit
@@ -259,7 +262,7 @@ clear `UnsupportedFeature`-style error when grab/interception is requested.
 
 ### 2.3 Modes / layers
 
-**Priority: High — no Rust crate has this**
+**Status: Not Started** · **Priority: High — no Rust crate has this**
 
 Named groups of hotkeys that can be pushed/popped like a stack. Inspired by
 swhkd's mode system and QMK firmware layers.
@@ -300,7 +303,7 @@ transitions are push/pop operations on that stack.
 
 ### 2.4 Device-specific hotkeys
 
-**Priority: Medium — natural fit for evdev**
+**Status: Not Started** · **Priority: Medium — natural fit for evdev**
 
 Different hotkeys for different keyboards. The evdev backend already has
 per-device file descriptors — just need to associate registrations with device
@@ -333,7 +336,7 @@ keyboard B.
 
 ### 2.5 Tap vs. hold (dual-function keys)
 
-**Priority: Medium — popular in keyboard community**
+**Status: Not Started** · **Priority: Medium — popular in keyboard community**
 
 A key does one thing when tapped, another when held. This is keyd's
 `overload()` and QMK's `LT()`/`MT()`.
@@ -361,6 +364,8 @@ if held past the threshold duration.
 
 ### 3.1 Async API
 
+**Status: Not Started**
+
 Provide an `async` interface alongside the callback API. Feature-gated behind
 `tokio` and `async-std` features.
 
@@ -378,6 +383,8 @@ while let Some(event) = stream.next().await {
 
 ### 3.2 Debouncing / rate limiting
 
+**Status: Not Started**
+
 Prevent rapid-fire callback invocations:
 
 ```rust
@@ -388,6 +395,11 @@ HotkeyOptions::new()
 
 ### 3.3 Key state query API
 
+**Status: In Progress**
+
+> Current state: Modifier state is tracked internally in the listener thread
+> (`active_modifiers: HashSet<KeyCode>`), but not exposed via any public API.
+
 Expose the internal modifier tracking as a public API:
 
 ```rust
@@ -396,6 +408,8 @@ manager.active_modifiers()                       // -> HashSet<KeyCode>
 ```
 
 ### 3.4 Configuration serialization
+
+**Status: Not Started**
 
 Support loading hotkey definitions from structured data (serde):
 
@@ -490,35 +504,31 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 
 ## Implementation order
 
-```
-Phase 1 (foundation):
-  1.1  Backend trait + evdev backend (refactor current code)
-  1.2  Release/hold events
-  1.3  String parsing
-  1.4  Conflict detection
-  1.5  Device hotplug
-  1.6  Event loop architecture (poll/epoll + clean shutdown path)
-  1.1b Portal backend (behind feature flag, but required before 1.0 to satisfy
-       unified-backend promise)
-
-Phase 2 (power features):
-  2.1  Key sequences / chords
-  2.2  Event grabbing (EVIOCGRAB + uinput)
-  2.3  Modes / layers
-  2.4  Device-specific hotkeys
-  2.5  Tap vs. hold
-
-Phase 3 (polish):
-  3.1  Async API
-  3.2  Debouncing / rate limiting
-  3.3  Key state query
-  3.4  Configuration serialization
-
-Phase 4 (expansion — not committed, but the door is open):
-  4.1  macOS backend (CGEventTap / IOKit)
-  4.2  Windows backend (low-level keyboard hooks)
-  4.3  Rename crate to something platform-neutral
-```
+| Item | Description | Status |
+|------|-------------|--------|
+| **Phase 1** | **Foundation** | |
+| 1.1 | Backend trait + evdev backend (refactor current code) | Not Started |
+| 1.2 | Release/hold events | Not Started |
+| 1.3 | String parsing | Not Started |
+| 1.4 | Conflict detection | Not Started |
+| 1.5 | Device hotplug | Not Started |
+| 1.6 | Event loop architecture (poll/epoll + clean shutdown path) | In Progress |
+| 1.1b | Portal backend (behind feature flag) | Not Started |
+| **Phase 2** | **Power features** | |
+| 2.1 | Key sequences / chords | Not Started |
+| 2.2 | Event grabbing (EVIOCGRAB + uinput) | Not Started |
+| 2.3 | Modes / layers | Not Started |
+| 2.4 | Device-specific hotkeys | Not Started |
+| 2.5 | Tap vs. hold | Not Started |
+| **Phase 3** | **Polish** | |
+| 3.1 | Async API | Not Started |
+| 3.2 | Debouncing / rate limiting | Not Started |
+| 3.3 | Key state query | In Progress |
+| 3.4 | Configuration serialization | Not Started |
+| **Phase 4** | **Expansion (not committed)** | |
+| 4.1 | macOS backend (CGEventTap / IOKit) | Not Started |
+| 4.2 | Windows backend (low-level keyboard hooks) | Not Started |
+| 4.3 | Rename crate to something platform-neutral | Not Started |
 
 Phase 1 makes the crate publishable. Phase 2 makes it the obvious choice.
 Phase 3 makes it production-ready for demanding applications.
