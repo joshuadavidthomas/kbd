@@ -100,7 +100,7 @@ impl HotkeyManager {
         sorted_modifiers.sort();
         sorted_modifiers.dedup();
 
-        let hotkey_key = (key, sorted_modifiers.clone());
+        let hotkey_key = (key, sorted_modifiers);
 
         {
             let mut registrations = self.inner.registrations.lock().unwrap();
