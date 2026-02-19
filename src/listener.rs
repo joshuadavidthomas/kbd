@@ -125,9 +125,7 @@ fn collect_non_modifier_callbacks(
                 );
 
                 if press_dispatch_state == PressDispatchState::Dispatched {
-                    if let Some(callback) = &registration.callbacks.on_press {
-                        callbacks.push(callback.clone());
-                    }
+                    callbacks.push(registration.callbacks.on_press.clone());
                 }
             }
         }
@@ -137,9 +135,7 @@ fn collect_non_modifier_callbacks(
                     if active.press_dispatch_state == PressDispatchState::Pending {
                         if let Some(min_hold) = registration.callbacks.min_hold {
                             if now.duration_since(active.pressed_at) >= min_hold {
-                                if let Some(callback) = &registration.callbacks.on_press {
-                                    callbacks.push(callback.clone());
-                                }
+                                callbacks.push(registration.callbacks.on_press.clone());
                             }
                         }
                     }
@@ -162,10 +158,8 @@ fn collect_non_modifier_callbacks(
                     if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger
                         && hold_satisfied
                     {
-                        if let Some(callback) = &registration.callbacks.on_press {
-                            callbacks.push(callback.clone());
-                            active.press_dispatch_state = PressDispatchState::Dispatched;
-                        }
+                        callbacks.push(registration.callbacks.on_press.clone());
+                        active.press_dispatch_state = PressDispatchState::Dispatched;
                     }
                 }
             }
@@ -295,9 +289,9 @@ mod tests {
         let r = release_count.clone();
 
         let callbacks = HotkeyCallbacks {
-            on_press: Some(Arc::new(move || {
+            on_press: Arc::new(move || {
                 p.fetch_add(1, Ordering::SeqCst);
-            })),
+            }),
             on_release: Some(Arc::new(move || {
                 r.fetch_add(1, Ordering::SeqCst);
             })),
@@ -342,9 +336,9 @@ mod tests {
         let p = press_count.clone();
 
         let callbacks = HotkeyCallbacks {
-            on_press: Some(Arc::new(move || {
+            on_press: Arc::new(move || {
                 p.fetch_add(1, Ordering::SeqCst);
-            })),
+            }),
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Ignore,
@@ -399,9 +393,9 @@ mod tests {
         let p = press_count.clone();
 
         let callbacks = HotkeyCallbacks {
-            on_press: Some(Arc::new(move || {
+            on_press: Arc::new(move || {
                 p.fetch_add(1, Ordering::SeqCst);
-            })),
+            }),
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Trigger,
@@ -450,9 +444,9 @@ mod tests {
         let p = press_count.clone();
 
         let callbacks = HotkeyCallbacks {
-            on_press: Some(Arc::new(move || {
+            on_press: Arc::new(move || {
                 p.fetch_add(1, Ordering::SeqCst);
-            })),
+            }),
             on_release: None,
             min_hold: Some(Duration::ZERO),
             repeat_behavior: RepeatBehavior::Ignore,
@@ -491,9 +485,9 @@ mod tests {
         let p = press_count.clone();
 
         let callbacks = HotkeyCallbacks {
-            on_press: Some(Arc::new(move || {
+            on_press: Arc::new(move || {
                 p.fetch_add(1, Ordering::SeqCst);
-            })),
+            }),
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Trigger,
@@ -540,9 +534,9 @@ mod tests {
         let p = press_count.clone();
 
         let callbacks = HotkeyCallbacks {
-            on_press: Some(Arc::new(move || {
+            on_press: Arc::new(move || {
                 p.fetch_add(1, Ordering::SeqCst);
-            })),
+            }),
             on_release: None,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Trigger,

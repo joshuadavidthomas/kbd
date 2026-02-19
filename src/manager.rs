@@ -35,9 +35,9 @@ pub(crate) enum PressDispatchState {
     Dispatched,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct HotkeyCallbacks {
-    pub(crate) on_press: Option<Callback>,
+    pub(crate) on_press: Callback,
     pub(crate) on_release: Option<Callback>,
     pub(crate) min_hold: Option<Duration>,
     pub(crate) repeat_behavior: RepeatBehavior,
@@ -94,7 +94,7 @@ impl HotkeyOptions {
         };
 
         HotkeyCallbacks {
-            on_press: Some(press_callback),
+            on_press: press_callback,
             on_release: release_callback,
             min_hold: self.min_hold,
             repeat_behavior: self.repeat_behavior,
@@ -305,7 +305,7 @@ mod tests {
             press_called_clone.store(true, Ordering::SeqCst);
         });
 
-        callbacks.on_press.as_ref().unwrap()();
+        (callbacks.on_press)();
         callbacks.on_release.as_ref().unwrap()();
 
         assert!(press_called.load(Ordering::SeqCst));
@@ -325,12 +325,11 @@ mod tests {
             called_clone.store(true, Ordering::SeqCst);
         });
 
-        assert!(callbacks.on_press.is_some());
         assert!(callbacks.on_release.is_some());
         assert!(matches!(callbacks.repeat_behavior, RepeatBehavior::Trigger));
         assert_eq!(callbacks.min_hold, Some(Duration::from_millis(50)));
 
-        callbacks.on_press.unwrap()();
+        (callbacks.on_press)();
         assert!(called.load(Ordering::SeqCst));
     }
 }
