@@ -3,7 +3,6 @@ use evdev::{Device, KeyCode};
 use std::path::PathBuf;
 
 pub fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
-    // Extracted from dashtext evdev.rs:111-169
     let input_dir = std::fs::read_dir("/dev/input")
         .map_err(|e| Error::DeviceAccess(format!("Cannot open /dev/input: {}", e)))?;
 

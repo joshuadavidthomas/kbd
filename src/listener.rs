@@ -17,51 +17,46 @@ pub fn spawn_listener_thread(
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     stop_flag: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
-    let thread = thread::spawn(move || {
-        listener_loop(keyboard_paths, registrations, stop_flag);
-    });
-
-    Ok(thread)
+    thread::Builder::new()
+        .name("evdev-hotkey-listener".into())
+        .spawn(move || {
+            listener_loop(keyboard_paths, registrations, stop_flag);
+        })
+        .map_err(|e| Error::ThreadSpawn(format!("Failed to spawn listener thread: {}", e)))
 }
 
-/// Check if required modifiers are satisfied
+/// Check if active modifiers exactly match the required modifiers.
+///
+/// Left and right variants are treated as equivalent (e.g., either LEFT_CTRL or
+/// RIGHT_CTRL satisfies a KEY_LEFTCTRL requirement), but extra active modifiers
+/// that aren't required will cause a non-match.
 fn modifiers_satisfied(required: &[KeyCode], active: &HashSet<KeyCode>) -> bool {
-    // Group modifiers by type (left OR right is acceptable)
     let has_ctrl =
         active.contains(&KeyCode::KEY_LEFTCTRL) || active.contains(&KeyCode::KEY_RIGHTCTRL);
-    let has_alt = active.contains(&KeyCode::KEY_LEFTALT) || active.contains(&KeyCode::KEY_RIGHTALT);
+    let has_alt =
+        active.contains(&KeyCode::KEY_LEFTALT) || active.contains(&KeyCode::KEY_RIGHTALT);
     let has_shift =
         active.contains(&KeyCode::KEY_LEFTSHIFT) || active.contains(&KeyCode::KEY_RIGHTSHIFT);
     let has_meta =
         active.contains(&KeyCode::KEY_LEFTMETA) || active.contains(&KeyCode::KEY_RIGHTMETA);
 
-    for &modifier in required {
-        match modifier {
-            KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => {
-                if !has_ctrl {
-                    return false;
-                }
-            }
-            KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => {
-                if !has_alt {
-                    return false;
-                }
-            }
-            KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => {
-                if !has_shift {
-                    return false;
-                }
-            }
-            KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => {
-                if !has_meta {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
+    let requires_ctrl = required
+        .iter()
+        .any(|k| matches!(k, &KeyCode::KEY_LEFTCTRL | &KeyCode::KEY_RIGHTCTRL));
+    let requires_alt = required
+        .iter()
+        .any(|k| matches!(k, &KeyCode::KEY_LEFTALT | &KeyCode::KEY_RIGHTALT));
+    let requires_shift = required
+        .iter()
+        .any(|k| matches!(k, &KeyCode::KEY_LEFTSHIFT | &KeyCode::KEY_RIGHTSHIFT));
+    let requires_meta = required
+        .iter()
+        .any(|k| matches!(k, &KeyCode::KEY_LEFTMETA | &KeyCode::KEY_RIGHTMETA));
 
-    true
+    has_ctrl == requires_ctrl
+        && has_alt == requires_alt
+        && has_shift == requires_shift
+        && has_meta == requires_meta
 }
 
 fn listener_loop(
@@ -75,15 +70,17 @@ fn listener_loop(
     for path in keyboard_paths {
         match Device::open(&path) {
             Ok(device) => {
-                // Set non-blocking
                 let fd = device.as_raw_fd();
-                unsafe {
+                let nonblock_ok = unsafe {
                     let flags = libc::fcntl(fd, libc::F_GETFL);
-                    if flags != -1 {
-                        libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
-                    }
+                    flags != -1
+                        && libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) != -1
+                };
+                if nonblock_ok {
+                    devices.push(device);
+                } else {
+                    tracing::warn!("Failed to set non-blocking mode for {:?}", path);
                 }
-                devices.push(device);
             }
             Err(e) => {
                 tracing::warn!("Failed to open {:?}: {}", path, e);
@@ -162,36 +159,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_modifiers_satisfied() {
+    fn test_modifiers_exact_match() {
         let active: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
             .iter()
             .cloned()
             .collect();
 
-        // Should match - has required modifiers
+        // Exact match
         assert!(modifiers_satisfied(
             &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
             &active
         ));
 
-        // Should match - accepts right variant when left registered
-        assert!(modifiers_satisfied(&[KeyCode::KEY_LEFTCTRL], &active));
-
-        // Should not match - missing alt
+        // Missing required modifier (alt not active)
         assert!(!modifiers_satisfied(
             &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTALT],
             &active
         ));
+
+        // Extra active modifier (shift active but not required) — must NOT match
+        assert!(!modifiers_satisfied(&[KeyCode::KEY_LEFTCTRL], &active));
     }
 
     #[test]
-    fn test_modifiers_satisfied_empty() {
+    fn test_modifiers_right_variant_satisfies_left() {
+        let active: HashSet<KeyCode> = [KeyCode::KEY_RIGHTCTRL].iter().cloned().collect();
+
+        // Right variant satisfies left requirement
+        assert!(modifiers_satisfied(&[KeyCode::KEY_LEFTCTRL], &active));
+    }
+
+    #[test]
+    fn test_modifiers_empty() {
         let active: HashSet<KeyCode> = HashSet::new();
 
-        // Empty required modifiers should always be satisfied
+        // No modifiers required, none active
         assert!(modifiers_satisfied(&[], &active));
 
-        // Non-empty required with empty active should not match
+        // Modifier required but none active
         assert!(!modifiers_satisfied(&[KeyCode::KEY_LEFTCTRL], &active));
+    }
+
+    #[test]
+    fn test_modifiers_none_required_but_active() {
+        let active: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL].iter().cloned().collect();
+
+        // No modifiers required but ctrl is active — must NOT match
+        assert!(!modifiers_satisfied(&[], &active));
     }
 }

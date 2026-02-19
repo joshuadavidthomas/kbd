@@ -1,5 +1,3 @@
-// evdev-hotkey: Global hotkey listener for Linux using evdev
-
 pub use error::Error;
 pub use manager::{Handle, HotkeyManager};
 
