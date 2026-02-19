@@ -198,9 +198,9 @@ mod tests {
     #[test]
     #[cfg(feature = "portal")]
     fn portal_probe_requires_owner_and_interface() {
-        let probe = probe_portal_support_with_runner(|cmd, _args| match cmd {
-            "dbus-send" if _args.iter().any(|a| a.contains("NameHasOwner")) => Ok("boolean true".to_string()),
-            "dbus-send" if _args.iter().any(|a| a.contains("Properties.Get")) => Ok("variant       uint32 1".to_string()),
+        let probe = probe_portal_support_with_runner(|cmd, args| match cmd {
+            "dbus-send" if args.iter().any(|a| a.contains("NameHasOwner")) => Ok("boolean true".to_string()),
+            "dbus-send" if args.iter().any(|a| a.contains("Properties.Get")) => Ok("variant       uint32 1".to_string()),
             _ => Err("unexpected command".to_string()),
         });
 
@@ -210,9 +210,9 @@ mod tests {
     #[test]
     #[cfg(feature = "portal")]
     fn portal_probe_fails_without_globalshortcuts_interface() {
-        let probe = probe_portal_support_with_runner(|cmd, _args| match cmd {
-            "dbus-send" if _args.iter().any(|a| a.contains("NameHasOwner")) => Ok("boolean true".to_string()),
-            "dbus-send" if _args.iter().any(|a| a.contains("Properties.Get")) => Err("no such interface".to_string()),
+        let probe = probe_portal_support_with_runner(|cmd, args| match cmd {
+            "dbus-send" if args.iter().any(|a| a.contains("NameHasOwner")) => Ok("boolean true".to_string()),
+            "dbus-send" if args.iter().any(|a| a.contains("Properties.Get")) => Err("no such interface".to_string()),
             _ => Err("unexpected command".to_string()),
         });
 

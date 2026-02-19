@@ -185,11 +185,13 @@ impl HotkeyManager {
         let selected_backend = resolve_backend(requested_backend)?;
 
         if requested_backend.is_none() && selected_backend == Backend::Portal {
-            if let Ok(manager) = Self::initialize_with_backend(Backend::Portal) {
-                return Ok(manager);
-            }
-
-            return Self::initialize_with_backend(Backend::Evdev);
+            return match Self::initialize_with_backend(Backend::Portal) {
+                Ok(manager) => Ok(manager),
+                Err(error) if should_fallback_from_portal_error(&error) => {
+                    Self::initialize_with_backend(Backend::Evdev)
+                }
+                Err(error) => Err(error),
+            };
         }
 
         Self::initialize_with_backend(selected_backend)
@@ -265,6 +267,11 @@ impl HotkeyManager {
 
         Ok(())
     }
+}
+
+
+fn should_fallback_from_portal_error(error: &Error) -> bool {
+    matches!(error, Error::BackendInit(_))
 }
 
 impl Drop for HotkeyManager {
@@ -344,6 +351,17 @@ mod tests {
 
         (callbacks.on_press)();
         assert!(called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn fallback_decision_only_accepts_backend_init_error() {
+        assert!(should_fallback_from_portal_error(&Error::BackendInit(
+            "portal unavailable".to_string(),
+        )));
+        assert!(!should_fallback_from_portal_error(&Error::NoKeyboardsFound));
+        assert!(!should_fallback_from_portal_error(&Error::DeviceAccess(
+            "unexpected".to_string(),
+        )));
     }
 
     #[test]
