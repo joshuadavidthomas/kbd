@@ -41,10 +41,10 @@ impl Handle {
     }
 }
 
-/// Inner state shared across handles
-pub struct HotkeyManagerInner {
-    pub registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-    pub stop_flag: Arc<AtomicBool>,
+/// Inner state shared between HotkeyManager and Handles
+struct HotkeyManagerInner {
+    registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
+    stop_flag: Arc<AtomicBool>,
     listener: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -100,7 +100,7 @@ impl HotkeyManager {
         sorted_modifiers.sort();
         sorted_modifiers.dedup();
 
-        let hotkey_key = (key, sorted_modifiers.clone());
+        let hotkey_key = (key, sorted_modifiers);
 
         {
             let mut registrations = self.inner.registrations.lock().unwrap();
