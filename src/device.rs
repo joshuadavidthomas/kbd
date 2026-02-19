@@ -3,6 +3,17 @@ use crate::permission::get_permission_error_message;
 use evdev::{Device, KeyCode};
 use std::path::PathBuf;
 
+pub(crate) fn is_keyboard_device(device: &Device) -> bool {
+    device
+        .supported_keys()
+        .map(|keys| {
+            keys.contains(KeyCode::KEY_A)
+                && keys.contains(KeyCode::KEY_Z)
+                && keys.contains(KeyCode::KEY_ENTER)
+        })
+        .unwrap_or(false)
+}
+
 pub fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
     let input_dir = std::fs::read_dir("/dev/input")
         .map_err(|e| Error::DeviceAccess(format!("Cannot open /dev/input: {}", e)))?;
@@ -26,17 +37,10 @@ pub fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
 
         match Device::open(&path) {
             Ok(device) => {
-                let supported_keys = device.supported_keys();
-
-                if let Some(keys) = supported_keys {
-                    if keys.contains(KeyCode::KEY_A)
-                        && keys.contains(KeyCode::KEY_Z)
-                        && keys.contains(KeyCode::KEY_ENTER)
-                    {
-                        let name = device.name().unwrap_or("unknown");
-                        tracing::info!("Found keyboard: {} at {:?}", name, path);
-                        keyboards.push(path);
-                    }
+                if is_keyboard_device(&device) {
+                    let name = device.name().unwrap_or("unknown");
+                    tracing::info!("Found keyboard: {} at {:?}", name, path);
+                    keyboards.push(path);
                 }
             }
             Err(e) => {

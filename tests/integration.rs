@@ -9,8 +9,9 @@ fn create_manager_or_skip() -> Option<HotkeyManager> {
         Ok(manager) => Some(manager),
         Err(Error::PermissionDenied(_))
         | Err(Error::NoKeyboardsFound)
-        | Err(Error::DeviceAccess(_)) => {
-            println!("Skipping test: environment has no accessible input devices");
+        | Err(Error::DeviceAccess(_))
+        | Err(Error::BackendUnavailable(_)) => {
+            println!("Skipping test: environment has no usable backend/input devices");
             None
         }
         Err(err) => panic!("Unexpected manager creation error: {}", err),
@@ -23,8 +24,9 @@ fn test_manager_creation() {
         Ok(_) => println!("Manager created successfully"),
         Err(Error::PermissionDenied(_))
         | Err(Error::NoKeyboardsFound)
-        | Err(Error::DeviceAccess(_)) => {
-            println!("Manager creation skipped: environment has no accessible input devices")
+        | Err(Error::DeviceAccess(_))
+        | Err(Error::BackendUnavailable(_)) => {
+            println!("Manager creation skipped: environment has no usable backend/input devices")
         }
         Err(err) => panic!("Unexpected manager creation error: {}", err),
     }

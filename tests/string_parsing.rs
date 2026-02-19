@@ -25,3 +25,32 @@ fn parses_hotkey_sequence() {
     assert_eq!(sequence.steps()[0].key(), KeyCode::KEY_K);
     assert_eq!(sequence.steps()[1].key(), KeyCode::KEY_C);
 }
+
+#[test]
+fn parses_extended_key_ranges() {
+    let cases = [
+        ("F24", KeyCode::KEY_F24),
+        ("Left", KeyCode::KEY_LEFT),
+        ("Delete", KeyCode::KEY_DELETE),
+        ("Backspace", KeyCode::KEY_BACKSPACE),
+        ("Insert", KeyCode::KEY_INSERT),
+        ("Home", KeyCode::KEY_HOME),
+        ("End", KeyCode::KEY_END),
+        ("PageUp", KeyCode::KEY_PAGEUP),
+        ("PageDown", KeyCode::KEY_PAGEDOWN),
+        ("Numpad1", KeyCode::KEY_KP1),
+        ("NumpadEnter", KeyCode::KEY_KPENTER),
+        ("Plus", KeyCode::KEY_EQUAL),
+        ("Minus", KeyCode::KEY_MINUS),
+        ("Comma", KeyCode::KEY_COMMA),
+        ("Slash", KeyCode::KEY_SLASH),
+    ];
+
+    for (input, expected) in cases {
+        let hotkey = format!("Ctrl+{input}").parse::<Hotkey>().unwrap();
+        assert_eq!(hotkey.key(), expected, "failed parsing {input}");
+
+        let round_trip = hotkey.to_string().parse::<Hotkey>().unwrap();
+        assert_eq!(round_trip, hotkey, "failed round-trip for {input}");
+    }
+}

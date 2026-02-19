@@ -1,3 +1,4 @@
+use evdev::KeyCode;
 use std::fmt;
 
 #[derive(Debug)]
@@ -8,6 +9,14 @@ pub enum Error {
     ThreadSpawn(String),
     BackendUnavailable(&'static str),
     BackendInit(String),
+    ManagerStopped,
+    AlreadyRegistered {
+        key: KeyCode,
+        modifiers: Vec<KeyCode>,
+    },
+    UnsupportedFeature(String),
+    InvalidSequence(String),
+    InvalidHotkey(String),
 }
 
 impl fmt::Display for Error {
@@ -21,6 +30,15 @@ impl fmt::Display for Error {
                 write!(f, "Requested backend is not available: {}", backend)
             }
             Error::BackendInit(msg) => write!(f, "Backend initialization failed: {}", msg),
+            Error::ManagerStopped => write!(f, "Hotkey manager has been stopped"),
+            Error::AlreadyRegistered { key, modifiers } => write!(
+                f,
+                "Hotkey is already registered: key={:?}, modifiers={:?}",
+                key, modifiers
+            ),
+            Error::UnsupportedFeature(message) => write!(f, "Unsupported feature: {}", message),
+            Error::InvalidSequence(message) => write!(f, "Invalid sequence: {}", message),
+            Error::InvalidHotkey(message) => write!(f, "Invalid hotkey: {}", message),
         }
     }
 }
