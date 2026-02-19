@@ -83,6 +83,7 @@ pub(crate) struct HotkeyRegistration {
 pub(crate) struct ActiveHotkeyPress {
     pub(crate) registration_key: HotkeyKey,
     pub(crate) pressed_at: Instant,
+    pub(crate) press_dispatched: bool,
 }
 
 /// Key used to identify hotkey registrations: (target_key, normalized_modifiers)

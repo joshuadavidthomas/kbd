@@ -100,15 +100,22 @@ fn collect_non_modifier_callbacks(
             let registration_key = (key, modifier_signature);
 
             if let Some(registration) = registrations.get(&registration_key) {
+                let press_dispatched = registration
+                    .callbacks
+                    .min_hold
+                    .map(|min_hold| min_hold.is_zero())
+                    .unwrap_or(true);
+
                 active_presses.insert(
                     key,
                     ActiveHotkeyPress {
                         registration_key,
                         pressed_at: now,
+                        press_dispatched,
                     },
                 );
 
-                if registration.callbacks.min_hold.is_none() {
+                if press_dispatched {
                     if let Some(callback) = &registration.callbacks.on_press {
                         callbacks.push(callback.clone());
                     }
@@ -118,13 +125,16 @@ fn collect_non_modifier_callbacks(
         0 => {
             if let Some(active) = active_presses.remove(&key) {
                 if let Some(registration) = registrations.get(&active.registration_key) {
-                    if let Some(min_hold) = registration.callbacks.min_hold {
-                        if now.duration_since(active.pressed_at) >= min_hold {
-                            if let Some(callback) = &registration.callbacks.on_press {
-                                callbacks.push(callback.clone());
+                    if !active.press_dispatched {
+                        if let Some(min_hold) = registration.callbacks.min_hold {
+                            if now.duration_since(active.pressed_at) >= min_hold {
+                                if let Some(callback) = &registration.callbacks.on_press {
+                                    callbacks.push(callback.clone());
+                                }
                             }
                         }
                     }
+
                     if let Some(callback) = &registration.callbacks.on_release {
                         callbacks.push(callback.clone());
                     }
@@ -132,7 +142,7 @@ fn collect_non_modifier_callbacks(
             }
         }
         2 => {
-            if let Some(active) = active_presses.get(&key) {
+            if let Some(active) = active_presses.get_mut(&key) {
                 if let Some(registration) = registrations.get(&active.registration_key) {
                     let hold_satisfied = registration
                         .callbacks
@@ -143,6 +153,7 @@ fn collect_non_modifier_callbacks(
                     if registration.callbacks.trigger_on_repeat && hold_satisfied {
                         if let Some(callback) = &registration.callbacks.on_press {
                             callbacks.push(callback.clone());
+                            active.press_dispatched = true;
                         }
                     }
                 }
@@ -414,6 +425,96 @@ mod tests {
             KeyCode::KEY_A,
             2,
             now + Duration::from_millis(60),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn zero_min_hold_triggers_press_on_key_down_only_once() {
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let p = press_count.clone();
+
+        let callbacks = HotkeyCallbacks {
+            on_press: Some(Arc::new(move || {
+                p.fetch_add(1, Ordering::SeqCst);
+            })),
+            on_release: None,
+            min_hold: Some(Duration::ZERO),
+            trigger_on_repeat: false,
+        };
+
+        let mut registrations = HashMap::new();
+        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            1,
+            now,
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            0,
+            now + Duration::from_millis(1),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn repeat_after_hold_does_not_double_fire_on_release() {
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let p = press_count.clone();
+
+        let callbacks = HotkeyCallbacks {
+            on_press: Some(Arc::new(move || {
+                p.fetch_add(1, Ordering::SeqCst);
+            })),
+            on_release: None,
+            min_hold: Some(Duration::from_millis(50)),
+            trigger_on_repeat: true,
+        };
+
+        let mut registrations = HashMap::new();
+        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            1,
+            now,
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            2,
+            now + Duration::from_millis(60),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            0,
+            now + Duration::from_millis(70),
             &modifiers,
             &registrations,
             &mut active_presses,
