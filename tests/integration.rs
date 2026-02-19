@@ -1,32 +1,40 @@
 use evdev::KeyCode;
-use evdev_hotkey::HotkeyManager;
+use evdev_hotkey::{Error, HotkeyManager};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+fn create_manager_or_skip() -> Option<HotkeyManager> {
+    match HotkeyManager::new() {
+        Ok(manager) => Some(manager),
+        Err(Error::PermissionDenied(_))
+        | Err(Error::NoKeyboardsFound)
+        | Err(Error::DeviceAccess(_)) => {
+            println!("Skipping test: environment has no accessible input devices");
+            None
+        }
+        Err(err) => panic!("Unexpected manager creation error: {}", err),
+    }
+}
+
 #[test]
 fn test_manager_creation() {
-    // This test requires being in the input group
-    // Skip in CI if not available
-    let result = HotkeyManager::new();
-    // Either success or permission error is acceptable
-    match result {
+    match HotkeyManager::new() {
         Ok(_) => println!("Manager created successfully"),
-        Err(e) => println!(
-            "Manager creation failed (expected if not in input group): {}",
-            e
-        ),
+        Err(Error::PermissionDenied(_))
+        | Err(Error::NoKeyboardsFound)
+        | Err(Error::DeviceAccess(_)) => {
+            println!("Manager creation skipped: environment has no accessible input devices")
+        }
+        Err(err) => panic!("Unexpected manager creation error: {}", err),
     }
 }
 
 #[test]
 fn test_register_hotkey() {
-    let manager = match HotkeyManager::new() {
-        Ok(m) => m,
-        Err(_) => {
-            println!("Skipping test: not in input group");
-            return;
-        }
+    let manager = match create_manager_or_skip() {
+        Some(m) => m,
+        None => return,
     };
 
     let triggered = Arc::new(AtomicBool::new(false));
@@ -49,12 +57,9 @@ fn test_register_hotkey() {
 
 #[test]
 fn test_register_multiple_hotkeys() {
-    let manager = match HotkeyManager::new() {
-        Ok(m) => m,
-        Err(_) => {
-            println!("Skipping test: not in input group");
-            return;
-        }
+    let manager = match create_manager_or_skip() {
+        Some(m) => m,
+        None => return,
     };
 
     let _handle1 = manager
@@ -103,12 +108,9 @@ fn test_register_multiple_hotkeys() {
 
 #[test]
 fn test_unregister_hotkey() {
-    let manager = match HotkeyManager::new() {
-        Ok(m) => m,
-        Err(_) => {
-            println!("Skipping test: not in input group");
-            return;
-        }
+    let manager = match create_manager_or_skip() {
+        Some(m) => m,
+        None => return,
     };
 
     let handle = manager
@@ -124,12 +126,9 @@ fn test_unregister_hotkey() {
 
 #[test]
 fn test_handle_unregister_cleans_up() {
-    let manager = match HotkeyManager::new() {
-        Ok(m) => m,
-        Err(_) => {
-            println!("Skipping test: not in input group");
-            return;
-        }
+    let manager = match create_manager_or_skip() {
+        Some(m) => m,
+        None => return,
     };
 
     let triggered = Arc::new(AtomicBool::new(false));

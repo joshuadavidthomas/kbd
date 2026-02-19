@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::permission::get_permission_error_message;
 use evdev::{Device, KeyCode};
 use std::path::PathBuf;
 
@@ -7,6 +8,8 @@ pub fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
         .map_err(|e| Error::DeviceAccess(format!("Cannot open /dev/input: {}", e)))?;
 
     let mut keyboards = Vec::new();
+    let mut event_device_count = 0usize;
+    let mut permission_denied_count = 0usize;
 
     for entry in input_dir {
         let entry =
@@ -18,6 +21,8 @@ pub fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
         if !filename.starts_with("event") {
             continue;
         }
+
+        event_device_count += 1;
 
         match Device::open(&path) {
             Ok(device) => {
@@ -36,7 +41,7 @@ pub fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
             }
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    // Silently skip devices we can't access
+                    permission_denied_count += 1;
                     tracing::trace!("Permission denied for {:?}", path);
                 } else {
                     tracing::trace!("Cannot open {:?}: {}", path, e);
@@ -46,6 +51,9 @@ pub fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
     }
 
     if keyboards.is_empty() {
+        if event_device_count > 0 && permission_denied_count == event_device_count {
+            return Err(Error::PermissionDenied(get_permission_error_message()));
+        }
         return Err(Error::NoKeyboardsFound);
     }
 

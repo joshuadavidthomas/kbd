@@ -6,6 +6,7 @@ pub enum Error {
     NoKeyboardsFound,
     DeviceAccess(String),
     ThreadSpawn(String),
+    BackendUnavailable(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -15,6 +16,9 @@ impl fmt::Display for Error {
             Error::NoKeyboardsFound => write!(f, "No keyboard devices found"),
             Error::DeviceAccess(s) => write!(f, "Device access error: {}", s),
             Error::ThreadSpawn(s) => write!(f, "Failed to spawn thread: {}", s),
+            Error::BackendUnavailable(backend) => {
+                write!(f, "Requested backend is not available: {}", backend)
+            }
         }
     }
 }

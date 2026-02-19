@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::manager::{HotkeyKey, HotkeyRegistration};
+use crate::manager::{normalize_modifiers, HotkeyKey, HotkeyRegistration};
 
 use evdev::{Device, EventSummary, KeyCode};
 use std::collections::{HashMap, HashSet};
@@ -17,55 +17,19 @@ pub fn spawn_listener_thread(
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     stop_flag: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, Error> {
+    let devices = open_devices(keyboard_paths)?;
+
     thread::Builder::new()
         .name("evdev-hotkey-listener".into())
         .spawn(move || {
-            listener_loop(keyboard_paths, registrations, stop_flag);
+            listener_loop(devices, registrations, stop_flag);
         })
         .map_err(|e| Error::ThreadSpawn(format!("Failed to spawn listener thread: {}", e)))
 }
 
-/// Check if active modifiers exactly match the required modifiers.
-///
-/// Left and right variants are treated as equivalent (e.g., either LEFT_CTRL or
-/// RIGHT_CTRL satisfies a KEY_LEFTCTRL requirement), but extra active modifiers
-/// that aren't required will cause a non-match.
-fn modifiers_satisfied(required: &[KeyCode], active: &HashSet<KeyCode>) -> bool {
-    let has_ctrl =
-        active.contains(&KeyCode::KEY_LEFTCTRL) || active.contains(&KeyCode::KEY_RIGHTCTRL);
-    let has_alt =
-        active.contains(&KeyCode::KEY_LEFTALT) || active.contains(&KeyCode::KEY_RIGHTALT);
-    let has_shift =
-        active.contains(&KeyCode::KEY_LEFTSHIFT) || active.contains(&KeyCode::KEY_RIGHTSHIFT);
-    let has_meta =
-        active.contains(&KeyCode::KEY_LEFTMETA) || active.contains(&KeyCode::KEY_RIGHTMETA);
-
-    let requires_ctrl = required
-        .iter()
-        .any(|k| matches!(k, &KeyCode::KEY_LEFTCTRL | &KeyCode::KEY_RIGHTCTRL));
-    let requires_alt = required
-        .iter()
-        .any(|k| matches!(k, &KeyCode::KEY_LEFTALT | &KeyCode::KEY_RIGHTALT));
-    let requires_shift = required
-        .iter()
-        .any(|k| matches!(k, &KeyCode::KEY_LEFTSHIFT | &KeyCode::KEY_RIGHTSHIFT));
-    let requires_meta = required
-        .iter()
-        .any(|k| matches!(k, &KeyCode::KEY_LEFTMETA | &KeyCode::KEY_RIGHTMETA));
-
-    has_ctrl == requires_ctrl
-        && has_alt == requires_alt
-        && has_shift == requires_shift
-        && has_meta == requires_meta
-}
-
-fn listener_loop(
-    keyboard_paths: Vec<PathBuf>,
-    registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-    stop_flag: Arc<AtomicBool>,
-) {
-    // Open devices
+fn open_devices(keyboard_paths: Vec<PathBuf>) -> Result<Vec<Device>, Error> {
     let mut devices: Vec<Device> = Vec::new();
+    let mut last_error: Option<String> = None;
 
     for path in keyboard_paths {
         match Device::open(&path) {
@@ -73,21 +37,48 @@ fn listener_loop(
                 let fd = device.as_raw_fd();
                 let nonblock_ok = unsafe {
                     let flags = libc::fcntl(fd, libc::F_GETFL);
-                    flags != -1
-                        && libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) != -1
+                    flags != -1 && libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) != -1
                 };
                 if nonblock_ok {
                     devices.push(device);
                 } else {
+                    last_error = Some(format!("Failed to set non-blocking mode for {:?}", path));
                     tracing::warn!("Failed to set non-blocking mode for {:?}", path);
                 }
             }
             Err(e) => {
+                last_error = Some(format!("Failed to open {:?}: {}", path, e));
                 tracing::warn!("Failed to open {:?}: {}", path, e);
             }
         }
     }
 
+    if devices.is_empty() {
+        return Err(Error::DeviceAccess(last_error.unwrap_or_else(|| {
+            "Failed to open any keyboard devices for listening".into()
+        })));
+    }
+
+    Ok(devices)
+}
+
+fn active_modifier_signature(active: &HashSet<KeyCode>) -> Vec<KeyCode> {
+    let modifiers: Vec<KeyCode> = active.iter().copied().collect();
+    normalize_modifiers(&modifiers)
+}
+
+fn invoke_callback(callback: &Arc<dyn Fn() + Send + Sync>) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        callback();
+    }))
+    .is_err()
+}
+
+fn listener_loop(
+    mut devices: Vec<Device>,
+    registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
+    stop_flag: Arc<AtomicBool>,
+) {
     // Modifier keys to track
     let modifier_keys: HashSet<KeyCode> = [
         KeyCode::KEY_LEFTCTRL,
@@ -134,20 +125,18 @@ fn listener_loop(
                             // the lock before invoking it. This prevents deadlocks if
                             // the callback calls register/unregister.
                             let callback = {
+                                let modifier_signature =
+                                    active_modifier_signature(&active_modifiers);
                                 let registrations_guard = registrations.lock().unwrap();
                                 registrations_guard
-                                    .iter()
-                                    .find(|((target_key, required_modifiers), _)| {
-                                        *target_key == key
-                                            && modifiers_satisfied(
-                                                required_modifiers,
-                                                &active_modifiers,
-                                            )
-                                    })
-                                    .map(|(_, registration)| registration.callback.clone())
+                                    .get(&(key, modifier_signature))
+                                    .map(|registration| registration.callback.clone())
                             };
+
                             if let Some(callback) = callback {
-                                callback();
+                                if invoke_callback(&callback) {
+                                    tracing::error!("Hotkey callback panicked; listener continues");
+                                }
                             }
                         }
                     }
@@ -162,54 +151,44 @@ fn listener_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
-    fn test_modifiers_exact_match() {
-        let active: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
+    fn modifier_signature_normalizes_left_and_right() {
+        let active: HashSet<KeyCode> = [KeyCode::KEY_RIGHTCTRL, KeyCode::KEY_LEFTSHIFT]
             .iter()
-            .cloned()
+            .copied()
             .collect();
 
-        // Exact match
-        assert!(modifiers_satisfied(
-            &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-            &active
-        ));
-
-        // Missing required modifier (alt not active)
-        assert!(!modifiers_satisfied(
-            &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTALT],
-            &active
-        ));
-
-        // Extra active modifier (shift active but not required) — must NOT match
-        assert!(!modifiers_satisfied(&[KeyCode::KEY_LEFTCTRL], &active));
+        let signature = active_modifier_signature(&active);
+        assert_eq!(
+            signature,
+            vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
+        );
     }
 
     #[test]
-    fn test_modifiers_right_variant_satisfies_left() {
-        let active: HashSet<KeyCode> = [KeyCode::KEY_RIGHTCTRL].iter().cloned().collect();
-
-        // Right variant satisfies left requirement
-        assert!(modifiers_satisfied(&[KeyCode::KEY_LEFTCTRL], &active));
+    fn empty_modifier_signature_is_empty() {
+        let active = HashSet::new();
+        assert!(active_modifier_signature(&active).is_empty());
     }
 
     #[test]
-    fn test_modifiers_empty() {
-        let active: HashSet<KeyCode> = HashSet::new();
+    fn invoke_callback_reports_panic_without_propagating() {
+        let callback: Arc<dyn Fn() + Send + Sync> = Arc::new(|| panic!("boom"));
 
-        // No modifiers required, none active
-        assert!(modifiers_satisfied(&[], &active));
-
-        // Modifier required but none active
-        assert!(!modifiers_satisfied(&[KeyCode::KEY_LEFTCTRL], &active));
+        assert!(invoke_callback(&callback));
     }
 
     #[test]
-    fn test_modifiers_none_required_but_active() {
-        let active: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL].iter().cloned().collect();
+    fn invoke_callback_runs_non_panicking_callback() {
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = called.clone();
+        let callback: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            called_clone.store(true, Ordering::SeqCst);
+        });
 
-        // No modifiers required but ctrl is active — must NOT match
-        assert!(!modifiers_satisfied(&[], &active));
+        assert!(!invoke_callback(&callback));
+        assert!(called.load(Ordering::SeqCst));
     }
 }
