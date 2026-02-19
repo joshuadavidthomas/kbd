@@ -377,18 +377,34 @@ Grab mode pulls in uinput. Async is optional.
 
 ---
 
-## Non-goals
+## Non-goals (for now)
 
-Things this crate will NOT do:
+Things this crate will NOT do in Phases 1–3:
 
-- **Cross-platform (macOS/Windows)**: Linux-only by design. Use `global-hotkey`
-  for cross-platform needs.
 - **Key remapping**: This is a hotkey library, not a remapper. Use keyd or
   xremap for full remapping.
 - **Text expansion / hotstrings**: Out of scope. Different problem domain.
 - **Input simulation / synthetic events**: Out of scope except for uinput
   re-emission in grab mode.
 - **GUI / system tray**: This is a library, not a daemon.
+
+### Cross-platform: door is open
+
+The initial focus is Linux — that's where the gap is and where the backend
+trait architecture (Phase 1.1) gets battle-tested. But that same trait design
+means platform backends can be added without touching existing code:
+
+| Platform | Potential backend          | Feature flag |
+|----------|---------------------------|--------------|
+| macOS    | CGEventTap / IOKit        | `macos`      |
+| Windows  | Low-level keyboard hooks  | `windows`    |
+
+If/when this happens, the crate should be renamed to something
+platform-neutral (`keybind`, `hotkey-daemon`, `hkd`, or similar) and
+`evdev-hotkey` becomes a thin re-export crate for backwards compatibility.
+
+This is **not committed scope** — it's an architectural option that Phase 1.1
+preserves for free. Ship Linux-first, prove the API, expand later.
 
 ---
 
@@ -415,7 +431,13 @@ Phase 3 (polish):
   3.2  Debouncing / rate limiting
   3.3  Key state query
   3.4  Configuration serialization
+
+Phase 4 (expansion — not committed, but the door is open):
+  4.1  macOS backend (CGEventTap / IOKit)
+  4.2  Windows backend (low-level keyboard hooks)
+  4.3  Rename crate to something platform-neutral
 ```
 
 Phase 1 makes the crate publishable. Phase 2 makes it the obvious choice.
 Phase 3 makes it production-ready for demanding applications.
+Phase 4 is an option, not a promise — pursue it if the API proves itself.
