@@ -12,6 +12,8 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+type Callback = Arc<dyn Fn() + Send + Sync>;
+
 pub fn spawn_listener_thread(
     keyboard_paths: Vec<PathBuf>,
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
@@ -67,29 +69,31 @@ fn active_modifier_signature(active: &HashSet<KeyCode>) -> Vec<KeyCode> {
     normalize_modifiers(&modifiers)
 }
 
-fn invoke_callback(callback: &Arc<dyn Fn() + Send + Sync>) -> bool {
+fn invoke_callback(callback: &Callback) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         callback();
     }))
     .is_err()
 }
 
-fn invoke_optional(callback: &Option<Arc<dyn Fn() + Send + Sync>>) {
-    if let Some(callback) = callback {
-        if invoke_callback(callback) {
+fn dispatch_callbacks(callbacks: Vec<Callback>) {
+    for callback in callbacks {
+        if invoke_callback(&callback) {
             tracing::error!("Hotkey callback panicked; listener continues");
         }
     }
 }
 
-fn process_non_modifier_event(
+fn collect_non_modifier_callbacks(
     key: KeyCode,
     value: i32,
     now: Instant,
     active_modifiers: &HashSet<KeyCode>,
     registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
     active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
-) {
+) -> Vec<Callback> {
+    let mut callbacks = Vec::new();
+
     match value {
         1 => {
             let modifier_signature = active_modifier_signature(active_modifiers);
@@ -105,7 +109,9 @@ fn process_non_modifier_event(
                 );
 
                 if registration.callbacks.min_hold.is_none() {
-                    invoke_optional(&registration.callbacks.on_press);
+                    if let Some(callback) = &registration.callbacks.on_press {
+                        callbacks.push(callback.clone());
+                    }
                 }
             }
         }
@@ -114,10 +120,14 @@ fn process_non_modifier_event(
                 if let Some(registration) = registrations.get(&active.registration_key) {
                     if let Some(min_hold) = registration.callbacks.min_hold {
                         if now.duration_since(active.pressed_at) >= min_hold {
-                            invoke_optional(&registration.callbacks.on_press);
+                            if let Some(callback) = &registration.callbacks.on_press {
+                                callbacks.push(callback.clone());
+                            }
                         }
                     }
-                    invoke_optional(&registration.callbacks.on_release);
+                    if let Some(callback) = &registration.callbacks.on_release {
+                        callbacks.push(callback.clone());
+                    }
                 }
             }
         }
@@ -125,13 +135,17 @@ fn process_non_modifier_event(
             if let Some(active) = active_presses.get(&key) {
                 if let Some(registration) = registrations.get(&active.registration_key) {
                     if registration.callbacks.trigger_on_repeat {
-                        invoke_optional(&registration.callbacks.on_press);
+                        if let Some(callback) = &registration.callbacks.on_press {
+                            callbacks.push(callback.clone());
+                        }
                     }
                 }
             }
         }
         _ => {}
     }
+
+    callbacks
 }
 
 fn listener_loop(
@@ -139,7 +153,6 @@ fn listener_loop(
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     stop_flag: Arc<AtomicBool>,
 ) {
-    // Modifier keys to track
     let modifier_keys: HashSet<KeyCode> = [
         KeyCode::KEY_LEFTCTRL,
         KeyCode::KEY_RIGHTCTRL,
@@ -151,7 +164,7 @@ fn listener_loop(
         KeyCode::KEY_RIGHTALT,
     ]
     .iter()
-    .cloned()
+    .copied()
     .collect();
 
     let mut active_modifiers: HashSet<KeyCode> = HashSet::new();
@@ -179,15 +192,19 @@ fn listener_loop(
                             continue;
                         }
 
-                        let registrations_guard = registrations.lock().unwrap();
-                        process_non_modifier_event(
-                            key,
-                            value,
-                            Instant::now(),
-                            &active_modifiers,
-                            &registrations_guard,
-                            &mut active_presses,
-                        );
+                        let callbacks = {
+                            let registrations_guard = registrations.lock().unwrap();
+                            collect_non_modifier_callbacks(
+                                key,
+                                value,
+                                Instant::now(),
+                                &active_modifiers,
+                                &registrations_guard,
+                                &mut active_presses,
+                            )
+                        };
+
+                        dispatch_callbacks(callbacks);
                     }
                 }
             }
@@ -225,7 +242,7 @@ mod tests {
 
     #[test]
     fn invoke_callback_reports_panic_without_propagating() {
-        let callback: Arc<dyn Fn() + Send + Sync> = Arc::new(|| panic!("boom"));
+        let callback: Callback = Arc::new(|| panic!("boom"));
 
         assert!(invoke_callback(&callback));
     }
@@ -234,7 +251,7 @@ mod tests {
     fn invoke_callback_runs_non_panicking_callback() {
         let called = Arc::new(AtomicBool::new(false));
         let called_clone = called.clone();
-        let callback: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        let callback: Callback = Arc::new(move || {
             called_clone.store(true, Ordering::SeqCst);
         });
 
@@ -270,22 +287,22 @@ mod tests {
         let mut active_presses = HashMap::new();
         let t0 = Instant::now();
 
-        process_non_modifier_event(
+        dispatch_callbacks(collect_non_modifier_callbacks(
             KeyCode::KEY_A,
             1,
             t0,
             &modifiers,
             &registrations,
             &mut active_presses,
-        );
-        process_non_modifier_event(
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
             KeyCode::KEY_A,
             0,
             t0 + Duration::from_millis(10),
             &modifiers,
             &registrations,
             &mut active_presses,
-        );
+        ));
 
         assert_eq!(press_count.load(Ordering::SeqCst), 1);
         assert_eq!(release_count.load(Ordering::SeqCst), 1);
@@ -312,39 +329,80 @@ mod tests {
         let mut active_presses = HashMap::new();
         let t0 = Instant::now();
 
-        process_non_modifier_event(
+        dispatch_callbacks(collect_non_modifier_callbacks(
             KeyCode::KEY_A,
             1,
             t0,
             &modifiers,
             &registrations,
             &mut active_presses,
-        );
-        process_non_modifier_event(
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
             KeyCode::KEY_A,
             0,
             t0 + Duration::from_millis(20),
             &modifiers,
             &registrations,
             &mut active_presses,
-        );
-        process_non_modifier_event(
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
             KeyCode::KEY_A,
             1,
             t0,
             &modifiers,
             &registrations,
             &mut active_presses,
-        );
-        process_non_modifier_event(
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
             KeyCode::KEY_A,
             0,
             t0 + Duration::from_millis(70),
             &modifiers,
             &registrations,
             &mut active_presses,
-        );
+        ));
 
         assert_eq!(press_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn repeat_event_respects_trigger_option() {
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let p = press_count.clone();
+
+        let callbacks = HotkeyCallbacks {
+            on_press: Some(Arc::new(move || {
+                p.fetch_add(1, Ordering::SeqCst);
+            })),
+            on_release: None,
+            min_hold: None,
+            trigger_on_repeat: true,
+        };
+
+        let mut registrations = HashMap::new();
+        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            1,
+            now,
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            2,
+            now + Duration::from_millis(1),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 2);
     }
 }
