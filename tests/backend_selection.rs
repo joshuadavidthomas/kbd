@@ -1,6 +1,4 @@
-#[cfg(any(not(feature = "portal"), not(feature = "evdev")))]
-use evdev_hotkey::Error;
-use evdev_hotkey::{Backend, HotkeyManager};
+use evdev_hotkey::{Backend, Error, HotkeyManager};
 
 #[test]
 #[cfg(not(feature = "portal"))]
@@ -42,6 +40,32 @@ fn explicit_portal_request_is_respected() {
 fn explicit_evdev_request_is_respected() {
     let selected = HotkeyManager::detect_backend(Some(Backend::Evdev)).unwrap();
     assert_eq!(selected, Backend::Evdev);
+}
+
+#[test]
+#[cfg(all(not(feature = "grab"), feature = "evdev"))]
+fn explicit_grab_request_reports_feature_disabled_error() {
+    let err = HotkeyManager::builder()
+        .backend(Backend::Evdev)
+        .grab(true)
+        .build()
+        .err()
+        .unwrap();
+
+    assert!(matches!(err, Error::UnsupportedFeature(_)));
+}
+
+#[test]
+#[cfg(all(feature = "grab", feature = "portal"))]
+fn portal_backend_rejects_grab_requests() {
+    let err = HotkeyManager::builder()
+        .backend(Backend::Portal)
+        .grab(true)
+        .build()
+        .err()
+        .unwrap();
+
+    assert!(matches!(err, Error::UnsupportedFeature(_)));
 }
 
 #[test]

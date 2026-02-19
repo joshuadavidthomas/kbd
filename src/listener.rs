@@ -5,6 +5,8 @@ use crate::manager::{
     PressDispatchState, RepeatBehavior, SequenceId, SequenceRegistration,
 };
 
+#[cfg(feature = "grab")]
+use evdev::{uinput::VirtualDevice, AttributeSet, EventType, InputEvent};
 use evdev::{Device, EventSummary, KeyCode};
 use std::collections::{HashMap, HashSet};
 use std::ffi::CStr;
@@ -23,6 +25,72 @@ type Callback = Arc<dyn Fn() + Send + Sync>;
 
 const POLL_TIMEOUT_MS: i32 = 25;
 const INOTIFY_BUFFER_SIZE: usize = 4096;
+#[cfg(feature = "grab")]
+const MAX_FORWARDABLE_KEY_CODE: u16 = 767;
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct ListenerConfig {
+    pub(crate) grab: bool,
+}
+
+trait KeyEventForwarder: Send {
+    fn forward_key_event(&mut self, key: KeyCode, value: i32) -> Result<(), Error>;
+}
+
+#[cfg(feature = "grab")]
+struct UinputForwarder {
+    device: VirtualDevice,
+}
+
+#[cfg(feature = "grab")]
+impl UinputForwarder {
+    fn new() -> Result<Self, Error> {
+        let mut keys = AttributeSet::<KeyCode>::new();
+        for code in 0..=MAX_FORWARDABLE_KEY_CODE {
+            keys.insert(KeyCode::new(code));
+        }
+
+        let device = VirtualDevice::builder()
+            .map_err(|err| Error::DeviceAccess(format!("Failed to open /dev/uinput: {err}")))?
+            .name("evdev-hotkey-virtual-keyboard")
+            .with_keys(&keys)
+            .map_err(|err| Error::DeviceAccess(format!("Failed to configure uinput keys: {err}")))?
+            .build()
+            .map_err(|err| Error::DeviceAccess(format!("Failed to create uinput device: {err}")))?;
+
+        Ok(Self { device })
+    }
+}
+
+#[cfg(feature = "grab")]
+impl KeyEventForwarder for UinputForwarder {
+    fn forward_key_event(&mut self, key: KeyCode, value: i32) -> Result<(), Error> {
+        let key_event = InputEvent::new(EventType::KEY.0, key.code(), value);
+        self.device.emit(&[key_event]).map_err(|err| {
+            Error::DeviceAccess(format!("Failed forwarding key event via uinput: {err}"))
+        })
+    }
+}
+
+fn create_key_event_forwarder(
+    grab_enabled: bool,
+) -> Result<Option<Box<dyn KeyEventForwarder>>, Error> {
+    if !grab_enabled {
+        return Ok(None);
+    }
+
+    #[cfg(feature = "grab")]
+    {
+        Ok(Some(Box::new(UinputForwarder::new()?)))
+    }
+
+    #[cfg(not(feature = "grab"))]
+    {
+        Err(Error::UnsupportedFeature(
+            "event grabbing support is not compiled in (enable the `grab` feature)".to_string(),
+        ))
+    }
+}
 
 #[derive(Clone)]
 struct ActiveSequence {
@@ -337,9 +405,11 @@ pub fn spawn_listener_thread(
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
     stop_flag: Arc<AtomicBool>,
+    config: ListenerConfig,
 ) -> Result<JoinHandle<()>, Error> {
-    let devices = open_devices(keyboard_paths)?;
+    let devices = open_devices(keyboard_paths, config)?;
     let inotify_fd = init_inotify_watcher()?;
+    let key_event_forwarder = create_key_event_forwarder(config.grab)?;
 
     thread::Builder::new()
         .name("evdev-hotkey-listener".into())
@@ -350,17 +420,22 @@ pub fn spawn_listener_thread(
                 registrations,
                 sequence_registrations,
                 stop_flag,
+                config,
+                key_event_forwarder,
             );
         })
         .map_err(|e| Error::ThreadSpawn(format!("Failed to spawn listener thread: {}", e)))
 }
 
-fn open_devices(keyboard_paths: Vec<PathBuf>) -> Result<Vec<DeviceState>, Error> {
+fn open_devices(
+    keyboard_paths: Vec<PathBuf>,
+    config: ListenerConfig,
+) -> Result<Vec<DeviceState>, Error> {
     let mut devices: Vec<DeviceState> = Vec::new();
     let mut last_error: Option<String> = None;
 
     for path in keyboard_paths {
-        match open_device(&path) {
+        match open_device(&path, config.grab) {
             Ok(device) => devices.push(device),
             Err(err) => {
                 last_error = Some(err);
@@ -377,11 +452,26 @@ fn open_devices(keyboard_paths: Vec<PathBuf>) -> Result<Vec<DeviceState>, Error>
     Ok(devices)
 }
 
-fn open_device(path: &Path) -> Result<DeviceState, String> {
-    let device = Device::open(path).map_err(|e| format!("Failed to open {:?}: {}", path, e))?;
+fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
+    #[allow(unused_mut)]
+    let mut device = Device::open(path).map_err(|e| format!("Failed to open {:?}: {}", path, e))?;
 
     if !is_keyboard_device(&device) {
         return Err(format!("Device {:?} is not a keyboard", path));
+    }
+
+    if grab {
+        #[cfg(feature = "grab")]
+        {
+            device
+                .grab()
+                .map_err(|e| format!("Failed to grab {:?} for exclusive capture: {}", path, e))?;
+        }
+
+        #[cfg(not(feature = "grab"))]
+        {
+            return Err("event grabbing support is not compiled in".to_string());
+        }
     }
 
     set_nonblocking(device.as_raw_fd(), path)?;
@@ -500,7 +590,39 @@ fn collect_due_hold_callbacks(
     callbacks
 }
 
-fn collect_non_modifier_callbacks(
+struct NonModifierDispatch {
+    callbacks: Vec<Callback>,
+    matched_hotkey: bool,
+    passthrough: bool,
+}
+
+fn should_forward_key_event_in_grab_mode(
+    grab_enabled: bool,
+    matched_hotkey: bool,
+    passthrough: bool,
+) -> bool {
+    grab_enabled && (!matched_hotkey || passthrough)
+}
+
+fn suppress_sequence_followup_key_event(
+    suppressed_keys: &mut HashSet<KeyCode>,
+    key: KeyCode,
+    value: i32,
+    suppress_current_key_press: bool,
+) -> bool {
+    if value == 1 && suppress_current_key_press {
+        suppressed_keys.insert(key);
+    }
+
+    let suppress_followup = value != 1 && suppressed_keys.contains(&key);
+    if value == 0 && suppress_followup {
+        suppressed_keys.remove(&key);
+    }
+
+    suppress_followup
+}
+
+fn collect_non_modifier_dispatch(
     key: KeyCode,
     value: i32,
     now: Instant,
@@ -508,19 +630,28 @@ fn collect_non_modifier_callbacks(
     registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
     active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
     suppress_press: bool,
-) -> Vec<Callback> {
+) -> NonModifierDispatch {
     let mut callbacks = Vec::new();
+    let mut matched_hotkey = suppress_press;
+    let mut passthrough = false;
 
     match value {
         1 => {
+            if suppress_press {
+                return NonModifierDispatch {
+                    callbacks,
+                    matched_hotkey,
+                    passthrough,
+                };
+            }
+
             let modifier_signature = active_modifier_signature(active_modifiers);
             let registration_key = (key, modifier_signature);
 
-            if suppress_press {
-                return callbacks;
-            }
-
             if let Some(registration) = registrations.get(&registration_key) {
+                matched_hotkey = true;
+                passthrough = registration.callbacks.passthrough;
+
                 let press_dispatch_state = registration
                     .callbacks
                     .min_hold
@@ -550,6 +681,9 @@ fn collect_non_modifier_callbacks(
         0 => {
             if let Some(active) = active_presses.remove(&key) {
                 if let Some(registration) = registrations.get(&active.registration_key) {
+                    matched_hotkey = true;
+                    passthrough = registration.callbacks.passthrough;
+
                     if active.press_dispatch_state == PressDispatchState::Pending {
                         if let Some(min_hold) = registration.callbacks.min_hold {
                             if now.duration_since(active.pressed_at) >= min_hold {
@@ -567,6 +701,9 @@ fn collect_non_modifier_callbacks(
         2 => {
             if let Some(active) = active_presses.get_mut(&key) {
                 if let Some(registration) = registrations.get(&active.registration_key) {
+                    matched_hotkey = true;
+                    passthrough = registration.callbacks.passthrough;
+
                     let hold_satisfied = registration
                         .callbacks
                         .min_hold
@@ -585,7 +722,33 @@ fn collect_non_modifier_callbacks(
         _ => {}
     }
 
-    callbacks
+    NonModifierDispatch {
+        callbacks,
+        matched_hotkey,
+        passthrough,
+    }
+}
+
+#[cfg(test)]
+fn collect_non_modifier_callbacks(
+    key: KeyCode,
+    value: i32,
+    now: Instant,
+    active_modifiers: &HashSet<KeyCode>,
+    registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
+    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    suppress_press: bool,
+) -> Vec<Callback> {
+    collect_non_modifier_dispatch(
+        key,
+        value,
+        now,
+        active_modifiers,
+        registrations,
+        active_presses,
+        suppress_press,
+    )
+    .callbacks
 }
 
 fn listener_loop(
@@ -594,9 +757,12 @@ fn listener_loop(
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
     stop_flag: Arc<AtomicBool>,
+    config: ListenerConfig,
+    mut key_event_forwarder: Option<Box<dyn KeyEventForwarder>>,
 ) {
     let mut modifier_tracker = ModifierTracker::default();
     let mut sequence_runtime = SequenceRuntime::default();
+    let mut suppressed_sequence_keys = HashSet::new();
 
     loop {
         if stop_flag.load(Ordering::SeqCst) {
@@ -638,7 +804,12 @@ fn listener_loop(
         dispatch_callbacks(timeout_callbacks);
 
         if inotify_ready {
-            process_hotplug_events(inotify_fd.raw_fd(), &mut devices, &mut modifier_tracker);
+            process_hotplug_events(
+                inotify_fd.raw_fd(),
+                &mut devices,
+                &mut modifier_tracker,
+                config,
+            );
         }
 
         for (fd, revents) in ready_devices {
@@ -674,10 +845,18 @@ fn listener_loop(
                         0 => modifier_tracker.release(&device_path, key),
                         _ => {}
                     }
+
+                    if config.grab {
+                        if let Some(forwarder) = key_event_forwarder.as_mut() {
+                            if let Err(err) = forwarder.forward_key_event(key, value) {
+                                tracing::warn!("Failed forwarding modifier key event: {}", err);
+                            }
+                        }
+                    }
                     continue;
                 }
 
-                let callbacks = {
+                let (callbacks, should_forward_event) = {
                     let now = Instant::now();
                     let active_modifiers = modifier_tracker.active_modifiers();
                     let registrations_guard = registrations.lock().unwrap();
@@ -700,19 +879,53 @@ fn listener_loop(
                         &sequence_dispatch.synthetic_keys,
                         &registrations_guard,
                     ));
-                    callbacks.extend(collect_non_modifier_callbacks(
+
+                    let suppress_followup = suppress_sequence_followup_key_event(
+                        &mut suppressed_sequence_keys,
                         key,
                         value,
-                        now,
-                        &active_modifiers,
-                        &registrations_guard,
-                        &mut devices[device_index].active_presses,
                         sequence_dispatch.suppress_current_key_press,
-                    ));
-                    callbacks
+                    );
+
+                    let non_modifier_dispatch = if suppress_followup {
+                        NonModifierDispatch {
+                            callbacks: Vec::new(),
+                            matched_hotkey: true,
+                            passthrough: false,
+                        }
+                    } else {
+                        collect_non_modifier_dispatch(
+                            key,
+                            value,
+                            now,
+                            &active_modifiers,
+                            &registrations_guard,
+                            &mut devices[device_index].active_presses,
+                            sequence_dispatch.suppress_current_key_press,
+                        )
+                    };
+
+                    let should_forward_event = should_forward_key_event_in_grab_mode(
+                        config.grab,
+                        sequence_dispatch.suppress_current_key_press
+                            || non_modifier_dispatch.matched_hotkey,
+                        non_modifier_dispatch.passthrough,
+                    );
+
+                    callbacks.extend(non_modifier_dispatch.callbacks);
+
+                    (callbacks, should_forward_event)
                 };
 
                 dispatch_callbacks(callbacks);
+
+                if should_forward_event {
+                    if let Some(forwarder) = key_event_forwarder.as_mut() {
+                        if let Err(err) = forwarder.forward_key_event(key, value) {
+                            tracing::warn!("Failed forwarding key event: {}", err);
+                        }
+                    }
+                }
             }
         }
     }
@@ -847,6 +1060,7 @@ fn process_hotplug_events(
     inotify_fd: i32,
     devices: &mut Vec<DeviceState>,
     modifier_tracker: &mut ModifierTracker,
+    config: ListenerConfig,
 ) {
     let mut buffer = [0u8; INOTIFY_BUFFER_SIZE];
 
@@ -878,7 +1092,7 @@ fn process_hotplug_events(
 
         for event in parse_hotplug_events(&buffer, bytes_read as usize) {
             match classify_hotplug_change(&event, &mut known_paths) {
-                HotplugPathChange::Added(path) => match open_device(&path) {
+                HotplugPathChange::Added(path) => match open_device(&path, config.grab) {
                     Ok(device_state) => {
                         devices.push(device_state);
                     }
@@ -1016,6 +1230,7 @@ mod tests {
             on_release: None,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: false,
         }
     }
 
@@ -1212,6 +1427,7 @@ mod tests {
                     })),
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
+                    passthrough: false,
                 },
             },
         );
@@ -1273,6 +1489,7 @@ mod tests {
                     })),
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
+                    passthrough: false,
                 },
             },
         );
@@ -1340,6 +1557,7 @@ mod tests {
                     on_release: None,
                     min_hold: Some(Duration::from_millis(100)),
                     repeat_behavior: RepeatBehavior::Ignore,
+                    passthrough: false,
                 },
             },
         );
@@ -1403,6 +1621,7 @@ mod tests {
                     on_release: None,
                     min_hold: Some(Duration::from_millis(100)),
                     repeat_behavior: RepeatBehavior::Ignore,
+                    passthrough: false,
                 },
             },
         );
@@ -1594,6 +1813,7 @@ mod tests {
             })),
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -1630,6 +1850,104 @@ mod tests {
     }
 
     #[test]
+    fn suppressed_sequence_followup_events_are_consumed_until_release() {
+        let key = KeyCode::KEY_A;
+        let mut suppressed = HashSet::new();
+
+        assert!(!suppress_sequence_followup_key_event(
+            &mut suppressed,
+            key,
+            1,
+            true,
+        ));
+        assert!(suppressed.contains(&key));
+
+        assert!(suppress_sequence_followup_key_event(
+            &mut suppressed,
+            key,
+            2,
+            false,
+        ));
+        assert!(suppressed.contains(&key));
+
+        assert!(suppress_sequence_followup_key_event(
+            &mut suppressed,
+            key,
+            0,
+            false,
+        ));
+        assert!(!suppressed.contains(&key));
+    }
+
+    #[test]
+    fn grabbed_hotkey_without_passthrough_is_consumed() {
+        let callbacks = HotkeyCallbacks {
+            on_press: Arc::new(|| {}),
+            on_release: None,
+            min_hold: None,
+            repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: false,
+        };
+
+        let mut registrations = HashMap::new();
+        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let dispatch = collect_non_modifier_dispatch(
+            KeyCode::KEY_A,
+            1,
+            Instant::now(),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+            false,
+        );
+
+        assert!(dispatch.matched_hotkey);
+        assert!(!dispatch.passthrough);
+        assert!(!should_forward_key_event_in_grab_mode(
+            true,
+            dispatch.matched_hotkey,
+            dispatch.passthrough,
+        ));
+    }
+
+    #[test]
+    fn grabbed_hotkey_with_passthrough_is_forwarded() {
+        let callbacks = HotkeyCallbacks {
+            on_press: Arc::new(|| {}),
+            on_release: None,
+            min_hold: None,
+            repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: true,
+        };
+
+        let mut registrations = HashMap::new();
+        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let dispatch = collect_non_modifier_dispatch(
+            KeyCode::KEY_A,
+            1,
+            Instant::now(),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+            false,
+        );
+
+        assert!(dispatch.matched_hotkey);
+        assert!(dispatch.passthrough);
+        assert!(should_forward_key_event_in_grab_mode(
+            true,
+            dispatch.matched_hotkey,
+            dispatch.passthrough,
+        ));
+    }
+
+    #[test]
     fn min_hold_delays_press_callback_until_release() {
         let press_count = Arc::new(AtomicUsize::new(0));
         let p = press_count.clone();
@@ -1641,6 +1959,7 @@ mod tests {
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -1702,6 +2021,7 @@ mod tests {
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -1752,6 +2072,7 @@ mod tests {
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Trigger,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -1806,6 +2127,7 @@ mod tests {
             on_release: None,
             min_hold: Some(Duration::ZERO),
             repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -1849,6 +2171,7 @@ mod tests {
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Trigger,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -1901,6 +2224,7 @@ mod tests {
             on_release: None,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Trigger,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -1944,6 +2268,7 @@ mod tests {
             on_release: None,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -1987,6 +2312,7 @@ mod tests {
             on_release: None,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Trigger,
+            passthrough: false,
         };
 
         let mut registrations = HashMap::new();
@@ -2137,6 +2463,8 @@ mod tests {
             registrations,
             sequence_registrations,
             stop_flag.clone(),
+            ListenerConfig::default(),
+            None,
         );
 
         assert!(stop_flag.load(Ordering::SeqCst));

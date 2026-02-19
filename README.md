@@ -115,7 +115,41 @@ let _handle = manager.register_with_options(
 )?;
 ```
 
-`register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, or repeat behavior control. Use `.on_release()` if you want release to reuse the same callback as press.
+`register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, repeat behavior control, or passthrough behavior in grab mode. Use `.on_release()` if you want release to reuse the same callback as press.
+
+### Event grabbing / interception (feature-gated)
+
+Enable exclusive capture with the `grab` feature when you need daemon-style interception:
+
+```toml
+[dependencies]
+evdev-hotkey = { version = "0.1", features = ["grab"] }
+```
+
+```rust
+use evdev::KeyCode;
+use evdev_hotkey::{Backend, HotkeyManager, HotkeyOptions};
+
+let manager = HotkeyManager::builder()
+    .backend(Backend::Evdev)
+    .grab(true)
+    .build()?;
+
+// Consumed by default while grab is active.
+let _consumed = manager.register(KeyCode::KEY_L, &[KeyCode::KEY_LEFTMETA], || {
+    println!("Lock screen");
+})?;
+
+// Passthrough hotkeys still fire callbacks but are re-emitted.
+let _passthrough = manager.register_with_options(
+    KeyCode::KEY_A,
+    &[KeyCode::KEY_LEFTCTRL],
+    HotkeyOptions::new().passthrough(true),
+    || println!("Observed Ctrl+A"),
+)?;
+```
+
+Grab mode is only supported on the evdev backend. Requesting grab on portal (or without compiling the `grab` feature) returns a clear `UnsupportedFeature` error.
 
 ### Parse Hotkeys from Strings
 
