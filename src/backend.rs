@@ -5,11 +5,7 @@ use crate::manager::{HotkeyKey, HotkeyRegistration};
 
 use std::collections::HashMap;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
-#[cfg(feature = "portal")]
-use std::sync::atomic::Ordering;
 use std::thread::JoinHandle;
-#[cfg(feature = "portal")]
-use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Backend {
@@ -39,45 +35,14 @@ impl HotkeyBackend for EvdevBackend {
 }
 
 #[cfg(feature = "portal")]
-pub(crate) struct PortalBackend;
-
-#[cfg(feature = "portal")]
-impl HotkeyBackend for PortalBackend {
-    fn start_listener(
-        &self,
-        _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-        stop_flag: Arc<AtomicBool>,
-    ) -> Result<JoinHandle<()>, Error> {
-        if !probe_portal_support() {
-            return Err(Error::BackendInit(
-                "portal backend is compiled but GlobalShortcuts is unavailable".to_string(),
-            ));
-        }
-
-        let listener = std::thread::spawn(move || {
-            while !stop_flag.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-        });
-
-        Ok(listener)
-    }
-}
-
-#[cfg(feature = "portal")]
 fn resolve_backend_with_probe(
     requested: Option<Backend>,
     portal_available: impl FnOnce() -> bool,
 ) -> Result<Backend, Error> {
     match requested {
         Some(backend) => Ok(backend),
-        None => {
-            if portal_available() {
-                Ok(Backend::Portal)
-            } else {
-                Ok(Backend::Evdev)
-            }
-        }
+        None if portal_available() => Ok(Backend::Portal),
+        None => Ok(Backend::Evdev),
     }
 }
 
@@ -103,7 +68,6 @@ fn probe_portal_support() -> bool {
     false
 }
 
-
 #[cfg(not(feature = "portal"))]
 fn probe_portal_support() -> bool {
     false
@@ -113,7 +77,9 @@ pub(crate) fn build_backend(backend: Backend) -> Result<Box<dyn HotkeyBackend>, 
     match backend {
         Backend::Evdev => Ok(Box::new(EvdevBackend)),
         #[cfg(feature = "portal")]
-        Backend::Portal => Ok(Box::new(PortalBackend)),
+        Backend::Portal => Err(Error::BackendInit(
+            "portal backend is not implemented yet".to_string(),
+        )),
         #[cfg(not(feature = "portal"))]
         Backend::Portal => Err(Error::BackendUnavailable(
             "portal backend (compile with portal feature)",
@@ -161,5 +127,12 @@ mod tests {
     #[test]
     fn defaults_to_evdev_when_portal_unavailable() {
         assert_eq!(resolve_backend_with_probe(None, || false).unwrap(), Backend::Evdev);
+    }
+
+    #[test]
+    #[cfg(feature = "portal")]
+    fn portal_backend_build_fails_until_implemented() {
+        let result = build_backend(Backend::Portal);
+        assert!(matches!(result, Err(Error::BackendInit(_))));
     }
 }
