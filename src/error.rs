@@ -7,6 +7,7 @@ pub enum Error {
     DeviceAccess(String),
     ThreadSpawn(String),
     BackendUnavailable(&'static str),
+    BackendInit(String),
 }
 
 impl fmt::Display for Error {
@@ -19,6 +20,7 @@ impl fmt::Display for Error {
             Error::BackendUnavailable(backend) => {
                 write!(f, "Requested backend is not available: {}", backend)
             }
+            Error::BackendInit(msg) => write!(f, "Backend initialization failed: {}", msg),
         }
     }
 }
