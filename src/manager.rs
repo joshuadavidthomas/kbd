@@ -21,9 +21,10 @@ pub(crate) struct HotkeyCallbacks {
     pub(crate) trigger_on_repeat: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct HotkeyOptions {
     on_release: bool,
+    release_callback: Option<Callback>,
     min_hold: Option<Duration>,
     trigger_on_repeat: bool,
 }
@@ -35,6 +36,14 @@ impl HotkeyOptions {
 
     pub fn on_release(mut self) -> Self {
         self.on_release = true;
+        self
+    }
+
+    pub fn on_release_callback<F>(mut self, callback: F) -> Self
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        self.release_callback = Some(Arc::new(callback));
         self
     }
 
@@ -53,9 +62,13 @@ impl HotkeyOptions {
         F: Fn() + Send + Sync + 'static,
     {
         let callback = Arc::new(callback);
+        let release_callback = self
+            .release_callback
+            .or_else(|| self.on_release.then_some(callback.clone()));
+
         HotkeyCallbacks {
-            on_press: Some(callback.clone()),
-            on_release: self.on_release.then_some(callback),
+            on_press: Some(callback),
+            on_release: release_callback,
             min_hold: self.min_hold,
             trigger_on_repeat: self.trigger_on_repeat,
         }
@@ -244,6 +257,31 @@ mod tests {
             normalized,
             vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
         );
+    }
+
+    #[test]
+    fn explicit_release_callback_overrides_press_callback_for_release() {
+        let press_called = Arc::new(AtomicBool::new(false));
+        let release_called = Arc::new(AtomicBool::new(false));
+
+        let press_called_clone = press_called.clone();
+        let release_called_clone = release_called.clone();
+
+        let options = HotkeyOptions::new()
+            .on_release()
+            .on_release_callback(move || {
+                release_called_clone.store(true, Ordering::SeqCst);
+            });
+
+        let callbacks = options.build_callbacks(move || {
+            press_called_clone.store(true, Ordering::SeqCst);
+        });
+
+        callbacks.on_press.as_ref().unwrap()();
+        callbacks.on_release.as_ref().unwrap()();
+
+        assert!(press_called.load(Ordering::SeqCst));
+        assert!(release_called.load(Ordering::SeqCst));
     }
 
     #[test]

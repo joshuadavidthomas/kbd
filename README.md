@@ -106,16 +106,16 @@ let _handle = manager.register_with_options(
     KeyCode::KEY_F1,
     &[KeyCode::KEY_LEFTCTRL],
     HotkeyOptions::new()
-        .on_release()
+        .on_release_callback(|| println!("Released"))
         .min_hold(Duration::from_millis(500))
         .trigger_on_repeat(false),
     || {
-        println!("Fired (press after hold + release callback)");
+        println!("Pressed (only after min hold)");
     },
 )?;
 ```
 
-`register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, or repeat behavior control.
+`register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, or repeat behavior control. Use `.on_release()` if you want release to reuse the same callback as press.
 
 ### Using Modifier Keys
 

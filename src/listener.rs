@@ -134,7 +134,13 @@ fn collect_non_modifier_callbacks(
         2 => {
             if let Some(active) = active_presses.get(&key) {
                 if let Some(registration) = registrations.get(&active.registration_key) {
-                    if registration.callbacks.trigger_on_repeat {
+                    let hold_satisfied = registration
+                        .callbacks
+                        .min_hold
+                        .map(|min_hold| now.duration_since(active.pressed_at) >= min_hold)
+                        .unwrap_or(true);
+
+                    if registration.callbacks.trigger_on_repeat && hold_satisfied {
                         if let Some(callback) = &registration.callbacks.on_press {
                             callbacks.push(callback.clone());
                         }
@@ -357,6 +363,57 @@ mod tests {
             KeyCode::KEY_A,
             0,
             t0 + Duration::from_millis(70),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn repeat_event_respects_min_hold_threshold() {
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let p = press_count.clone();
+
+        let callbacks = HotkeyCallbacks {
+            on_press: Some(Arc::new(move || {
+                p.fetch_add(1, Ordering::SeqCst);
+            })),
+            on_release: None,
+            min_hold: Some(Duration::from_millis(50)),
+            trigger_on_repeat: true,
+        };
+
+        let mut registrations = HashMap::new();
+        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            1,
+            now,
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            2,
+            now + Duration::from_millis(20),
+            &modifiers,
+            &registrations,
+            &mut active_presses,
+        ));
+
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            2,
+            now + Duration::from_millis(60),
             &modifiers,
             &registrations,
             &mut active_presses,
