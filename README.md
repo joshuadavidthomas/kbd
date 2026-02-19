@@ -6,7 +6,7 @@ Global hotkey listener for Linux using evdev. Works on both X11 and Wayland.
 
 - **Cross-desktop**: Works on X11 and Wayland by reading directly from `/dev/input`
 - **Multiple hotkeys**: Register any number of global shortcuts
-- **Simple API**: Type-safe with `evdev::KeyCode` - no string parsing
+- **Simple API**: Type-safe with `evdev::KeyCode` and optional string parsing for config-driven shortcuts
 - **Automatic device discovery**: No need to manually glob for keyboard devices
 - **Permission checking**: Helpful error messages guide users through setup
 - **Lightweight dependencies**: Uses `evdev`, `libc`, and `tracing`
@@ -116,6 +116,18 @@ let _handle = manager.register_with_options(
 ```
 
 `register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, or repeat behavior control. Use `.on_release()` if you want release to reuse the same callback as press.
+
+### Parse Hotkeys from Strings
+
+```rust
+use evdev_hotkey::{Hotkey, HotkeySequence};
+
+let hotkey = "Ctrl+Shift+A".parse::<Hotkey>()?;
+let sequence = "Ctrl+K, Ctrl+C".parse::<HotkeySequence>()?;
+
+assert_eq!(hotkey.to_string(), "Ctrl+Shift+A");
+assert_eq!(sequence.to_string(), "Ctrl+K, Ctrl+C");
+```
 
 ### Using Modifier Keys
 

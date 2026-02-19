@@ -155,6 +155,7 @@ impl Handle {
 /// Inner state shared between HotkeyManager and Handles
 struct HotkeyManagerInner {
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
+    backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
     stop_flag: Arc<AtomicBool>,
     listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -198,10 +199,11 @@ impl HotkeyManager {
     }
 
     fn initialize_with_backend(backend: Backend) -> Result<Self, Error> {
-        let backend_impl = build_backend(backend)?;
+        let backend_impl: Arc<dyn crate::backend::HotkeyBackend> = build_backend(backend)?.into();
 
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
+            backend_impl: backend_impl.clone(),
             stop_flag: Arc::new(AtomicBool::new(false)),
             listener: Mutex::new(None),
         });
@@ -243,6 +245,8 @@ impl HotkeyManager {
         let hotkey_key = (key, normalize_modifiers(modifiers));
         let callbacks = options.build_callbacks(callback);
 
+        self.inner.backend_impl.register_hotkey(&hotkey_key)?;
+
         {
             let mut registrations = self.inner.registrations.lock().unwrap();
             registrations.insert(hotkey_key.clone(), HotkeyRegistration { callbacks });
@@ -269,7 +273,6 @@ impl HotkeyManager {
     }
 }
 
-
 fn should_fallback_from_portal_error(error: &Error) -> bool {
     matches!(error, Error::BackendInit(_))
 }
@@ -284,6 +287,7 @@ impl Drop for HotkeyManager {
 impl HotkeyManagerInner {
     fn remove_hotkey(&self, key: &HotkeyKey) -> Result<(), Error> {
         self.registrations.lock().unwrap().remove(key);
+        self.backend_impl.unregister_hotkey(key)?;
         Ok(())
     }
 }

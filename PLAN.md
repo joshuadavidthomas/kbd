@@ -28,7 +28,7 @@ These items make the crate a credible alternative to existing options.
 
 ### 1.1 Unified backend: XDG portal + evdev with automatic fallback
 
-**Status: Complete** · **Priority: Critical — this is the moat**
+**Status: In Progress** · **Priority: Critical — this is the moat**
 
 Try the XDG GlobalShortcuts portal first (no root needed where available).
 Fall back to evdev when the portal is unavailable or unsupported (common on
@@ -91,10 +91,10 @@ Backend selection must respect compile-time availability:
 
 Success criteria checklist (Phase 1.1 is complete only when all are checked):
 - [ ] A concrete `PortalBackend` implementation exists (not a stub) and can register/unregister hotkeys through XDG GlobalShortcuts.
-- [ ] `HotkeyManager::new()` prefers portal when the portal is both available and functional, otherwise falls back to evdev automatically.
-- [ ] Portal probing occurs before any evdev permission/device checks, so portal-capable environments do not fail due to `/dev/input` access constraints.
-- [ ] Explicit backend requests are strict: `with_backend(Backend::Portal)` and `with_backend(Backend::Evdev)` never silently switch to the other backend.
-- [ ] Compile-time feature gating behavior is verified for all combinations (`evdev` only, `portal` only, both).
+- [x] `HotkeyManager::new()` prefers portal when the portal is both available and functional, otherwise falls back to evdev automatically.
+- [x] Portal probing occurs before any evdev permission/device checks, so portal-capable environments do not fail due to `/dev/input` access constraints.
+- [x] Explicit backend requests are strict: `with_backend(Backend::Portal)` and `with_backend(Backend::Evdev)` never silently switch to the other backend.
+- [x] Compile-time feature gating behavior is verified for all combinations (`evdev` only, `portal` only, both).
 - [ ] Integration tests cover runtime selection/fallback paths and feature-gated error cases.
 
 Progress update (implemented so far):
@@ -139,7 +139,7 @@ manager.register(
 
 ### 1.3 String parsing for hotkey definitions
 
-**Status: Not Started** · **Priority: High — table stakes**
+**Status: Complete** · **Priority: High — table stakes**
 
 Both competitors have this. Users need it for config files, CLI tools, and
 anywhere hotkeys are defined by end users rather than hardcoded.

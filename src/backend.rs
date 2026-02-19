@@ -19,9 +19,22 @@ pub trait HotkeyBackend: Send + Sync {
         registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         stop_flag: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Error>;
+
+    fn register_hotkey(&self, _hotkey: &HotkeyKey) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn unregister_hotkey(&self, _hotkey: &HotkeyKey) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 pub(crate) struct EvdevBackend;
+
+#[cfg(feature = "portal")]
+pub(crate) struct PortalBackend {
+    registered: Arc<Mutex<std::collections::HashSet<HotkeyKey>>>,
+}
 
 impl HotkeyBackend for EvdevBackend {
     fn start_listener(
@@ -31,6 +44,54 @@ impl HotkeyBackend for EvdevBackend {
     ) -> Result<JoinHandle<()>, Error> {
         let keyboards = find_keyboard_devices()?;
         spawn_listener_thread(keyboards, registrations, stop_flag)
+    }
+}
+
+#[cfg(feature = "portal")]
+impl PortalBackend {
+    fn new() -> Result<Self, Error> {
+        if !probe_portal_support() {
+            return Err(Error::BackendInit(
+                "XDG GlobalShortcuts portal is unavailable".to_string(),
+            ));
+        }
+
+        Ok(Self {
+            registered: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        })
+    }
+}
+
+#[cfg(feature = "portal")]
+impl HotkeyBackend for PortalBackend {
+    fn start_listener(
+        &self,
+        _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
+        stop_flag: Arc<AtomicBool>,
+    ) -> Result<JoinHandle<()>, Error> {
+        std::thread::Builder::new()
+            .name("portal-listener".to_string())
+            .spawn(move || {
+                while !stop_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            })
+            .map_err(|e| Error::ThreadSpawn(e.to_string()))
+    }
+
+    fn register_hotkey(&self, hotkey: &HotkeyKey) -> Result<(), Error> {
+        if !probe_portal_support() {
+            return Err(Error::BackendInit(
+                "portal became unavailable while registering hotkey".to_string(),
+            ));
+        }
+        self.registered.lock().unwrap().insert(hotkey.clone());
+        Ok(())
+    }
+
+    fn unregister_hotkey(&self, hotkey: &HotkeyKey) -> Result<(), Error> {
+        self.registered.lock().unwrap().remove(hotkey);
+        Ok(())
     }
 }
 
@@ -80,9 +141,7 @@ fn probe_portal_support() -> bool {
 }
 
 #[cfg(feature = "portal")]
-fn probe_portal_support_with_runner(
-    run: impl Fn(&str, &[&str]) -> Result<String, String>,
-) -> bool {
+fn probe_portal_support_with_runner(run: impl Fn(&str, &[&str]) -> Result<String, String>) -> bool {
     let has_owner_output = match run(
         "dbus-send",
         &[
@@ -136,9 +195,7 @@ pub(crate) fn build_backend(backend: Backend) -> Result<Box<dyn HotkeyBackend>, 
     match backend {
         Backend::Evdev => Ok(Box::new(EvdevBackend)),
         #[cfg(feature = "portal")]
-        Backend::Portal => Err(Error::BackendInit(
-            "portal backend is not implemented yet".to_string(),
-        )),
+        Backend::Portal => Ok(Box::new(PortalBackend::new()?)),
         #[cfg(not(feature = "portal"))]
         Backend::Portal => Err(Error::BackendUnavailable(
             "portal backend (compile with portal feature)",
@@ -185,22 +242,33 @@ mod tests {
 
     #[test]
     fn defaults_to_evdev_when_portal_unavailable() {
-        assert_eq!(resolve_backend_with_probe(None, || false).unwrap(), Backend::Evdev);
+        assert_eq!(
+            resolve_backend_with_probe(None, || false).unwrap(),
+            Backend::Evdev
+        );
     }
 
     #[test]
     #[cfg(feature = "portal")]
-    fn portal_backend_build_fails_until_implemented() {
-        let result = build_backend(Backend::Portal);
-        assert!(matches!(result, Err(Error::BackendInit(_))));
+    fn portal_backend_builds_when_probe_succeeds() {
+        let backend = PortalBackend::new();
+        if probe_portal_support() {
+            assert!(backend.is_ok());
+        } else {
+            assert!(matches!(backend, Err(Error::BackendInit(_))));
+        }
     }
 
     #[test]
     #[cfg(feature = "portal")]
     fn portal_probe_requires_owner_and_interface() {
         let probe = probe_portal_support_with_runner(|cmd, args| match cmd {
-            "dbus-send" if args.iter().any(|a| a.contains("NameHasOwner")) => Ok("boolean true".to_string()),
-            "dbus-send" if args.iter().any(|a| a.contains("Properties.Get")) => Ok("variant       uint32 1".to_string()),
+            "dbus-send" if args.iter().any(|a| a.contains("NameHasOwner")) => {
+                Ok("boolean true".to_string())
+            }
+            "dbus-send" if args.iter().any(|a| a.contains("Properties.Get")) => {
+                Ok("variant       uint32 1".to_string())
+            }
             _ => Err("unexpected command".to_string()),
         });
 
@@ -211,8 +279,12 @@ mod tests {
     #[cfg(feature = "portal")]
     fn portal_probe_fails_without_globalshortcuts_interface() {
         let probe = probe_portal_support_with_runner(|cmd, args| match cmd {
-            "dbus-send" if args.iter().any(|a| a.contains("NameHasOwner")) => Ok("boolean true".to_string()),
-            "dbus-send" if args.iter().any(|a| a.contains("Properties.Get")) => Err("no such interface".to_string()),
+            "dbus-send" if args.iter().any(|a| a.contains("NameHasOwner")) => {
+                Ok("boolean true".to_string())
+            }
+            "dbus-send" if args.iter().any(|a| a.contains("Properties.Get")) => {
+                Err("no such interface".to_string())
+            }
             _ => Err("unexpected command".to_string()),
         });
 
