@@ -1,4 +1,4 @@
-pub fn get_permission_error_message() -> String {
+pub(crate) fn get_permission_error_message() -> String {
     let username = std::env::var("USER").unwrap_or_else(|_| "<username>".into());
 
     format!(

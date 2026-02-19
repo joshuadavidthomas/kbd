@@ -599,6 +599,12 @@ impl HotkeyManager {
             return Err(Error::ManagerStopped);
         }
 
+        if self.active_backend != Backend::Evdev {
+            return Err(Error::UnsupportedFeature(
+                "modes are only supported by the evdev backend".to_string(),
+            ));
+        }
+
         {
             let definitions = self.inner.mode_registry.definitions.lock().unwrap();
             if definitions.contains_key(name) {
@@ -2135,5 +2141,29 @@ mod tests {
             .unwrap();
 
         assert!(matches!(err, Error::ManagerStopped));
+    }
+
+    #[test]
+    fn define_mode_is_rejected_on_non_evdev_backend() {
+        let manager = HotkeyManager {
+            inner: Arc::new(HotkeyManagerInner {
+                registrations: Arc::new(Mutex::new(HashMap::new())),
+                sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+                mode_registry: ModeRegistry::new(),
+                next_sequence_id: AtomicU64::new(1),
+                backend_impl: Arc::new(FakeBackend),
+                stop_flag: Arc::new(AtomicBool::new(false)),
+                operation_lock: Mutex::new(()),
+                listener: Mutex::new(None),
+            }),
+            active_backend: Backend::Portal,
+        };
+
+        let err = manager
+            .define_mode("resize", ModeOptions::new(), |_m| Ok(()))
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::UnsupportedFeature(_)));
     }
 }

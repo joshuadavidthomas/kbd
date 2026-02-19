@@ -14,7 +14,7 @@ pub(crate) fn is_keyboard_device(device: &Device) -> bool {
         .unwrap_or(false)
 }
 
-pub fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
+pub(crate) fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
     let input_dir = std::fs::read_dir("/dev/input")
         .map_err(|e| Error::DeviceAccess(format!("Cannot open /dev/input: {}", e)))?;
 

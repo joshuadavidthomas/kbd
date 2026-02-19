@@ -5,7 +5,8 @@ use crate::manager::{
     PressDispatchState, RepeatBehavior, SequenceId, SequenceRegistration,
 };
 use crate::mode::{
-    dispatch_mode_key_event, find_registration_for_active_press, pop_timed_out_modes, ModeRegistry,
+    dispatch_mode_key_event, find_registration_for_active_press, pop_timed_out_modes,
+    ModeDefinition, ModeRegistry,
 };
 
 #[cfg(feature = "grab")]
@@ -25,6 +26,13 @@ use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
 type Callback = Arc<dyn Fn() + Send + Sync>;
+
+pub(crate) struct ListenerState {
+    pub(crate) registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
+    pub(crate) sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+    pub(crate) stop_flag: Arc<AtomicBool>,
+    pub(crate) mode_registry: ModeRegistry,
+}
 
 const POLL_TIMEOUT_MS: i32 = 25;
 const INOTIFY_BUFFER_SIZE: usize = 4096;
@@ -403,13 +411,10 @@ enum HotplugPathChange {
     Unchanged,
 }
 
-pub fn spawn_listener_thread(
+pub(crate) fn spawn_listener_thread(
     keyboard_paths: Vec<PathBuf>,
-    registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-    sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-    stop_flag: Arc<AtomicBool>,
+    shared: ListenerState,
     config: ListenerConfig,
-    mode_registry: ModeRegistry,
 ) -> Result<JoinHandle<()>, Error> {
     let devices = open_devices(keyboard_paths, config)?;
     let inotify_fd = init_inotify_watcher()?;
@@ -418,16 +423,7 @@ pub fn spawn_listener_thread(
     thread::Builder::new()
         .name("evdev-hotkey-listener".into())
         .spawn(move || {
-            listener_loop(
-                devices,
-                inotify_fd,
-                registrations,
-                sequence_registrations,
-                stop_flag,
-                config,
-                key_event_forwarder,
-                mode_registry,
-            );
+            listener_loop(devices, inotify_fd, shared, config, key_event_forwarder);
         })
         .map_err(|e| Error::ThreadSpawn(format!("Failed to spawn listener thread: {}", e)))
 }
@@ -569,7 +565,7 @@ fn collect_callbacks_for_synthetic_keys(
 fn collect_due_hold_callbacks(
     now: Instant,
     registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-    mode_definitions: &HashMap<String, crate::mode::ModeDefinition>,
+    mode_definitions: &HashMap<String, ModeDefinition>,
     active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
 ) -> Vec<Callback> {
     let mut callbacks = Vec::new();
@@ -763,13 +759,16 @@ fn collect_non_modifier_callbacks(
 fn listener_loop(
     mut devices: Vec<DeviceState>,
     inotify_fd: RawFdGuard,
-    registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-    sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-    stop_flag: Arc<AtomicBool>,
+    shared: ListenerState,
     config: ListenerConfig,
     mut key_event_forwarder: Option<Box<dyn KeyEventForwarder>>,
-    mode_registry: ModeRegistry,
 ) {
+    let ListenerState {
+        registrations,
+        sequence_registrations,
+        stop_flag,
+        mode_registry,
+    } = shared;
     let mut modifier_tracker = ModifierTracker::default();
     let mut sequence_runtime = SequenceRuntime::default();
     let mut suppressed_sequence_keys = HashSet::new();
@@ -2512,12 +2511,14 @@ mod tests {
         listener_loop(
             Vec::new(),
             read_fd,
-            registrations,
-            sequence_registrations,
-            stop_flag.clone(),
+            ListenerState {
+                registrations,
+                sequence_registrations,
+                stop_flag: stop_flag.clone(),
+                mode_registry: ModeRegistry::new(),
+            },
             ListenerConfig::default(),
             None,
-            ModeRegistry::new(),
         );
 
         assert!(stop_flag.load(Ordering::SeqCst));

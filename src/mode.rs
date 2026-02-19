@@ -48,8 +48,6 @@ pub(crate) struct ModeDefinition {
 // An active mode on the stack
 struct ActiveMode {
     name: String,
-    #[allow(dead_code)]
-    activated_at: Instant,
     last_activity: Instant,
 }
 
@@ -63,7 +61,6 @@ impl ModeStack {
     pub(crate) fn push(&mut self, name: String, now: Instant) {
         self.layers.push(ActiveMode {
             name,
-            activated_at: now,
             last_activity: now,
         });
     }

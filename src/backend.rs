@@ -1,6 +1,6 @@
 use crate::device::find_keyboard_devices;
 use crate::error::Error;
-use crate::listener::{spawn_listener_thread, ListenerConfig};
+use crate::listener::{spawn_listener_thread, ListenerConfig, ListenerState};
 use crate::manager::{HotkeyKey, HotkeyRegistration, SequenceId, SequenceRegistration};
 use crate::mode::ModeRegistry;
 
@@ -46,11 +46,13 @@ impl HotkeyBackend for EvdevBackend {
         let keyboards = find_keyboard_devices()?;
         spawn_listener_thread(
             keyboards,
-            registrations,
-            sequence_registrations,
-            stop_flag,
+            ListenerState {
+                registrations,
+                sequence_registrations,
+                stop_flag,
+                mode_registry: self.mode_registry.clone(),
+            },
             ListenerConfig { grab: self.grab },
-            self.mode_registry.clone(),
         )
     }
 
