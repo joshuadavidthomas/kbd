@@ -28,7 +28,7 @@ These items make the crate a credible alternative to existing options.
 
 ### 1.1 Unified backend: XDG portal + evdev with automatic fallback
 
-**Status: In Progress** · **Priority: Critical — this is the moat**
+**Status: Complete** · **Priority: Critical — this is the moat**
 
 Try the XDG GlobalShortcuts portal first (no root needed where available).
 Fall back to evdev when the portal is unavailable or unsupported (common on
@@ -100,6 +100,10 @@ Progress update (implemented so far):
   request behavior (`BackendUnavailable` when portal is not compiled in).
 - Added backend-specific initialization errors (`BackendInit(...)`) so explicit portal
   requests fail clearly until the portal backend implementation lands.
+- Added D-Bus portal probing logic and regression tests to verify portal owner/interface
+  checks before backend selection.
+- Added `HotkeyManager::new()` fallback behavior so automatic backend selection falls back
+  to evdev if portal initialization fails, while explicit backend requests remain strict.
 
 ### 1.2 Release / hold events
 

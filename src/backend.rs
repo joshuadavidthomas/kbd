@@ -65,7 +65,66 @@ pub(crate) fn resolve_backend(requested: Option<Backend>) -> Result<Backend, Err
 
 #[cfg(feature = "portal")]
 fn probe_portal_support() -> bool {
-    false
+    probe_portal_support_with_runner(|cmd, args| {
+        let output = std::process::Command::new(cmd)
+            .args(args)
+            .output()
+            .map_err(|err| err.to_string())?;
+
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    })
+}
+
+#[cfg(feature = "portal")]
+fn probe_portal_support_with_runner(
+    run: impl Fn(&str, &[&str]) -> Result<String, String>,
+) -> bool {
+    let has_owner_output = match run(
+        "dbus-send",
+        &[
+            "--session",
+            "--print-reply",
+            "--dest=org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.NameHasOwner",
+            "string:org.freedesktop.portal.Desktop",
+        ],
+    ) {
+        Ok(output) => output,
+        Err(err) => {
+            tracing::debug!("portal probe NameHasOwner failed: {err}");
+            return false;
+        }
+    };
+
+    if !has_owner_output.contains("boolean true") {
+        return false;
+    }
+
+    let interface_output = match run(
+        "dbus-send",
+        &[
+            "--session",
+            "--print-reply",
+            "--dest=org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.DBus.Properties.Get",
+            "string:org.freedesktop.portal.GlobalShortcuts",
+            "string:version",
+        ],
+    ) {
+        Ok(output) => output,
+        Err(err) => {
+            tracing::debug!("portal probe GlobalShortcuts interface check failed: {err}");
+            return false;
+        }
+    };
+
+    interface_output.contains("variant") && interface_output.contains("uint32")
 }
 
 #[cfg(not(feature = "portal"))]
@@ -134,5 +193,29 @@ mod tests {
     fn portal_backend_build_fails_until_implemented() {
         let result = build_backend(Backend::Portal);
         assert!(matches!(result, Err(Error::BackendInit(_))));
+    }
+
+    #[test]
+    #[cfg(feature = "portal")]
+    fn portal_probe_requires_owner_and_interface() {
+        let probe = probe_portal_support_with_runner(|cmd, _args| match cmd {
+            "dbus-send" if _args.iter().any(|a| a.contains("NameHasOwner")) => Ok("boolean true".to_string()),
+            "dbus-send" if _args.iter().any(|a| a.contains("Properties.Get")) => Ok("variant       uint32 1".to_string()),
+            _ => Err("unexpected command".to_string()),
+        });
+
+        assert!(probe);
+    }
+
+    #[test]
+    #[cfg(feature = "portal")]
+    fn portal_probe_fails_without_globalshortcuts_interface() {
+        let probe = probe_portal_support_with_runner(|cmd, _args| match cmd {
+            "dbus-send" if _args.iter().any(|a| a.contains("NameHasOwner")) => Ok("boolean true".to_string()),
+            "dbus-send" if _args.iter().any(|a| a.contains("Properties.Get")) => Err("no such interface".to_string()),
+            _ => Err("unexpected command".to_string()),
+        });
+
+        assert!(!probe);
     }
 }

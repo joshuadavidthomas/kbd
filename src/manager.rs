@@ -183,7 +183,20 @@ impl HotkeyManager {
 
     fn with_backend_internal(requested_backend: Option<Backend>) -> Result<Self, Error> {
         let selected_backend = resolve_backend(requested_backend)?;
-        let backend_impl = build_backend(selected_backend)?;
+
+        if requested_backend.is_none() && selected_backend == Backend::Portal {
+            if let Ok(manager) = Self::initialize_with_backend(Backend::Portal) {
+                return Ok(manager);
+            }
+
+            return Self::initialize_with_backend(Backend::Evdev);
+        }
+
+        Self::initialize_with_backend(selected_backend)
+    }
+
+    fn initialize_with_backend(backend: Backend) -> Result<Self, Error> {
+        let backend_impl = build_backend(backend)?;
 
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
@@ -198,7 +211,7 @@ impl HotkeyManager {
 
         Ok(HotkeyManager {
             inner,
-            active_backend: selected_backend,
+            active_backend: backend,
         })
     }
 
