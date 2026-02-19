@@ -637,9 +637,6 @@ fn collect_non_modifier_dispatch(
 
     match value {
         1 => {
-            let modifier_signature = active_modifier_signature(active_modifiers);
-            let registration_key = (key, modifier_signature);
-
             if suppress_press {
                 return NonModifierDispatch {
                     callbacks,
@@ -647,6 +644,9 @@ fn collect_non_modifier_dispatch(
                     passthrough,
                 };
             }
+
+            let modifier_signature = active_modifier_signature(active_modifiers);
+            let registration_key = (key, modifier_signature);
 
             if let Some(registration) = registrations.get(&registration_key) {
                 matched_hotkey = true;
