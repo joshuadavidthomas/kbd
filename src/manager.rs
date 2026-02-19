@@ -14,19 +14,40 @@ use std::time::{Duration, Instant};
 type Callback = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone, Default)]
+pub(crate) enum ReleaseBehavior {
+    #[default]
+    Disabled,
+    SameAsPress,
+    Custom(Callback),
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum RepeatBehavior {
+    #[default]
+    Ignore,
+    Trigger,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum PressDispatchState {
+    #[default]
+    Pending,
+    Dispatched,
+}
+
+#[derive(Clone, Default)]
 pub(crate) struct HotkeyCallbacks {
     pub(crate) on_press: Option<Callback>,
     pub(crate) on_release: Option<Callback>,
     pub(crate) min_hold: Option<Duration>,
-    pub(crate) trigger_on_repeat: bool,
+    pub(crate) repeat_behavior: RepeatBehavior,
 }
 
 #[derive(Clone, Default)]
 pub struct HotkeyOptions {
-    on_release: bool,
-    release_callback: Option<Callback>,
+    release_behavior: ReleaseBehavior,
     min_hold: Option<Duration>,
-    trigger_on_repeat: bool,
+    repeat_behavior: RepeatBehavior,
 }
 
 impl HotkeyOptions {
@@ -35,7 +56,7 @@ impl HotkeyOptions {
     }
 
     pub fn on_release(mut self) -> Self {
-        self.on_release = true;
+        self.release_behavior = ReleaseBehavior::SameAsPress;
         self
     }
 
@@ -43,7 +64,7 @@ impl HotkeyOptions {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        self.release_callback = Some(Arc::new(callback));
+        self.release_behavior = ReleaseBehavior::Custom(Arc::new(callback));
         self
     }
 
@@ -53,7 +74,11 @@ impl HotkeyOptions {
     }
 
     pub fn trigger_on_repeat(mut self, trigger_on_repeat: bool) -> Self {
-        self.trigger_on_repeat = trigger_on_repeat;
+        self.repeat_behavior = if trigger_on_repeat {
+            RepeatBehavior::Trigger
+        } else {
+            RepeatBehavior::Ignore
+        };
         self
     }
 
@@ -61,16 +86,18 @@ impl HotkeyOptions {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        let callback = Arc::new(callback);
-        let release_callback = self
-            .release_callback
-            .or_else(|| self.on_release.then_some(callback.clone()));
+        let press_callback: Callback = Arc::new(callback);
+        let release_callback = match self.release_behavior {
+            ReleaseBehavior::Disabled => None,
+            ReleaseBehavior::SameAsPress => Some(press_callback.clone()),
+            ReleaseBehavior::Custom(callback) => Some(callback),
+        };
 
         HotkeyCallbacks {
-            on_press: Some(callback),
+            on_press: Some(press_callback),
             on_release: release_callback,
             min_hold: self.min_hold,
-            trigger_on_repeat: self.trigger_on_repeat,
+            repeat_behavior: self.repeat_behavior,
         }
     }
 }
@@ -83,7 +110,7 @@ pub(crate) struct HotkeyRegistration {
 pub(crate) struct ActiveHotkeyPress {
     pub(crate) registration_key: HotkeyKey,
     pub(crate) pressed_at: Instant,
-    pub(crate) press_dispatched: bool,
+    pub(crate) press_dispatch_state: PressDispatchState,
 }
 
 /// Key used to identify hotkey registrations: (target_key, normalized_modifiers)
@@ -300,7 +327,7 @@ mod tests {
 
         assert!(callbacks.on_press.is_some());
         assert!(callbacks.on_release.is_some());
-        assert!(callbacks.trigger_on_repeat);
+        assert!(matches!(callbacks.repeat_behavior, RepeatBehavior::Trigger));
         assert_eq!(callbacks.min_hold, Some(Duration::from_millis(50)));
 
         callbacks.on_press.unwrap()();

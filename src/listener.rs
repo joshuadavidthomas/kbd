@@ -1,5 +1,8 @@
 use crate::error::Error;
-use crate::manager::{normalize_modifiers, ActiveHotkeyPress, HotkeyKey, HotkeyRegistration};
+use crate::manager::{
+    normalize_modifiers, ActiveHotkeyPress, HotkeyKey, HotkeyRegistration, PressDispatchState,
+    RepeatBehavior,
+};
 
 use evdev::{Device, EventSummary, KeyCode};
 use std::collections::{HashMap, HashSet};
@@ -100,22 +103,28 @@ fn collect_non_modifier_callbacks(
             let registration_key = (key, modifier_signature);
 
             if let Some(registration) = registrations.get(&registration_key) {
-                let press_dispatched = registration
+                let press_dispatch_state = registration
                     .callbacks
                     .min_hold
-                    .map(|min_hold| min_hold.is_zero())
-                    .unwrap_or(true);
+                    .map(|min_hold| {
+                        if min_hold.is_zero() {
+                            PressDispatchState::Dispatched
+                        } else {
+                            PressDispatchState::Pending
+                        }
+                    })
+                    .unwrap_or(PressDispatchState::Dispatched);
 
                 active_presses.insert(
                     key,
                     ActiveHotkeyPress {
                         registration_key,
                         pressed_at: now,
-                        press_dispatched,
+                        press_dispatch_state,
                     },
                 );
 
-                if press_dispatched {
+                if press_dispatch_state == PressDispatchState::Dispatched {
                     if let Some(callback) = &registration.callbacks.on_press {
                         callbacks.push(callback.clone());
                     }
@@ -125,7 +134,7 @@ fn collect_non_modifier_callbacks(
         0 => {
             if let Some(active) = active_presses.remove(&key) {
                 if let Some(registration) = registrations.get(&active.registration_key) {
-                    if !active.press_dispatched {
+                    if active.press_dispatch_state == PressDispatchState::Pending {
                         if let Some(min_hold) = registration.callbacks.min_hold {
                             if now.duration_since(active.pressed_at) >= min_hold {
                                 if let Some(callback) = &registration.callbacks.on_press {
@@ -150,10 +159,12 @@ fn collect_non_modifier_callbacks(
                         .map(|min_hold| now.duration_since(active.pressed_at) >= min_hold)
                         .unwrap_or(true);
 
-                    if registration.callbacks.trigger_on_repeat && hold_satisfied {
+                    if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger
+                        && hold_satisfied
+                    {
                         if let Some(callback) = &registration.callbacks.on_press {
                             callbacks.push(callback.clone());
-                            active.press_dispatched = true;
+                            active.press_dispatch_state = PressDispatchState::Dispatched;
                         }
                     }
                 }
@@ -234,7 +245,7 @@ fn listener_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manager::HotkeyCallbacks;
+    use crate::manager::{HotkeyCallbacks, RepeatBehavior};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[test]
@@ -291,7 +302,7 @@ mod tests {
                 r.fetch_add(1, Ordering::SeqCst);
             })),
             min_hold: None,
-            trigger_on_repeat: false,
+            repeat_behavior: RepeatBehavior::Ignore,
         };
 
         let mut registrations = HashMap::new();
@@ -336,7 +347,7 @@ mod tests {
             })),
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
-            trigger_on_repeat: false,
+            repeat_behavior: RepeatBehavior::Ignore,
         };
 
         let mut registrations = HashMap::new();
@@ -393,7 +404,7 @@ mod tests {
             })),
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
-            trigger_on_repeat: true,
+            repeat_behavior: RepeatBehavior::Trigger,
         };
 
         let mut registrations = HashMap::new();
@@ -444,7 +455,7 @@ mod tests {
             })),
             on_release: None,
             min_hold: Some(Duration::ZERO),
-            trigger_on_repeat: false,
+            repeat_behavior: RepeatBehavior::Ignore,
         };
 
         let mut registrations = HashMap::new();
@@ -485,7 +496,7 @@ mod tests {
             })),
             on_release: None,
             min_hold: Some(Duration::from_millis(50)),
-            trigger_on_repeat: true,
+            repeat_behavior: RepeatBehavior::Trigger,
         };
 
         let mut registrations = HashMap::new();
@@ -534,7 +545,7 @@ mod tests {
             })),
             on_release: None,
             min_hold: None,
-            trigger_on_repeat: true,
+            repeat_behavior: RepeatBehavior::Trigger,
         };
 
         let mut registrations = HashMap::new();
