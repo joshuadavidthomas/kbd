@@ -89,6 +89,14 @@ Backend selection must respect compile-time availability:
 - do not silently fall back when the caller explicitly requests a backend;
   return the backend-specific initialization error instead
 
+Progress update (implemented so far):
+- Added backend abstraction with `Backend` selection and explicit `with_backend(...)` API.
+- Added clear `BackendUnavailable(...)` errors for non-compiled backend requests.
+- Improved evdev listener reliability with deterministic modifier canonicalization,
+  startup failure surfacing, and callback panic containment.
+- Added focused regression tests for backend resolution, modifier normalization,
+  and listener callback panic handling.
+
 ### 1.2 Release / hold events
 
 **Status: Not Started** · **Priority: High — low effort, high value**
