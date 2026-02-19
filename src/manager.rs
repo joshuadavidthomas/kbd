@@ -538,6 +538,13 @@ impl HotkeyManager {
             validate_hotkey_binding(step.key(), step.modifiers())?;
         }
 
+        if is_modifier_key(abort_key) {
+            return Err(Error::InvalidSequence(format!(
+                "modifier keys cannot be used as the abort key: {:?}",
+                abort_key
+            )));
+        }
+
         let normalized_steps: Vec<HotkeyKey> = steps
             .iter()
             .map(|step| (step.key(), normalize_modifiers(step.modifiers())))
@@ -1880,6 +1887,27 @@ mod tests {
             .unwrap();
 
         assert!(matches!(err, Error::UnsupportedFeature(_)));
+    }
+
+    #[test]
+    fn sequence_registration_rejects_modifier_as_abort_key() {
+        let manager = manager_with_fake_backend();
+        let sequence = HotkeySequence::new(vec![
+            Hotkey::new(KeyCode::KEY_K, vec![]),
+            Hotkey::new(KeyCode::KEY_C, vec![]),
+        ])
+        .unwrap();
+
+        let err = manager
+            .register_sequence(
+                &sequence,
+                SequenceOptions::new().abort_key(KeyCode::KEY_LEFTCTRL),
+                || {},
+            )
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::InvalidSequence(_)));
     }
 
     #[test]
