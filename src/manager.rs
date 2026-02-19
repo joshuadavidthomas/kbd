@@ -42,6 +42,7 @@ pub(crate) struct HotkeyCallbacks {
     pub(crate) on_release: Option<Callback>,
     pub(crate) min_hold: Option<Duration>,
     pub(crate) repeat_behavior: RepeatBehavior,
+    pub(crate) passthrough: bool,
 }
 
 #[derive(Clone, Default)]
@@ -49,6 +50,7 @@ pub struct HotkeyOptions {
     release_behavior: ReleaseBehavior,
     min_hold: Option<Duration>,
     repeat_behavior: RepeatBehavior,
+    passthrough: bool,
 }
 
 impl HotkeyOptions {
@@ -83,6 +85,11 @@ impl HotkeyOptions {
         self
     }
 
+    pub fn passthrough(mut self, passthrough: bool) -> Self {
+        self.passthrough = passthrough;
+        self
+    }
+
     fn build_callbacks<F>(self, callback: F) -> HotkeyCallbacks
     where
         F: Fn() + Send + Sync + 'static,
@@ -99,6 +106,7 @@ impl HotkeyOptions {
             on_release: release_callback,
             min_hold: self.min_hold,
             repeat_behavior: self.repeat_behavior,
+            passthrough: self.passthrough,
         }
     }
 }
@@ -155,6 +163,32 @@ impl SequenceOptions {
     pub fn timeout_fallback(mut self, hotkey: Hotkey) -> Self {
         self.timeout_fallback = Some(hotkey);
         self
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct ManagerRuntimeOptions {
+    grab: bool,
+}
+
+pub struct HotkeyManagerBuilder {
+    requested_backend: Option<Backend>,
+    options: ManagerRuntimeOptions,
+}
+
+impl HotkeyManagerBuilder {
+    pub fn backend(mut self, backend: Backend) -> Self {
+        self.requested_backend = Some(backend);
+        self
+    }
+
+    pub fn grab(mut self, grab: bool) -> Self {
+        self.options.grab = grab;
+        self
+    }
+
+    pub fn build(self) -> Result<HotkeyManager, Error> {
+        HotkeyManager::with_backend_internal(self.requested_backend, self.options)
     }
 }
 
@@ -305,12 +339,19 @@ pub struct HotkeyManager {
 impl HotkeyManager {
     /// Create a new hotkey manager
     pub fn new() -> Result<Self, Error> {
-        Self::with_backend_internal(None)
+        Self::with_backend_internal(None, ManagerRuntimeOptions::default())
     }
 
     /// Create a manager with an explicit backend.
     pub fn with_backend(backend: Backend) -> Result<Self, Error> {
-        Self::with_backend_internal(Some(backend))
+        Self::with_backend_internal(Some(backend), ManagerRuntimeOptions::default())
+    }
+
+    pub fn builder() -> HotkeyManagerBuilder {
+        HotkeyManagerBuilder {
+            requested_backend: None,
+            options: ManagerRuntimeOptions::default(),
+        }
     }
 
     /// Returns the backend selected for this manager instance.
@@ -323,16 +364,20 @@ impl HotkeyManager {
         resolve_backend(requested_backend)
     }
 
-    fn with_backend_internal(requested_backend: Option<Backend>) -> Result<Self, Error> {
+    fn with_backend_internal(
+        requested_backend: Option<Backend>,
+        options: ManagerRuntimeOptions,
+    ) -> Result<Self, Error> {
         let selected_backend = resolve_backend(requested_backend)?;
+        validate_runtime_options(selected_backend, options)?;
 
         if requested_backend.is_none() && selected_backend == Backend::Portal {
-            return match Self::initialize_with_backend(Backend::Portal) {
+            return match Self::initialize_with_backend(Backend::Portal, options) {
                 Ok(manager) => Ok(manager),
                 Err(error) if should_fallback_from_portal_error(&error) => {
                     #[cfg(feature = "evdev")]
                     {
-                        Self::initialize_with_backend(Backend::Evdev)
+                        Self::initialize_with_backend(Backend::Evdev, options)
                     }
                     #[cfg(not(feature = "evdev"))]
                     {
@@ -343,11 +388,15 @@ impl HotkeyManager {
             };
         }
 
-        Self::initialize_with_backend(selected_backend)
+        Self::initialize_with_backend(selected_backend, options)
     }
 
-    fn initialize_with_backend(backend: Backend) -> Result<Self, Error> {
-        let backend_impl: Arc<dyn crate::backend::HotkeyBackend> = build_backend(backend)?.into();
+    fn initialize_with_backend(
+        backend: Backend,
+        options: ManagerRuntimeOptions,
+    ) -> Result<Self, Error> {
+        let backend_impl: Arc<dyn crate::backend::HotkeyBackend> =
+            build_backend(backend, options.grab)?.into();
 
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
@@ -667,6 +716,30 @@ impl HotkeyManager {
     }
 }
 
+fn validate_runtime_options(backend: Backend, options: ManagerRuntimeOptions) -> Result<(), Error> {
+    if !options.grab {
+        return Ok(());
+    }
+
+    if backend != Backend::Evdev {
+        return Err(Error::UnsupportedFeature(
+            "event grabbing is only supported by the evdev backend".to_string(),
+        ));
+    }
+
+    #[cfg(not(feature = "grab"))]
+    {
+        return Err(Error::UnsupportedFeature(
+            "event grabbing support is not compiled in (enable the `grab` feature)".to_string(),
+        ));
+    }
+
+    #[cfg(feature = "grab")]
+    {
+        Ok(())
+    }
+}
+
 fn should_fallback_from_portal_error(error: &Error) -> bool {
     matches!(error, Error::BackendInit(_))
 }
@@ -778,6 +851,41 @@ mod tests {
 
         (callbacks.on_press)();
         assert!(called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn passthrough_option_is_stored_in_callbacks() {
+        let callbacks = HotkeyOptions::new()
+            .passthrough(true)
+            .build_callbacks(|| {});
+        assert!(callbacks.passthrough);
+    }
+
+    #[test]
+    fn grab_option_rejects_portal_backend() {
+        let err = validate_runtime_options(Backend::Portal, ManagerRuntimeOptions { grab: true })
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::UnsupportedFeature(_)));
+    }
+
+    #[test]
+    #[cfg(not(feature = "grab"))]
+    fn grab_option_requires_grab_feature_flag() {
+        let err = validate_runtime_options(Backend::Evdev, ManagerRuntimeOptions { grab: true })
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::UnsupportedFeature(_)));
+    }
+
+    #[test]
+    #[cfg(feature = "grab")]
+    fn grab_option_is_allowed_with_evdev_when_feature_enabled() {
+        assert!(
+            validate_runtime_options(Backend::Evdev, ManagerRuntimeOptions { grab: true },).is_ok()
+        );
     }
 
     #[test]
@@ -1119,6 +1227,7 @@ mod tests {
                 on_release: None,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
+                passthrough: false,
             },
         }
     }

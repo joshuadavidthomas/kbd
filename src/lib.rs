@@ -1,7 +1,9 @@
 pub use backend::Backend;
 pub use error::Error;
 pub use hotkey::{Hotkey, HotkeySequence, ParseHotkeyError};
-pub use manager::{Handle, HotkeyManager, HotkeyOptions, SequenceHandle, SequenceOptions};
+pub use manager::{
+    Handle, HotkeyManager, HotkeyManagerBuilder, HotkeyOptions, SequenceHandle, SequenceOptions,
+};
 
 mod backend;
 mod device;

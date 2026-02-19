@@ -334,7 +334,7 @@ Success criteria checklist:
 
 ### 2.2 Event grabbing / interception
 
-**Status: Not Started** · **Priority: High — essential for real hotkey daemons**
+**Status: Complete** · **Priority: High — essential for real hotkey daemons**
 
 Use `EVIOCGRAB` (evdev's `device.grab()`) to exclusively capture keyboard
 input. When grabbed, events don't reach other applications. Re-emit
@@ -365,12 +365,12 @@ Only available with the evdev backend. The portal backend should return a
 clear `UnsupportedFeature`-style error when grab/interception is requested.
 
 Success criteria checklist:
-- [ ] Exclusive keyboard capture prevents matched hotkey events from reaching other applications (compositor, other programs).
-- [ ] Non-hotkey events are re-emitted through a virtual device so normal typing is unaffected.
-- [ ] Individual hotkeys can be marked as passthrough: callback fires AND the event still reaches applications.
-- [ ] The portal backend returns a clear unsupported-feature error when grab is requested.
-- [ ] Grab is behind a feature flag; requesting it when the feature is not compiled in returns a clear error.
-- [ ] Tests cover: grabbed hotkey consumed, passthrough forwarding, portal rejection, and feature-disabled error.
+- [x] Exclusive keyboard capture prevents matched hotkey events from reaching other applications (compositor, other programs).
+- [x] Non-hotkey events are re-emitted through a virtual device so normal typing is unaffected.
+- [x] Individual hotkeys can be marked as passthrough: callback fires AND the event still reaches applications.
+- [x] The portal backend returns a clear unsupported-feature error when grab is requested.
+- [x] Grab is behind a feature flag; requesting it when the feature is not compiled in returns a clear error.
+- [x] Tests cover: grabbed hotkey consumed, passthrough forwarding, portal rejection, and feature-disabled error.
 
 ### 2.3 Modes / layers
 
@@ -505,7 +505,7 @@ complete those first.
 | Section | Status |
 |---------|--------|
 | 2.1 Key sequences / chords | Complete (9/9 checked) |
-| 2.2 Event grabbing | Not Started (0/6 checked) |
+| 2.2 Event grabbing | Complete (6/6 checked) |
 | 2.3 Modes / layers | Not Started (0/7 checked) |
 | 2.4 Device-specific hotkeys | Not Started (0/5 checked) |
 | 2.5 Tap vs. hold | Not Started (0/7 checked) |
@@ -707,9 +707,9 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | 1.5 | Device hotplug | Complete | 4/4 ✓ |
 | 1.6 | Event loop architecture (poll/epoll + clean shutdown path) | Complete | 5/5 ✓ |
 | 1.1b | Portal backend (behind feature flag) | Complete | (part of 1.1) |
-| **Phase 2** | **Power features** | **▶ Ready — starts after Phase 1** | |
+| **Phase 2** | **Power features** | **▶ In Progress** | |
 | 2.1 | Key sequences / chords | Complete | 9/9 ✓ |
-| 2.2 | Event grabbing (EVIOCGRAB + uinput) | Not Started | 0/6 |
+| 2.2 | Event grabbing (EVIOCGRAB + uinput) | Complete | 6/6 ✓ |
 | 2.3 | Modes / layers | Not Started | 0/7 |
 | 2.4 | Device-specific hotkeys | Not Started | 0/5 |
 | 2.5 | Tap vs. hold | Not Started | 0/7 |
