@@ -1,4 +1,6 @@
 use evdev::KeyCode;
+#[cfg(feature = "serde")]
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
 
@@ -98,6 +100,56 @@ impl FromStr for HotkeySequence {
         }
 
         HotkeySequence::new(steps)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for Hotkey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Hotkey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        value.parse::<Hotkey>().map_err(|err| {
+            D::Error::custom(format!(
+                "invalid hotkey \"{value}\": {err}. Expected format like Ctrl+Shift+A"
+            ))
+        })
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for HotkeySequence {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for HotkeySequence {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        value.parse::<HotkeySequence>().map_err(|err| {
+            D::Error::custom(format!(
+                "invalid hotkey sequence \"{value}\": {err}. Expected format like Ctrl+K, Ctrl+C"
+            ))
+        })
     }
 }
 

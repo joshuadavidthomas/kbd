@@ -582,7 +582,7 @@ Success criteria checklist:
 
 ### 3.4 Configuration serialization
 
-**Status: Not Started**
+**Status: Complete**
 
 Support loading hotkey definitions from structured data (serde):
 
@@ -599,11 +599,11 @@ This lets applications load hotkey configs from TOML/JSON/YAML files without
 writing parsing code.
 
 Success criteria checklist:
-- [ ] Hotkey definitions (single hotkeys, sequences, and mode bindings) can be deserialized from structured data (TOML, JSON, YAML, etc.).
-- [ ] Deserialized definitions can be registered directly without manual conversion.
-- [ ] Serialization is behind a feature flag so non-config users pay no dependency cost.
-- [ ] Invalid configuration data produces clear, actionable error messages.
-- [ ] Tests cover: deserialization, round-trip serialization, and invalid config errors.
+- [x] Hotkey definitions (single hotkeys, sequences, and mode bindings) can be deserialized from structured data (TOML, JSON, YAML, etc.).
+- [x] Deserialized definitions can be registered directly without manual conversion.
+- [x] Serialization is behind a feature flag so non-config users pay no dependency cost.
+- [x] Invalid configuration data produces clear, actionable error messages.
+- [x] Tests cover: deserialization, round-trip serialization, and invalid config errors.
 
 ### Phase 3 completion gate
 
@@ -616,7 +616,7 @@ unchecked items and complete those first.
 | 3.1 Async API | Complete (6/6 checked) |
 | 3.2 Debouncing / rate limiting | Complete (4/4 checked) |
 | 3.3 Key state query | Complete (5/5 checked) |
-| 3.4 Configuration serialization | Not Started (0/5 checked) |
+| 3.4 Configuration serialization | Complete (5/5 checked) |
 
 ---
 
@@ -713,12 +713,12 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | 2.3 | Modes / layers | Complete | 7/7 ✓ |
 | 2.4 | Device-specific hotkeys | Complete | 5/5 ✓ |
 | 2.5 | Tap vs. hold | Complete | 7/7 ✓ |
-| **Phase 3** | **Polish** | **▶ In Progress** | |
+| **Phase 3** | **Polish** | **✅ Complete** | |
 | 3.1 | Async API | Complete | 6/6 ✓ |
 | 3.2 | Debouncing / rate limiting | Complete | 4/4 ✓ |
 | 3.3 | Key state query | Complete | 5/5 |
-| 3.4 | Configuration serialization | Not Started | 0/5 |
-| **Phase 4** | **Expansion (not committed)** | **⛔ Blocked on Phase 3** | |
+| 3.4 | Configuration serialization | Complete | 5/5 ✓ |
+| **Phase 4** | **Expansion (not committed)** | **Not Started** | |
 | 4.1 | macOS backend (CGEventTap / IOKit) | Not Started | — |
 | 4.2 | Windows backend (low-level keyboard hooks) | Not Started | — |
 | 4.3 | Rename crate to something platform-neutral | Not Started | — |

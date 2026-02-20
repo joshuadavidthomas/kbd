@@ -1,4 +1,9 @@
 pub use backend::Backend;
+#[cfg(feature = "serde")]
+pub use config::{
+    ActionId, ActionIdError, ActionMap, ActionMapError, ConfigRegistrationError, HotkeyBinding,
+    HotkeyConfig, ModeBindings, RegisteredConfig, SequenceBinding,
+};
 pub use device::DeviceFilter;
 pub use error::Error;
 pub use events::HotkeyEvent;
@@ -13,6 +18,8 @@ pub use mode::{ModeBuilder, ModeController, ModeOptions};
 pub use tap_hold::{HoldAction, TapAction, TapHoldOptions};
 
 mod backend;
+#[cfg(feature = "serde")]
+mod config;
 mod device;
 mod error;
 mod events;
