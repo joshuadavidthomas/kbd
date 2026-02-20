@@ -11,7 +11,14 @@ pub enum HotkeyEvent {
 #[cfg(any(feature = "tokio", feature = "async-std"))]
 #[derive(Clone, Default)]
 pub(crate) struct EventHub {
-    subscribers: std::sync::Arc<std::sync::Mutex<Vec<async_channel::Sender<HotkeyEvent>>>>,
+    state: std::sync::Arc<std::sync::Mutex<EventHubState>>,
+}
+
+#[cfg(any(feature = "tokio", feature = "async-std"))]
+#[derive(Default)]
+struct EventHubState {
+    subscribers: Vec<async_channel::Sender<HotkeyEvent>>,
+    closed: bool,
 }
 
 #[cfg(not(any(feature = "tokio", feature = "async-std")))]
@@ -22,15 +29,27 @@ impl EventHub {
     #[cfg(any(feature = "tokio", feature = "async-std"))]
     pub(crate) fn subscribe(&self) -> HotkeyEventStream {
         let (tx, rx) = async_channel::unbounded();
-        self.subscribers.lock().unwrap().push(tx);
+
+        let mut state = self.state.lock().unwrap();
+        if state.closed {
+            drop(tx);
+        } else {
+            state.subscribers.push(tx);
+        }
+
         HotkeyEventStream { receiver: rx }
     }
 
     pub(crate) fn emit(&self, event: HotkeyEvent) {
         #[cfg(any(feature = "tokio", feature = "async-std"))]
         {
-            let mut subscribers = self.subscribers.lock().unwrap();
-            subscribers.retain(|sender| sender.try_send(event.clone()).is_ok());
+            let mut state = self.state.lock().unwrap();
+            if state.closed {
+                return;
+            }
+            state
+                .subscribers
+                .retain(|sender| sender.try_send(event.clone()).is_ok());
         }
 
         #[cfg(not(any(feature = "tokio", feature = "async-std")))]
@@ -42,7 +61,9 @@ impl EventHub {
     pub(crate) fn close(&self) {
         #[cfg(any(feature = "tokio", feature = "async-std"))]
         {
-            self.subscribers.lock().unwrap().clear();
+            let mut state = self.state.lock().unwrap();
+            state.closed = true;
+            state.subscribers.clear();
         }
     }
 }

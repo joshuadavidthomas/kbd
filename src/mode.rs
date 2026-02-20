@@ -427,23 +427,34 @@ impl ModeController {
         }
 
         let now = Instant::now();
-        self.registry
-            .stack
-            .lock()
-            .unwrap()
-            .push(name.to_string(), now);
-        self.registry
-            .event_hub
-            .emit(HotkeyEvent::ModeChanged(self.active_mode()));
+        let mode_change_event = {
+            let mut stack = self.registry.stack.lock().unwrap();
+            let before = stack.top().map(str::to_string);
+            stack.push(name.to_string(), now);
+            let after = stack.top().map(str::to_string);
+            (before != after).then_some(HotkeyEvent::ModeChanged(after))
+        };
+
+        if let Some(event) = mode_change_event {
+            self.registry.event_hub.emit(event);
+        }
     }
 
     pub fn pop(&self) -> Option<String> {
-        let popped = self.registry.stack.lock().unwrap().pop();
-        if popped.is_some() {
-            self.registry
-                .event_hub
-                .emit(HotkeyEvent::ModeChanged(self.active_mode()));
+        let (popped, mode_change_event) = {
+            let mut stack = self.registry.stack.lock().unwrap();
+            let before = stack.top().map(str::to_string);
+            let popped = stack.pop();
+            let after = stack.top().map(str::to_string);
+            let mode_change_event =
+                (popped.is_some() && before != after).then_some(HotkeyEvent::ModeChanged(after));
+            (popped, mode_change_event)
+        };
+
+        if let Some(event) = mode_change_event {
+            self.registry.event_hub.emit(event);
         }
+
         popped
     }
 
@@ -528,7 +539,7 @@ mod tests {
                     counter.fetch_add(1, Ordering::SeqCst);
                 }),
                 on_release: None,
-                has_release_callback: false,
+                wait_for_release: false,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
                 passthrough: false,
@@ -549,7 +560,7 @@ mod tests {
                 on_release: Some(Arc::new(move || {
                     rc.fetch_add(1, Ordering::SeqCst);
                 })),
-                has_release_callback: true,
+                wait_for_release: true,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
                 passthrough: false,
