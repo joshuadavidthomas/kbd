@@ -99,7 +99,6 @@ enum HoldResolution {
 
 /// Tracks a currently active (pressed) tap-hold key.
 struct ActiveTapHold {
-    key: KeyCode,
     pressed_at: Instant,
     hold_resolution: HoldResolution,
     registration: TapHoldRegistration,
@@ -137,14 +136,21 @@ impl TapHoldRuntime {
 
     /// Check for threshold-based hold resolution on each tick.
     pub(crate) fn on_tick(&mut self, now: Instant) -> TapHoldDispatch {
+        let mut keys_to_resolve: Vec<(Instant, u16, KeyCode)> = self
+            .active
+            .iter()
+            .filter_map(|(key, active)| {
+                (active.hold_resolution == HoldResolution::Pending
+                    && now.saturating_duration_since(active.pressed_at)
+                        >= active.registration.threshold)
+                    .then_some((active.pressed_at, key.code(), *key))
+            })
+            .collect();
+        keys_to_resolve.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
+
         let mut synthetic_events = Vec::new();
-
-        for active in self.active.values_mut() {
-            if active.hold_resolution == HoldResolution::Resolved {
-                continue;
-            }
-
-            if now.duration_since(active.pressed_at) >= active.registration.threshold {
+        for (_, _, key) in keys_to_resolve {
+            if let Some(active) = self.active.get_mut(&key) {
                 active.hold_resolution = HoldResolution::Resolved;
                 synthetic_events.extend(hold_press_events(&active.registration.hold_action));
             }
@@ -180,7 +186,6 @@ impl TapHoldRuntime {
             self.active.insert(
                 key,
                 ActiveTapHold {
-                    key,
                     pressed_at: now,
                     hold_resolution: HoldResolution::Pending,
                     registration: registration.clone(),
@@ -223,15 +228,22 @@ impl TapHoldRuntime {
     }
 
     fn resolve_pending_holds_for_interrupt(&mut self, key: KeyCode) -> Vec<(KeyCode, i32)> {
+        let mut keys_to_resolve: Vec<(Instant, u16, KeyCode)> = self
+            .active
+            .iter()
+            .filter_map(|(active_key, active)| {
+                (*active_key != key && active.hold_resolution == HoldResolution::Pending)
+                    .then_some((active.pressed_at, active_key.code(), *active_key))
+            })
+            .collect();
+        keys_to_resolve.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
+
         let mut synthetic_events = Vec::new();
-
-        for active in self.active.values_mut() {
-            if active.key == key || active.hold_resolution == HoldResolution::Resolved {
-                continue;
+        for (_, _, key_to_resolve) in keys_to_resolve {
+            if let Some(active) = self.active.get_mut(&key_to_resolve) {
+                active.hold_resolution = HoldResolution::Resolved;
+                synthetic_events.extend(hold_press_events(&active.registration.hold_action));
             }
-
-            active.hold_resolution = HoldResolution::Resolved;
-            synthetic_events.extend(hold_press_events(&active.registration.hold_action));
         }
 
         synthetic_events
@@ -615,6 +627,30 @@ mod tests {
         assert_eq!(
             tab_release.synthetic_events,
             vec![(KeyCode::KEY_LEFTALT, 0)]
+        );
+    }
+
+    #[test]
+    fn non_monotonic_tick_timestamp_does_not_panic_or_resolve_hold() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = capslock_as_ctrl_esc(200);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+
+        let earlier = t0.checked_sub(Duration::from_millis(1)).unwrap_or(t0);
+        let earlier_tick = runtime.on_tick(earlier);
+        assert!(earlier_tick.synthetic_events.is_empty());
+
+        let release_dispatch = runtime.process_key_event(
+            KeyCode::KEY_CAPSLOCK,
+            0,
+            t0 + Duration::from_millis(50),
+            &regs,
+        );
+        assert_eq!(
+            release_dispatch.synthetic_events,
+            vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
         );
     }
 

@@ -480,16 +480,12 @@ fn probe_portal_support() -> bool {
     false
 }
 
+#[cfg_attr(not(feature = "evdev"), allow(unused_variables))]
 pub(crate) fn build_backend(
     backend: Backend,
     grab: bool,
     mode_registry: ModeRegistry,
 ) -> Result<Box<dyn HotkeyBackend>, Error> {
-    #[cfg(not(feature = "evdev"))]
-    {
-        let _ = (grab, &mode_registry);
-    }
-
     match backend {
         #[cfg(feature = "evdev")]
         Backend::Evdev => Ok(Box::new(EvdevBackend {
