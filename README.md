@@ -108,14 +108,15 @@ let _handle = manager.register_with_options(
     HotkeyOptions::new()
         .on_release_callback(|| println!("Released"))
         .min_hold(Duration::from_millis(500))
-        .trigger_on_repeat(false),
+        .debounce(Duration::from_millis(100))
+        .max_rate(Duration::from_millis(300)),
     || {
         println!("Pressed (only after min hold)");
     },
 )?;
 ```
 
-`register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, repeat behavior control, or passthrough behavior in grab mode. Use `.on_release()` if you want release to reuse the same callback as press.
+`register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, debounce/rate limiting, repeat behavior control, or passthrough behavior in grab mode. Use `.on_release()` if you want release to reuse the same callback as press.
 
 ### Event grabbing / interception (feature-gated)
 
@@ -132,7 +133,7 @@ use evdev_hotkey::{Backend, HotkeyManager, HotkeyOptions};
 
 let manager = HotkeyManager::builder()
     .backend(Backend::Evdev)
-    .grab(true)
+    .grab()
     .build()?;
 
 // Consumed by default while grab is active.
@@ -144,7 +145,7 @@ let _consumed = manager.register(KeyCode::KEY_L, &[KeyCode::KEY_LEFTMETA], || {
 let _passthrough = manager.register_with_options(
     KeyCode::KEY_A,
     &[KeyCode::KEY_LEFTCTRL],
-    HotkeyOptions::new().passthrough(true),
+    HotkeyOptions::new().passthrough(),
     || println!("Observed Ctrl+A"),
 )?;
 ```

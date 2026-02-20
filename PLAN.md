@@ -543,7 +543,7 @@ Success criteria checklist:
 
 ### 3.2 Debouncing / rate limiting
 
-**Status: Not Started**
+**Status: Complete**
 
 Prevent rapid-fire callback invocations:
 
@@ -554,10 +554,10 @@ HotkeyOptions::new()
 ```
 
 Success criteria checklist:
-- [ ] A per-hotkey debounce option suppresses repeated triggers within a configurable time window.
-- [ ] A per-hotkey rate-limit option caps callback invocations to at most once per configurable interval.
-- [ ] Debounce and rate-limit can be combined on the same hotkey.
-- [ ] Tests cover: debounce suppression, rate limiting, and combined behavior.
+- [x] A per-hotkey debounce option suppresses repeated triggers within a configurable time window.
+- [x] A per-hotkey rate-limit option caps callback invocations to at most once per configurable interval.
+- [x] Debounce and rate-limit can be combined on the same hotkey.
+- [x] Tests cover: debounce suppression, rate limiting, and combined behavior.
 
 ### 3.3 Key state query API
 
@@ -614,7 +614,7 @@ unchecked items and complete those first.
 | Section | Status |
 |---------|--------|
 | 3.1 Async API | Complete (6/6 checked) |
-| 3.2 Debouncing / rate limiting | Not Started (0/4 checked) |
+| 3.2 Debouncing / rate limiting | Complete (4/4 checked) |
 | 3.3 Key state query | In Progress (0/5 checked) |
 | 3.4 Configuration serialization | Not Started (0/5 checked) |
 
@@ -714,8 +714,8 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | 2.4 | Device-specific hotkeys | Complete | 5/5 ✓ |
 | 2.5 | Tap vs. hold | Complete | 7/7 ✓ |
 | **Phase 3** | **Polish** | **▶ In Progress** | |
-| 3.1 | Async API | Not Started | 0/6 |
-| 3.2 | Debouncing / rate limiting | Not Started | 0/4 |
+| 3.1 | Async API | Complete | 6/6 ✓ |
+| 3.2 | Debouncing / rate limiting | Complete | 4/4 ✓ |
 | 3.3 | Key state query | In Progress | 0/5 |
 | 3.4 | Configuration serialization | Not Started | 0/5 |
 | **Phase 4** | **Expansion (not committed)** | **⛔ Blocked on Phase 3** | |
