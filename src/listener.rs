@@ -695,9 +695,10 @@ fn collect_device_specific_dispatch(
         2 => {
             if let Some(active) = active_presses.get_mut(&key) {
                 if matches!(active.origin, PressOrigin::Device(id) if id == reg_id) {
-                    let hold_satisfied = registration.callbacks.min_hold.is_none_or(|min_hold| {
-                        now.duration_since(active.pressed_at) >= min_hold
-                    });
+                    let hold_satisfied = registration
+                        .callbacks
+                        .min_hold
+                        .is_none_or(|min_hold| now.duration_since(active.pressed_at) >= min_hold);
 
                     if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger
                         && hold_satisfied
@@ -1071,11 +1072,9 @@ fn listener_loop(
                         }
                         ModeEventDispatch::PassThrough => {
                             // Device-specific dispatch takes priority
-                            let device_modifiers =
-                                modifier_tracker.device_modifiers(&device_path);
+                            let device_modifiers = modifier_tracker.device_modifiers(&device_path);
                             let device_info = devices[device_index].info.clone();
-                            let device_regs_guard =
-                                device_registrations.lock().unwrap();
+                            let device_regs_guard = device_registrations.lock().unwrap();
                             let device_dispatch = collect_device_specific_dispatch(
                                 key,
                                 value,
@@ -1097,8 +1096,7 @@ fn listener_loop(
                             } else {
                                 // Fall through to sequence and global dispatch
                                 let registrations_guard = registrations.lock().unwrap();
-                                let sequence_guard =
-                                    sequence_registrations.lock().unwrap();
+                                let sequence_guard = sequence_registrations.lock().unwrap();
 
                                 let mut sequence_dispatch = SequenceDispatch::empty();
                                 if value == 1 {
@@ -1118,13 +1116,12 @@ fn listener_loop(
                                     &registrations_guard,
                                 ));
 
-                                let suppress_followup =
-                                    suppress_sequence_followup_key_event(
-                                        &mut suppressed_sequence_keys,
-                                        key,
-                                        value,
-                                        sequence_dispatch.suppress_current_key_press,
-                                    );
+                                let suppress_followup = suppress_sequence_followup_key_event(
+                                    &mut suppressed_sequence_keys,
+                                    key,
+                                    value,
+                                    sequence_dispatch.suppress_current_key_press,
+                                );
 
                                 let non_modifier_dispatch = if suppress_followup {
                                     NonModifierDispatch {
@@ -1144,13 +1141,12 @@ fn listener_loop(
                                     )
                                 };
 
-                                let should_forward_event =
-                                    should_forward_key_event_in_grab_mode(
-                                        config.grab,
-                                        sequence_dispatch.suppress_current_key_press
-                                            || non_modifier_dispatch.matched_hotkey,
-                                        non_modifier_dispatch.passthrough,
-                                    );
+                                let should_forward_event = should_forward_key_event_in_grab_mode(
+                                    config.grab,
+                                    sequence_dispatch.suppress_current_key_press
+                                        || non_modifier_dispatch.matched_hotkey,
+                                    non_modifier_dispatch.passthrough,
+                                );
 
                                 callbacks.extend(non_modifier_dispatch.callbacks);
 
@@ -2941,8 +2937,7 @@ mod tests {
                 .collect();
 
         // Device HAS Ctrl pressed
-        let device_modifiers: HashSet<KeyCode> =
-            [KeyCode::KEY_LEFTCTRL].into_iter().collect();
+        let device_modifiers: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL].into_iter().collect();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 

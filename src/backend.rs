@@ -164,9 +164,7 @@ impl HotkeyBackend for PortalBackend {
         &self,
         _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-        _device_registrations: Arc<
-            Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-        >,
+        _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
         _tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Error> {

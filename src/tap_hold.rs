@@ -140,10 +140,7 @@ impl TapHoldRuntime {
     }
 
     /// Check for threshold-based hold resolution on each tick.
-    pub(crate) fn on_tick(
-        &mut self,
-        now: Instant,
-    ) -> TapHoldDispatch {
+    pub(crate) fn on_tick(&mut self, now: Instant) -> TapHoldDispatch {
         let Some(active) = self.active.as_mut() else {
             return TapHoldDispatch::none();
         };
@@ -201,10 +198,7 @@ impl TapHoldRuntime {
         }
     }
 
-    fn on_key_release(
-        &mut self,
-        key: KeyCode,
-    ) -> TapHoldDispatch {
+    fn on_key_release(&mut self, key: KeyCode) -> TapHoldDispatch {
         let is_active_key = self.active.as_ref().is_some_and(|a| a.key == key);
         if !is_active_key {
             return TapHoldDispatch::none();
@@ -290,8 +284,7 @@ mod tests {
         let regs = capslock_as_ctrl_esc(200);
 
         // Press CapsLock
-        let press_dispatch =
-            runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        let press_dispatch = runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
         assert!(press_dispatch.consumed);
         assert!(press_dispatch.synthetic_events.is_empty());
 
@@ -324,10 +317,7 @@ mod tests {
 
         // Tick at threshold — resolves as hold
         let hold_tick = runtime.on_tick(t0 + Duration::from_millis(200));
-        assert_eq!(
-            hold_tick.synthetic_events,
-            vec![(KeyCode::KEY_LEFTCTRL, 1)]
-        );
+        assert_eq!(hold_tick.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
 
         // Release CapsLock — releases the modifier
         let release = runtime.process_key_event(
@@ -337,10 +327,7 @@ mod tests {
             &regs,
         );
         assert!(release.consumed);
-        assert_eq!(
-            release.synthetic_events,
-            vec![(KeyCode::KEY_LEFTCTRL, 0)]
-        );
+        assert_eq!(release.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 0)]);
     }
 
     #[test]
@@ -354,17 +341,10 @@ mod tests {
         assert!(press.consumed);
 
         // Press 'A' while CapsLock is pending — resolves as hold
-        let interrupt = runtime.process_key_event(
-            KeyCode::KEY_A,
-            1,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
+        let interrupt =
+            runtime.process_key_event(KeyCode::KEY_A, 1, t0 + Duration::from_millis(50), &regs);
         assert!(!interrupt.consumed); // 'A' should NOT be consumed
-        assert_eq!(
-            interrupt.synthetic_events,
-            vec![(KeyCode::KEY_LEFTCTRL, 1)]
-        );
+        assert_eq!(interrupt.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
 
         // Release CapsLock — releases modifier
         let release = runtime.process_key_event(
@@ -374,10 +354,7 @@ mod tests {
             &regs,
         );
         assert!(release.consumed);
-        assert_eq!(
-            release.synthetic_events,
-            vec![(KeyCode::KEY_LEFTCTRL, 0)]
-        );
+        assert_eq!(release.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 0)]);
     }
 
     #[test]
@@ -401,21 +378,13 @@ mod tests {
         runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
 
         // First interrupt resolves as hold
-        let first = runtime.process_key_event(
-            KeyCode::KEY_A,
-            1,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
+        let first =
+            runtime.process_key_event(KeyCode::KEY_A, 1, t0 + Duration::from_millis(50), &regs);
         assert_eq!(first.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
 
         // Second key press — already resolved, no extra synthetic events
-        let second = runtime.process_key_event(
-            KeyCode::KEY_B,
-            1,
-            t0 + Duration::from_millis(60),
-            &regs,
-        );
+        let second =
+            runtime.process_key_event(KeyCode::KEY_B, 1, t0 + Duration::from_millis(60), &regs);
         assert!(second.synthetic_events.is_empty());
         assert!(!second.consumed);
     }
@@ -462,12 +431,8 @@ mod tests {
         runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
 
         // Release a different key — noop
-        let release = runtime.process_key_event(
-            KeyCode::KEY_A,
-            0,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
+        let release =
+            runtime.process_key_event(KeyCode::KEY_A, 0, t0 + Duration::from_millis(50), &regs);
         assert!(!release.consumed);
         assert!(release.synthetic_events.is_empty());
     }

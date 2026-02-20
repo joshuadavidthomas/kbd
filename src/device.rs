@@ -53,13 +53,11 @@ impl DeviceInfo {
 }
 
 pub(crate) fn is_keyboard_device(device: &Device) -> bool {
-    device
-        .supported_keys()
-        .is_some_and(|keys| {
-            keys.contains(KeyCode::KEY_A)
-                && keys.contains(KeyCode::KEY_Z)
-                && keys.contains(KeyCode::KEY_ENTER)
-        })
+    device.supported_keys().is_some_and(|keys| {
+        keys.contains(KeyCode::KEY_A)
+            && keys.contains(KeyCode::KEY_Z)
+            && keys.contains(KeyCode::KEY_ENTER)
+    })
 }
 
 pub(crate) fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {

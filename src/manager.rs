@@ -1,6 +1,7 @@
 use crate::backend::{build_backend, resolve_backend, Backend};
 use crate::device::DeviceFilter;
 use crate::error::Error;
+use crate::events::{EventHub, HotkeyEvent};
 use crate::hotkey::{Hotkey, HotkeySequence};
 use crate::mode::{ModeBuilder, ModeController, ModeDefinition, ModeOptions, ModeRegistry};
 use crate::tap_hold::{HoldAction, TapAction, TapHoldOptions, TapHoldRegistration};
@@ -279,6 +280,46 @@ pub(crate) fn normalize_modifiers(modifiers: &[KeyCode]) -> Vec<KeyCode> {
     normalized
 }
 
+pub(crate) fn attach_hotkey_events(
+    callbacks: HotkeyCallbacks,
+    hotkey_key: &HotkeyKey,
+    event_hub: &EventHub,
+) -> HotkeyCallbacks {
+    let HotkeyCallbacks {
+        on_press,
+        on_release,
+        min_hold,
+        repeat_behavior,
+        passthrough,
+    } = callbacks;
+
+    let hotkey = Hotkey::new(hotkey_key.0, hotkey_key.1.clone());
+
+    let press_event_hub = event_hub.clone();
+    let press_hotkey = hotkey.clone();
+    let wrapped_press: Callback = Arc::new(move || {
+        press_event_hub.emit(HotkeyEvent::Pressed(press_hotkey.clone()));
+        on_press();
+    });
+
+    let wrapped_release = on_release.map(|release_callback| {
+        let release_event_hub = event_hub.clone();
+        let release_hotkey = hotkey.clone();
+        Arc::new(move || {
+            release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
+            release_callback();
+        }) as Callback
+    });
+
+    HotkeyCallbacks {
+        on_press: wrapped_press,
+        on_release: wrapped_release,
+        min_hold,
+        repeat_behavior,
+        passthrough,
+    }
+}
+
 fn already_registered_error(hotkey_key: &HotkeyKey) -> Error {
     Error::AlreadyRegistered {
         key: hotkey_key.0,
@@ -334,8 +375,7 @@ impl Handle {
     pub fn unregister(self) -> Result<(), Error> {
         match &self.location {
             RegistrationLocation::Global(key) => {
-                self.manager
-                    .remove_hotkey(key, &self.registration_marker)
+                self.manager.remove_hotkey(key, &self.registration_marker)
             }
             RegistrationLocation::Device(id) => {
                 self.manager.remove_device_hotkey(*id);
@@ -399,6 +439,7 @@ struct HotkeyManagerInner {
     next_device_reg_id: AtomicU64,
     backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
     stop_flag: Arc<AtomicBool>,
+    event_hub: EventHub,
     grab_enabled: bool,
     operation_lock: Mutex<()>,
     listener: Mutex<Option<JoinHandle<()>>>,
@@ -438,6 +479,11 @@ impl HotkeyManager {
         resolve_backend(requested_backend)
     }
 
+    #[cfg(any(feature = "tokio", feature = "async-std"))]
+    pub fn event_stream(&self) -> crate::events::HotkeyEventStream {
+        self.inner.event_hub.subscribe()
+    }
+
     fn with_backend_internal(
         requested_backend: Option<Backend>,
         options: ManagerRuntimeOptions,
@@ -469,7 +515,8 @@ impl HotkeyManager {
         backend: Backend,
         options: ManagerRuntimeOptions,
     ) -> Result<Self, Error> {
-        let mode_registry = ModeRegistry::new();
+        let event_hub = EventHub::default();
+        let mode_registry = ModeRegistry::with_event_hub(event_hub.clone());
         let backend_impl: Arc<dyn crate::backend::HotkeyBackend> =
             build_backend(backend, options.grab, mode_registry.clone())?.into();
 
@@ -485,6 +532,7 @@ impl HotkeyManager {
             next_device_reg_id: AtomicU64::new(1),
             backend_impl: backend_impl.clone(),
             stop_flag: Arc::new(AtomicBool::new(false)),
+            event_hub,
             grab_enabled: options.grab,
             operation_lock: Mutex::new(()),
             listener: Mutex::new(None),
@@ -550,9 +598,13 @@ impl HotkeyManager {
             return self.register_device_hotkey(hotkey_key, filter, options, callback);
         }
 
-        let registration = HotkeyRegistration {
-            callbacks: options.build_callbacks(callback),
-        };
+        let callbacks = attach_hotkey_events(
+            options.build_callbacks(callback),
+            &hotkey_key,
+            &self.inner.event_hub,
+        );
+
+        let registration = HotkeyRegistration { callbacks };
         let registration_marker = registration.callbacks.on_press.clone();
 
         {
@@ -602,21 +654,22 @@ impl HotkeyManager {
     {
         {
             let device_registrations = self.inner.device_registrations.lock().unwrap();
-            let conflict = device_registrations.values().any(|existing| {
-                existing.hotkey_key == hotkey_key && existing.filter == filter
-            });
+            let conflict = device_registrations
+                .values()
+                .any(|existing| existing.hotkey_key == hotkey_key && existing.filter == filter);
             if conflict {
                 return Err(already_registered_error(&hotkey_key));
             }
         }
 
-        let callbacks = options.build_callbacks(callback);
+        let callbacks = attach_hotkey_events(
+            options.build_callbacks(callback),
+            &hotkey_key,
+            &self.inner.event_hub,
+        );
         let registration_marker = callbacks.on_press.clone();
 
-        let id = self
-            .inner
-            .next_device_reg_id
-            .fetch_add(1, Ordering::SeqCst);
+        let id = self.inner.next_device_reg_id.fetch_add(1, Ordering::SeqCst);
 
         let registration = DeviceHotkeyRegistration {
             hotkey_key,
@@ -701,9 +754,21 @@ impl HotkeyManager {
             .transpose()?;
 
         let sequence_id = self.inner.next_sequence_id.fetch_add(1, Ordering::SeqCst);
+        let sequence_len = normalized_steps.len();
+        let callback: Callback = Arc::new(callback);
+        let callback_event_hub = self.inner.event_hub.clone();
+        let wrapped_callback: Callback = Arc::new(move || {
+            callback_event_hub.emit(HotkeyEvent::SequenceStep {
+                id: sequence_id,
+                step: sequence_len,
+                total: sequence_len,
+            });
+            callback();
+        });
+
         let registration = SequenceRegistration {
             steps: normalized_steps,
-            callback: Arc::new(callback),
+            callback: wrapped_callback,
             timeout,
             abort_key,
             timeout_fallback,
@@ -811,9 +876,13 @@ impl HotkeyManager {
             return self.replace_device_hotkey(hotkey_key, filter, options, callback);
         }
 
-        let registration = HotkeyRegistration {
-            callbacks: options.build_callbacks(callback),
-        };
+        let callbacks = attach_hotkey_events(
+            options.build_callbacks(callback),
+            &hotkey_key,
+            &self.inner.event_hub,
+        );
+
+        let registration = HotkeyRegistration { callbacks };
         let registration_marker = registration.callbacks.on_press.clone();
 
         let already_registered = self
@@ -873,7 +942,11 @@ impl HotkeyManager {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        let callbacks = options.build_callbacks(callback);
+        let callbacks = attach_hotkey_events(
+            options.build_callbacks(callback),
+            &hotkey_key,
+            &self.inner.event_hub,
+        );
         let registration_marker = callbacks.on_press.clone();
 
         let mut device_registrations = self.inner.device_registrations.lock().unwrap();
@@ -881,9 +954,7 @@ impl HotkeyManager {
         // Find and replace existing registration with same key+filter
         let existing_id = device_registrations
             .iter()
-            .find(|(_, existing)| {
-                existing.hotkey_key == hotkey_key && existing.filter == filter
-            })
+            .find(|(_, existing)| existing.hotkey_key == hotkey_key && existing.filter == filter)
             .map(|(id, _)| *id);
 
         let id = if let Some(existing_id) = existing_id {
@@ -897,10 +968,7 @@ impl HotkeyManager {
             );
             existing_id
         } else {
-            let id = self
-                .inner
-                .next_device_reg_id
-                .fetch_add(1, Ordering::SeqCst);
+            let id = self.inner.next_device_reg_id.fetch_add(1, Ordering::SeqCst);
             device_registrations.insert(
                 id,
                 DeviceHotkeyRegistration {
@@ -1018,6 +1086,8 @@ impl HotkeyManager {
             self.inner.tap_hold_registrations.lock().unwrap().clear();
             self.inner.mode_registry.definitions.lock().unwrap().clear();
             self.inner.mode_registry.stack.lock().unwrap().clear();
+            self.inner.event_hub.emit(HotkeyEvent::ModeChanged(None));
+            self.inner.event_hub.close();
         }
 
         if let Some(listener) = self.inner.listener.lock().unwrap().take() {
@@ -1126,6 +1196,8 @@ impl HotkeyManagerInner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(feature = "tokio", feature = "async-std"))]
+    use crate::events::HotkeyEvent;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{mpsc, Barrier, Mutex};
@@ -1193,9 +1265,7 @@ mod tests {
 
     #[test]
     fn passthrough_option_is_stored_in_callbacks() {
-        let callbacks = HotkeyOptions::new()
-            .passthrough()
-            .build_callbacks(|| {});
+        let callbacks = HotkeyOptions::new().passthrough().build_callbacks(|| {});
         assert!(callbacks.passthrough);
     }
 
@@ -1259,8 +1329,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1285,8 +1359,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1314,8 +1392,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1354,8 +1436,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1394,8 +1480,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1424,8 +1514,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1463,8 +1557,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1501,8 +1599,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1534,8 +1636,12 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+            _device_registrations: Arc<
+                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+            >,
+            _tap_hold_registrations: Arc<
+                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
+            >,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1563,17 +1669,21 @@ mod tests {
         backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
         grab_enabled: bool,
     ) -> HotkeyManager {
+        let event_hub = EventHub::default();
+        let mode_registry = ModeRegistry::with_event_hub(event_hub.clone());
+
         HotkeyManager {
             inner: Arc::new(HotkeyManagerInner {
                 registrations: Arc::new(Mutex::new(HashMap::new())),
                 sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
                 device_registrations: Arc::new(Mutex::new(HashMap::new())),
                 tap_hold_registrations: Arc::new(Mutex::new(HashMap::new())),
-                mode_registry: ModeRegistry::new(),
+                mode_registry,
                 next_sequence_id: AtomicU64::new(1),
                 next_device_reg_id: AtomicU64::new(1),
                 backend_impl,
                 stop_flag: Arc::new(AtomicBool::new(false)),
+                event_hub,
                 grab_enabled,
                 operation_lock: Mutex::new(()),
                 listener: Mutex::new(None),
@@ -1583,17 +1693,21 @@ mod tests {
     }
 
     fn portal_manager_with_fake_backend() -> HotkeyManager {
+        let event_hub = EventHub::default();
+        let mode_registry = ModeRegistry::with_event_hub(event_hub.clone());
+
         HotkeyManager {
             inner: Arc::new(HotkeyManagerInner {
                 registrations: Arc::new(Mutex::new(HashMap::new())),
                 sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
                 device_registrations: Arc::new(Mutex::new(HashMap::new())),
                 tap_hold_registrations: Arc::new(Mutex::new(HashMap::new())),
-                mode_registry: ModeRegistry::new(),
+                mode_registry,
                 next_sequence_id: AtomicU64::new(1),
                 next_device_reg_id: AtomicU64::new(1),
                 backend_impl: Arc::new(FakeBackend),
                 stop_flag: Arc::new(AtomicBool::new(false)),
+                event_hub,
                 grab_enabled: false,
                 operation_lock: Mutex::new(()),
                 listener: Mutex::new(None),
@@ -1644,6 +1758,26 @@ mod tests {
             }
             std::thread::yield_now();
         }
+    }
+
+    #[cfg(feature = "async-std")]
+    fn block_on_future<F>(future: F) -> F::Output
+    where
+        F: std::future::Future,
+    {
+        async_std::task::block_on(future)
+    }
+
+    #[cfg(all(feature = "tokio", not(feature = "async-std")))]
+    fn block_on_future<F>(future: F) -> F::Output
+    where
+        F: std::future::Future,
+    {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime should build");
+        runtime.block_on(future)
     }
 
     #[test]
@@ -2489,13 +2623,15 @@ mod tests {
         assert!(!manager.is_registered(KeyCode::KEY_1, &[]));
 
         // Should be in device registrations
-        assert_eq!(
-            manager.inner.device_registrations.lock().unwrap().len(),
-            1
-        );
+        assert_eq!(manager.inner.device_registrations.lock().unwrap().len(), 1);
 
         handle.unregister().unwrap();
-        assert!(manager.inner.device_registrations.lock().unwrap().is_empty());
+        assert!(manager
+            .inner
+            .device_registrations
+            .lock()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -2547,10 +2683,7 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(
-            manager.inner.device_registrations.lock().unwrap().len(),
-            2
-        );
+        assert_eq!(manager.inner.device_registrations.lock().unwrap().len(), 2);
     }
 
     #[test]
@@ -2571,10 +2704,7 @@ mod tests {
             .unwrap();
 
         assert!(manager.is_registered(KeyCode::KEY_1, &[]));
-        assert_eq!(
-            manager.inner.device_registrations.lock().unwrap().len(),
-            1
-        );
+        assert_eq!(manager.inner.device_registrations.lock().unwrap().len(), 1);
     }
 
     #[test]
@@ -2644,7 +2774,12 @@ mod tests {
 
         manager.unregister_all().unwrap();
 
-        assert!(manager.inner.device_registrations.lock().unwrap().is_empty());
+        assert!(manager
+            .inner
+            .device_registrations
+            .lock()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -2677,25 +2812,21 @@ mod tests {
             )
             .unwrap();
 
-        assert!(
-            manager
-                .inner
-                .tap_hold_registrations
-                .lock()
-                .unwrap()
-                .contains_key(&KeyCode::KEY_CAPSLOCK)
-        );
+        assert!(manager
+            .inner
+            .tap_hold_registrations
+            .lock()
+            .unwrap()
+            .contains_key(&KeyCode::KEY_CAPSLOCK));
 
         handle.unregister().unwrap();
 
-        assert!(
-            !manager
-                .inner
-                .tap_hold_registrations
-                .lock()
-                .unwrap()
-                .contains_key(&KeyCode::KEY_CAPSLOCK)
-        );
+        assert!(!manager
+            .inner
+            .tap_hold_registrations
+            .lock()
+            .unwrap()
+            .contains_key(&KeyCode::KEY_CAPSLOCK));
     }
 
     #[test]
@@ -2774,13 +2905,122 @@ mod tests {
 
         manager.unregister_all().unwrap();
 
-        assert!(
-            manager
-                .inner
-                .tap_hold_registrations
-                .lock()
-                .unwrap()
-                .is_empty()
+        assert!(manager
+            .inner
+            .tap_hold_registrations
+            .lock()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    #[cfg(any(feature = "tokio", feature = "async-std"))]
+    fn event_stream_delivers_hotkey_sequence_and_mode_events() {
+        let manager = manager_with_fake_backend();
+        let mut stream = manager.event_stream();
+
+        let callback_count = Arc::new(AtomicUsize::new(0));
+        let callback_count_clone = callback_count.clone();
+
+        manager
+            .register_with_options(
+                KeyCode::KEY_A,
+                &[KeyCode::KEY_LEFTCTRL],
+                HotkeyOptions::new().on_release(),
+                move || {
+                    callback_count_clone.fetch_add(1, Ordering::SeqCst);
+                },
+            )
+            .unwrap();
+
+        let hotkey_key = (
+            KeyCode::KEY_A,
+            normalize_modifiers(&[KeyCode::KEY_LEFTCTRL]),
         );
+
+        let registration = manager
+            .inner
+            .registrations
+            .lock()
+            .unwrap()
+            .get(&hotkey_key)
+            .cloned()
+            .unwrap();
+
+        (registration.callbacks.on_press)();
+        registration.callbacks.on_release.unwrap()();
+
+        let sequence = HotkeySequence::new(vec![
+            Hotkey::new(KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]),
+            Hotkey::new(KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]),
+        ])
+        .unwrap();
+
+        let sequence_handle = manager
+            .register_sequence(&sequence, SequenceOptions::new(), || {})
+            .unwrap();
+
+        let sequence_callback = manager
+            .inner
+            .sequence_registrations
+            .lock()
+            .unwrap()
+            .get(&sequence_handle.id)
+            .unwrap()
+            .callback
+            .clone();
+
+        sequence_callback();
+
+        manager
+            .define_mode("resize", ModeOptions::new(), |_mode| Ok(()))
+            .unwrap();
+        let mode_controller = manager.mode_controller();
+        mode_controller.push("resize");
+        mode_controller.pop();
+
+        assert_eq!(callback_count.load(Ordering::SeqCst), 2);
+
+        assert_eq!(
+            stream.try_next(),
+            Some(HotkeyEvent::Pressed(Hotkey::new(
+                KeyCode::KEY_A,
+                vec![KeyCode::KEY_LEFTCTRL],
+            ))),
+        );
+        assert_eq!(
+            stream.try_next(),
+            Some(HotkeyEvent::Released(Hotkey::new(
+                KeyCode::KEY_A,
+                vec![KeyCode::KEY_LEFTCTRL],
+            ))),
+        );
+        assert_eq!(
+            stream.try_next(),
+            Some(HotkeyEvent::SequenceStep {
+                id: sequence_handle.id,
+                step: 2,
+                total: 2,
+            }),
+        );
+        assert_eq!(
+            stream.try_next(),
+            Some(HotkeyEvent::ModeChanged(Some("resize".to_string()))),
+        );
+        assert_eq!(stream.try_next(), Some(HotkeyEvent::ModeChanged(None)));
+        assert_eq!(stream.try_next(), None);
+    }
+
+    #[test]
+    #[cfg(any(feature = "tokio", feature = "async-std"))]
+    fn event_stream_completes_when_manager_stops() {
+        let manager = manager_with_fake_backend();
+        let mut stream = manager.event_stream();
+
+        manager.unregister_all().unwrap();
+
+        while stream.try_next().is_some() {}
+
+        assert_eq!(block_on_future(stream.next()), None);
     }
 }
