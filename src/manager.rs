@@ -302,14 +302,31 @@ pub(crate) fn attach_hotkey_events(
         on_press();
     });
 
-    let wrapped_release = on_release.map(|release_callback| {
-        let release_event_hub = event_hub.clone();
-        let release_hotkey = hotkey.clone();
-        Arc::new(move || {
-            release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
-            release_callback();
-        }) as Callback
-    });
+    let wrapped_release = match on_release {
+        Some(release_callback) => {
+            let release_event_hub = event_hub.clone();
+            let release_hotkey = hotkey.clone();
+            Some(Arc::new(move || {
+                release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
+                release_callback();
+            }) as Callback)
+        }
+        None => {
+            #[cfg(any(feature = "tokio", feature = "async-std"))]
+            {
+                let release_event_hub = event_hub.clone();
+                let release_hotkey = hotkey.clone();
+                Some(Arc::new(move || {
+                    release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
+                }) as Callback)
+            }
+
+            #[cfg(not(any(feature = "tokio", feature = "async-std")))]
+            {
+                None
+            }
+        }
+    };
 
     HotkeyCallbacks {
         on_press: wrapped_press,
@@ -3008,6 +3025,50 @@ mod tests {
             Some(HotkeyEvent::ModeChanged(Some("resize".to_string()))),
         );
         assert_eq!(stream.try_next(), Some(HotkeyEvent::ModeChanged(None)));
+        assert_eq!(stream.try_next(), None);
+    }
+
+    #[test]
+    #[cfg(any(feature = "tokio", feature = "async-std"))]
+    fn event_stream_emits_release_without_release_callback_registration() {
+        let manager = manager_with_fake_backend();
+        let mut stream = manager.event_stream();
+
+        manager
+            .register(KeyCode::KEY_B, &[KeyCode::KEY_LEFTCTRL], || {})
+            .unwrap();
+
+        let hotkey_key = (
+            KeyCode::KEY_B,
+            normalize_modifiers(&[KeyCode::KEY_LEFTCTRL]),
+        );
+
+        let registration = manager
+            .inner
+            .registrations
+            .lock()
+            .unwrap()
+            .get(&hotkey_key)
+            .cloned()
+            .unwrap();
+
+        (registration.callbacks.on_press)();
+        registration.callbacks.on_release.unwrap()();
+
+        assert_eq!(
+            stream.try_next(),
+            Some(HotkeyEvent::Pressed(Hotkey::new(
+                KeyCode::KEY_B,
+                vec![KeyCode::KEY_LEFTCTRL],
+            ))),
+        );
+        assert_eq!(
+            stream.try_next(),
+            Some(HotkeyEvent::Released(Hotkey::new(
+                KeyCode::KEY_B,
+                vec![KeyCode::KEY_LEFTCTRL],
+            ))),
+        );
         assert_eq!(stream.try_next(), None);
     }
 

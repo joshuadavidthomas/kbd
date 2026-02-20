@@ -30,7 +30,7 @@ impl EventHub {
         #[cfg(any(feature = "tokio", feature = "async-std"))]
         {
             let mut subscribers = self.subscribers.lock().unwrap();
-            subscribers.retain(|sender| sender.send_blocking(event.clone()).is_ok());
+            subscribers.retain(|sender| sender.try_send(event.clone()).is_ok());
         }
 
         #[cfg(not(any(feature = "tokio", feature = "async-std")))]

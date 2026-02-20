@@ -1,5 +1,6 @@
 use crate::device::{is_keyboard_device, DeviceInfo};
 use crate::error::Error;
+use crate::events::HotkeyEvent;
 use crate::manager::{
     is_modifier_key, normalize_modifiers, ActiveHotkeyPress, Callback, DeviceHotkeyRegistration,
     DeviceRegistrationId, HotkeyKey, HotkeyRegistration, PressDispatchState, PressOrigin,
@@ -131,6 +132,7 @@ struct SequenceRuntime {
 struct SequenceDispatch {
     callbacks: Vec<Callback>,
     synthetic_keys: Vec<HotkeyKey>,
+    step_events: Vec<HotkeyEvent>,
     suppress_current_key_press: bool,
 }
 
@@ -139,6 +141,7 @@ impl SequenceDispatch {
         Self {
             callbacks: Vec::new(),
             synthetic_keys: Vec::new(),
+            step_events: Vec::new(),
             suppress_current_key_press: false,
         }
     }
@@ -216,6 +219,7 @@ impl SequenceRuntime {
         SequenceDispatch {
             callbacks,
             synthetic_keys,
+            step_events: Vec::new(),
             suppress_current_key_press: false,
         }
     }
@@ -242,6 +246,7 @@ impl SequenceRuntime {
         });
 
         let mut callbacks = Vec::new();
+        let mut step_events = Vec::new();
         let mut retained = Vec::with_capacity(self.active_sequences.len());
         let mut matched_existing_sequence = false;
 
@@ -262,6 +267,11 @@ impl SequenceRuntime {
                 } else {
                     active.next_step_index += 1;
                     active.deadline = now + registration.timeout;
+                    step_events.push(HotkeyEvent::SequenceStep {
+                        id: active.id,
+                        step: active.next_step_index,
+                        total: registration.steps.len(),
+                    });
                     retained.push(active);
                 }
             }
@@ -287,6 +297,11 @@ impl SequenceRuntime {
                     id: *id,
                     next_step_index: 1,
                     deadline: now + registration.timeout,
+                });
+                step_events.push(HotkeyEvent::SequenceStep {
+                    id: *id,
+                    step: 1,
+                    total: registration.steps.len(),
                 });
             }
         }
@@ -320,6 +335,7 @@ impl SequenceRuntime {
         SequenceDispatch {
             callbacks,
             synthetic_keys: Vec::new(),
+            step_events,
             suppress_current_key_press,
         }
     }
@@ -915,7 +931,7 @@ fn listener_loop(
             }
         };
 
-        let (timeout_callbacks, tap_hold_tick_synthetics) = {
+        let (timeout_callbacks, tap_hold_tick_synthetics, timeout_mode_change_event) = {
             let now = Instant::now();
             let registrations_guard = registrations.lock().unwrap();
             let sequence_guard = sequence_registrations.lock().unwrap();
@@ -923,7 +939,13 @@ fn listener_loop(
             let mut mode_stack_guard = mode_registry.stack.lock().unwrap();
 
             // Check mode timeouts
-            pop_timed_out_modes(&mut mode_stack_guard, &mode_definitions_guard, now);
+            let timed_out_modes =
+                pop_timed_out_modes(&mut mode_stack_guard, &mode_definitions_guard, now);
+            let timeout_mode_change_event = if timed_out_modes.is_empty() {
+                None
+            } else {
+                Some(mode_stack_guard.top().map(str::to_string))
+            };
 
             // Check tap-hold threshold
             let tap_hold_tick = tap_hold_runtime.on_tick(now);
@@ -947,8 +969,19 @@ fn listener_loop(
                 ));
             }
 
-            (callbacks, tap_hold_tick.synthetic_events)
+            (
+                callbacks,
+                tap_hold_tick.synthetic_events,
+                timeout_mode_change_event,
+            )
         };
+
+        if let Some(mode_name) = timeout_mode_change_event {
+            mode_registry
+                .event_hub
+                .emit(HotkeyEvent::ModeChanged(mode_name));
+        }
+
         dispatch_callbacks(timeout_callbacks);
 
         // Emit any synthetic events from tap-hold threshold resolution
@@ -1038,27 +1071,34 @@ fn listener_loop(
                     continue;
                 }
 
-                let (callbacks, should_forward_event) = {
+                let (callbacks, should_forward_event, sequence_step_events, mode_change_event) = {
                     let now = Instant::now();
                     let active_modifiers = modifier_tracker.active_modifiers();
                     let hotkey_key = (key, active_modifier_signature(&active_modifiers));
 
                     // Mode dispatch takes priority over sequences and global
-                    let mode_dispatch = {
+                    let (mode_dispatch, mode_change_event) = {
                         let mode_definitions_guard = mode_registry.definitions.lock().unwrap();
                         let mut mode_stack_guard = mode_registry.stack.lock().unwrap();
-                        dispatch_mode_key_event(
+                        let active_mode_before = mode_stack_guard.top().map(str::to_string);
+                        let mode_dispatch = dispatch_mode_key_event(
                             &hotkey_key,
                             value,
                             now,
                             &mode_definitions_guard,
                             &mut mode_stack_guard,
                             &mut devices[device_index].active_presses,
-                        )
+                        );
+                        let active_mode_after = mode_stack_guard.top().map(str::to_string);
+                        let mode_change_event =
+                            (active_mode_before != active_mode_after).then_some(active_mode_after);
+                        (mode_dispatch, mode_change_event)
                     };
 
                     match mode_dispatch {
-                        ModeEventDispatch::Swallowed => (Vec::new(), false),
+                        ModeEventDispatch::Swallowed => {
+                            (Vec::new(), false, Vec::new(), mode_change_event)
+                        }
                         ModeEventDispatch::Handled {
                             callbacks: mode_callbacks,
                             passthrough,
@@ -1068,7 +1108,12 @@ fn listener_loop(
                                 true,
                                 passthrough,
                             );
-                            (mode_callbacks, should_forward)
+                            (
+                                mode_callbacks,
+                                should_forward,
+                                Vec::new(),
+                                mode_change_event,
+                            )
                         }
                         ModeEventDispatch::PassThrough => {
                             // Device-specific dispatch takes priority
@@ -1092,7 +1137,12 @@ fn listener_loop(
                                     true,
                                     device_dispatch.passthrough,
                                 );
-                                (device_dispatch.callbacks, should_forward)
+                                (
+                                    device_dispatch.callbacks,
+                                    should_forward,
+                                    Vec::new(),
+                                    mode_change_event,
+                                )
                             } else {
                                 // Fall through to sequence and global dispatch
                                 let registrations_guard = registrations.lock().unwrap();
@@ -1115,6 +1165,7 @@ fn listener_loop(
                                     &sequence_dispatch.synthetic_keys,
                                     &registrations_guard,
                                 ));
+                                let sequence_step_events = sequence_dispatch.step_events;
 
                                 let suppress_followup = suppress_sequence_followup_key_event(
                                     &mut suppressed_sequence_keys,
@@ -1150,11 +1201,26 @@ fn listener_loop(
 
                                 callbacks.extend(non_modifier_dispatch.callbacks);
 
-                                (callbacks, should_forward_event)
+                                (
+                                    callbacks,
+                                    should_forward_event,
+                                    sequence_step_events,
+                                    mode_change_event,
+                                )
                             }
                         }
                     }
                 };
+
+                for event in sequence_step_events {
+                    mode_registry.event_hub.emit(event);
+                }
+
+                if let Some(mode_name) = mode_change_event {
+                    mode_registry
+                        .event_hub
+                        .emit(HotkeyEvent::ModeChanged(mode_name));
+                }
 
                 dispatch_callbacks(callbacks);
 
@@ -1509,6 +1575,80 @@ mod tests {
 
         dispatch_callbacks(dispatch.callbacks);
         assert_eq!(sequence_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn sequence_start_emits_step_event() {
+        let mut runtime = SequenceRuntime::default();
+        let t0 = Instant::now();
+
+        let first_step = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
+        let second_step = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+
+        let mut sequence_registrations = HashMap::new();
+        sequence_registrations.insert(
+            7,
+            sequence_registration(
+                vec![first_step.clone(), second_step],
+                Duration::from_millis(100),
+                KeyCode::KEY_ESC,
+                None,
+                Arc::new(AtomicUsize::new(0)),
+            ),
+        );
+
+        let registrations = HashMap::new();
+        let dispatch =
+            runtime.on_key_press(first_step, t0, &registrations, &sequence_registrations);
+
+        assert_eq!(
+            dispatch.step_events,
+            vec![HotkeyEvent::SequenceStep {
+                id: 7,
+                step: 1,
+                total: 2,
+            }],
+        );
+    }
+
+    #[test]
+    fn sequence_progress_emits_intermediate_step_event() {
+        let mut runtime = SequenceRuntime::default();
+        let t0 = Instant::now();
+
+        let first_step = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
+        let second_step = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let third_step = (KeyCode::KEY_D, vec![KeyCode::KEY_LEFTCTRL]);
+
+        let mut sequence_registrations = HashMap::new();
+        sequence_registrations.insert(
+            11,
+            sequence_registration(
+                vec![first_step.clone(), second_step.clone(), third_step],
+                Duration::from_millis(100),
+                KeyCode::KEY_ESC,
+                None,
+                Arc::new(AtomicUsize::new(0)),
+            ),
+        );
+
+        let registrations = HashMap::new();
+        runtime.on_key_press(first_step, t0, &registrations, &sequence_registrations);
+        let dispatch = runtime.on_key_press(
+            second_step,
+            t0 + Duration::from_millis(10),
+            &registrations,
+            &sequence_registrations,
+        );
+
+        assert_eq!(
+            dispatch.step_events,
+            vec![HotkeyEvent::SequenceStep {
+                id: 11,
+                step: 2,
+                total: 3,
+            }],
+        );
     }
 
     #[test]
