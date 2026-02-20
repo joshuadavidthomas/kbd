@@ -1,4 +1,5 @@
 use evdev::KeyCode;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// What happens when a dual-function key is tapped (pressed and released quickly).
@@ -61,6 +62,7 @@ pub(crate) struct TapHoldRegistration {
     pub(crate) tap_action: TapAction,
     pub(crate) hold_action: HoldAction,
     pub(crate) threshold: Duration,
+    pub(crate) marker: Arc<()>,
 }
 
 /// Result of tap-hold processing for a key event.
@@ -262,6 +264,7 @@ mod tests {
                         tap_action: tap,
                         hold_action: hold,
                         threshold,
+                        marker: Arc::new(()),
                     },
                 )
             })

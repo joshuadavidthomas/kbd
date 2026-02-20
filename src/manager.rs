@@ -502,7 +502,8 @@ impl Handle {
                 self.manager.remove_hotkey(key, &self.registration_marker)
             }
             RegistrationLocation::Device(id) => {
-                self.manager.remove_device_hotkey(*id);
+                self.manager
+                    .remove_device_hotkey(*id, &self.registration_marker);
                 Ok(())
             }
         }
@@ -534,6 +535,7 @@ impl SequenceHandle {
 #[derive(Clone)]
 pub struct TapHoldHandle {
     key: KeyCode,
+    registration_marker: Arc<()>,
     manager: Arc<HotkeyManagerInner>,
 }
 
@@ -547,7 +549,8 @@ impl std::fmt::Debug for TapHoldHandle {
 
 impl TapHoldHandle {
     pub fn unregister(self) -> Result<(), Error> {
-        self.manager.remove_tap_hold(self.key);
+        self.manager
+            .remove_tap_hold(self.key, &self.registration_marker);
         Ok(())
     }
 }
@@ -1164,10 +1167,12 @@ impl HotkeyManager {
             }
         }
 
+        let registration_marker = Arc::new(());
         let registration = TapHoldRegistration {
             tap_action,
             hold_action,
             threshold: options.threshold,
+            marker: registration_marker.clone(),
         };
 
         self.inner
@@ -1178,6 +1183,7 @@ impl HotkeyManager {
 
         Ok(TapHoldHandle {
             key,
+            registration_marker,
             manager: self.inner.clone(),
         })
     }
@@ -1340,14 +1346,32 @@ impl HotkeyManagerInner {
             .remove(&sequence_id);
     }
 
-    fn remove_device_hotkey(&self, id: DeviceRegistrationId) {
+    fn remove_device_hotkey(&self, id: DeviceRegistrationId, registration_marker: &Callback) {
         let _operation_guard = self.operation_lock.lock().unwrap();
-        self.device_registrations.lock().unwrap().remove(&id);
+        let mut device_registrations = self.device_registrations.lock().unwrap();
+
+        let is_current_registration = device_registrations
+            .get(&id)
+            .is_some_and(|registration| {
+                Arc::ptr_eq(&registration.callbacks.on_press, registration_marker)
+            });
+
+        if is_current_registration {
+            device_registrations.remove(&id);
+        }
     }
 
-    fn remove_tap_hold(&self, key: KeyCode) {
+    fn remove_tap_hold(&self, key: KeyCode, registration_marker: &Arc<()>) {
         let _operation_guard = self.operation_lock.lock().unwrap();
-        self.tap_hold_registrations.lock().unwrap().remove(&key);
+        let mut tap_hold_registrations = self.tap_hold_registrations.lock().unwrap();
+
+        let is_current_registration = tap_hold_registrations
+            .get(&key)
+            .is_some_and(|registration| Arc::ptr_eq(&registration.marker, registration_marker));
+
+        if is_current_registration {
+            tap_hold_registrations.remove(&key);
+        }
     }
 }
 
@@ -2412,6 +2436,43 @@ mod tests {
     }
 
     #[test]
+    fn stale_device_handle_unregister_does_not_remove_replaced_registration() {
+        let manager = manager_with_fake_backend();
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let stale_handle = manager
+            .register_with_options(
+                KeyCode::KEY_4,
+                &[],
+                HotkeyOptions::new().device(filter.clone()),
+                || {},
+            )
+            .unwrap();
+
+        let calls_clone = calls.clone();
+        manager
+            .replace_with_options(
+                KeyCode::KEY_4,
+                &[],
+                HotkeyOptions::new().device(filter),
+                move || {
+                    calls_clone.fetch_add(1, Ordering::SeqCst);
+                },
+            )
+            .unwrap();
+
+        stale_handle.unregister().unwrap();
+
+        let device_registrations = manager.inner.device_registrations.lock().unwrap();
+        assert_eq!(device_registrations.len(), 1);
+        let registration = device_registrations.values().next().unwrap();
+        (registration.callbacks.on_press)();
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
     fn unregister_preserves_registration_on_backend_failure() {
         let manager = manager_with_backend(Arc::new(UnregisterFailBackend));
 
@@ -3213,6 +3274,41 @@ mod tests {
             .unwrap();
 
         assert!(matches!(err, Error::AlreadyRegistered { .. }));
+    }
+
+    #[test]
+    fn stale_tap_hold_handle_unregister_does_not_remove_new_registration() {
+        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
+
+        let stale_handle = manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .unwrap();
+
+        let stale_clone = stale_handle.clone();
+        stale_handle.unregister().unwrap();
+
+        manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_TAB),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .unwrap();
+
+        stale_clone.unregister().unwrap();
+
+        assert!(manager
+            .inner
+            .tap_hold_registrations
+            .lock()
+            .unwrap()
+            .contains_key(&KeyCode::KEY_CAPSLOCK));
     }
 
     #[test]
