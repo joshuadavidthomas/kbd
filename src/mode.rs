@@ -389,7 +389,7 @@ pub(crate) struct ModeRegistry {
 
 impl ModeRegistry {
     pub(crate) fn new() -> Self {
-        Self::with_event_hub(EventHub::default())
+        Self::with_event_hub(EventHub::new())
     }
 
     pub(crate) fn with_event_hub(event_hub: EventHub) -> Self {

@@ -26,6 +26,18 @@ struct EventHubState {
 pub(crate) struct EventHub;
 
 impl EventHub {
+    pub(crate) fn new() -> Self {
+        #[cfg(any(feature = "tokio", feature = "async-std"))]
+        {
+            Self::default()
+        }
+
+        #[cfg(not(any(feature = "tokio", feature = "async-std")))]
+        {
+            Self
+        }
+    }
+
     #[cfg(any(feature = "tokio", feature = "async-std"))]
     pub(crate) fn subscribe(&self) -> HotkeyEventStream {
         let (tx, rx) = async_channel::unbounded();
