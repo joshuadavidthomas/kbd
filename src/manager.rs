@@ -388,25 +388,29 @@ pub(crate) fn attach_hotkey_events(
 
     let hotkey = Hotkey::new(hotkey_key.0, hotkey_key.1.clone());
 
+    let invocation_limiter = Arc::new(PressInvocationLimiter::new(press_timing));
+
     let press_event_hub = event_hub.clone();
     let press_hotkey = hotkey.clone();
-    let press_limiter = PressInvocationLimiter::new(press_timing);
+    let press_limiter = invocation_limiter.clone();
     let wrapped_press: Callback = Arc::new(move || {
-        if !press_limiter.should_dispatch_now() {
-            return;
-        }
-
         press_event_hub.emit(HotkeyEvent::Pressed(press_hotkey.clone()));
-        on_press();
+
+        if press_limiter.should_dispatch_now() {
+            on_press();
+        }
     });
 
     let wrapped_release = match on_release {
         Some(release_callback) => {
             let release_event_hub = event_hub.clone();
             let release_hotkey = hotkey.clone();
+            let release_limiter = invocation_limiter.clone();
             Some(Arc::new(move || {
                 release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
-                release_callback();
+                if release_limiter.should_dispatch_now() {
+                    release_callback();
+                }
             }) as Callback)
         }
         None => {
@@ -1469,6 +1473,30 @@ mod tests {
 
         assert_eq!(config.debounce, Some(Duration::from_millis(75)));
         assert_eq!(config.max_rate, Some(Duration::from_millis(250)));
+    }
+
+    #[test]
+    fn rate_limit_applies_across_press_and_release_callbacks() {
+        let invocations = Arc::new(AtomicUsize::new(0));
+        let invocations_clone = invocations.clone();
+
+        let options = HotkeyOptions::new()
+            .on_release()
+            .max_rate(Duration::from_secs(60));
+        let press_timing = options.press_timing_config();
+        let callbacks = attach_hotkey_events(
+            options.build_callbacks(move || {
+                invocations_clone.fetch_add(1, Ordering::SeqCst);
+            }),
+            &(KeyCode::KEY_A, vec![]),
+            &crate::events::EventHub::default(),
+            press_timing,
+        );
+
+        (callbacks.on_press)();
+        callbacks.on_release.as_ref().unwrap()();
+
+        assert_eq!(invocations.load(Ordering::SeqCst), 1);
     }
 
     #[test]
