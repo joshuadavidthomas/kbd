@@ -106,9 +106,9 @@ impl PressInvocationLimiter {
                     return false;
                 }
             }
-        }
 
-        state.last_attempt = Some(now);
+            state.last_attempt = Some(now);
+        }
 
         if let Some(max_rate) = self.config.max_rate {
             if let Some(last_dispatch) = state.last_dispatch {

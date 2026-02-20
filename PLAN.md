@@ -714,7 +714,7 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | 2.4 | Device-specific hotkeys | Complete | 5/5 ✓ |
 | 2.5 | Tap vs. hold | Complete | 7/7 ✓ |
 | **Phase 3** | **Polish** | **▶ In Progress** | |
-| 3.1 | Async API | Not Started | 0/6 |
+| 3.1 | Async API | Complete | 6/6 ✓ |
 | 3.2 | Debouncing / rate limiting | Complete | 4/4 ✓ |
 | 3.3 | Key state query | In Progress | 0/5 |
 | 3.4 | Configuration serialization | Not Started | 0/5 |
