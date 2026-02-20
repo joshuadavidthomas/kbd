@@ -50,12 +50,87 @@ pub(crate) struct HotkeyCallbacks {
     pub(crate) passthrough: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PressTimingConfig {
+    pub(crate) debounce: Option<Duration>,
+    pub(crate) max_rate: Option<Duration>,
+}
+
+impl PressTimingConfig {
+    pub(crate) fn new(debounce: Option<Duration>, max_rate: Option<Duration>) -> Self {
+        Self {
+            debounce: debounce.filter(|duration| !duration.is_zero()),
+            max_rate: max_rate.filter(|duration| !duration.is_zero()),
+        }
+    }
+
+    fn is_disabled(&self) -> bool {
+        self.debounce.is_none() && self.max_rate.is_none()
+    }
+}
+
+#[derive(Default)]
+struct PressInvocationState {
+    last_attempt: Option<Instant>,
+    last_dispatch: Option<Instant>,
+}
+
+struct PressInvocationLimiter {
+    config: PressTimingConfig,
+    state: Mutex<PressInvocationState>,
+}
+
+impl PressInvocationLimiter {
+    fn new(config: PressTimingConfig) -> Self {
+        Self {
+            config,
+            state: Mutex::new(PressInvocationState::default()),
+        }
+    }
+
+    fn should_dispatch_now(&self) -> bool {
+        self.should_dispatch_at(Instant::now())
+    }
+
+    fn should_dispatch_at(&self, now: Instant) -> bool {
+        if self.config.is_disabled() {
+            return true;
+        }
+
+        let mut state = self.state.lock().unwrap();
+
+        if let Some(debounce) = self.config.debounce {
+            if let Some(last_attempt) = state.last_attempt {
+                if now.duration_since(last_attempt) < debounce {
+                    state.last_attempt = Some(now);
+                    return false;
+                }
+            }
+        }
+
+        state.last_attempt = Some(now);
+
+        if let Some(max_rate) = self.config.max_rate {
+            if let Some(last_dispatch) = state.last_dispatch {
+                if now.duration_since(last_dispatch) < max_rate {
+                    return false;
+                }
+            }
+        }
+
+        state.last_dispatch = Some(now);
+        true
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct HotkeyOptions {
     release_behavior: ReleaseBehavior,
     min_hold: Option<Duration>,
     repeat_behavior: RepeatBehavior,
     passthrough: bool,
+    debounce: Option<Duration>,
+    max_rate: Option<Duration>,
     device_filter: Option<DeviceFilter>,
 }
 
@@ -92,10 +167,24 @@ impl HotkeyOptions {
         self
     }
 
+    pub fn debounce(mut self, duration: Duration) -> Self {
+        self.debounce = Some(duration);
+        self
+    }
+
+    pub fn max_rate(mut self, interval: Duration) -> Self {
+        self.max_rate = Some(interval);
+        self
+    }
+
     /// Restrict this hotkey to events from devices matching the given filter.
     pub fn device(mut self, filter: DeviceFilter) -> Self {
         self.device_filter = Some(filter);
         self
+    }
+
+    pub(crate) fn press_timing_config(&self) -> PressTimingConfig {
+        PressTimingConfig::new(self.debounce, self.max_rate)
     }
 
     pub(crate) fn build_callbacks<F>(self, callback: F) -> HotkeyCallbacks
@@ -286,6 +375,7 @@ pub(crate) fn attach_hotkey_events(
     callbacks: HotkeyCallbacks,
     hotkey_key: &HotkeyKey,
     event_hub: &EventHub,
+    press_timing: PressTimingConfig,
 ) -> HotkeyCallbacks {
     let HotkeyCallbacks {
         on_press,
@@ -300,7 +390,12 @@ pub(crate) fn attach_hotkey_events(
 
     let press_event_hub = event_hub.clone();
     let press_hotkey = hotkey.clone();
+    let press_limiter = PressInvocationLimiter::new(press_timing);
     let wrapped_press: Callback = Arc::new(move || {
+        if !press_limiter.should_dispatch_now() {
+            return;
+        }
+
         press_event_hub.emit(HotkeyEvent::Pressed(press_hotkey.clone()));
         on_press();
     });
@@ -619,10 +714,12 @@ impl HotkeyManager {
             return self.register_device_hotkey(hotkey_key, filter, options, callback);
         }
 
+        let press_timing = options.press_timing_config();
         let callbacks = attach_hotkey_events(
             options.build_callbacks(callback),
             &hotkey_key,
             &self.inner.event_hub,
+            press_timing,
         );
 
         let registration = HotkeyRegistration { callbacks };
@@ -683,10 +780,12 @@ impl HotkeyManager {
             }
         }
 
+        let press_timing = options.press_timing_config();
         let callbacks = attach_hotkey_events(
             options.build_callbacks(callback),
             &hotkey_key,
             &self.inner.event_hub,
+            press_timing,
         );
         let registration_marker = callbacks.on_press.clone();
 
@@ -897,10 +996,12 @@ impl HotkeyManager {
             return self.replace_device_hotkey(hotkey_key, filter, options, callback);
         }
 
+        let press_timing = options.press_timing_config();
         let callbacks = attach_hotkey_events(
             options.build_callbacks(callback),
             &hotkey_key,
             &self.inner.event_hub,
+            press_timing,
         );
 
         let registration = HotkeyRegistration { callbacks };
@@ -963,10 +1064,12 @@ impl HotkeyManager {
     where
         F: Fn() + Send + Sync + 'static,
     {
+        let press_timing = options.press_timing_config();
         let callbacks = attach_hotkey_events(
             options.build_callbacks(callback),
             &hotkey_key,
             &self.inner.event_hub,
+            press_timing,
         );
         let registration_marker = callbacks.on_press.clone();
 
@@ -1312,6 +1415,60 @@ mod tests {
     fn passthrough_option_is_stored_in_callbacks() {
         let callbacks = HotkeyOptions::new().passthrough().build_callbacks(|| {});
         assert!(callbacks.passthrough);
+    }
+
+    #[test]
+    fn debounce_limiter_suppresses_rapid_retriggers() {
+        let limiter = PressInvocationLimiter::new(PressTimingConfig::new(
+            Some(Duration::from_millis(100)),
+            None,
+        ));
+        let start = Instant::now();
+
+        assert!(limiter.should_dispatch_at(start));
+        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(50)));
+        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(130)));
+        assert!(limiter.should_dispatch_at(start + Duration::from_millis(250)));
+    }
+
+    #[test]
+    fn rate_limit_caps_invocations_to_interval() {
+        let limiter = PressInvocationLimiter::new(PressTimingConfig::new(
+            None,
+            Some(Duration::from_millis(100)),
+        ));
+        let start = Instant::now();
+
+        assert!(limiter.should_dispatch_at(start));
+        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(50)));
+        assert!(limiter.should_dispatch_at(start + Duration::from_millis(100)));
+        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(150)));
+    }
+
+    #[test]
+    fn debounce_and_rate_limit_can_be_combined() {
+        let limiter = PressInvocationLimiter::new(PressTimingConfig::new(
+            Some(Duration::from_millis(100)),
+            Some(Duration::from_millis(300)),
+        ));
+        let start = Instant::now();
+
+        assert!(limiter.should_dispatch_at(start));
+        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(50)));
+        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(220)));
+        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(280)));
+        assert!(limiter.should_dispatch_at(start + Duration::from_millis(400)));
+    }
+
+    #[test]
+    fn hotkey_options_store_timing_configuration() {
+        let config = HotkeyOptions::new()
+            .debounce(Duration::from_millis(75))
+            .max_rate(Duration::from_millis(250))
+            .press_timing_config();
+
+        assert_eq!(config.debounce, Some(Duration::from_millis(75)));
+        assert_eq!(config.max_rate, Some(Duration::from_millis(250)));
     }
 
     #[test]

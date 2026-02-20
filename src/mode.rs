@@ -509,10 +509,12 @@ impl ModeBuilder {
             });
         }
 
+        let press_timing = options.press_timing_config();
         let callbacks = attach_hotkey_events(
             options.build_callbacks(callback),
             &hotkey_key,
             &self.controller.registry.event_hub,
+            press_timing,
         );
 
         let registration = HotkeyRegistration { callbacks };
