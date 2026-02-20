@@ -127,6 +127,7 @@ struct PendingStandalone {
 struct SequenceRuntime {
     active_sequences: Vec<ActiveSequence>,
     pending_standalone: Option<PendingStandalone>,
+    deferred_release_callbacks: HashMap<KeyCode, Callback>,
 }
 
 struct SequenceDispatch {
@@ -189,7 +190,13 @@ impl SequenceRuntime {
                             }
                             should_clear_pending = true;
                         } else {
-                            should_clear_pending = !registration.callbacks.has_release_callback;
+                            should_clear_pending = !registration.callbacks.wait_for_release;
+                            if should_clear_pending {
+                                if let Some(on_release) = &registration.callbacks.on_release {
+                                    self.deferred_release_callbacks
+                                        .insert(pending.key.0, on_release.clone());
+                                }
+                            }
                         }
                     }
                 }
@@ -231,6 +238,8 @@ impl SequenceRuntime {
         registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
         sequence_registrations: &HashMap<SequenceId, SequenceRegistration>,
     ) -> SequenceDispatch {
+        self.deferred_release_callbacks.remove(&key.0);
+
         if self
             .pending_standalone
             .as_ref()
@@ -340,12 +349,17 @@ impl SequenceRuntime {
         }
     }
 
-    fn on_key_release(&mut self, key: KeyCode, now: Instant) {
+    fn on_key_release(&mut self, key: KeyCode, now: Instant) -> Vec<Callback> {
         if let Some(pending) = self.pending_standalone.as_mut() {
             if pending.key.0 == key && pending.released_at.is_none() {
                 pending.released_at = Some(now);
             }
         }
+
+        self.deferred_release_callbacks
+            .remove(&key)
+            .into_iter()
+            .collect()
     }
 }
 
@@ -1149,6 +1163,7 @@ fn listener_loop(
                                 let sequence_guard = sequence_registrations.lock().unwrap();
 
                                 let mut sequence_dispatch = SequenceDispatch::empty();
+                                let mut sequence_release_callbacks = Vec::new();
                                 if value == 1 {
                                     sequence_dispatch = sequence_runtime.on_key_press(
                                         hotkey_key,
@@ -1157,10 +1172,12 @@ fn listener_loop(
                                         &sequence_guard,
                                     );
                                 } else if value == 0 {
-                                    sequence_runtime.on_key_release(key, now);
+                                    sequence_release_callbacks =
+                                        sequence_runtime.on_key_release(key, now);
                                 }
 
                                 let mut callbacks = sequence_dispatch.callbacks;
+                                callbacks.extend(sequence_release_callbacks);
                                 callbacks.extend(collect_callbacks_for_synthetic_keys(
                                     &sequence_dispatch.synthetic_keys,
                                     &registrations_guard,
@@ -1534,7 +1551,7 @@ mod tests {
                 counter.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -1806,7 +1823,7 @@ mod tests {
                     on_release: Some(Arc::new(move || {
                         release_count_clone.fetch_add(1, Ordering::SeqCst);
                     })),
-                    has_release_callback: true,
+                    wait_for_release: true,
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -1869,7 +1886,7 @@ mod tests {
                     on_release: Some(Arc::new(move || {
                         release_count_clone.fetch_add(1, Ordering::SeqCst);
                     })),
-                    has_release_callback: true,
+                    wait_for_release: true,
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -1938,7 +1955,7 @@ mod tests {
                         press_count_clone.fetch_add(1, Ordering::SeqCst);
                     }),
                     on_release: Some(Arc::new(|| {})),
-                    has_release_callback: false,
+                    wait_for_release: false,
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -1972,6 +1989,75 @@ mod tests {
     }
 
     #[test]
+    fn internal_release_observer_dispatches_on_key_release_after_timeout() {
+        let mut runtime = SequenceRuntime::default();
+        let t0 = Instant::now();
+
+        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let release_count = Arc::new(AtomicUsize::new(0));
+        let press_count_clone = press_count.clone();
+        let release_count_clone = release_count.clone();
+
+        let mut registrations = HashMap::new();
+        registrations.insert(
+            sequence_key_1.clone(),
+            HotkeyRegistration {
+                callbacks: HotkeyCallbacks {
+                    on_press: Arc::new(move || {
+                        press_count_clone.fetch_add(1, Ordering::SeqCst);
+                    }),
+                    on_release: Some(Arc::new(move || {
+                        release_count_clone.fetch_add(1, Ordering::SeqCst);
+                    })),
+                    wait_for_release: false,
+                    min_hold: None,
+                    repeat_behavior: RepeatBehavior::Ignore,
+                    passthrough: false,
+                },
+            },
+        );
+
+        let mut sequence_registrations = HashMap::new();
+        sequence_registrations.insert(
+            1,
+            sequence_registration(
+                vec![sequence_key_1.clone(), sequence_key_2],
+                Duration::from_millis(50),
+                KeyCode::KEY_ESC,
+                None,
+                Arc::new(AtomicUsize::new(0)),
+            ),
+        );
+
+        runtime.on_key_press(
+            sequence_key_1.clone(),
+            t0,
+            &registrations,
+            &sequence_registrations,
+        );
+
+        let timeout_dispatch = runtime.on_tick(
+            t0 + Duration::from_millis(55),
+            &registrations,
+            &sequence_registrations,
+        );
+        dispatch_callbacks(timeout_dispatch.callbacks);
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 1);
+        assert_eq!(release_count.load(Ordering::SeqCst), 0);
+        assert!(runtime.pending_standalone.is_none());
+
+        let release_callbacks =
+            runtime.on_key_release(sequence_key_1.0, t0 + Duration::from_millis(70));
+        dispatch_callbacks(release_callbacks);
+
+        assert_eq!(release_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
     fn standalone_first_step_timeout_respects_min_hold_when_released_early() {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
@@ -1991,7 +2077,7 @@ mod tests {
                         standalone_count_clone.fetch_add(1, Ordering::SeqCst);
                     }),
                     on_release: None,
-                    has_release_callback: false,
+                    wait_for_release: false,
                     min_hold: Some(Duration::from_millis(100)),
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -2056,7 +2142,7 @@ mod tests {
                         standalone_count_clone.fetch_add(1, Ordering::SeqCst);
                     }),
                     on_release: None,
-                    has_release_callback: false,
+                    wait_for_release: false,
                     min_hold: Some(Duration::from_millis(100)),
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -2249,7 +2335,7 @@ mod tests {
             on_release: Some(Arc::new(move || {
                 r.fetch_add(1, Ordering::SeqCst);
             })),
-            has_release_callback: true,
+            wait_for_release: true,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2323,7 +2409,7 @@ mod tests {
         let callbacks = HotkeyCallbacks {
             on_press: Arc::new(|| {}),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2358,7 +2444,7 @@ mod tests {
         let callbacks = HotkeyCallbacks {
             on_press: Arc::new(|| {}),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: true,
@@ -2398,7 +2484,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2461,7 +2547,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2515,7 +2601,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Trigger,
             passthrough: false,
@@ -2571,7 +2657,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: Some(Duration::ZERO),
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2616,7 +2702,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Trigger,
             passthrough: false,
@@ -2670,7 +2756,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Trigger,
             passthrough: false,
@@ -2715,7 +2801,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2760,7 +2846,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Trigger,
             passthrough: false,
@@ -3176,7 +3262,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
-            has_release_callback: false,
+            wait_for_release: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -3290,7 +3376,7 @@ mod tests {
                     on_release: Some(Arc::new(move || {
                         rc.fetch_add(1, Ordering::SeqCst);
                     })),
-                    has_release_callback: true,
+                    wait_for_release: true,
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,

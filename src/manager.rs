@@ -44,7 +44,7 @@ pub(crate) enum PressDispatchState {
 pub(crate) struct HotkeyCallbacks {
     pub(crate) on_press: Callback,
     pub(crate) on_release: Option<Callback>,
-    pub(crate) has_release_callback: bool,
+    pub(crate) wait_for_release: bool,
     pub(crate) min_hold: Option<Duration>,
     pub(crate) repeat_behavior: RepeatBehavior,
     pub(crate) passthrough: bool,
@@ -103,7 +103,7 @@ impl HotkeyOptions {
         F: Fn() + Send + Sync + 'static,
     {
         let press_callback: Callback = Arc::new(callback);
-        let (release_callback, has_release_callback) = match self.release_behavior {
+        let (release_callback, wait_for_release) = match self.release_behavior {
             ReleaseBehavior::Disabled => (None, false),
             ReleaseBehavior::SameAsPress => (Some(press_callback.clone()), true),
             ReleaseBehavior::Custom(callback) => (Some(callback), true),
@@ -112,7 +112,7 @@ impl HotkeyOptions {
         HotkeyCallbacks {
             on_press: press_callback,
             on_release: release_callback,
-            has_release_callback,
+            wait_for_release,
             min_hold: self.min_hold,
             repeat_behavior: self.repeat_behavior,
             passthrough: self.passthrough,
@@ -290,7 +290,7 @@ pub(crate) fn attach_hotkey_events(
     let HotkeyCallbacks {
         on_press,
         on_release,
-        has_release_callback,
+        wait_for_release,
         min_hold,
         repeat_behavior,
         passthrough,
@@ -334,7 +334,7 @@ pub(crate) fn attach_hotkey_events(
     HotkeyCallbacks {
         on_press: wrapped_press,
         on_release: wrapped_release,
-        has_release_callback,
+        wait_for_release,
         min_hold,
         repeat_behavior,
         passthrough,
@@ -1106,8 +1106,18 @@ impl HotkeyManager {
             self.inner.device_registrations.lock().unwrap().clear();
             self.inner.tap_hold_registrations.lock().unwrap().clear();
             self.inner.mode_registry.definitions.lock().unwrap().clear();
-            self.inner.mode_registry.stack.lock().unwrap().clear();
-            self.inner.event_hub.emit(HotkeyEvent::ModeChanged(None));
+
+            let had_active_mode = {
+                let mut mode_stack = self.inner.mode_registry.stack.lock().unwrap();
+                let had_active_mode = !mode_stack.is_empty();
+                mode_stack.clear();
+                had_active_mode
+            };
+
+            if had_active_mode {
+                self.inner.event_hub.emit(HotkeyEvent::ModeChanged(None));
+            }
+
             self.inner.event_hub.close();
         }
 
@@ -1287,15 +1297,15 @@ mod tests {
     #[test]
     fn release_callback_presence_tracks_user_options() {
         let default_callbacks = HotkeyOptions::new().build_callbacks(|| {});
-        assert!(!default_callbacks.has_release_callback);
+        assert!(default_callbacks.on_release.is_none());
 
         let same_as_press_callbacks = HotkeyOptions::new().on_release().build_callbacks(|| {});
-        assert!(same_as_press_callbacks.has_release_callback);
+        assert!(same_as_press_callbacks.on_release.is_some());
 
         let custom_release_callbacks = HotkeyOptions::new()
             .on_release_callback(|| {})
             .build_callbacks(|| {});
-        assert!(custom_release_callbacks.has_release_callback);
+        assert!(custom_release_callbacks.on_release.is_some());
     }
 
     #[test]
@@ -1762,7 +1772,7 @@ mod tests {
                     counter.fetch_add(1, Ordering::SeqCst);
                 }),
                 on_release: None,
-                has_release_callback: false,
+                wait_for_release: false,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
                 passthrough: false,
@@ -3106,5 +3116,39 @@ mod tests {
         while stream.try_next().is_some() {}
 
         assert_eq!(block_on_future(stream.next()), None);
+    }
+
+    #[test]
+    #[cfg(any(feature = "tokio", feature = "async-std"))]
+    fn event_stream_created_after_shutdown_is_closed() {
+        let manager = manager_with_fake_backend();
+        manager.unregister_all().unwrap();
+
+        let mut stream = manager.event_stream();
+        assert_eq!(block_on_future(stream.next()), None);
+    }
+
+    #[test]
+    #[cfg(any(feature = "tokio", feature = "async-std"))]
+    fn mode_changed_events_only_emit_when_active_mode_changes() {
+        let manager = manager_with_fake_backend();
+        manager
+            .define_mode("resize", ModeOptions::new(), |_mode| Ok(()))
+            .unwrap();
+
+        let mut stream = manager.event_stream();
+        let mode_controller = manager.mode_controller();
+
+        mode_controller.push("resize");
+        mode_controller.push("resize");
+        mode_controller.pop();
+        mode_controller.pop();
+
+        assert_eq!(
+            stream.try_next(),
+            Some(HotkeyEvent::ModeChanged(Some("resize".to_string()))),
+        );
+        assert_eq!(stream.try_next(), Some(HotkeyEvent::ModeChanged(None)));
+        assert_eq!(stream.try_next(), None);
     }
 }
