@@ -1,32 +1,57 @@
-use crate::device::{is_keyboard_device, DeviceInfo};
-use crate::error::Error;
-use crate::events::HotkeyEvent;
-use crate::key_state::SharedKeyState;
-use crate::manager::{
-    is_modifier_key, normalize_modifiers, ActiveHotkeyPress, Callback, DeviceHotkeyRegistration,
-    DeviceRegistrationId, HotkeyKey, HotkeyRegistration, PressDispatchState, PressOrigin,
-    RepeatBehavior, SequenceId, SequenceRegistration,
-};
-use crate::mode::{
-    dispatch_mode_key_event, find_callbacks_for_active_press, pop_timed_out_modes, ModeDefinition,
-    ModeEventDispatch, ModeRegistry,
-};
-
-#[cfg(feature = "grab")]
-use evdev::{uinput::VirtualDevice, AttributeSet, EventType, InputEvent};
-use evdev::{Device, EventSummary, KeyCode};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::CStr;
 use std::io;
 use std::mem::size_of;
 use std::os::unix::io::AsRawFd;
-use std::path::{Path, PathBuf};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread::JoinHandle;
+use std::thread::{
+    self,
 };
-use std::thread::{self, JoinHandle};
 use std::time::Instant;
+
+#[cfg(feature = "grab")]
+use evdev::uinput::VirtualDevice;
+#[cfg(feature = "grab")]
+use evdev::AttributeSet;
+use evdev::Device;
+use evdev::EventSummary;
+#[cfg(feature = "grab")]
+use evdev::EventType;
+#[cfg(feature = "grab")]
+use evdev::InputEvent;
+use evdev::KeyCode;
+
+use crate::device::is_keyboard_device;
+use crate::device::DeviceInfo;
+use crate::error::Error;
+use crate::events::HotkeyEvent;
+use crate::key_state::SharedKeyState;
+use crate::manager::is_modifier_key;
+use crate::manager::normalize_modifiers;
+use crate::manager::ActiveHotkeyPress;
+use crate::manager::Callback;
+use crate::manager::DeviceHotkeyRegistration;
+use crate::manager::DeviceRegistrationId;
+use crate::manager::HotkeyKey;
+use crate::manager::HotkeyRegistration;
+use crate::manager::PressDispatchState;
+use crate::manager::PressOrigin;
+use crate::manager::RepeatBehavior;
+use crate::manager::SequenceId;
+use crate::manager::SequenceRegistration;
+use crate::mode::dispatch_mode_key_event;
+use crate::mode::find_callbacks_for_active_press;
+use crate::mode::pop_timed_out_modes;
+use crate::mode::ModeDefinition;
+use crate::mode::ModeEventDispatch;
+use crate::mode::ModeRegistry;
 
 pub(crate) struct ListenerState {
     pub(crate) registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
@@ -468,9 +493,9 @@ pub(crate) fn spawn_listener_thread(
     thread::Builder::new()
         .name("evdev-hotkey-listener".into())
         .spawn(move || {
-            listener_loop(devices, inotify_fd, shared, config, key_event_forwarder);
+            listener_loop(devices, &inotify_fd, shared, config, key_event_forwarder);
         })
-        .map_err(|e| Error::ThreadSpawn(format!("Failed to spawn listener thread: {}", e)))
+        .map_err(|e| Error::ThreadSpawn(format!("Failed to spawn listener thread: {e}")))
 }
 
 fn open_devices(
@@ -504,26 +529,30 @@ fn should_ignore_device(info: &DeviceInfo, grab: bool) -> bool {
 
 fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
     #[allow(unused_mut)]
-    let mut device = Device::open(path).map_err(|e| format!("Failed to open {:?}: {}", path, e))?;
+    let mut device =
+        Device::open(path).map_err(|e| format!("Failed to open {}: {e}", path.display()))?;
 
     if !is_keyboard_device(&device) {
-        return Err(format!("Device {:?} is not a keyboard", path));
+        return Err(format!("Device {} is not a keyboard", path.display()));
     }
 
     let info = DeviceInfo::from_device(&device);
     if should_ignore_device(&info, grab) {
         return Err(format!(
-            "Ignoring internal virtual forwarding device {:?}",
-            path
+            "Ignoring internal virtual forwarding device {}",
+            path.display()
         ));
     }
 
     if grab {
         #[cfg(feature = "grab")]
         {
-            device
-                .grab()
-                .map_err(|e| format!("Failed to grab {:?} for exclusive capture: {}", path, e))?;
+            device.grab().map_err(|e| {
+                format!(
+                    "Failed to grab {} for exclusive capture: {e}",
+                    path.display()
+                )
+            })?;
         }
 
         #[cfg(not(feature = "grab"))]
@@ -546,11 +575,17 @@ fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
 fn set_nonblocking(fd: i32, path: &Path) -> Result<(), String> {
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
     if flags == -1 {
-        return Err(format!("Failed to get file status flags for {:?}", path));
+        return Err(format!(
+            "Failed to get file status flags for {}",
+            path.display()
+        ));
     }
 
     if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
-        return Err(format!("Failed to set non-blocking mode for {:?}", path));
+        return Err(format!(
+            "Failed to set non-blocking mode for {}",
+            path.display()
+        ));
     }
 
     Ok(())
@@ -694,17 +729,16 @@ fn collect_device_specific_dispatch(
 
     match value {
         1 => {
-            let press_dispatch_state = registration
-                .callbacks
-                .min_hold
-                .map(|min_hold| {
+            let press_dispatch_state = registration.callbacks.min_hold.map_or(
+                PressDispatchState::Dispatched,
+                |min_hold| {
                     if min_hold.is_zero() {
                         PressDispatchState::Dispatched
                     } else {
                         PressDispatchState::Pending
                     }
-                })
-                .unwrap_or(PressDispatchState::Dispatched);
+                },
+            );
 
             active_presses.insert(
                 key,
@@ -826,17 +860,16 @@ fn collect_non_modifier_dispatch(
                 matched_hotkey = true;
                 passthrough = registration.callbacks.passthrough;
 
-                let press_dispatch_state = registration
-                    .callbacks
-                    .min_hold
-                    .map(|min_hold| {
+                let press_dispatch_state = registration.callbacks.min_hold.map_or(
+                    PressDispatchState::Dispatched,
+                    |min_hold| {
                         if min_hold.is_zero() {
                             PressDispatchState::Dispatched
                         } else {
                             PressDispatchState::Pending
                         }
-                    })
-                    .unwrap_or(PressDispatchState::Dispatched);
+                    },
+                );
 
                 active_presses.insert(
                     key,
@@ -925,9 +958,10 @@ fn collect_non_modifier_callbacks(
     .callbacks
 }
 
+#[allow(clippy::too_many_lines)]
 fn listener_loop(
     mut devices: Vec<DeviceState>,
-    inotify_fd: RawFdGuard,
+    inotify_fd: &RawFdGuard,
     shared: ListenerState,
     config: ListenerConfig,
     mut key_event_forwarder: Option<Box<dyn KeyEventForwarder>>,
@@ -1013,7 +1047,7 @@ fn listener_loop(
         if let Some(mode_name) = timeout_mode_change_event {
             mode_registry
                 .event_hub
-                .emit(HotkeyEvent::ModeChanged(mode_name));
+                .emit(&HotkeyEvent::ModeChanged(mode_name));
         }
 
         dispatch_callbacks(timeout_callbacks);
@@ -1258,13 +1292,13 @@ fn listener_loop(
                 };
 
                 for event in sequence_step_events {
-                    mode_registry.event_hub.emit(event);
+                    mode_registry.event_hub.emit(&event);
                 }
 
                 if let Some(mode_name) = mode_change_event {
                     mode_registry
                         .event_hub
-                        .emit(HotkeyEvent::ModeChanged(mode_name));
+                        .emit(&HotkeyEvent::ModeChanged(mode_name));
                 }
 
                 dispatch_callbacks(callbacks);
@@ -1463,7 +1497,7 @@ fn process_hotplug_events(
         let bytes_read = unsafe {
             libc::read(
                 inotify_fd,
-                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.as_mut_ptr().cast::<libc::c_void>(),
                 buffer.len(),
             )
         };
@@ -1485,7 +1519,7 @@ fn process_hotplug_events(
         let mut known_paths: HashSet<PathBuf> =
             devices.iter().map(|device| device.path.clone()).collect();
 
-        for event in parse_hotplug_events(&buffer, bytes_read as usize) {
+        for event in parse_hotplug_events(&buffer, bytes_read.cast_unsigned()) {
             match classify_hotplug_change(&event, &mut known_paths) {
                 HotplugPathChange::Added(path) => match open_device(&path, config.grab) {
                     Ok(device_state) => {
@@ -1509,7 +1543,8 @@ fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<HotplugFsEvent>
     let mut offset = 0usize;
 
     while offset + size_of::<libc::inotify_event>() <= bytes_read {
-        let event_ptr = unsafe { buffer.as_ptr().add(offset) as *const libc::inotify_event };
+        #[allow(clippy::cast_ptr_alignment)] // using read_unaligned below
+        let event_ptr = unsafe { buffer.as_ptr().add(offset).cast::<libc::inotify_event>() };
         let event = unsafe { std::ptr::read_unaligned(event_ptr) };
 
         let name_start = offset + size_of::<libc::inotify_event>();
@@ -1530,8 +1565,10 @@ fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<HotplugFsEvent>
                 CStr::from_bytes_with_nul(&name_slice[..=cstr_end.min(name_slice.len() - 1)])
                     .ok()
                     .and_then(|value| value.to_str().ok())
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| String::from_utf8_lossy(&name_slice[..cstr_end]).to_string())
+                    .map_or_else(
+                        || String::from_utf8_lossy(&name_slice[..cstr_end]).to_string(),
+                        std::string::ToString::to_string,
+                    )
             }
         } else {
             String::new()
@@ -1555,11 +1592,15 @@ fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<HotplugFsEvent>
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+
     use super::*;
     use crate::device::DeviceFilter;
-    use crate::manager::{HotkeyCallbacks, RepeatBehavior};
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-    use std::time::Duration;
+    use crate::manager::HotkeyCallbacks;
+    use crate::manager::RepeatBehavior;
 
     #[test]
     fn modifier_signature_normalizes_left_and_right() {
@@ -2297,6 +2338,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::similar_names)]
     fn multiple_sequences_share_prefix_without_interference() {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
@@ -3069,7 +3111,7 @@ mod tests {
 
         listener_loop(
             Vec::new(),
-            read_fd,
+            &read_fd,
             ListenerState {
                 registrations,
                 sequence_registrations,
@@ -3099,7 +3141,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
             let one = [1u8];
             unsafe {
-                libc::write(write_fd.raw_fd(), one.as_ptr() as *const libc::c_void, 1);
+                libc::write(write_fd.raw_fd(), one.as_ptr().cast::<libc::c_void>(), 1);
             }
         });
 
@@ -3161,12 +3203,13 @@ mod tests {
             wd: 1,
             mask,
             cookie: 0,
+            #[allow(clippy::cast_possible_truncation)]
             len: name_bytes.len() as u32,
         };
 
         let event_bytes = unsafe {
             std::slice::from_raw_parts(
-                &event as *const libc::inotify_event as *const u8,
+                (&raw const event).cast::<u8>(),
                 size_of::<libc::inotify_event>(),
             )
         };

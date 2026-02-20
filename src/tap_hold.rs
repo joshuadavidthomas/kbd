@@ -1,7 +1,9 @@
-use evdev::KeyCode;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
+
+use evdev::KeyCode;
 
 /// What happens when a dual-function key is tapped (pressed and released quickly).
 #[derive(Clone, Debug)]
@@ -12,6 +14,7 @@ pub enum TapAction {
 
 impl TapAction {
     /// Create a tap action that emits a synthetic key event.
+    #[must_use]
     pub fn emit(key: KeyCode) -> Self {
         TapAction::Emit(key)
     }
@@ -26,13 +29,14 @@ pub enum HoldAction {
 
 impl HoldAction {
     /// Create a hold action that acts as a modifier key.
+    #[must_use]
     pub fn modifier(key: KeyCode) -> Self {
         HoldAction::Modifier(key)
     }
 }
 
 /// Options for tap-hold key behavior.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct TapHoldOptions {
     pub(crate) threshold: Duration,
 }
@@ -46,11 +50,13 @@ impl Default for TapHoldOptions {
 }
 
 impl TapHoldOptions {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Set the duration threshold: held shorter = tap, held longer = hold.
+    #[must_use]
     pub fn threshold(mut self, threshold: Duration) -> Self {
         self.threshold = threshold;
         self
@@ -308,8 +314,9 @@ fn hold_release_events(action: &HoldAction) -> Vec<(KeyCode, i32)> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::HashMap;
+
+    use super::*;
 
     fn make_registrations(
         entries: Vec<(KeyCode, TapAction, HoldAction, Duration)>,
@@ -491,12 +498,8 @@ mod tests {
 
         runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
 
-        let repeat = runtime.process_key_event(
-            KeyCode::KEY_A,
-            2,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
+        let repeat =
+            runtime.process_key_event(KeyCode::KEY_A, 2, t0 + Duration::from_millis(50), &regs);
         assert!(!repeat.consumed);
         assert!(repeat.synthetic_events.is_empty());
     }

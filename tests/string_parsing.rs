@@ -1,5 +1,6 @@
 use evdev::KeyCode;
-use evdev_hotkey::{Hotkey, HotkeySequence};
+use evdev_hotkey::Hotkey;
+use evdev_hotkey::HotkeySequence;
 
 #[test]
 fn parses_hotkey_with_aliases_case_insensitive() {

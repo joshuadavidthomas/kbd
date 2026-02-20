@@ -1,8 +1,17 @@
-use evdev::KeyCode;
-#[cfg(feature = "serde")]
-use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
+
+use evdev::KeyCode;
+#[cfg(feature = "serde")]
+use serde::de::Error as _;
+#[cfg(feature = "serde")]
+use serde::Deserialize;
+#[cfg(feature = "serde")]
+use serde::Deserializer;
+#[cfg(feature = "serde")]
+use serde::Serialize;
+#[cfg(feature = "serde")]
+use serde::Serializer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hotkey {
@@ -35,10 +44,12 @@ impl Hotkey {
         Self { key, modifiers }
     }
 
+    #[must_use]
     pub fn key(&self) -> KeyCode {
         self.key
     }
 
+    #[must_use]
     pub fn modifiers(&self) -> &[KeyCode] {
         &self.modifiers
     }
@@ -53,6 +64,7 @@ impl HotkeySequence {
         Ok(Self { steps })
     }
 
+    #[must_use]
     pub fn steps(&self) -> &[Hotkey] {
         &self.steps
     }
@@ -159,7 +171,12 @@ impl<'de> Deserialize<'de> for HotkeySequence {
 
 impl fmt::Display for Hotkey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut parts: Vec<&str> = self.modifiers.iter().map(display_modifier).collect();
+        let mut parts: Vec<&str> = self
+            .modifiers
+            .iter()
+            .copied()
+            .map(display_modifier)
+            .collect();
         parts.push(display_key(self.key));
         write!(f, "{}", parts.join("+"))
     }
@@ -206,6 +223,7 @@ fn canonical_modifier(key: KeyCode) -> KeyCode {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn parse_key(token: &str) -> Option<KeyCode> {
     let upper = token.to_ascii_uppercase();
     match upper.as_str() {
@@ -329,8 +347,8 @@ fn parse_key(token: &str) -> Option<KeyCode> {
     }
 }
 
-fn display_modifier(modifier: &KeyCode) -> &'static str {
-    match *modifier {
+fn display_modifier(modifier: KeyCode) -> &'static str {
+    match modifier {
         KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => "Ctrl",
         KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => "Shift",
         KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => "Alt",
@@ -339,6 +357,7 @@ fn display_modifier(modifier: &KeyCode) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn display_key(key: KeyCode) -> &'static str {
     match key {
         KeyCode::KEY_ENTER => "Enter",

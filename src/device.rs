@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
+use evdev::Device;
+use evdev::KeyCode;
+
 use crate::error::Error;
 use crate::permission::get_permission_error_message;
-use evdev::{Device, KeyCode};
-use std::path::PathBuf;
 
 /// Filter for restricting hotkeys to specific input devices.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,6 +22,7 @@ impl DeviceFilter {
     }
 
     /// Create a filter that matches devices by USB vendor and product ID.
+    #[must_use]
     pub fn usb(vendor: u16, product: u16) -> Self {
         DeviceFilter::UsbId { vendor, product }
     }
@@ -62,15 +66,14 @@ pub(crate) fn is_keyboard_device(device: &Device) -> bool {
 
 pub(crate) fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
     let input_dir = std::fs::read_dir("/dev/input")
-        .map_err(|e| Error::DeviceAccess(format!("Cannot open /dev/input: {}", e)))?;
+        .map_err(|e| Error::DeviceAccess(format!("Cannot open /dev/input: {e}")))?;
 
     let mut keyboards = Vec::new();
     let mut event_device_count = 0usize;
     let mut permission_denied_count = 0usize;
 
     for entry in input_dir {
-        let entry =
-            entry.map_err(|e| Error::DeviceAccess(format!("Failed to read entry: {}", e)))?;
+        let entry = entry.map_err(|e| Error::DeviceAccess(format!("Failed to read entry: {e}")))?;
         let path = entry.path();
 
         let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");

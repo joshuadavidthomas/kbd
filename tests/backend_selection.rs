@@ -1,4 +1,6 @@
-use evdev_hotkey::{Backend, Error, HotkeyManager};
+use evdev_hotkey::Backend;
+use evdev_hotkey::Error;
+use evdev_hotkey::HotkeyManager;
 
 #[test]
 #[cfg(not(feature = "portal"))]

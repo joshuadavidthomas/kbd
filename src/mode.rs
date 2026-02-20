@@ -1,16 +1,25 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
 
 use evdev::KeyCode;
 
 use crate::error::Error;
-use crate::events::{EventHub, HotkeyEvent};
-use crate::manager::{
-    attach_hotkey_events, normalize_modifiers, validate_hotkey_binding, ActiveHotkeyPress,
-    Callback, HotkeyKey, HotkeyOptions, HotkeyRegistration, PressDispatchState, PressOrigin,
-    RepeatBehavior,
-};
+use crate::events::EventHub;
+use crate::events::HotkeyEvent;
+use crate::manager::attach_hotkey_events;
+use crate::manager::normalize_modifiers;
+use crate::manager::validate_hotkey_binding;
+use crate::manager::ActiveHotkeyPress;
+use crate::manager::Callback;
+use crate::manager::HotkeyKey;
+use crate::manager::HotkeyOptions;
+use crate::manager::HotkeyRegistration;
+use crate::manager::PressDispatchState;
+use crate::manager::PressOrigin;
+use crate::manager::RepeatBehavior;
 
 // Mode options
 #[derive(Clone, Default)]
@@ -21,20 +30,24 @@ pub struct ModeOptions {
 }
 
 impl ModeOptions {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn oneshot(mut self) -> Self {
         self.oneshot = true;
         self
     }
 
+    #[must_use]
     pub fn swallow(mut self) -> Self {
         self.swallow = true;
         self
     }
 
+    #[must_use]
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
@@ -206,17 +219,16 @@ fn dispatch_mode_press(
             registration,
             oneshot,
         } => {
-            let press_dispatch_state = registration
-                .callbacks
-                .min_hold
-                .map(|min_hold| {
+            let press_dispatch_state = registration.callbacks.min_hold.map_or(
+                PressDispatchState::Dispatched,
+                |min_hold| {
                     if min_hold.is_zero() {
                         PressDispatchState::Dispatched
                     } else {
                         PressDispatchState::Pending
                     }
-                })
-                .unwrap_or(PressDispatchState::Dispatched);
+                },
+            );
 
             let passthrough = registration.callbacks.passthrough;
 
@@ -418,6 +430,9 @@ impl ModeController {
         Self { registry }
     }
 
+    /// # Panics
+    ///
+    /// Panics if the internal definitions or stack lock is poisoned.
     pub fn push(&self, name: &str) {
         let has_definition = self.registry.definitions.lock().unwrap().contains_key(name);
 
@@ -436,10 +451,13 @@ impl ModeController {
         };
 
         if let Some(event) = mode_change_event {
-            self.registry.event_hub.emit(event);
+            self.registry.event_hub.emit(&event);
         }
     }
 
+    /// # Panics
+    ///
+    /// Panics if the internal stack lock is poisoned.
     pub fn pop(&self) -> Option<String> {
         let (popped, mode_change_event) = {
             let mut stack = self.registry.stack.lock().unwrap();
@@ -452,12 +470,15 @@ impl ModeController {
         };
 
         if let Some(event) = mode_change_event {
-            self.registry.event_hub.emit(event);
+            self.registry.event_hub.emit(&event);
         }
 
         popped
     }
 
+    /// # Panics
+    ///
+    /// Panics if the internal stack lock is poisoned.
     pub fn active_mode(&self) -> Option<String> {
         self.registry.stack.lock().unwrap().top().map(String::from)
     }
@@ -523,6 +544,7 @@ impl ModeBuilder {
         Ok(())
     }
 
+    #[must_use]
     pub fn mode_controller(&self) -> ModeController {
         self.controller.clone()
     }
@@ -530,9 +552,11 @@ impl ModeBuilder {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
     use super::*;
     use crate::manager::HotkeyCallbacks;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn make_registration(counter: Arc<AtomicUsize>) -> HotkeyRegistration {
         HotkeyRegistration {

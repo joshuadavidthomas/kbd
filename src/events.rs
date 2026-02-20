@@ -52,7 +52,7 @@ impl EventHub {
         HotkeyEventStream { receiver: rx }
     }
 
-    pub(crate) fn emit(&self, event: HotkeyEvent) {
+    pub(crate) fn emit(&self, event: &HotkeyEvent) {
         #[cfg(any(feature = "tokio", feature = "async-std"))]
         {
             let mut state = self.state.lock().unwrap();

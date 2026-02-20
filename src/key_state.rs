@@ -1,9 +1,9 @@
-use evdev::KeyCode;
 use std::collections::HashSet;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+
+use evdev::KeyCode;
 
 const TRACKED_KEY_CODES: usize = 768;
 const MODIFIER_KEYS: [KeyCode; 8] = [

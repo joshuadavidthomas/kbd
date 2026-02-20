@@ -1,21 +1,32 @@
 #![cfg(feature = "serde")]
 
-use evdev::KeyCode;
-use evdev_hotkey::{
-    ActionId, ActionMap, Backend, Error, HotkeyBinding, HotkeyConfig, HotkeyManager, ModeBindings,
-    ModeOptions, SequenceBinding,
-};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+use evdev::KeyCode;
+use evdev_hotkey::ActionId;
+use evdev_hotkey::ActionMap;
+use evdev_hotkey::Backend;
+use evdev_hotkey::Error;
+use evdev_hotkey::HotkeyBinding;
+use evdev_hotkey::HotkeyConfig;
+use evdev_hotkey::HotkeyManager;
+use evdev_hotkey::ModeBindings;
+use evdev_hotkey::ModeOptions;
+use evdev_hotkey::SequenceBinding;
 
 fn create_evdev_manager_or_skip() -> Option<HotkeyManager> {
     match HotkeyManager::with_backend(Backend::Evdev) {
         Ok(manager) => Some(manager),
-        Err(Error::PermissionDenied(_))
-        | Err(Error::NoKeyboardsFound)
-        | Err(Error::DeviceAccess(_))
-        | Err(Error::BackendUnavailable(_))
-        | Err(Error::BackendInit(_)) => {
+        Err(
+            Error::PermissionDenied(_)
+            | Error::NoKeyboardsFound
+            | Error::DeviceAccess(_)
+            | Error::BackendUnavailable(_)
+            | Error::BackendInit(_),
+        ) => {
             println!("Skipping test: environment has no usable evdev backend/input devices");
             None
         }
@@ -140,9 +151,8 @@ fn invalid_configuration_reports_actionable_error_messages() {
 
 #[test]
 fn deserialized_definitions_register_without_manual_conversion() {
-    let manager = match create_evdev_manager_or_skip() {
-        Some(manager) => manager,
-        None => return,
+    let Some(manager) = create_evdev_manager_or_skip() else {
+        return;
     };
 
     let config: HotkeyConfig = serde_json::from_str(
@@ -187,9 +197,8 @@ fn deserialized_definitions_register_without_manual_conversion() {
 
 #[test]
 fn failed_registration_rolls_back_previous_hotkeys() {
-    let manager = match create_evdev_manager_or_skip() {
-        Some(manager) => manager,
-        None => return,
+    let Some(manager) = create_evdev_manager_or_skip() else {
+        return;
     };
 
     let _existing = manager
@@ -202,7 +211,7 @@ fn failed_registration_rolls_back_previous_hotkeys() {
             HotkeyBinding::new("Ctrl+B".parse().unwrap(), ActionId::new("second").unwrap()),
         ],
         Vec::new(),
-        Default::default(),
+        HashMap::default(),
     );
 
     let mut actions = ActionMap::new();
@@ -213,9 +222,8 @@ fn failed_registration_rolls_back_previous_hotkeys() {
         .insert(ActionId::new("second").unwrap(), || {})
         .unwrap();
 
-    let error = match config.register(&manager, &actions) {
-        Ok(_) => panic!("second hotkey conflicts with pre-existing registration"),
-        Err(error) => error,
+    let Err(error) = config.register(&manager, &actions) else {
+        panic!("second hotkey conflicts with pre-existing registration");
     };
     assert!(matches!(
         error,
@@ -228,9 +236,8 @@ fn failed_registration_rolls_back_previous_hotkeys() {
 
 #[test]
 fn failed_registration_rolls_back_defined_modes() {
-    let manager = match create_evdev_manager_or_skip() {
-        Some(manager) => manager,
-        None => return,
+    let Some(manager) = create_evdev_manager_or_skip() else {
+        return;
     };
 
     manager
@@ -268,9 +275,10 @@ fn failed_registration_rolls_back_defined_modes() {
         .insert(ActionId::new("existing-action").unwrap(), || {})
         .unwrap();
 
-    if config.register(&manager, &actions).is_ok() {
-        panic!("duplicate mode name should fail registration");
-    }
+    assert!(
+        config.register(&manager, &actions).is_err(),
+        "duplicate mode name should fail registration"
+    );
 
     manager
         .define_mode("aa_temp", ModeOptions::new(), |_mode| Ok(()))
@@ -303,14 +311,12 @@ fn missing_mode_action_reports_deterministic_mode_location() {
     );
 
     let actions = ActionMap::new();
-    let manager = match create_evdev_manager_or_skip() {
-        Some(manager) => manager,
-        None => return,
+    let Some(manager) = create_evdev_manager_or_skip() else {
+        return;
     };
 
-    let err = match config.register(&manager, &actions) {
-        Ok(_) => panic!("missing action should fail registration"),
-        Err(err) => err,
+    let Err(err) = config.register(&manager, &actions) else {
+        panic!("missing action should fail registration");
     };
 
     let message = err.to_string();

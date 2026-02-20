@@ -3,8 +3,7 @@ pub(crate) fn get_permission_error_message() -> String {
 
     format!(
         "evdev requires access to /dev/input/event* devices. If access is denied, try:\n\
-         sudo usermod -aG input {}\n\
-         Then log out and log back in for changes to take effect.",
-        username
+         sudo usermod -aG input {username}\n\
+         Then log out and log back in for changes to take effect."
     )
 }

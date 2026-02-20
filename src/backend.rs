@@ -1,21 +1,28 @@
-use crate::device::find_keyboard_devices;
-use crate::error::Error;
-use crate::key_state::SharedKeyState;
-use crate::listener::{spawn_listener_thread, ListenerConfig, ListenerState};
-use crate::manager::{
-    DeviceHotkeyRegistration, DeviceRegistrationId, HotkeyKey, HotkeyRegistration, SequenceId,
-    SequenceRegistration,
-};
-use crate::mode::ModeRegistry;
-use crate::tap_hold::TapHoldRegistration;
-
-#[cfg(feature = "portal")]
-use evdev::KeyCode;
 use std::collections::HashMap;
 #[cfg(feature = "portal")]
 use std::collections::HashSet;
-use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread::JoinHandle;
+
+#[cfg(feature = "portal")]
+use evdev::KeyCode;
+
+use crate::device::find_keyboard_devices;
+use crate::error::Error;
+use crate::key_state::SharedKeyState;
+use crate::listener::spawn_listener_thread;
+use crate::listener::ListenerConfig;
+use crate::listener::ListenerState;
+use crate::manager::DeviceHotkeyRegistration;
+use crate::manager::DeviceRegistrationId;
+use crate::manager::HotkeyKey;
+use crate::manager::HotkeyRegistration;
+use crate::manager::SequenceId;
+use crate::manager::SequenceRegistration;
+use crate::mode::ModeRegistry;
+use crate::tap_hold::TapHoldRegistration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Backend {
@@ -90,7 +97,8 @@ struct AshpdPortalClient;
 #[cfg(feature = "portal")]
 impl PortalClient for AshpdPortalClient {
     fn sync_shortcuts(&self, hotkeys: &[HotkeyKey]) -> Result<(), Error> {
-        use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
+        use ashpd::desktop::global_shortcuts::GlobalShortcuts;
+        use ashpd::desktop::global_shortcuts::NewShortcut;
 
         let shortcuts: Vec<NewShortcut> = hotkeys
             .iter()
@@ -112,7 +120,7 @@ impl PortalClient for AshpdPortalClient {
             })?;
 
             let request = proxy
-                .bind_shortcuts(&session, &shortcuts, &ashpd::WindowIdentifier::default())
+                .bind_shortcuts(&session, &shortcuts, None)
                 .await
                 .map_err(|err| {
                     Error::BackendInit(format!("Failed binding portal shortcuts: {err}"))
@@ -221,14 +229,14 @@ impl HotkeyBackend for PortalBackend {
 #[cfg(feature = "portal")]
 fn shortcut_id(hotkey: &HotkeyKey) -> String {
     let mut components = Vec::with_capacity(hotkey.1.len() + 1);
-    components.extend(hotkey.1.iter().map(key_component));
-    components.push(key_component(&hotkey.0));
+    components.extend(hotkey.1.iter().copied().map(key_component));
+    components.push(key_component(hotkey.0));
     format!("evdev-hotkey-{}", components.join("-"))
 }
 
 #[cfg(feature = "portal")]
-fn key_component(key: &KeyCode) -> String {
-    format!("{:?}", key).to_ascii_lowercase()
+fn key_component(key: KeyCode) -> String {
+    format!("{key:?}").to_ascii_lowercase()
 }
 
 #[cfg(feature = "portal")]
@@ -238,8 +246,7 @@ fn format_portal_trigger(hotkey: &HotkeyKey) -> Result<String, Error> {
     for modifier in &hotkey.1 {
         let Some(label) = modifier_label(*modifier) else {
             return Err(Error::BackendInit(format!(
-                "Unsupported modifier for portal backend: {:?}",
-                modifier
+                "Unsupported modifier for portal backend: {modifier:?}"
             )));
         };
         parts.push(label.to_string());
@@ -327,6 +334,7 @@ fn key_label(key: KeyCode) -> Option<&'static str> {
 }
 
 #[cfg(all(feature = "portal", feature = "evdev"))]
+#[allow(clippy::unnecessary_wraps)]
 fn resolve_backend_with_probe(
     requested: Option<Backend>,
     portal_available: impl FnOnce() -> bool,

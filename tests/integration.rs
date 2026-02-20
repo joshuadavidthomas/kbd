@@ -1,20 +1,25 @@
-use evdev::KeyCode;
-use evdev_hotkey::{Error, HotkeyManager};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
+
+use evdev::KeyCode;
+use evdev_hotkey::Error;
+use evdev_hotkey::HotkeyManager;
 
 fn create_manager_or_skip() -> Option<HotkeyManager> {
     match HotkeyManager::new() {
         Ok(manager) => Some(manager),
-        Err(Error::PermissionDenied(_))
-        | Err(Error::NoKeyboardsFound)
-        | Err(Error::DeviceAccess(_))
-        | Err(Error::BackendUnavailable(_)) => {
+        Err(
+            Error::PermissionDenied(_)
+            | Error::NoKeyboardsFound
+            | Error::DeviceAccess(_)
+            | Error::BackendUnavailable(_),
+        ) => {
             println!("Skipping test: environment has no usable backend/input devices");
             None
         }
-        Err(err) => panic!("Unexpected manager creation error: {}", err),
+        Err(err) => panic!("Unexpected manager creation error: {err}"),
     }
 }
 
@@ -22,21 +27,22 @@ fn create_manager_or_skip() -> Option<HotkeyManager> {
 fn test_manager_creation() {
     match HotkeyManager::new() {
         Ok(_) => println!("Manager created successfully"),
-        Err(Error::PermissionDenied(_))
-        | Err(Error::NoKeyboardsFound)
-        | Err(Error::DeviceAccess(_))
-        | Err(Error::BackendUnavailable(_)) => {
-            println!("Manager creation skipped: environment has no usable backend/input devices")
+        Err(
+            Error::PermissionDenied(_)
+            | Error::NoKeyboardsFound
+            | Error::DeviceAccess(_)
+            | Error::BackendUnavailable(_),
+        ) => {
+            println!("Manager creation skipped: environment has no usable backend/input devices");
         }
-        Err(err) => panic!("Unexpected manager creation error: {}", err),
+        Err(err) => panic!("Unexpected manager creation error: {err}"),
     }
 }
 
 #[test]
 fn test_register_hotkey() {
-    let manager = match create_manager_or_skip() {
-        Some(m) => m,
-        None => return,
+    let Some(manager) = create_manager_or_skip() else {
+        return;
     };
 
     let triggered = Arc::new(AtomicBool::new(false));
@@ -59,9 +65,8 @@ fn test_register_hotkey() {
 
 #[test]
 fn test_register_multiple_hotkeys() {
-    let manager = match create_manager_or_skip() {
-        Some(m) => m,
-        None => return,
+    let Some(manager) = create_manager_or_skip() else {
+        return;
     };
 
     let _handle1 = manager
@@ -110,9 +115,8 @@ fn test_register_multiple_hotkeys() {
 
 #[test]
 fn test_unregister_hotkey() {
-    let manager = match create_manager_or_skip() {
-        Some(m) => m,
-        None => return,
+    let Some(manager) = create_manager_or_skip() else {
+        return;
     };
 
     let handle = manager
@@ -128,9 +132,8 @@ fn test_unregister_hotkey() {
 
 #[test]
 fn test_handle_unregister_cleans_up() {
-    let manager = match create_manager_or_skip() {
-        Some(m) => m,
-        None => return,
+    let Some(manager) = create_manager_or_skip() else {
+        return;
     };
 
     let triggered = Arc::new(AtomicBool::new(false));

@@ -1,12 +1,22 @@
-use crate::{
-    Error, Handle, Hotkey, HotkeyManager, HotkeySequence, ModeOptions, SequenceHandle,
-    SequenceOptions,
-};
-use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
+
+use serde::de::Error as _;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
+
+use crate::Error;
+use crate::Handle;
+use crate::Hotkey;
+use crate::HotkeyManager;
+use crate::HotkeySequence;
+use crate::ModeOptions;
+use crate::SequenceHandle;
+use crate::SequenceOptions;
 
 pub type ActionCallback = Arc<dyn Fn() + Send + Sync + 'static>;
 
@@ -24,6 +34,7 @@ impl ActionId {
         Ok(Self(normalized.to_string()))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -83,6 +94,7 @@ pub struct ActionMap {
 }
 
 impl ActionMap {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -136,6 +148,7 @@ pub struct HotkeyConfig {
 }
 
 impl HotkeyConfig {
+    #[must_use]
     pub fn new(
         hotkeys: Vec<HotkeyBinding>,
         sequences: Vec<SequenceBinding>,
@@ -148,18 +161,24 @@ impl HotkeyConfig {
         }
     }
 
+    #[must_use]
     pub fn hotkeys(&self) -> &[HotkeyBinding] {
         &self.hotkeys
     }
 
+    #[must_use]
     pub fn sequences(&self) -> &[SequenceBinding] {
         &self.sequences
     }
 
+    #[must_use]
     pub fn modes(&self) -> &HashMap<String, ModeBindings> {
         &self.modes
     }
 
+    /// # Panics
+    ///
+    /// Panics if a validated action cannot be resolved from the action map.
     pub fn register(
         &self,
         manager: &HotkeyManager,
@@ -295,14 +314,17 @@ pub struct HotkeyBinding {
 }
 
 impl HotkeyBinding {
+    #[must_use]
     pub fn new(hotkey: Hotkey, action: ActionId) -> Self {
         Self { hotkey, action }
     }
 
+    #[must_use]
     pub fn hotkey(&self) -> &Hotkey {
         &self.hotkey
     }
 
+    #[must_use]
     pub fn action(&self) -> &ActionId {
         &self.action
     }
@@ -316,14 +338,17 @@ pub struct SequenceBinding {
 }
 
 impl SequenceBinding {
+    #[must_use]
     pub fn new(sequence: HotkeySequence, action: ActionId) -> Self {
         Self { sequence, action }
     }
 
+    #[must_use]
     pub fn sequence(&self) -> &HotkeySequence {
         &self.sequence
     }
 
+    #[must_use]
     pub fn action(&self) -> &ActionId {
         &self.action
     }
@@ -337,10 +362,12 @@ pub struct ModeBindings {
 }
 
 impl ModeBindings {
+    #[must_use]
     pub fn new(bindings: Vec<HotkeyBinding>) -> Self {
         Self { bindings }
     }
 
+    #[must_use]
     pub fn bindings(&self) -> &[HotkeyBinding] {
         &self.bindings
     }
@@ -354,14 +381,17 @@ pub struct RegisteredConfig {
 }
 
 impl RegisteredConfig {
+    #[must_use]
     pub fn hotkey_handles(&self) -> &[Handle] {
         &self.hotkey_handles
     }
 
+    #[must_use]
     pub fn sequence_handles(&self) -> &[SequenceHandle] {
         &self.sequence_handles
     }
 
+    #[must_use]
     pub fn defined_modes(&self) -> &[String] {
         &self.defined_modes
     }
