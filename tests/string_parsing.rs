@@ -54,3 +54,19 @@ fn parses_extended_key_ranges() {
         assert_eq!(round_trip, hotkey, "failed round-trip for {input}");
     }
 }
+
+#[test]
+fn new_canonicalizes_left_right_modifier_variants() {
+    let hotkey = Hotkey::new(
+        KeyCode::KEY_X,
+        vec![KeyCode::KEY_RIGHTCTRL, KeyCode::KEY_RIGHTALT],
+    );
+
+    assert_eq!(
+        hotkey.modifiers(),
+        &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTALT]
+    );
+
+    let round_trip = hotkey.to_string().parse::<Hotkey>().unwrap();
+    assert_eq!(round_trip, hotkey);
+}

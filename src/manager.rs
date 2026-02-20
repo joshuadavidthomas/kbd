@@ -968,6 +968,37 @@ impl HotkeyManager {
         ModeController::new(self.inner.mode_registry.clone())
     }
 
+    pub(crate) fn remove_mode_definition(&self, name: &str) {
+        let mode_change_event = {
+            let _operation_guard = self.inner.operation_lock.lock().unwrap();
+
+            let removed = self
+                .inner
+                .mode_registry
+                .definitions
+                .lock()
+                .unwrap()
+                .remove(name)
+                .is_some();
+
+            if !removed {
+                return;
+            }
+
+            let mut mode_stack = self.inner.mode_registry.stack.lock().unwrap();
+            let before = mode_stack.top().map(str::to_string);
+
+            while mode_stack.remove_topmost(name) {}
+
+            let after = mode_stack.top().map(str::to_string);
+            (before != after).then_some(HotkeyEvent::ModeChanged(after))
+        };
+
+        if let Some(event) = mode_change_event {
+            self.inner.event_hub.emit(event);
+        }
+    }
+
     pub fn replace<F>(
         &self,
         key: KeyCode,

@@ -26,6 +26,10 @@ pub enum ParseHotkeyError {
 
 impl Hotkey {
     pub fn new(key: KeyCode, mut modifiers: Vec<KeyCode>) -> Self {
+        modifiers = modifiers
+            .into_iter()
+            .map(canonical_modifier)
+            .collect::<Vec<_>>();
         modifiers.sort();
         modifiers.dedup();
         Self { key, modifiers }
@@ -189,6 +193,16 @@ fn parse_modifier(token: &str) -> Option<KeyCode> {
         "alt" => Some(KeyCode::KEY_LEFTALT),
         "super" | "meta" | "win" | "windows" => Some(KeyCode::KEY_LEFTMETA),
         _ => None,
+    }
+}
+
+fn canonical_modifier(key: KeyCode) -> KeyCode {
+    match key {
+        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => KeyCode::KEY_LEFTCTRL,
+        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => KeyCode::KEY_LEFTALT,
+        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => KeyCode::KEY_LEFTSHIFT,
+        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => KeyCode::KEY_LEFTMETA,
+        _ => key,
     }
 }
 

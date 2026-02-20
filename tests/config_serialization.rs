@@ -1,8 +1,9 @@
 #![cfg(feature = "serde")]
 
+use evdev::KeyCode;
 use evdev_hotkey::{
     ActionId, ActionMap, Backend, Error, HotkeyBinding, HotkeyConfig, HotkeyManager, ModeBindings,
-    SequenceBinding,
+    ModeOptions, SequenceBinding,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -165,4 +166,96 @@ fn deserialized_definitions_register_without_manual_conversion() {
     assert_eq!(registered.hotkey_handles().len(), 1);
     assert_eq!(registered.sequence_handles().len(), 1);
     assert_eq!(registered.defined_modes(), &["resize".to_string()]);
+}
+
+#[test]
+fn failed_registration_rolls_back_previous_hotkeys() {
+    let manager = match create_evdev_manager_or_skip() {
+        Some(manager) => manager,
+        None => return,
+    };
+
+    let _existing = manager
+        .register(KeyCode::KEY_B, &[KeyCode::KEY_LEFTCTRL], || {})
+        .expect("pre-existing registration should succeed");
+
+    let config = HotkeyConfig::new(
+        vec![
+            HotkeyBinding::new("Ctrl+A".parse().unwrap(), ActionId::new("first").unwrap()),
+            HotkeyBinding::new("Ctrl+B".parse().unwrap(), ActionId::new("second").unwrap()),
+        ],
+        Vec::new(),
+        Default::default(),
+    );
+
+    let mut actions = ActionMap::new();
+    actions
+        .insert(ActionId::new("first").unwrap(), || {})
+        .unwrap();
+    actions
+        .insert(ActionId::new("second").unwrap(), || {})
+        .unwrap();
+
+    let error = match config.register(&manager, &actions) {
+        Ok(_) => panic!("second hotkey conflicts with pre-existing registration"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        evdev_hotkey::ConfigRegistrationError::Register(_)
+    ));
+
+    assert!(!manager.is_registered(KeyCode::KEY_A, &[KeyCode::KEY_LEFTCTRL]));
+    assert!(manager.is_registered(KeyCode::KEY_B, &[KeyCode::KEY_LEFTCTRL]));
+}
+
+#[test]
+fn failed_registration_rolls_back_defined_modes() {
+    let manager = match create_evdev_manager_or_skip() {
+        Some(manager) => manager,
+        None => return,
+    };
+
+    manager
+        .define_mode("zz_existing", ModeOptions::new(), |_mode| Ok(()))
+        .expect("pre-existing mode should be definable");
+
+    let config = HotkeyConfig::new(
+        Vec::new(),
+        Vec::new(),
+        [
+            (
+                "aa_temp".to_string(),
+                ModeBindings::new(vec![HotkeyBinding::new(
+                    "H".parse().unwrap(),
+                    ActionId::new("temp-action").unwrap(),
+                )]),
+            ),
+            (
+                "zz_existing".to_string(),
+                ModeBindings::new(vec![HotkeyBinding::new(
+                    "L".parse().unwrap(),
+                    ActionId::new("existing-action").unwrap(),
+                )]),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    );
+
+    let mut actions = ActionMap::new();
+    actions
+        .insert(ActionId::new("temp-action").unwrap(), || {})
+        .unwrap();
+    actions
+        .insert(ActionId::new("existing-action").unwrap(), || {})
+        .unwrap();
+
+    if config.register(&manager, &actions).is_ok() {
+        panic!("duplicate mode name should fail registration");
+    }
+
+    manager
+        .define_mode("aa_temp", ModeOptions::new(), |_mode| Ok(()))
+        .expect("temporary mode should be rolled back on failure");
 }

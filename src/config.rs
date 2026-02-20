@@ -170,11 +170,17 @@ impl HotkeyConfig {
             let callback = actions
                 .resolve(binding.action())
                 .expect("validated action should exist");
-            let handle = manager.register(
+            let handle = match manager.register(
                 binding.hotkey().key(),
                 binding.hotkey().modifiers(),
                 move || callback(),
-            )?;
+            ) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    registered.rollback(manager);
+                    return Err(error.into());
+                }
+            };
             registered.hotkey_handles.push(handle);
         }
 
@@ -182,15 +188,24 @@ impl HotkeyConfig {
             let callback = actions
                 .resolve(binding.action())
                 .expect("validated action should exist");
-            let handle = manager.register_sequence(
+            let handle = match manager.register_sequence(
                 binding.sequence(),
                 SequenceOptions::new(),
                 move || callback(),
-            )?;
+            ) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    registered.rollback(manager);
+                    return Err(error.into());
+                }
+            };
             registered.sequence_handles.push(handle);
         }
 
-        for (mode_name, mode) in &self.modes {
+        let mut modes: Vec<(&String, &ModeBindings)> = self.modes.iter().collect();
+        modes.sort_by(|(left_name, _), (right_name, _)| left_name.cmp(right_name));
+
+        for (mode_name, mode) in modes {
             let resolved_bindings: Vec<(Hotkey, ActionCallback)> = mode
                 .bindings()
                 .iter()
@@ -202,18 +217,19 @@ impl HotkeyConfig {
                 })
                 .collect();
 
-            manager.define_mode(mode_name, ModeOptions::new(), |builder| {
+            if let Err(error) = manager.define_mode(mode_name, ModeOptions::new(), |builder| {
                 for (hotkey, callback) in &resolved_bindings {
                     let callback = callback.clone();
                     builder.register(hotkey.key(), hotkey.modifiers(), move || callback())?;
                 }
                 Ok(())
-            })?;
+            }) {
+                registered.rollback(manager);
+                return Err(error.into());
+            }
 
             registered.defined_modes.push(mode_name.clone());
         }
-
-        registered.defined_modes.sort();
 
         Ok(registered)
     }
@@ -342,6 +358,20 @@ impl RegisteredConfig {
 
     pub fn defined_modes(&self) -> &[String] {
         &self.defined_modes
+    }
+
+    fn rollback(&mut self, manager: &HotkeyManager) {
+        for mode_name in self.defined_modes.drain(..).rev() {
+            manager.remove_mode_definition(&mode_name);
+        }
+
+        for handle in self.sequence_handles.drain(..).rev() {
+            let _ = handle.unregister();
+        }
+
+        for handle in self.hotkey_handles.drain(..).rev() {
+            let _ = handle.unregister();
+        }
     }
 }
 
