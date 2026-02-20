@@ -7,6 +7,7 @@ Global hotkey listener for Linux using evdev. Works on both X11 and Wayland.
 - **Cross-desktop**: Works on X11 and Wayland by reading directly from `/dev/input`
 - **Multiple hotkeys**: Register any number of global shortcuts
 - **Simple API**: Type-safe with `evdev::KeyCode` and optional string parsing for config-driven shortcuts
+- **Config serialization (feature-gated)**: Deserialize hotkey, sequence, and mode bindings from TOML/JSON/YAML via serde
 - **Automatic device discovery**: No need to manually glob for keyboard devices
 - **Permission checking**: Helpful error messages guide users through setup
 - **Lightweight dependencies**: Uses `evdev`, `libc`, and `tracing`
@@ -162,6 +163,36 @@ let sequence = "Ctrl+K, Ctrl+C".parse::<HotkeySequence>()?;
 
 assert_eq!(hotkey.to_string(), "Ctrl+Shift+A");
 assert_eq!(sequence.to_string(), "Ctrl+K, Ctrl+C");
+```
+
+### Config serialization (feature-gated)
+
+Enable serde support when loading bindings from config files:
+
+```toml
+[dependencies]
+evdev-hotkey = { version = "0.1", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+```
+
+```rust
+use evdev_hotkey::{ActionId, ActionMap, HotkeyConfig, HotkeyManager};
+
+let manager = HotkeyManager::new()?;
+
+let config: HotkeyConfig = toml::from_str(r#"
+hotkeys = [
+  { hotkey = "Ctrl+Shift+A", action = "launch-terminal" }
+]
+"#)?;
+
+let mut actions = ActionMap::new();
+actions.insert(ActionId::new("launch-terminal")?, || {
+    println!("Launching terminal");
+})?;
+
+let _registered = config.register(&manager, &actions)?;
 ```
 
 ### Using Modifier Keys

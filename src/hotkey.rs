@@ -1,4 +1,6 @@
 use evdev::KeyCode;
+#[cfg(feature = "serde")]
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
 
@@ -24,6 +26,10 @@ pub enum ParseHotkeyError {
 
 impl Hotkey {
     pub fn new(key: KeyCode, mut modifiers: Vec<KeyCode>) -> Self {
+        modifiers = modifiers
+            .into_iter()
+            .map(canonical_modifier)
+            .collect::<Vec<_>>();
         modifiers.sort();
         modifiers.dedup();
         Self { key, modifiers }
@@ -101,6 +107,56 @@ impl FromStr for HotkeySequence {
     }
 }
 
+#[cfg(feature = "serde")]
+impl Serialize for Hotkey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Hotkey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        value.parse::<Hotkey>().map_err(|err| {
+            D::Error::custom(format!(
+                "invalid hotkey \"{value}\": {err}. Expected format like Ctrl+Shift+A"
+            ))
+        })
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for HotkeySequence {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for HotkeySequence {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        value.parse::<HotkeySequence>().map_err(|err| {
+            D::Error::custom(format!(
+                "invalid hotkey sequence \"{value}\": {err}. Expected format like Ctrl+K, Ctrl+C"
+            ))
+        })
+    }
+}
+
 impl fmt::Display for Hotkey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut parts: Vec<&str> = self.modifiers.iter().map(display_modifier).collect();
@@ -137,6 +193,16 @@ fn parse_modifier(token: &str) -> Option<KeyCode> {
         "alt" => Some(KeyCode::KEY_LEFTALT),
         "super" | "meta" | "win" | "windows" => Some(KeyCode::KEY_LEFTMETA),
         _ => None,
+    }
+}
+
+fn canonical_modifier(key: KeyCode) -> KeyCode {
+    match key {
+        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => KeyCode::KEY_LEFTCTRL,
+        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => KeyCode::KEY_LEFTALT,
+        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => KeyCode::KEY_LEFTSHIFT,
+        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => KeyCode::KEY_LEFTMETA,
+        _ => key,
     }
 }
 

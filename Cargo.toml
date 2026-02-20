@@ -17,6 +17,7 @@ portal = ["dep:ashpd", "dep:async-std"]
 grab = ["evdev"]
 tokio = ["dep:tokio", "dep:async-channel"]
 async-std = ["dep:async-std", "dep:async-channel"]
+serde = ["dep:serde"]
 
 [dependencies]
 evdev = "0.13"
@@ -26,3 +27,8 @@ ashpd = { version = "0.9.2", optional = true, default-features = false, features
 async-std = { version = "1.13", optional = true }
 async-channel = { version = "2.3", optional = true }
 tokio = { version = "1.44", optional = true, default-features = false, features = ["rt"] }
+serde = { version = "1.0", optional = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0"
+toml = "0.8"

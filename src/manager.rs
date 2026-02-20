@@ -643,7 +643,7 @@ impl HotkeyManager {
         backend: Backend,
         options: ManagerRuntimeOptions,
     ) -> Result<Self, Error> {
-        let event_hub = EventHub::default();
+        let event_hub = EventHub::new();
         let mode_registry = ModeRegistry::with_event_hub(event_hub.clone());
         let backend_impl: Arc<dyn crate::backend::HotkeyBackend> =
             build_backend(backend, options.grab, mode_registry.clone())?.into();
@@ -966,6 +966,38 @@ impl HotkeyManager {
     /// Get a mode controller for push/pop operations from callbacks.
     pub fn mode_controller(&self) -> ModeController {
         ModeController::new(self.inner.mode_registry.clone())
+    }
+
+    #[cfg(feature = "serde")]
+    pub(crate) fn remove_mode_definition(&self, name: &str) {
+        let mode_change_event = {
+            let _operation_guard = self.inner.operation_lock.lock().unwrap();
+
+            let removed = self
+                .inner
+                .mode_registry
+                .definitions
+                .lock()
+                .unwrap()
+                .remove(name)
+                .is_some();
+
+            if !removed {
+                return;
+            }
+
+            let mut mode_stack = self.inner.mode_registry.stack.lock().unwrap();
+            let before = mode_stack.top().map(str::to_string);
+
+            while mode_stack.remove_topmost(name) {}
+
+            let after = mode_stack.top().map(str::to_string);
+            (before != after).then_some(HotkeyEvent::ModeChanged(after))
+        };
+
+        if let Some(event) = mode_change_event {
+            self.inner.event_hub.emit(event);
+        }
     }
 
     pub fn replace<F>(
@@ -1531,7 +1563,7 @@ mod tests {
                 invocations_clone.fetch_add(1, Ordering::SeqCst);
             }),
             &(KeyCode::KEY_A, vec![]),
-            &crate::events::EventHub::default(),
+            &crate::events::EventHub::new(),
             press_timing,
         );
 
@@ -1964,7 +1996,7 @@ mod tests {
         backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
         grab_enabled: bool,
     ) -> HotkeyManager {
-        let event_hub = EventHub::default();
+        let event_hub = EventHub::new();
         let mode_registry = ModeRegistry::with_event_hub(event_hub.clone());
 
         HotkeyManager {
@@ -1989,7 +2021,7 @@ mod tests {
     }
 
     fn portal_manager_with_fake_backend() -> HotkeyManager {
-        let event_hub = EventHub::default();
+        let event_hub = EventHub::new();
         let mode_registry = ModeRegistry::with_event_hub(event_hub.clone());
 
         HotkeyManager {
