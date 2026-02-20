@@ -3,6 +3,7 @@ use crate::device::DeviceFilter;
 use crate::error::Error;
 use crate::hotkey::{Hotkey, HotkeySequence};
 use crate::mode::{ModeBuilder, ModeController, ModeDefinition, ModeOptions, ModeRegistry};
+use crate::tap_hold::{HoldAction, TapAction, TapHoldOptions, TapHoldRegistration};
 
 use evdev::KeyCode;
 use std::collections::HashMap;
@@ -365,16 +366,40 @@ impl SequenceHandle {
     }
 }
 
+/// Handle for unregistering a tap-hold key binding.
+#[derive(Clone)]
+pub struct TapHoldHandle {
+    key: KeyCode,
+    manager: Arc<HotkeyManagerInner>,
+}
+
+impl std::fmt::Debug for TapHoldHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TapHoldHandle")
+            .field("key", &self.key)
+            .finish()
+    }
+}
+
+impl TapHoldHandle {
+    pub fn unregister(self) -> Result<(), Error> {
+        self.manager.remove_tap_hold(self.key);
+        Ok(())
+    }
+}
+
 /// Inner state shared between HotkeyManager and Handles
 struct HotkeyManagerInner {
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
     device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+    tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, TapHoldRegistration>>>,
     mode_registry: ModeRegistry,
     next_sequence_id: AtomicU64,
     next_device_reg_id: AtomicU64,
     backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
     stop_flag: Arc<AtomicBool>,
+    grab_enabled: bool,
     operation_lock: Mutex<()>,
     listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -448,15 +473,19 @@ impl HotkeyManager {
         let backend_impl: Arc<dyn crate::backend::HotkeyBackend> =
             build_backend(backend, options.grab, mode_registry.clone())?.into();
 
+        let tap_hold_registrations = Arc::new(Mutex::new(HashMap::new()));
+
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
             sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
             device_registrations: Arc::new(Mutex::new(HashMap::new())),
+            tap_hold_registrations: tap_hold_registrations.clone(),
             mode_registry,
             next_sequence_id: AtomicU64::new(1),
             next_device_reg_id: AtomicU64::new(1),
             backend_impl: backend_impl.clone(),
             stop_flag: Arc::new(AtomicBool::new(false)),
+            grab_enabled: options.grab,
             operation_lock: Mutex::new(()),
             listener: Mutex::new(None),
         });
@@ -465,6 +494,7 @@ impl HotkeyManager {
             inner.registrations.clone(),
             inner.sequence_registrations.clone(),
             inner.device_registrations.clone(),
+            inner.tap_hold_registrations.clone(),
             inner.stop_flag.clone(),
         )?;
 
@@ -889,6 +919,65 @@ impl HotkeyManager {
         })
     }
 
+    /// Register a dual-function tap-hold key.
+    ///
+    /// The key performs one action when tapped (pressed and released quickly)
+    /// and a different action when held. Requires event grabbing to be enabled.
+    pub fn register_tap_hold(
+        &self,
+        key: KeyCode,
+        tap_action: TapAction,
+        hold_action: HoldAction,
+        options: TapHoldOptions,
+    ) -> Result<TapHoldHandle, Error> {
+        let _operation_guard = self.inner.operation_lock.lock().unwrap();
+
+        if self.inner.stop_flag.load(Ordering::SeqCst) {
+            return Err(Error::ManagerStopped);
+        }
+
+        if !self.inner.grab_enabled {
+            return Err(Error::UnsupportedFeature(
+                "tap-hold requires event grabbing (use HotkeyManager::builder().grab().build())"
+                    .to_string(),
+            ));
+        }
+
+        if is_modifier_key(key) {
+            return Err(Error::InvalidHotkey(format!(
+                "modifier keys cannot be used as tap-hold keys: {:?}",
+                key
+            )));
+        }
+
+        {
+            let tap_hold_regs = self.inner.tap_hold_registrations.lock().unwrap();
+            if tap_hold_regs.contains_key(&key) {
+                return Err(Error::AlreadyRegistered {
+                    key,
+                    modifiers: vec![],
+                });
+            }
+        }
+
+        let registration = TapHoldRegistration {
+            tap_action,
+            hold_action,
+            threshold: options.threshold,
+        };
+
+        self.inner
+            .tap_hold_registrations
+            .lock()
+            .unwrap()
+            .insert(key, registration);
+
+        Ok(TapHoldHandle {
+            key,
+            manager: self.inner.clone(),
+        })
+    }
+
     pub fn is_registered(&self, key: KeyCode, modifiers: &[KeyCode]) -> bool {
         let hotkey_key = (key, normalize_modifiers(modifiers));
         self.inner
@@ -926,6 +1015,7 @@ impl HotkeyManager {
             self.inner.registrations.lock().unwrap().clear();
             self.inner.sequence_registrations.lock().unwrap().clear();
             self.inner.device_registrations.lock().unwrap().clear();
+            self.inner.tap_hold_registrations.lock().unwrap().clear();
             self.inner.mode_registry.definitions.lock().unwrap().clear();
             self.inner.mode_registry.stack.lock().unwrap().clear();
         }
@@ -1025,6 +1115,11 @@ impl HotkeyManagerInner {
     fn remove_device_hotkey(&self, id: DeviceRegistrationId) {
         let _operation_guard = self.operation_lock.lock().unwrap();
         self.device_registrations.lock().unwrap().remove(&id);
+    }
+
+    fn remove_tap_hold(&self, key: KeyCode) {
+        let _operation_guard = self.operation_lock.lock().unwrap();
+        self.tap_hold_registrations.lock().unwrap().remove(&key);
     }
 }
 
@@ -1165,6 +1260,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1190,6 +1286,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1218,6 +1315,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1257,6 +1355,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1296,6 +1395,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1325,6 +1425,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1363,6 +1464,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1400,6 +1502,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1432,6 +1535,7 @@ mod tests {
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
             _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+            _tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1452,20 +1556,49 @@ mod tests {
     }
 
     fn manager_with_backend(backend_impl: Arc<dyn crate::backend::HotkeyBackend>) -> HotkeyManager {
+        manager_with_backend_and_grab(backend_impl, false)
+    }
+
+    fn manager_with_backend_and_grab(
+        backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
+        grab_enabled: bool,
+    ) -> HotkeyManager {
         HotkeyManager {
             inner: Arc::new(HotkeyManagerInner {
                 registrations: Arc::new(Mutex::new(HashMap::new())),
                 sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
                 device_registrations: Arc::new(Mutex::new(HashMap::new())),
+                tap_hold_registrations: Arc::new(Mutex::new(HashMap::new())),
                 mode_registry: ModeRegistry::new(),
                 next_sequence_id: AtomicU64::new(1),
                 next_device_reg_id: AtomicU64::new(1),
                 backend_impl,
                 stop_flag: Arc::new(AtomicBool::new(false)),
+                grab_enabled,
                 operation_lock: Mutex::new(()),
                 listener: Mutex::new(None),
             }),
             active_backend: Backend::Evdev,
+        }
+    }
+
+    fn portal_manager_with_fake_backend() -> HotkeyManager {
+        HotkeyManager {
+            inner: Arc::new(HotkeyManagerInner {
+                registrations: Arc::new(Mutex::new(HashMap::new())),
+                sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+                device_registrations: Arc::new(Mutex::new(HashMap::new())),
+                tap_hold_registrations: Arc::new(Mutex::new(HashMap::new())),
+                mode_registry: ModeRegistry::new(),
+                next_sequence_id: AtomicU64::new(1),
+                next_device_reg_id: AtomicU64::new(1),
+                backend_impl: Arc::new(FakeBackend),
+                stop_flag: Arc::new(AtomicBool::new(false)),
+                grab_enabled: false,
+                operation_lock: Mutex::new(()),
+                listener: Mutex::new(None),
+            }),
+            active_backend: Backend::Portal,
         }
     }
 
@@ -2110,21 +2243,7 @@ mod tests {
 
     #[test]
     fn sequence_registration_is_rejected_on_non_evdev_backend() {
-        let manager = HotkeyManager {
-            inner: Arc::new(HotkeyManagerInner {
-                registrations: Arc::new(Mutex::new(HashMap::new())),
-                sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
-                device_registrations: Arc::new(Mutex::new(HashMap::new())),
-                mode_registry: ModeRegistry::new(),
-                next_sequence_id: AtomicU64::new(1),
-                next_device_reg_id: AtomicU64::new(1),
-                backend_impl: Arc::new(FakeBackend),
-                stop_flag: Arc::new(AtomicBool::new(false)),
-                operation_lock: Mutex::new(()),
-                listener: Mutex::new(None),
-            }),
-            active_backend: Backend::Portal,
-        };
+        let manager = portal_manager_with_fake_backend();
 
         let sequence = HotkeySequence::new(vec![
             Hotkey::new(KeyCode::KEY_K, vec![]),
@@ -2343,21 +2462,7 @@ mod tests {
 
     #[test]
     fn define_mode_is_rejected_on_non_evdev_backend() {
-        let manager = HotkeyManager {
-            inner: Arc::new(HotkeyManagerInner {
-                registrations: Arc::new(Mutex::new(HashMap::new())),
-                sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
-                device_registrations: Arc::new(Mutex::new(HashMap::new())),
-                mode_registry: ModeRegistry::new(),
-                next_sequence_id: AtomicU64::new(1),
-                next_device_reg_id: AtomicU64::new(1),
-                backend_impl: Arc::new(FakeBackend),
-                stop_flag: Arc::new(AtomicBool::new(false)),
-                operation_lock: Mutex::new(()),
-                listener: Mutex::new(None),
-            }),
-            active_backend: Backend::Portal,
-        };
+        let manager = portal_manager_with_fake_backend();
 
         let err = manager
             .define_mode("resize", ModeOptions::new(), |_m| Ok(()))
@@ -2509,21 +2614,7 @@ mod tests {
 
     #[test]
     fn device_specific_rejected_on_portal_backend() {
-        let manager = HotkeyManager {
-            inner: Arc::new(HotkeyManagerInner {
-                registrations: Arc::new(Mutex::new(HashMap::new())),
-                sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
-                device_registrations: Arc::new(Mutex::new(HashMap::new())),
-                mode_registry: ModeRegistry::new(),
-                next_sequence_id: AtomicU64::new(1),
-                next_device_reg_id: AtomicU64::new(1),
-                backend_impl: Arc::new(FakeBackend),
-                stop_flag: Arc::new(AtomicBool::new(false)),
-                operation_lock: Mutex::new(()),
-                listener: Mutex::new(None),
-            }),
-            active_backend: Backend::Portal,
-        };
+        let manager = portal_manager_with_fake_backend();
 
         let err = manager
             .register_with_options(
@@ -2554,5 +2645,142 @@ mod tests {
         manager.unregister_all().unwrap();
 
         assert!(manager.inner.device_registrations.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn tap_hold_requires_grab_enabled() {
+        let manager = manager_with_fake_backend();
+
+        let err = manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::UnsupportedFeature(_)));
+    }
+
+    #[test]
+    fn tap_hold_succeeds_with_grab_enabled() {
+        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
+
+        let handle = manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .unwrap();
+
+        assert!(
+            manager
+                .inner
+                .tap_hold_registrations
+                .lock()
+                .unwrap()
+                .contains_key(&KeyCode::KEY_CAPSLOCK)
+        );
+
+        handle.unregister().unwrap();
+
+        assert!(
+            !manager
+                .inner
+                .tap_hold_registrations
+                .lock()
+                .unwrap()
+                .contains_key(&KeyCode::KEY_CAPSLOCK)
+        );
+    }
+
+    #[test]
+    fn tap_hold_rejects_modifier_keys() {
+        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
+
+        let err = manager
+            .register_tap_hold(
+                KeyCode::KEY_LEFTCTRL,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::InvalidHotkey(_)));
+    }
+
+    #[test]
+    fn tap_hold_rejects_duplicate_key() {
+        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
+
+        manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .unwrap();
+
+        let err = manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_TAB),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::AlreadyRegistered { .. }));
+    }
+
+    #[test]
+    fn tap_hold_rejected_when_manager_stopped() {
+        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
+        manager.inner.stop_flag.store(true, Ordering::SeqCst);
+
+        let err = manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::ManagerStopped));
+    }
+
+    #[test]
+    fn unregister_all_clears_tap_hold_registrations() {
+        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
+
+        manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .unwrap();
+
+        manager.unregister_all().unwrap();
+
+        assert!(
+            manager
+                .inner
+                .tap_hold_registrations
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
     }
 }
