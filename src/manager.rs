@@ -101,7 +101,7 @@ impl PressInvocationLimiter {
 
         if let Some(debounce) = self.config.debounce {
             if let Some(last_attempt) = state.last_attempt {
-                if now.duration_since(last_attempt) < debounce {
+                if now.saturating_duration_since(last_attempt) < debounce {
                     state.last_attempt = Some(now);
                     return false;
                 }
@@ -112,7 +112,7 @@ impl PressInvocationLimiter {
 
         if let Some(max_rate) = self.config.max_rate {
             if let Some(last_dispatch) = state.last_dispatch {
-                if now.duration_since(last_dispatch) < max_rate {
+                if now.saturating_duration_since(last_dispatch) < max_rate {
                     return false;
                 }
             }
@@ -1469,6 +1469,20 @@ mod tests {
 
         assert_eq!(config.debounce, Some(Duration::from_millis(75)));
         assert_eq!(config.max_rate, Some(Duration::from_millis(250)));
+    }
+
+    #[test]
+    fn limiter_handles_non_monotonic_timestamps_without_panicking() {
+        let limiter = PressInvocationLimiter::new(PressTimingConfig::new(
+            Some(Duration::from_millis(100)),
+            Some(Duration::from_millis(100)),
+        ));
+        let start = Instant::now();
+        assert!(limiter.should_dispatch_at(start));
+
+        if let Some(earlier) = start.checked_sub(Duration::from_millis(1)) {
+            assert!(!limiter.should_dispatch_at(earlier));
+        }
     }
 
     #[test]
