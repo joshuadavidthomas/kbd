@@ -1,5 +1,6 @@
 use crate::device::find_keyboard_devices;
 use crate::error::Error;
+use crate::key_state::SharedKeyState;
 use crate::listener::{spawn_listener_thread, ListenerConfig, ListenerState};
 use crate::manager::{
     DeviceHotkeyRegistration, DeviceRegistrationId, HotkeyKey, HotkeyRegistration, SequenceId,
@@ -30,6 +31,7 @@ pub trait HotkeyBackend: Send + Sync {
         device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
         tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
+        key_state: SharedKeyState,
     ) -> Result<JoinHandle<()>, Error>;
 
     fn register_hotkey(&self, hotkey: &HotkeyKey) -> Result<(), Error>;
@@ -50,6 +52,7 @@ impl HotkeyBackend for EvdevBackend {
         device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
         tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
+        key_state: SharedKeyState,
     ) -> Result<JoinHandle<()>, Error> {
         let keyboards = find_keyboard_devices()?;
         spawn_listener_thread(
@@ -60,6 +63,7 @@ impl HotkeyBackend for EvdevBackend {
                 device_registrations,
                 tap_hold_registrations,
                 stop_flag,
+                key_state,
                 mode_registry: self.mode_registry.clone(),
             },
             ListenerConfig { grab: self.grab },
@@ -167,6 +171,7 @@ impl HotkeyBackend for PortalBackend {
         _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
         _tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
+        _key_state: SharedKeyState,
     ) -> Result<JoinHandle<()>, Error> {
         std::thread::Builder::new()
             .name("portal-listener".to_string())
@@ -475,6 +480,7 @@ fn probe_portal_support() -> bool {
     false
 }
 
+#[cfg_attr(not(feature = "evdev"), allow(unused_variables))]
 pub(crate) fn build_backend(
     backend: Backend,
     grab: bool,

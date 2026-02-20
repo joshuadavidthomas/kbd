@@ -1,6 +1,7 @@
 use crate::device::{is_keyboard_device, DeviceInfo};
 use crate::error::Error;
 use crate::events::HotkeyEvent;
+use crate::key_state::SharedKeyState;
 use crate::manager::{
     is_modifier_key, normalize_modifiers, ActiveHotkeyPress, Callback, DeviceHotkeyRegistration,
     DeviceRegistrationId, HotkeyKey, HotkeyRegistration, PressDispatchState, PressOrigin,
@@ -35,11 +36,13 @@ pub(crate) struct ListenerState {
     pub(crate) tap_hold_registrations:
         Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
     pub(crate) stop_flag: Arc<AtomicBool>,
+    pub(crate) key_state: SharedKeyState,
     pub(crate) mode_registry: ModeRegistry,
 }
 
 const POLL_TIMEOUT_MS: i32 = 25;
 const INOTIFY_BUFFER_SIZE: usize = 4096;
+const VIRTUAL_FORWARDER_DEVICE_NAME: &str = "evdev-hotkey-virtual-keyboard";
 #[cfg(feature = "grab")]
 const MAX_FORWARDABLE_KEY_CODE: u16 = 767;
 
@@ -67,7 +70,7 @@ impl UinputForwarder {
 
         let device = VirtualDevice::builder()
             .map_err(|err| Error::DeviceAccess(format!("Failed to open /dev/uinput: {err}")))?
-            .name("evdev-hotkey-virtual-keyboard")
+            .name(VIRTUAL_FORWARDER_DEVICE_NAME)
             .with_keys(&keys)
             .map_err(|err| Error::DeviceAccess(format!("Failed to configure uinput keys: {err}")))?
             .build()
@@ -368,6 +371,7 @@ struct DeviceState {
     info: DeviceInfo,
     device: Device,
     active_presses: HashMap<KeyCode, ActiveHotkeyPress>,
+    pressed_keys: HashSet<KeyCode>,
 }
 
 impl DeviceState {
@@ -494,6 +498,10 @@ fn open_devices(
     Ok(devices)
 }
 
+fn should_ignore_device(info: &DeviceInfo, grab: bool) -> bool {
+    grab && info.name == VIRTUAL_FORWARDER_DEVICE_NAME
+}
+
 fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
     #[allow(unused_mut)]
     let mut device = Device::open(path).map_err(|e| format!("Failed to open {:?}: {}", path, e))?;
@@ -503,6 +511,12 @@ fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
     }
 
     let info = DeviceInfo::from_device(&device);
+    if should_ignore_device(&info, grab) {
+        return Err(format!(
+            "Ignoring internal virtual forwarding device {:?}",
+            path
+        ));
+    }
 
     if grab {
         #[cfg(feature = "grab")]
@@ -525,6 +539,7 @@ fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
         info,
         device,
         active_presses: HashMap::new(),
+        pressed_keys: HashSet::new(),
     })
 }
 
@@ -923,6 +938,7 @@ fn listener_loop(
         device_registrations,
         tap_hold_registrations,
         stop_flag,
+        key_state,
         mode_registry,
     } = shared;
     let mut modifier_tracker = ModifierTracker::default();
@@ -932,6 +948,8 @@ fn listener_loop(
 
     loop {
         if stop_flag.load(Ordering::SeqCst) {
+            emit_shutdown_tap_hold_releases(&mut tap_hold_runtime, &mut key_event_forwarder);
+            release_pressed_keys(&devices, &key_state);
             return;
         }
 
@@ -941,6 +959,8 @@ fn listener_loop(
             Err(err) => {
                 tracing::warn!("Poll error, stopping listener: {}", err);
                 stop_flag.store(true, Ordering::SeqCst);
+                emit_shutdown_tap_hold_releases(&mut tap_hold_runtime, &mut key_event_forwarder);
+                release_pressed_keys(&devices, &key_state);
                 return;
             }
         };
@@ -1012,13 +1032,14 @@ fn listener_loop(
                 inotify_fd.raw_fd(),
                 &mut devices,
                 &mut modifier_tracker,
+                &key_state,
                 config,
             );
         }
 
         for (fd, revents) in ready_devices {
             if revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
-                remove_device_by_fd(fd, &mut devices, &mut modifier_tracker);
+                remove_device_by_fd(fd, &mut devices, &mut modifier_tracker, &key_state);
                 continue;
             }
 
@@ -1033,7 +1054,7 @@ fn listener_loop(
                 match read_key_events(device) {
                     Ok(events) => events,
                     Err(err) if should_drop_device(&err) => {
-                        remove_device_by_fd(fd, &mut devices, &mut modifier_tracker);
+                        remove_device_by_fd(fd, &mut devices, &mut modifier_tracker, &key_state);
                         continue;
                     }
                     Err(_) => {
@@ -1043,6 +1064,13 @@ fn listener_loop(
             };
 
             for (key, value) in key_events {
+                update_pressed_key_state(
+                    &mut devices[device_index].pressed_keys,
+                    &key_state,
+                    key,
+                    value,
+                );
+
                 if is_modifier_key(key) {
                     match value {
                         1 => modifier_tracker.press(&device_path, key),
@@ -1329,13 +1357,55 @@ fn should_drop_device(err: &io::Error) -> bool {
         || err.kind() == io::ErrorKind::UnexpectedEof
 }
 
+fn emit_shutdown_tap_hold_releases(
+    tap_hold_runtime: &mut crate::tap_hold::TapHoldRuntime,
+    key_event_forwarder: &mut Option<Box<dyn KeyEventForwarder>>,
+) {
+    for (syn_key, syn_value) in tap_hold_runtime.release_all() {
+        if let Some(forwarder) = key_event_forwarder.as_mut() {
+            if let Err(err) = forwarder.forward_key_event(syn_key, syn_value) {
+                tracing::warn!("Failed emitting tap-hold shutdown synthetic event: {}", err);
+            }
+        }
+    }
+}
+
+fn release_pressed_keys(devices: &[DeviceState], key_state: &SharedKeyState) {
+    for device in devices {
+        key_state.release_keys(device.pressed_keys.iter().copied());
+    }
+}
+
+fn update_pressed_key_state(
+    pressed_keys: &mut HashSet<KeyCode>,
+    key_state: &SharedKeyState,
+    key: KeyCode,
+    value: i32,
+) {
+    match value {
+        1 => {
+            if pressed_keys.insert(key) {
+                key_state.press(key);
+            }
+        }
+        0 => {
+            if pressed_keys.remove(&key) {
+                key_state.release(key);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn remove_device_by_fd(
     fd: i32,
     devices: &mut Vec<DeviceState>,
     modifier_tracker: &mut ModifierTracker,
+    key_state: &SharedKeyState,
 ) {
     if let Some(index) = devices.iter().position(|device| device.fd() == fd) {
         let removed = devices.swap_remove(index);
+        key_state.release_keys(removed.pressed_keys.iter().copied());
         modifier_tracker.disconnect(&removed.path);
     }
 }
@@ -1344,9 +1414,11 @@ fn remove_device_by_path(
     path: &Path,
     devices: &mut Vec<DeviceState>,
     modifier_tracker: &mut ModifierTracker,
+    key_state: &SharedKeyState,
 ) {
     if let Some(index) = devices.iter().position(|device| device.path == path) {
         let removed = devices.swap_remove(index);
+        key_state.release_keys(removed.pressed_keys.iter().copied());
         modifier_tracker.disconnect(&removed.path);
     } else {
         modifier_tracker.disconnect(path);
@@ -1382,6 +1454,7 @@ fn process_hotplug_events(
     inotify_fd: i32,
     devices: &mut Vec<DeviceState>,
     modifier_tracker: &mut ModifierTracker,
+    key_state: &SharedKeyState,
     config: ListenerConfig,
 ) {
     let mut buffer = [0u8; INOTIFY_BUFFER_SIZE];
@@ -1423,7 +1496,7 @@ fn process_hotplug_events(
                     }
                 },
                 HotplugPathChange::Removed(path) => {
-                    remove_device_by_path(&path, devices, modifier_tracker);
+                    remove_device_by_path(&path, devices, modifier_tracker, key_state);
                 }
                 HotplugPathChange::Unchanged => {}
             }
@@ -3003,6 +3076,7 @@ mod tests {
                 device_registrations: Arc::new(Mutex::new(HashMap::new())),
                 tap_hold_registrations: Arc::new(Mutex::new(HashMap::new())),
                 stop_flag: stop_flag.clone(),
+                key_state: SharedKeyState::new(),
                 mode_registry: ModeRegistry::new(),
             },
             ListenerConfig::default(),
@@ -3107,6 +3181,18 @@ mod tests {
             vendor,
             product,
         }
+    }
+
+    #[test]
+    fn internal_virtual_forwarder_device_is_ignored_when_grab_enabled() {
+        let info = test_device_info(VIRTUAL_FORWARDER_DEVICE_NAME, 0, 0);
+        assert!(should_ignore_device(&info, true));
+    }
+
+    #[test]
+    fn internal_virtual_forwarder_device_is_not_ignored_without_grab() {
+        let info = test_device_info(VIRTUAL_FORWARDER_DEVICE_NAME, 0, 0);
+        assert!(!should_ignore_device(&info, false));
     }
 
     fn device_registration(
@@ -3320,6 +3406,34 @@ mod tests {
         let tracker = ModifierTracker::default();
         let unknown = PathBuf::from("/dev/input/event999");
         assert!(tracker.device_modifiers(&unknown).is_empty());
+    }
+
+    #[test]
+    fn update_pressed_key_state_tracks_press_and_release() {
+        let key_state = SharedKeyState::new();
+        let mut pressed_keys = HashSet::new();
+
+        update_pressed_key_state(&mut pressed_keys, &key_state, KeyCode::KEY_A, 1);
+        assert!(key_state.is_pressed(KeyCode::KEY_A));
+
+        update_pressed_key_state(&mut pressed_keys, &key_state, KeyCode::KEY_A, 0);
+        assert!(!key_state.is_pressed(KeyCode::KEY_A));
+    }
+
+    #[test]
+    fn key_state_modifier_query_matches_modifier_tracker_state() {
+        let key_state = SharedKeyState::new();
+        let mut pressed_keys = HashSet::new();
+        let mut tracker = ModifierTracker::default();
+        let device = PathBuf::from("/dev/input/event200");
+
+        tracker.press(&device, KeyCode::KEY_LEFTCTRL);
+        update_pressed_key_state(&mut pressed_keys, &key_state, KeyCode::KEY_LEFTCTRL, 1);
+        assert_eq!(key_state.active_modifiers(), tracker.active_modifiers());
+
+        tracker.release(&device, KeyCode::KEY_LEFTCTRL);
+        update_pressed_key_state(&mut pressed_keys, &key_state, KeyCode::KEY_LEFTCTRL, 0);
+        assert_eq!(key_state.active_modifiers(), tracker.active_modifiers());
     }
 
     #[test]

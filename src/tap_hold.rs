@@ -1,4 +1,6 @@
 use evdev::KeyCode;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// What happens when a dual-function key is tapped (pressed and released quickly).
@@ -61,6 +63,7 @@ pub(crate) struct TapHoldRegistration {
     pub(crate) tap_action: TapAction,
     pub(crate) hold_action: HoldAction,
     pub(crate) threshold: Duration,
+    pub(crate) marker: Arc<()>,
 }
 
 /// Result of tap-hold processing for a key event.
@@ -80,13 +83,6 @@ impl TapHoldDispatch {
             consumed: false,
         }
     }
-
-    fn consumed() -> Self {
-        Self {
-            synthetic_events: Vec::new(),
-            consumed: true,
-        }
-    }
 }
 
 /// Whether a pending tap-hold key has been resolved as "hold".
@@ -103,7 +99,6 @@ enum HoldResolution {
 
 /// Tracks a currently active (pressed) tap-hold key.
 struct ActiveTapHold {
-    key: KeyCode,
     pressed_at: Instant,
     hold_resolution: HoldResolution,
     registration: TapHoldRegistration,
@@ -117,7 +112,7 @@ struct ActiveTapHold {
 /// - Hold by interruption: another key pressed while tap-hold key is pending
 #[derive(Default)]
 pub(crate) struct TapHoldRuntime {
-    active: Option<ActiveTapHold>,
+    active: HashMap<KeyCode, ActiveTapHold>,
 }
 
 impl TapHoldRuntime {
@@ -130,68 +125,106 @@ impl TapHoldRuntime {
         key: KeyCode,
         value: i32,
         now: Instant,
-        registrations: &std::collections::HashMap<KeyCode, TapHoldRegistration>,
+        registrations: &HashMap<KeyCode, TapHoldRegistration>,
     ) -> TapHoldDispatch {
         match value {
             1 => self.on_key_press(key, now, registrations),
             0 => self.on_key_release(key),
+            2 => self.on_key_repeat(key),
             _ => TapHoldDispatch::none(),
         }
     }
 
     /// Check for threshold-based hold resolution on each tick.
     pub(crate) fn on_tick(&mut self, now: Instant) -> TapHoldDispatch {
-        let Some(active) = self.active.as_mut() else {
-            return TapHoldDispatch::none();
-        };
+        let mut keys_to_resolve: Vec<(Instant, u16, KeyCode)> = self
+            .active
+            .iter()
+            .filter_map(|(key, active)| {
+                (active.hold_resolution == HoldResolution::Pending
+                    && now.saturating_duration_since(active.pressed_at)
+                        >= active.registration.threshold)
+                    .then_some((active.pressed_at, key.code(), *key))
+            })
+            .collect();
+        keys_to_resolve.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
 
-        if active.hold_resolution == HoldResolution::Resolved {
+        let mut synthetic_events = Vec::new();
+        for (_, _, key) in keys_to_resolve {
+            if let Some(active) = self.active.get_mut(&key) {
+                active.hold_resolution = HoldResolution::Resolved;
+                synthetic_events.extend(hold_press_events(&active.registration.hold_action));
+            }
+        }
+
+        if synthetic_events.is_empty() {
             return TapHoldDispatch::none();
         }
 
-        if now.duration_since(active.pressed_at) >= active.registration.threshold {
-            active.hold_resolution = HoldResolution::Resolved;
-            let synthetic_events = hold_press_events(&active.registration.hold_action);
-            return TapHoldDispatch {
-                synthetic_events,
-                consumed: false,
-            };
+        TapHoldDispatch {
+            synthetic_events,
+            consumed: false,
+        }
+    }
+
+    /// Release any currently resolved hold actions and clear active tap-hold state.
+    pub(crate) fn release_all(&mut self) -> Vec<(KeyCode, i32)> {
+        let mut keys_to_release: Vec<(Instant, u16, KeyCode)> = self
+            .active
+            .iter()
+            .filter_map(|(key, active)| {
+                (active.hold_resolution == HoldResolution::Resolved).then_some((
+                    active.pressed_at,
+                    key.code(),
+                    *key,
+                ))
+            })
+            .collect();
+        keys_to_release.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
+
+        let mut synthetic_events = Vec::new();
+        for (_, _, key) in keys_to_release {
+            if let Some(active) = self.active.remove(&key) {
+                synthetic_events.extend(hold_release_events(&active.registration.hold_action));
+            }
         }
 
-        TapHoldDispatch::none()
+        self.active.clear();
+        synthetic_events
     }
 
     fn on_key_press(
         &mut self,
         key: KeyCode,
         now: Instant,
-        registrations: &std::collections::HashMap<KeyCode, TapHoldRegistration>,
+        registrations: &HashMap<KeyCode, TapHoldRegistration>,
     ) -> TapHoldDispatch {
-        // Check if this is a tap-hold key being pressed
+        let mut synthetic_events = self.resolve_pending_holds_for_interrupt(key);
+
         if let Some(registration) = registrations.get(&key) {
-            // If there's already an active tap-hold, drop the stale one
-            self.active = Some(ActiveTapHold {
+            if let Some(previous_active) = self.active.remove(&key) {
+                if previous_active.hold_resolution == HoldResolution::Resolved {
+                    synthetic_events.extend(hold_release_events(
+                        &previous_active.registration.hold_action,
+                    ));
+                }
+            }
+
+            self.active.insert(
                 key,
-                pressed_at: now,
-                hold_resolution: HoldResolution::Pending,
-                registration: registration.clone(),
-            });
+                ActiveTapHold {
+                    pressed_at: now,
+                    hold_resolution: HoldResolution::Pending,
+                    registration: registration.clone(),
+                },
+            );
 
-            return TapHoldDispatch::consumed();
+            return TapHoldDispatch {
+                synthetic_events,
+                consumed: true,
+            };
         }
 
-        // This is NOT a tap-hold key. Check if it interrupts a pending tap-hold.
-        let Some(active) = self.active.as_mut() else {
-            return TapHoldDispatch::none();
-        };
-
-        if active.hold_resolution == HoldResolution::Resolved {
-            return TapHoldDispatch::none();
-        }
-
-        // Another key pressed while tap-hold is pending → resolve as hold
-        active.hold_resolution = HoldResolution::Resolved;
-        let synthetic_events = hold_press_events(&active.registration.hold_action);
         TapHoldDispatch {
             synthetic_events,
             consumed: false,
@@ -199,16 +232,12 @@ impl TapHoldRuntime {
     }
 
     fn on_key_release(&mut self, key: KeyCode) -> TapHoldDispatch {
-        let is_active_key = self.active.as_ref().is_some_and(|a| a.key == key);
-        if !is_active_key {
+        let Some(active) = self.active.remove(&key) else {
             return TapHoldDispatch::none();
-        }
-
-        let active = self.active.take().unwrap();
+        };
 
         match active.hold_resolution {
             HoldResolution::Pending => {
-                // Released before threshold → tap
                 let synthetic_events = tap_events(&active.registration.tap_action);
                 TapHoldDispatch {
                     synthetic_events,
@@ -216,7 +245,6 @@ impl TapHoldRuntime {
                 }
             }
             HoldResolution::Resolved => {
-                // Was resolved as hold, now releasing → release the modifier
                 let synthetic_events = hold_release_events(&active.registration.hold_action);
                 TapHoldDispatch {
                     synthetic_events,
@@ -224,6 +252,39 @@ impl TapHoldRuntime {
                 }
             }
         }
+    }
+
+    fn on_key_repeat(&self, key: KeyCode) -> TapHoldDispatch {
+        if self.active.contains_key(&key) {
+            return TapHoldDispatch {
+                synthetic_events: Vec::new(),
+                consumed: true,
+            };
+        }
+
+        TapHoldDispatch::none()
+    }
+
+    fn resolve_pending_holds_for_interrupt(&mut self, key: KeyCode) -> Vec<(KeyCode, i32)> {
+        let mut keys_to_resolve: Vec<(Instant, u16, KeyCode)> = self
+            .active
+            .iter()
+            .filter_map(|(active_key, active)| {
+                (*active_key != key && active.hold_resolution == HoldResolution::Pending)
+                    .then_some((active.pressed_at, active_key.code(), *active_key))
+            })
+            .collect();
+        keys_to_resolve.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
+
+        let mut synthetic_events = Vec::new();
+        for (_, _, key_to_resolve) in keys_to_resolve {
+            if let Some(active) = self.active.get_mut(&key_to_resolve) {
+                active.hold_resolution = HoldResolution::Resolved;
+                synthetic_events.extend(hold_press_events(&active.registration.hold_action));
+            }
+        }
+
+        synthetic_events
     }
 }
 
@@ -262,6 +323,7 @@ mod tests {
                         tap_action: tap,
                         hold_action: hold,
                         threshold,
+                        marker: Arc::new(()),
                     },
                 )
             })
@@ -404,16 +466,33 @@ mod tests {
     }
 
     #[test]
-    fn repeat_events_are_ignored() {
+    fn repeat_events_for_active_tap_hold_key_are_consumed() {
         let mut runtime = TapHoldRuntime::default();
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
         runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
 
-        // Repeat event (value=2) should be ignored
         let repeat = runtime.process_key_event(
             KeyCode::KEY_CAPSLOCK,
+            2,
+            t0 + Duration::from_millis(50),
+            &regs,
+        );
+        assert!(repeat.consumed);
+        assert!(repeat.synthetic_events.is_empty());
+    }
+
+    #[test]
+    fn repeat_events_for_non_active_key_pass_through() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = capslock_as_ctrl_esc(200);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+
+        let repeat = runtime.process_key_event(
+            KeyCode::KEY_A,
             2,
             t0 + Duration::from_millis(50),
             &regs,
@@ -500,6 +579,177 @@ mod tests {
             release.synthetic_events,
             vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
         );
+    }
+
+    #[test]
+    fn multiple_tap_hold_keys_keep_independent_hold_release_state() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = make_registrations(vec![
+            (
+                KeyCode::KEY_CAPSLOCK,
+                TapAction::emit(KeyCode::KEY_ESC),
+                HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Duration::from_millis(200),
+            ),
+            (
+                KeyCode::KEY_TAB,
+                TapAction::emit(KeyCode::KEY_ENTER),
+                HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                Duration::from_millis(200),
+            ),
+        ]);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+
+        let hold_tick = runtime.on_tick(t0 + Duration::from_millis(200));
+        assert_eq!(hold_tick.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
+
+        let tab_press =
+            runtime.process_key_event(KeyCode::KEY_TAB, 1, t0 + Duration::from_millis(210), &regs);
+        assert!(tab_press.consumed);
+        assert!(tab_press.synthetic_events.is_empty());
+
+        let caps_release = runtime.process_key_event(
+            KeyCode::KEY_CAPSLOCK,
+            0,
+            t0 + Duration::from_millis(220),
+            &regs,
+        );
+        assert!(caps_release.consumed);
+        assert_eq!(
+            caps_release.synthetic_events,
+            vec![(KeyCode::KEY_LEFTCTRL, 0)]
+        );
+
+        let tab_release =
+            runtime.process_key_event(KeyCode::KEY_TAB, 0, t0 + Duration::from_millis(240), &regs);
+        assert!(tab_release.consumed);
+        assert_eq!(
+            tab_release.synthetic_events,
+            vec![(KeyCode::KEY_ENTER, 1), (KeyCode::KEY_ENTER, 0)]
+        );
+    }
+
+    #[test]
+    fn interrupting_key_resolves_each_pending_tap_hold_key_once() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = make_registrations(vec![
+            (
+                KeyCode::KEY_CAPSLOCK,
+                TapAction::emit(KeyCode::KEY_ESC),
+                HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Duration::from_millis(200),
+            ),
+            (
+                KeyCode::KEY_TAB,
+                TapAction::emit(KeyCode::KEY_ENTER),
+                HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                Duration::from_millis(200),
+            ),
+        ]);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+
+        let tab_press =
+            runtime.process_key_event(KeyCode::KEY_TAB, 1, t0 + Duration::from_millis(10), &regs);
+        assert!(tab_press.consumed);
+        assert_eq!(tab_press.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
+
+        let a_press =
+            runtime.process_key_event(KeyCode::KEY_A, 1, t0 + Duration::from_millis(20), &regs);
+        assert!(!a_press.consumed);
+        assert_eq!(a_press.synthetic_events, vec![(KeyCode::KEY_LEFTALT, 1)]);
+
+        let second_a_press =
+            runtime.process_key_event(KeyCode::KEY_A, 1, t0 + Duration::from_millis(30), &regs);
+        assert!(second_a_press.synthetic_events.is_empty());
+
+        let caps_release = runtime.process_key_event(
+            KeyCode::KEY_CAPSLOCK,
+            0,
+            t0 + Duration::from_millis(40),
+            &regs,
+        );
+        assert_eq!(
+            caps_release.synthetic_events,
+            vec![(KeyCode::KEY_LEFTCTRL, 0)]
+        );
+
+        let tab_release =
+            runtime.process_key_event(KeyCode::KEY_TAB, 0, t0 + Duration::from_millis(50), &regs);
+        assert_eq!(
+            tab_release.synthetic_events,
+            vec![(KeyCode::KEY_LEFTALT, 0)]
+        );
+    }
+
+    #[test]
+    fn non_monotonic_tick_timestamp_does_not_panic_or_resolve_hold() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = capslock_as_ctrl_esc(200);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+
+        let earlier = t0.checked_sub(Duration::from_millis(1)).unwrap_or(t0);
+        let earlier_tick = runtime.on_tick(earlier);
+        assert!(earlier_tick.synthetic_events.is_empty());
+
+        let release_dispatch = runtime.process_key_event(
+            KeyCode::KEY_CAPSLOCK,
+            0,
+            t0 + Duration::from_millis(50),
+            &regs,
+        );
+        assert_eq!(
+            release_dispatch.synthetic_events,
+            vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
+        );
+    }
+
+    #[test]
+    fn release_all_emits_release_for_resolved_holds_and_clears_state() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = capslock_as_ctrl_esc(200);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.on_tick(t0 + Duration::from_millis(200));
+
+        let shutdown_releases = runtime.release_all();
+        assert_eq!(shutdown_releases, vec![(KeyCode::KEY_LEFTCTRL, 0)]);
+
+        let release_after_shutdown = runtime.process_key_event(
+            KeyCode::KEY_CAPSLOCK,
+            0,
+            t0 + Duration::from_millis(250),
+            &regs,
+        );
+        assert!(!release_after_shutdown.consumed);
+        assert!(release_after_shutdown.synthetic_events.is_empty());
+    }
+
+    #[test]
+    fn release_all_drops_pending_tap_without_emitting() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = capslock_as_ctrl_esc(200);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+
+        let shutdown_releases = runtime.release_all();
+        assert!(shutdown_releases.is_empty());
+
+        let release_after_shutdown = runtime.process_key_event(
+            KeyCode::KEY_CAPSLOCK,
+            0,
+            t0 + Duration::from_millis(50),
+            &regs,
+        );
+        assert!(!release_after_shutdown.consumed);
+        assert!(release_after_shutdown.synthetic_events.is_empty());
     }
 
     #[test]

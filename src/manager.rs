@@ -3,11 +3,12 @@ use crate::device::DeviceFilter;
 use crate::error::Error;
 use crate::events::{EventHub, HotkeyEvent};
 use crate::hotkey::{Hotkey, HotkeySequence};
+use crate::key_state::SharedKeyState;
 use crate::mode::{ModeBuilder, ModeController, ModeDefinition, ModeOptions, ModeRegistry};
 use crate::tap_hold::{HoldAction, TapAction, TapHoldOptions, TapHoldRegistration};
 
 use evdev::KeyCode;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
@@ -501,7 +502,8 @@ impl Handle {
                 self.manager.remove_hotkey(key, &self.registration_marker)
             }
             RegistrationLocation::Device(id) => {
-                self.manager.remove_device_hotkey(*id);
+                self.manager
+                    .remove_device_hotkey(*id, &self.registration_marker);
                 Ok(())
             }
         }
@@ -533,6 +535,7 @@ impl SequenceHandle {
 #[derive(Clone)]
 pub struct TapHoldHandle {
     key: KeyCode,
+    registration_marker: Arc<()>,
     manager: Arc<HotkeyManagerInner>,
 }
 
@@ -546,7 +549,8 @@ impl std::fmt::Debug for TapHoldHandle {
 
 impl TapHoldHandle {
     pub fn unregister(self) -> Result<(), Error> {
-        self.manager.remove_tap_hold(self.key);
+        self.manager
+            .remove_tap_hold(self.key, &self.registration_marker);
         Ok(())
     }
 }
@@ -563,6 +567,7 @@ struct HotkeyManagerInner {
     backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
     stop_flag: Arc<AtomicBool>,
     event_hub: EventHub,
+    key_state: SharedKeyState,
     grab_enabled: bool,
     operation_lock: Mutex<()>,
     listener: Mutex<Option<JoinHandle<()>>>,
@@ -644,6 +649,7 @@ impl HotkeyManager {
             build_backend(backend, options.grab, mode_registry.clone())?.into();
 
         let tap_hold_registrations = Arc::new(Mutex::new(HashMap::new()));
+        let key_state = SharedKeyState::new();
 
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
@@ -656,6 +662,7 @@ impl HotkeyManager {
             backend_impl: backend_impl.clone(),
             stop_flag: Arc::new(AtomicBool::new(false)),
             event_hub,
+            key_state: key_state.clone(),
             grab_enabled: options.grab,
             operation_lock: Mutex::new(()),
             listener: Mutex::new(None),
@@ -667,6 +674,7 @@ impl HotkeyManager {
             inner.device_registrations.clone(),
             inner.tap_hold_registrations.clone(),
             inner.stop_flag.clone(),
+            key_state,
         )?;
 
         *inner.listener.lock().unwrap() = Some(listener);
@@ -1159,10 +1167,12 @@ impl HotkeyManager {
             }
         }
 
+        let registration_marker = Arc::new(());
         let registration = TapHoldRegistration {
             tap_action,
             hold_action,
             threshold: options.threshold,
+            marker: registration_marker.clone(),
         };
 
         self.inner
@@ -1173,6 +1183,7 @@ impl HotkeyManager {
 
         Ok(TapHoldHandle {
             key,
+            registration_marker,
             manager: self.inner.clone(),
         })
     }
@@ -1184,6 +1195,16 @@ impl HotkeyManager {
             .lock()
             .unwrap()
             .contains_key(&hotkey_key)
+    }
+
+    /// Returns whether the given key is currently pressed.
+    pub fn is_key_pressed(&self, key: KeyCode) -> bool {
+        self.inner.key_state.is_pressed(key)
+    }
+
+    /// Returns the set of currently pressed modifier keys.
+    pub fn active_modifiers(&self) -> HashSet<KeyCode> {
+        self.inner.key_state.active_modifiers()
     }
 
     /// Unregister all hotkeys and stop the listener
@@ -1246,6 +1267,8 @@ impl HotkeyManager {
                 }
             }
         }
+
+        self.inner.key_state.clear();
 
         if let Some(error) = first_error {
             return Err(error);
@@ -1323,14 +1346,30 @@ impl HotkeyManagerInner {
             .remove(&sequence_id);
     }
 
-    fn remove_device_hotkey(&self, id: DeviceRegistrationId) {
+    fn remove_device_hotkey(&self, id: DeviceRegistrationId, registration_marker: &Callback) {
         let _operation_guard = self.operation_lock.lock().unwrap();
-        self.device_registrations.lock().unwrap().remove(&id);
+        let mut device_registrations = self.device_registrations.lock().unwrap();
+
+        let is_current_registration = device_registrations.get(&id).is_some_and(|registration| {
+            Arc::ptr_eq(&registration.callbacks.on_press, registration_marker)
+        });
+
+        if is_current_registration {
+            device_registrations.remove(&id);
+        }
     }
 
-    fn remove_tap_hold(&self, key: KeyCode) {
+    fn remove_tap_hold(&self, key: KeyCode, registration_marker: &Arc<()>) {
         let _operation_guard = self.operation_lock.lock().unwrap();
-        self.tap_hold_registrations.lock().unwrap().remove(&key);
+        let mut tap_hold_registrations = self.tap_hold_registrations.lock().unwrap();
+
+        let is_current_registration = tap_hold_registrations
+            .get(&key)
+            .is_some_and(|registration| Arc::ptr_eq(&registration.marker, registration_marker));
+
+        if is_current_registration {
+            tap_hold_registrations.remove(&key);
+        }
     }
 }
 
@@ -1339,7 +1378,7 @@ mod tests {
     use super::*;
     #[cfg(any(feature = "tokio", feature = "async-std"))]
     use crate::events::HotkeyEvent;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{mpsc, Barrier, Mutex};
     use std::thread::JoinHandle;
@@ -1583,6 +1622,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1613,6 +1653,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1646,6 +1687,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1690,6 +1732,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1734,6 +1777,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1768,6 +1812,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1811,6 +1856,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1853,6 +1899,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1890,6 +1937,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1931,6 +1979,7 @@ mod tests {
                 backend_impl,
                 stop_flag: Arc::new(AtomicBool::new(false)),
                 event_hub,
+                key_state: SharedKeyState::new(),
                 grab_enabled,
                 operation_lock: Mutex::new(()),
                 listener: Mutex::new(None),
@@ -1955,6 +2004,7 @@ mod tests {
                 backend_impl: Arc::new(FakeBackend),
                 stop_flag: Arc::new(AtomicBool::new(false)),
                 event_hub,
+                key_state: SharedKeyState::new(),
                 grab_enabled: false,
                 operation_lock: Mutex::new(()),
                 listener: Mutex::new(None),
@@ -2067,6 +2117,62 @@ mod tests {
             .unwrap();
 
         assert!(manager.is_registered(KeyCode::KEY_D, &[KeyCode::KEY_LEFTCTRL]));
+    }
+
+    #[test]
+    fn key_state_query_reports_pressed_then_released_key() {
+        let manager = manager_with_fake_backend();
+
+        manager.inner.key_state.press(KeyCode::KEY_A);
+        assert!(manager.is_key_pressed(KeyCode::KEY_A));
+
+        manager.inner.key_state.release(KeyCode::KEY_A);
+        assert!(!manager.is_key_pressed(KeyCode::KEY_A));
+    }
+
+    #[test]
+    fn key_state_query_returns_active_modifiers_only() {
+        let manager = manager_with_fake_backend();
+
+        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
+        manager.inner.key_state.press(KeyCode::KEY_RIGHTSHIFT);
+        manager.inner.key_state.press(KeyCode::KEY_A);
+
+        let active_modifiers = manager.active_modifiers();
+        let expected: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL, KeyCode::KEY_RIGHTSHIFT]
+            .into_iter()
+            .collect();
+
+        assert_eq!(active_modifiers, expected);
+    }
+
+    #[test]
+    fn key_state_queries_are_thread_safe_for_concurrent_reads() {
+        let manager = Arc::new(manager_with_fake_backend());
+        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
+
+        let start = Arc::new(Barrier::new(5));
+        let mut threads = Vec::new();
+
+        for _ in 0..4 {
+            let manager_clone = manager.clone();
+            let start_clone = start.clone();
+            threads.push(std::thread::spawn(move || {
+                start_clone.wait();
+                for _ in 0..1_000 {
+                    assert!(manager_clone.is_key_pressed(KeyCode::KEY_LEFTCTRL));
+                    assert!(manager_clone
+                        .active_modifiers()
+                        .contains(&KeyCode::KEY_LEFTCTRL));
+                }
+            }));
+        }
+
+        start.wait();
+
+        for handle in threads {
+            handle.join().expect("reader thread should not panic");
+        }
     }
 
     #[test]
@@ -2322,6 +2428,43 @@ mod tests {
         let key = (KeyCode::KEY_T, normalize_modifiers(&[KeyCode::KEY_LEFTALT]));
         let registrations = manager.inner.registrations.lock().unwrap();
         let registration = registrations.get(&key).unwrap();
+        (registration.callbacks.on_press)();
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn stale_device_handle_unregister_does_not_remove_replaced_registration() {
+        let manager = manager_with_fake_backend();
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let stale_handle = manager
+            .register_with_options(
+                KeyCode::KEY_4,
+                &[],
+                HotkeyOptions::new().device(filter.clone()),
+                || {},
+            )
+            .unwrap();
+
+        let calls_clone = calls.clone();
+        manager
+            .replace_with_options(
+                KeyCode::KEY_4,
+                &[],
+                HotkeyOptions::new().device(filter),
+                move || {
+                    calls_clone.fetch_add(1, Ordering::SeqCst);
+                },
+            )
+            .unwrap();
+
+        stale_handle.unregister().unwrap();
+
+        let device_registrations = manager.inner.device_registrations.lock().unwrap();
+        assert_eq!(device_registrations.len(), 1);
+        let registration = device_registrations.values().next().unwrap();
         (registration.callbacks.on_press)();
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -3030,6 +3173,18 @@ mod tests {
     }
 
     #[test]
+    fn unregister_all_clears_key_state_queries() {
+        let manager = manager_with_fake_backend();
+        manager.inner.key_state.press(KeyCode::KEY_A);
+        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
+
+        manager.unregister_all().unwrap();
+
+        assert!(!manager.is_key_pressed(KeyCode::KEY_A));
+        assert!(manager.active_modifiers().is_empty());
+    }
+
+    #[test]
     fn tap_hold_requires_grab_enabled() {
         let manager = manager_with_fake_backend();
 
@@ -3117,6 +3272,41 @@ mod tests {
             .unwrap();
 
         assert!(matches!(err, Error::AlreadyRegistered { .. }));
+    }
+
+    #[test]
+    fn stale_tap_hold_handle_unregister_does_not_remove_new_registration() {
+        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
+
+        let stale_handle = manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .unwrap();
+
+        let stale_clone = stale_handle.clone();
+        stale_handle.unregister().unwrap();
+
+        manager
+            .register_tap_hold(
+                KeyCode::KEY_CAPSLOCK,
+                crate::tap_hold::TapAction::emit(KeyCode::KEY_TAB),
+                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                crate::tap_hold::TapHoldOptions::new(),
+            )
+            .unwrap();
+
+        stale_clone.unregister().unwrap();
+
+        assert!(manager
+            .inner
+            .tap_hold_registrations
+            .lock()
+            .unwrap()
+            .contains_key(&KeyCode::KEY_CAPSLOCK));
     }
 
     #[test]

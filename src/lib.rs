@@ -17,6 +17,7 @@ mod device;
 mod error;
 mod events;
 mod hotkey;
+mod key_state;
 mod listener;
 mod manager;
 mod mode;
