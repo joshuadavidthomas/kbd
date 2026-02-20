@@ -89,18 +89,23 @@ impl TapHoldDispatch {
     }
 }
 
-/// Resolution state for an active tap-hold key.
+/// Whether a pending tap-hold key has been resolved as "hold".
+///
+/// The tap case is not represented here because tap is discovered
+/// at release time (key released before threshold, no hold resolution).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Resolution {
-    /// Resolved as hold (modifier is active).
-    Hold,
+enum HoldResolution {
+    /// Still waiting — neither threshold nor interrupting key has triggered hold.
+    Pending,
+    /// Resolved as hold: modifier is synthetically active.
+    Resolved,
 }
 
 /// Tracks a currently active (pressed) tap-hold key.
 struct ActiveTapHold {
     key: KeyCode,
     pressed_at: Instant,
-    resolved: Option<Resolution>,
+    hold_resolution: HoldResolution,
     registration: TapHoldRegistration,
 }
 
@@ -129,7 +134,7 @@ impl TapHoldRuntime {
     ) -> TapHoldDispatch {
         match value {
             1 => self.on_key_press(key, now, registrations),
-            0 => self.on_key_release(key, now),
+            0 => self.on_key_release(key),
             _ => TapHoldDispatch::none(),
         }
     }
@@ -138,18 +143,17 @@ impl TapHoldRuntime {
     pub(crate) fn on_tick(
         &mut self,
         now: Instant,
-        _registrations: &std::collections::HashMap<KeyCode, TapHoldRegistration>,
     ) -> TapHoldDispatch {
         let Some(active) = self.active.as_mut() else {
             return TapHoldDispatch::none();
         };
 
-        if active.resolved.is_some() {
+        if active.hold_resolution == HoldResolution::Resolved {
             return TapHoldDispatch::none();
         }
 
         if now.duration_since(active.pressed_at) >= active.registration.threshold {
-            active.resolved = Some(Resolution::Hold);
+            active.hold_resolution = HoldResolution::Resolved;
             let synthetic_events = hold_press_events(&active.registration.hold_action);
             return TapHoldDispatch {
                 synthetic_events,
@@ -168,17 +172,11 @@ impl TapHoldRuntime {
     ) -> TapHoldDispatch {
         // Check if this is a tap-hold key being pressed
         if let Some(registration) = registrations.get(&key) {
-            // If there's already an active tap-hold, resolve it first
-            // (shouldn't normally happen, but handle gracefully)
-            if self.active.is_some() {
-                // Drop the existing one
-                self.active = None;
-            }
-
+            // If there's already an active tap-hold, drop the stale one
             self.active = Some(ActiveTapHold {
                 key,
                 pressed_at: now,
-                resolved: None,
+                hold_resolution: HoldResolution::Pending,
                 registration: registration.clone(),
             });
 
@@ -190,13 +188,12 @@ impl TapHoldRuntime {
             return TapHoldDispatch::none();
         };
 
-        if active.resolved.is_some() {
-            // Already resolved, nothing to do
+        if active.hold_resolution == HoldResolution::Resolved {
             return TapHoldDispatch::none();
         }
 
         // Another key pressed while tap-hold is pending → resolve as hold
-        active.resolved = Some(Resolution::Hold);
+        active.hold_resolution = HoldResolution::Resolved;
         let synthetic_events = hold_press_events(&active.registration.hold_action);
         TapHoldDispatch {
             synthetic_events,
@@ -207,29 +204,24 @@ impl TapHoldRuntime {
     fn on_key_release(
         &mut self,
         key: KeyCode,
-        now: Instant,
     ) -> TapHoldDispatch {
-        let Some(active) = self.active.as_ref() else {
-            return TapHoldDispatch::none();
-        };
-
-        if active.key != key {
+        let is_active_key = self.active.as_ref().is_some_and(|a| a.key == key);
+        if !is_active_key {
             return TapHoldDispatch::none();
         }
 
         let active = self.active.take().unwrap();
 
-        match active.resolved {
-            None => {
+        match active.hold_resolution {
+            HoldResolution::Pending => {
                 // Released before threshold → tap
-                let _ = now; // timestamp available for future use
                 let synthetic_events = tap_events(&active.registration.tap_action);
                 TapHoldDispatch {
                     synthetic_events,
                     consumed: true,
                 }
             }
-            Some(Resolution::Hold) => {
+            HoldResolution::Resolved => {
                 // Was resolved as hold, now releasing → release the modifier
                 let synthetic_events = hold_release_events(&active.registration.hold_action);
                 TapHoldDispatch {
@@ -327,11 +319,11 @@ mod tests {
         runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
 
         // Tick before threshold — no resolution
-        let early_tick = runtime.on_tick(t0 + Duration::from_millis(100), &regs);
+        let early_tick = runtime.on_tick(t0 + Duration::from_millis(100));
         assert!(early_tick.synthetic_events.is_empty());
 
         // Tick at threshold — resolves as hold
-        let hold_tick = runtime.on_tick(t0 + Duration::from_millis(200), &regs);
+        let hold_tick = runtime.on_tick(t0 + Duration::from_millis(200));
         assert_eq!(
             hold_tick.synthetic_events,
             vec![(KeyCode::KEY_LEFTCTRL, 1)]
@@ -435,10 +427,10 @@ mod tests {
         let regs = capslock_as_ctrl_esc(200);
 
         runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
-        runtime.on_tick(t0 + Duration::from_millis(200), &regs);
+        runtime.on_tick(t0 + Duration::from_millis(200));
 
         // Subsequent ticks should not produce more events
-        let tick = runtime.on_tick(t0 + Duration::from_millis(300), &regs);
+        let tick = runtime.on_tick(t0 + Duration::from_millis(300));
         assert!(tick.synthetic_events.is_empty());
     }
 
@@ -522,7 +514,7 @@ mod tests {
 
         // First: hold
         runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
-        runtime.on_tick(t0 + Duration::from_millis(200), &regs);
+        runtime.on_tick(t0 + Duration::from_millis(200));
         runtime.process_key_event(
             KeyCode::KEY_CAPSLOCK,
             0,
@@ -560,9 +552,8 @@ mod tests {
     fn tick_with_no_active_tap_hold_is_noop() {
         let mut runtime = TapHoldRuntime::default();
         let t0 = Instant::now();
-        let regs = capslock_as_ctrl_esc(200);
 
-        let tick = runtime.on_tick(t0, &regs);
+        let tick = runtime.on_tick(t0);
         assert!(tick.synthetic_events.is_empty());
     }
 }

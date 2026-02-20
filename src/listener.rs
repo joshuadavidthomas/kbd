@@ -925,9 +925,7 @@ fn listener_loop(
             pop_timed_out_modes(&mut mode_stack_guard, &mode_definitions_guard, now);
 
             // Check tap-hold threshold
-            let tap_hold_regs_guard = tap_hold_registrations.lock().unwrap();
-            let tap_hold_tick = tap_hold_runtime.on_tick(now, &tap_hold_regs_guard);
-            drop(tap_hold_regs_guard);
+            let tap_hold_tick = tap_hold_runtime.on_tick(now);
 
             let timeout_dispatch =
                 sequence_runtime.on_tick(now, &registrations_guard, &sequence_guard);
