@@ -167,11 +167,15 @@ impl HotkeyOptions {
         self
     }
 
+    /// Suppress press callback invocations until there has been at least this
+    /// much quiet time since the previous press attempt.
     pub fn debounce(mut self, duration: Duration) -> Self {
         self.debounce = Some(duration);
         self
     }
 
+    /// Cap press callback invocations to at most one successful dispatch per
+    /// interval.
     pub fn max_rate(mut self, interval: Duration) -> Self {
         self.max_rate = Some(interval);
         self
