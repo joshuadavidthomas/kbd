@@ -302,31 +302,14 @@ pub(crate) fn attach_hotkey_events(
         on_press();
     });
 
-    let wrapped_release = match on_release {
-        Some(release_callback) => {
-            let release_event_hub = event_hub.clone();
-            let release_hotkey = hotkey.clone();
-            Some(Arc::new(move || {
-                release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
-                release_callback();
-            }) as Callback)
-        }
-        None => {
-            #[cfg(any(feature = "tokio", feature = "async-std"))]
-            {
-                let release_event_hub = event_hub.clone();
-                let release_hotkey = hotkey.clone();
-                Some(Arc::new(move || {
-                    release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
-                }) as Callback)
-            }
-
-            #[cfg(not(any(feature = "tokio", feature = "async-std")))]
-            {
-                None
-            }
-        }
-    };
+    let wrapped_release = on_release.map(|release_callback| {
+        let release_event_hub = event_hub.clone();
+        let release_hotkey = hotkey.clone();
+        Arc::new(move || {
+            release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
+            release_callback();
+        }) as Callback
+    });
 
     HotkeyCallbacks {
         on_press: wrapped_press,
@@ -1791,7 +1774,6 @@ mod tests {
         F: std::future::Future,
     {
         let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
             .build()
             .expect("tokio runtime should build");
         runtime.block_on(future)
@@ -3030,7 +3012,7 @@ mod tests {
 
     #[test]
     #[cfg(any(feature = "tokio", feature = "async-std"))]
-    fn event_stream_emits_release_without_release_callback_registration() {
+    fn event_stream_does_not_inject_release_callbacks() {
         let manager = manager_with_fake_backend();
         let mut stream = manager.event_stream();
 
@@ -3052,19 +3034,13 @@ mod tests {
             .cloned()
             .unwrap();
 
+        assert!(registration.callbacks.on_release.is_none());
+
         (registration.callbacks.on_press)();
-        registration.callbacks.on_release.unwrap()();
 
         assert_eq!(
             stream.try_next(),
             Some(HotkeyEvent::Pressed(Hotkey::new(
-                KeyCode::KEY_B,
-                vec![KeyCode::KEY_LEFTCTRL],
-            ))),
-        );
-        assert_eq!(
-            stream.try_next(),
-            Some(HotkeyEvent::Released(Hotkey::new(
                 KeyCode::KEY_B,
                 vec![KeyCode::KEY_LEFTCTRL],
             ))),
