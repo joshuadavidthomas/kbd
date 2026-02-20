@@ -44,6 +44,7 @@ pub(crate) enum PressDispatchState {
 pub(crate) struct HotkeyCallbacks {
     pub(crate) on_press: Callback,
     pub(crate) on_release: Option<Callback>,
+    pub(crate) has_release_callback: bool,
     pub(crate) min_hold: Option<Duration>,
     pub(crate) repeat_behavior: RepeatBehavior,
     pub(crate) passthrough: bool,
@@ -102,15 +103,16 @@ impl HotkeyOptions {
         F: Fn() + Send + Sync + 'static,
     {
         let press_callback: Callback = Arc::new(callback);
-        let release_callback = match self.release_behavior {
-            ReleaseBehavior::Disabled => None,
-            ReleaseBehavior::SameAsPress => Some(press_callback.clone()),
-            ReleaseBehavior::Custom(callback) => Some(callback),
+        let (release_callback, has_release_callback) = match self.release_behavior {
+            ReleaseBehavior::Disabled => (None, false),
+            ReleaseBehavior::SameAsPress => (Some(press_callback.clone()), true),
+            ReleaseBehavior::Custom(callback) => (Some(callback), true),
         };
 
         HotkeyCallbacks {
             on_press: press_callback,
             on_release: release_callback,
+            has_release_callback,
             min_hold: self.min_hold,
             repeat_behavior: self.repeat_behavior,
             passthrough: self.passthrough,
@@ -288,6 +290,7 @@ pub(crate) fn attach_hotkey_events(
     let HotkeyCallbacks {
         on_press,
         on_release,
+        has_release_callback,
         min_hold,
         repeat_behavior,
         passthrough,
@@ -331,6 +334,7 @@ pub(crate) fn attach_hotkey_events(
     HotkeyCallbacks {
         on_press: wrapped_press,
         on_release: wrapped_release,
+        has_release_callback,
         min_hold,
         repeat_behavior,
         passthrough,
@@ -1281,6 +1285,20 @@ mod tests {
     }
 
     #[test]
+    fn release_callback_presence_tracks_user_options() {
+        let default_callbacks = HotkeyOptions::new().build_callbacks(|| {});
+        assert!(!default_callbacks.has_release_callback);
+
+        let same_as_press_callbacks = HotkeyOptions::new().on_release().build_callbacks(|| {});
+        assert!(same_as_press_callbacks.has_release_callback);
+
+        let custom_release_callbacks = HotkeyOptions::new()
+            .on_release_callback(|| {})
+            .build_callbacks(|| {});
+        assert!(custom_release_callbacks.has_release_callback);
+    }
+
+    #[test]
     fn passthrough_option_is_stored_in_callbacks() {
         let callbacks = HotkeyOptions::new().passthrough().build_callbacks(|| {});
         assert!(callbacks.passthrough);
@@ -1744,6 +1762,7 @@ mod tests {
                     counter.fetch_add(1, Ordering::SeqCst);
                 }),
                 on_release: None,
+                has_release_callback: false,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
                 passthrough: false,

@@ -528,6 +528,7 @@ mod tests {
                     counter.fetch_add(1, Ordering::SeqCst);
                 }),
                 on_release: None,
+                has_release_callback: false,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
                 passthrough: false,
@@ -548,6 +549,7 @@ mod tests {
                 on_release: Some(Arc::new(move || {
                     rc.fetch_add(1, Ordering::SeqCst);
                 })),
+                has_release_callback: true,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
                 passthrough: false,

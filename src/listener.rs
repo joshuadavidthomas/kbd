@@ -189,7 +189,7 @@ impl SequenceRuntime {
                             }
                             should_clear_pending = true;
                         } else {
-                            should_clear_pending = registration.callbacks.on_release.is_none();
+                            should_clear_pending = !registration.callbacks.has_release_callback;
                         }
                     }
                 }
@@ -1534,6 +1534,7 @@ mod tests {
                 counter.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -1805,6 +1806,7 @@ mod tests {
                     on_release: Some(Arc::new(move || {
                         release_count_clone.fetch_add(1, Ordering::SeqCst);
                     })),
+                    has_release_callback: true,
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -1867,6 +1869,7 @@ mod tests {
                     on_release: Some(Arc::new(move || {
                         release_count_clone.fetch_add(1, Ordering::SeqCst);
                     })),
+                    has_release_callback: true,
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -1916,6 +1919,59 @@ mod tests {
     }
 
     #[test]
+    fn standalone_timeout_does_not_wait_for_internal_release_observer() {
+        let mut runtime = SequenceRuntime::default();
+        let t0 = Instant::now();
+
+        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let press_count_clone = press_count.clone();
+
+        let mut registrations = HashMap::new();
+        registrations.insert(
+            sequence_key_1.clone(),
+            HotkeyRegistration {
+                callbacks: HotkeyCallbacks {
+                    on_press: Arc::new(move || {
+                        press_count_clone.fetch_add(1, Ordering::SeqCst);
+                    }),
+                    on_release: Some(Arc::new(|| {})),
+                    has_release_callback: false,
+                    min_hold: None,
+                    repeat_behavior: RepeatBehavior::Ignore,
+                    passthrough: false,
+                },
+            },
+        );
+
+        let mut sequence_registrations = HashMap::new();
+        sequence_registrations.insert(
+            1,
+            sequence_registration(
+                vec![sequence_key_1.clone(), sequence_key_2],
+                Duration::from_millis(50),
+                KeyCode::KEY_ESC,
+                None,
+                Arc::new(AtomicUsize::new(0)),
+            ),
+        );
+
+        runtime.on_key_press(sequence_key_1, t0, &registrations, &sequence_registrations);
+
+        let timeout_dispatch = runtime.on_tick(
+            t0 + Duration::from_millis(55),
+            &registrations,
+            &sequence_registrations,
+        );
+        dispatch_callbacks(timeout_dispatch.callbacks);
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 1);
+        assert!(runtime.pending_standalone.is_none());
+    }
+
+    #[test]
     fn standalone_first_step_timeout_respects_min_hold_when_released_early() {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
@@ -1935,6 +1991,7 @@ mod tests {
                         standalone_count_clone.fetch_add(1, Ordering::SeqCst);
                     }),
                     on_release: None,
+                    has_release_callback: false,
                     min_hold: Some(Duration::from_millis(100)),
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -1999,6 +2056,7 @@ mod tests {
                         standalone_count_clone.fetch_add(1, Ordering::SeqCst);
                     }),
                     on_release: None,
+                    has_release_callback: false,
                     min_hold: Some(Duration::from_millis(100)),
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
@@ -2191,6 +2249,7 @@ mod tests {
             on_release: Some(Arc::new(move || {
                 r.fetch_add(1, Ordering::SeqCst);
             })),
+            has_release_callback: true,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2264,6 +2323,7 @@ mod tests {
         let callbacks = HotkeyCallbacks {
             on_press: Arc::new(|| {}),
             on_release: None,
+            has_release_callback: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2298,6 +2358,7 @@ mod tests {
         let callbacks = HotkeyCallbacks {
             on_press: Arc::new(|| {}),
             on_release: None,
+            has_release_callback: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: true,
@@ -2337,6 +2398,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2399,6 +2461,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2452,6 +2515,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Trigger,
             passthrough: false,
@@ -2507,6 +2571,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: Some(Duration::ZERO),
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2551,6 +2616,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: Some(Duration::from_millis(50)),
             repeat_behavior: RepeatBehavior::Trigger,
             passthrough: false,
@@ -2604,6 +2670,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Trigger,
             passthrough: false,
@@ -2648,6 +2715,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -2692,6 +2760,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Trigger,
             passthrough: false,
@@ -3107,6 +3176,7 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             }),
             on_release: None,
+            has_release_callback: false,
             min_hold: None,
             repeat_behavior: RepeatBehavior::Ignore,
             passthrough: false,
@@ -3220,6 +3290,7 @@ mod tests {
                     on_release: Some(Arc::new(move || {
                         rc.fetch_add(1, Ordering::SeqCst);
                     })),
+                    has_release_callback: true,
                     min_hold: None,
                     repeat_behavior: RepeatBehavior::Ignore,
                     passthrough: false,
