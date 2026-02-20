@@ -130,6 +130,7 @@ impl TapHoldRuntime {
         match value {
             1 => self.on_key_press(key, now, registrations),
             0 => self.on_key_release(key),
+            2 => self.on_key_repeat(key),
             _ => TapHoldDispatch::none(),
         }
     }
@@ -251,6 +252,17 @@ impl TapHoldRuntime {
                 }
             }
         }
+    }
+
+    fn on_key_repeat(&self, key: KeyCode) -> TapHoldDispatch {
+        if self.active.contains_key(&key) {
+            return TapHoldDispatch {
+                synthetic_events: Vec::new(),
+                consumed: true,
+            };
+        }
+
+        TapHoldDispatch::none()
     }
 
     fn resolve_pending_holds_for_interrupt(&mut self, key: KeyCode) -> Vec<(KeyCode, i32)> {
@@ -454,16 +466,33 @@ mod tests {
     }
 
     #[test]
-    fn repeat_events_are_ignored() {
+    fn repeat_events_for_active_tap_hold_key_are_consumed() {
         let mut runtime = TapHoldRuntime::default();
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
         runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
 
-        // Repeat event (value=2) should be ignored
         let repeat = runtime.process_key_event(
             KeyCode::KEY_CAPSLOCK,
+            2,
+            t0 + Duration::from_millis(50),
+            &regs,
+        );
+        assert!(repeat.consumed);
+        assert!(repeat.synthetic_events.is_empty());
+    }
+
+    #[test]
+    fn repeat_events_for_non_active_key_pass_through() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = capslock_as_ctrl_esc(200);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+
+        let repeat = runtime.process_key_event(
+            KeyCode::KEY_A,
             2,
             t0 + Duration::from_millis(50),
             &regs,
