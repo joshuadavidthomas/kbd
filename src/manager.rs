@@ -1350,11 +1350,9 @@ impl HotkeyManagerInner {
         let _operation_guard = self.operation_lock.lock().unwrap();
         let mut device_registrations = self.device_registrations.lock().unwrap();
 
-        let is_current_registration = device_registrations
-            .get(&id)
-            .is_some_and(|registration| {
-                Arc::ptr_eq(&registration.callbacks.on_press, registration_marker)
-            });
+        let is_current_registration = device_registrations.get(&id).is_some_and(|registration| {
+            Arc::ptr_eq(&registration.callbacks.on_press, registration_marker)
+        });
 
         if is_current_registration {
             device_registrations.remove(&id);
