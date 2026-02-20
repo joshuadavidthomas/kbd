@@ -3,11 +3,12 @@ use crate::device::DeviceFilter;
 use crate::error::Error;
 use crate::events::{EventHub, HotkeyEvent};
 use crate::hotkey::{Hotkey, HotkeySequence};
+use crate::key_state::SharedKeyState;
 use crate::mode::{ModeBuilder, ModeController, ModeDefinition, ModeOptions, ModeRegistry};
 use crate::tap_hold::{HoldAction, TapAction, TapHoldOptions, TapHoldRegistration};
 
 use evdev::KeyCode;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
@@ -563,6 +564,7 @@ struct HotkeyManagerInner {
     backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
     stop_flag: Arc<AtomicBool>,
     event_hub: EventHub,
+    key_state: SharedKeyState,
     grab_enabled: bool,
     operation_lock: Mutex<()>,
     listener: Mutex<Option<JoinHandle<()>>>,
@@ -644,6 +646,7 @@ impl HotkeyManager {
             build_backend(backend, options.grab, mode_registry.clone())?.into();
 
         let tap_hold_registrations = Arc::new(Mutex::new(HashMap::new()));
+        let key_state = SharedKeyState::new();
 
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
@@ -656,6 +659,7 @@ impl HotkeyManager {
             backend_impl: backend_impl.clone(),
             stop_flag: Arc::new(AtomicBool::new(false)),
             event_hub,
+            key_state: key_state.clone(),
             grab_enabled: options.grab,
             operation_lock: Mutex::new(()),
             listener: Mutex::new(None),
@@ -667,6 +671,7 @@ impl HotkeyManager {
             inner.device_registrations.clone(),
             inner.tap_hold_registrations.clone(),
             inner.stop_flag.clone(),
+            key_state,
         )?;
 
         *inner.listener.lock().unwrap() = Some(listener);
@@ -1186,6 +1191,16 @@ impl HotkeyManager {
             .contains_key(&hotkey_key)
     }
 
+    /// Returns whether the given key is currently pressed.
+    pub fn is_key_pressed(&self, key: KeyCode) -> bool {
+        self.inner.key_state.is_pressed(key)
+    }
+
+    /// Returns the set of currently pressed modifier keys.
+    pub fn active_modifiers(&self) -> HashSet<KeyCode> {
+        self.inner.key_state.active_modifiers()
+    }
+
     /// Unregister all hotkeys and stop the listener
     pub fn unregister_all(&self) -> Result<(), Error> {
         let mut first_error = None;
@@ -1339,7 +1354,7 @@ mod tests {
     use super::*;
     #[cfg(any(feature = "tokio", feature = "async-std"))]
     use crate::events::HotkeyEvent;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{mpsc, Barrier, Mutex};
     use std::thread::JoinHandle;
@@ -1583,6 +1598,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1613,6 +1629,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1646,6 +1663,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1690,6 +1708,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1734,6 +1753,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1768,6 +1788,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1811,6 +1832,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1853,6 +1875,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1890,6 +1913,7 @@ mod tests {
                 Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
             >,
             _stop_flag: Arc<AtomicBool>,
+            _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1931,6 +1955,7 @@ mod tests {
                 backend_impl,
                 stop_flag: Arc::new(AtomicBool::new(false)),
                 event_hub,
+                key_state: SharedKeyState::new(),
                 grab_enabled,
                 operation_lock: Mutex::new(()),
                 listener: Mutex::new(None),
@@ -1955,6 +1980,7 @@ mod tests {
                 backend_impl: Arc::new(FakeBackend),
                 stop_flag: Arc::new(AtomicBool::new(false)),
                 event_hub,
+                key_state: SharedKeyState::new(),
                 grab_enabled: false,
                 operation_lock: Mutex::new(()),
                 listener: Mutex::new(None),
@@ -2067,6 +2093,62 @@ mod tests {
             .unwrap();
 
         assert!(manager.is_registered(KeyCode::KEY_D, &[KeyCode::KEY_LEFTCTRL]));
+    }
+
+    #[test]
+    fn key_state_query_reports_pressed_then_released_key() {
+        let manager = manager_with_fake_backend();
+
+        manager.inner.key_state.press(KeyCode::KEY_A);
+        assert!(manager.is_key_pressed(KeyCode::KEY_A));
+
+        manager.inner.key_state.release(KeyCode::KEY_A);
+        assert!(!manager.is_key_pressed(KeyCode::KEY_A));
+    }
+
+    #[test]
+    fn key_state_query_returns_active_modifiers_only() {
+        let manager = manager_with_fake_backend();
+
+        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
+        manager.inner.key_state.press(KeyCode::KEY_RIGHTSHIFT);
+        manager.inner.key_state.press(KeyCode::KEY_A);
+
+        let active_modifiers = manager.active_modifiers();
+        let expected: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL, KeyCode::KEY_RIGHTSHIFT]
+            .into_iter()
+            .collect();
+
+        assert_eq!(active_modifiers, expected);
+    }
+
+    #[test]
+    fn key_state_queries_are_thread_safe_for_concurrent_reads() {
+        let manager = Arc::new(manager_with_fake_backend());
+        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
+
+        let start = Arc::new(Barrier::new(5));
+        let mut threads = Vec::new();
+
+        for _ in 0..4 {
+            let manager_clone = manager.clone();
+            let start_clone = start.clone();
+            threads.push(std::thread::spawn(move || {
+                start_clone.wait();
+                for _ in 0..1_000 {
+                    assert!(manager_clone.is_key_pressed(KeyCode::KEY_LEFTCTRL));
+                    assert!(manager_clone
+                        .active_modifiers()
+                        .contains(&KeyCode::KEY_LEFTCTRL));
+                }
+            }));
+        }
+
+        start.wait();
+
+        for handle in threads {
+            handle.join().expect("reader thread should not panic");
+        }
     }
 
     #[test]

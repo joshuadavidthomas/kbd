@@ -561,7 +561,7 @@ Success criteria checklist:
 
 ### 3.3 Key state query API
 
-**Status: In Progress**
+**Status: Complete**
 
 > Current state: Modifier state is tracked internally in the listener thread
 > (`active_modifiers: HashSet<KeyCode>`), but not exposed via any public API.
@@ -574,11 +574,11 @@ manager.active_modifiers()                       // -> HashSet<KeyCode>
 ```
 
 Success criteria checklist:
-- [ ] Callers can query whether a specific key is currently pressed.
-- [ ] Callers can retrieve the set of currently active modifiers.
-- [ ] Queried state is consistent with the listener's internal tracking.
-- [ ] Queries are thread-safe and do not block the listener.
-- [ ] Tests cover: query while key is held, query after release, and concurrent access from multiple threads.
+- [x] Callers can query whether a specific key is currently pressed.
+- [x] Callers can retrieve the set of currently active modifiers.
+- [x] Queried state is consistent with the listener's internal tracking.
+- [x] Queries are thread-safe and do not block the listener.
+- [x] Tests cover: query while key is held, query after release, and concurrent access from multiple threads.
 
 ### 3.4 Configuration serialization
 
@@ -615,7 +615,7 @@ unchecked items and complete those first.
 |---------|--------|
 | 3.1 Async API | Complete (6/6 checked) |
 | 3.2 Debouncing / rate limiting | Complete (4/4 checked) |
-| 3.3 Key state query | In Progress (0/5 checked) |
+| 3.3 Key state query | Complete (5/5 checked) |
 | 3.4 Configuration serialization | Not Started (0/5 checked) |
 
 ---
@@ -716,7 +716,7 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | **Phase 3** | **Polish** | **▶ In Progress** | |
 | 3.1 | Async API | Complete | 6/6 ✓ |
 | 3.2 | Debouncing / rate limiting | Complete | 4/4 ✓ |
-| 3.3 | Key state query | In Progress | 0/5 |
+| 3.3 | Key state query | Complete | 5/5 |
 | 3.4 | Configuration serialization | Not Started | 0/5 |
 | **Phase 4** | **Expansion (not committed)** | **⛔ Blocked on Phase 3** | |
 | 4.1 | macOS backend (CGEventTap / IOKit) | Not Started | — |
