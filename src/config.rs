@@ -91,12 +91,15 @@ impl ActionMap {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        if self.callbacks.contains_key(&action) {
-            return Err(ActionMapError::DuplicateAction(action));
+        match self.callbacks.entry(action) {
+            std::collections::hash_map::Entry::Occupied(entry) => {
+                Err(ActionMapError::DuplicateAction(entry.key().clone()))
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(Arc::new(callback));
+                Ok(())
+            }
         }
-
-        self.callbacks.insert(action, Arc::new(callback));
-        Ok(())
     }
 
     fn resolve(&self, action: &ActionId) -> Option<ActionCallback> {
@@ -261,7 +264,10 @@ impl HotkeyConfig {
             }
         }
 
-        for (mode_name, mode) in &self.modes {
+        let mut modes: Vec<(&String, &ModeBindings)> = self.modes.iter().collect();
+        modes.sort_by(|(left_name, _), (right_name, _)| left_name.cmp(right_name));
+
+        for (mode_name, mode) in modes {
             for (index, binding) in mode.bindings().iter().enumerate() {
                 if actions.resolve(binding.action()).is_none() {
                     return Err(ConfigRegistrationError::MissingAction {

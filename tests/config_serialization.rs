@@ -24,6 +24,23 @@ fn create_evdev_manager_or_skip() -> Option<HotkeyManager> {
 }
 
 #[test]
+fn action_map_rejects_duplicate_action_ids() {
+    let mut actions = ActionMap::new();
+    actions
+        .insert(ActionId::new("launch-terminal").unwrap(), || {})
+        .expect("first insert should succeed");
+
+    let duplicate = actions
+        .insert(ActionId::new("launch-terminal").unwrap(), || {})
+        .expect_err("duplicate action id should be rejected");
+
+    assert_eq!(
+        duplicate.to_string(),
+        "action callback already exists for launch-terminal"
+    );
+}
+
+#[test]
 fn deserializes_hotkeys_sequences_and_modes_from_toml() {
     let config: HotkeyConfig = toml::from_str(
         r#"
@@ -258,4 +275,45 @@ fn failed_registration_rolls_back_defined_modes() {
     manager
         .define_mode("aa_temp", ModeOptions::new(), |_mode| Ok(()))
         .expect("temporary mode should be rolled back on failure");
+}
+
+#[test]
+fn missing_mode_action_reports_deterministic_mode_location() {
+    let config = HotkeyConfig::new(
+        Vec::new(),
+        Vec::new(),
+        [
+            (
+                "zz_mode".to_string(),
+                ModeBindings::new(vec![HotkeyBinding::new(
+                    "H".parse().unwrap(),
+                    ActionId::new("missing-zz").unwrap(),
+                )]),
+            ),
+            (
+                "aa_mode".to_string(),
+                ModeBindings::new(vec![HotkeyBinding::new(
+                    "L".parse().unwrap(),
+                    ActionId::new("missing-aa").unwrap(),
+                )]),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    );
+
+    let actions = ActionMap::new();
+    let manager = match create_evdev_manager_or_skip() {
+        Some(manager) => manager,
+        None => return,
+    };
+
+    let err = match config.register(&manager, &actions) {
+        Ok(_) => panic!("missing action should fail registration"),
+        Err(err) => err,
+    };
+
+    let message = err.to_string();
+    assert!(message.contains("missing-aa"));
+    assert!(message.contains("modes.aa_mode.bindings[0]"));
 }
