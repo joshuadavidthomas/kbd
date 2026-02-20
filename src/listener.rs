@@ -937,6 +937,7 @@ fn listener_loop(
 
     loop {
         if stop_flag.load(Ordering::SeqCst) {
+            release_pressed_keys(&devices, &key_state);
             return;
         }
 
@@ -946,6 +947,7 @@ fn listener_loop(
             Err(err) => {
                 tracing::warn!("Poll error, stopping listener: {}", err);
                 stop_flag.store(true, Ordering::SeqCst);
+                release_pressed_keys(&devices, &key_state);
                 return;
             }
         };
@@ -1340,6 +1342,12 @@ fn should_drop_device(err: &io::Error) -> bool {
     err.raw_os_error() == Some(libc::ENODEV)
         || err.kind() == io::ErrorKind::NotFound
         || err.kind() == io::ErrorKind::UnexpectedEof
+}
+
+fn release_pressed_keys(devices: &[DeviceState], key_state: &SharedKeyState) {
+    for device in devices {
+        key_state.release_keys(device.pressed_keys.iter().copied());
+    }
 }
 
 fn update_pressed_key_state(

@@ -69,6 +69,12 @@ impl SharedKeyState {
             .filter(|key| self.is_pressed(*key))
             .collect()
     }
+
+    pub(crate) fn clear(&self) {
+        for counter in self.pressed_counts.iter() {
+            counter.store(0, Ordering::Relaxed);
+        }
+    }
 }
 
 fn key_index(key: KeyCode) -> Option<usize> {
@@ -112,5 +118,17 @@ mod tests {
         key_state.release(KeyCode::KEY_B);
 
         assert!(!key_state.is_pressed(KeyCode::KEY_B));
+    }
+
+    #[test]
+    fn clear_resets_all_pressed_keys() {
+        let key_state = SharedKeyState::new();
+        key_state.press(KeyCode::KEY_A);
+        key_state.press(KeyCode::KEY_LEFTCTRL);
+
+        key_state.clear();
+
+        assert!(!key_state.is_pressed(KeyCode::KEY_A));
+        assert!(key_state.active_modifiers().is_empty());
     }
 }

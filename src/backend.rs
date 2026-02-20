@@ -485,6 +485,11 @@ pub(crate) fn build_backend(
     grab: bool,
     mode_registry: ModeRegistry,
 ) -> Result<Box<dyn HotkeyBackend>, Error> {
+    #[cfg(not(feature = "evdev"))]
+    {
+        let _ = (grab, &mode_registry);
+    }
+
     match backend {
         #[cfg(feature = "evdev")]
         Backend::Evdev => Ok(Box::new(EvdevBackend {

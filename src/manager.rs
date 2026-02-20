@@ -1262,6 +1262,8 @@ impl HotkeyManager {
             }
         }
 
+        self.inner.key_state.clear();
+
         if let Some(error) = first_error {
             return Err(error);
         }
@@ -3109,6 +3111,18 @@ mod tests {
             .lock()
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn unregister_all_clears_key_state_queries() {
+        let manager = manager_with_fake_backend();
+        manager.inner.key_state.press(KeyCode::KEY_A);
+        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
+
+        manager.unregister_all().unwrap();
+
+        assert!(!manager.is_key_pressed(KeyCode::KEY_A));
+        assert!(manager.active_modifiers().is_empty());
     }
 
     #[test]
