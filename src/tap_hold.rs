@@ -166,6 +166,32 @@ impl TapHoldRuntime {
         }
     }
 
+    /// Release any currently resolved hold actions and clear active tap-hold state.
+    pub(crate) fn release_all(&mut self) -> Vec<(KeyCode, i32)> {
+        let mut keys_to_release: Vec<(Instant, u16, KeyCode)> = self
+            .active
+            .iter()
+            .filter_map(|(key, active)| {
+                (active.hold_resolution == HoldResolution::Resolved).then_some((
+                    active.pressed_at,
+                    key.code(),
+                    *key,
+                ))
+            })
+            .collect();
+        keys_to_release.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
+
+        let mut synthetic_events = Vec::new();
+        for (_, _, key) in keys_to_release {
+            if let Some(active) = self.active.remove(&key) {
+                synthetic_events.extend(hold_release_events(&active.registration.hold_action));
+            }
+        }
+
+        self.active.clear();
+        synthetic_events
+    }
+
     fn on_key_press(
         &mut self,
         key: KeyCode,
@@ -652,6 +678,49 @@ mod tests {
             release_dispatch.synthetic_events,
             vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
         );
+    }
+
+    #[test]
+    fn release_all_emits_release_for_resolved_holds_and_clears_state() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = capslock_as_ctrl_esc(200);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.on_tick(t0 + Duration::from_millis(200));
+
+        let shutdown_releases = runtime.release_all();
+        assert_eq!(shutdown_releases, vec![(KeyCode::KEY_LEFTCTRL, 0)]);
+
+        let release_after_shutdown = runtime.process_key_event(
+            KeyCode::KEY_CAPSLOCK,
+            0,
+            t0 + Duration::from_millis(250),
+            &regs,
+        );
+        assert!(!release_after_shutdown.consumed);
+        assert!(release_after_shutdown.synthetic_events.is_empty());
+    }
+
+    #[test]
+    fn release_all_drops_pending_tap_without_emitting() {
+        let mut runtime = TapHoldRuntime::default();
+        let t0 = Instant::now();
+        let regs = capslock_as_ctrl_esc(200);
+
+        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+
+        let shutdown_releases = runtime.release_all();
+        assert!(shutdown_releases.is_empty());
+
+        let release_after_shutdown = runtime.process_key_event(
+            KeyCode::KEY_CAPSLOCK,
+            0,
+            t0 + Duration::from_millis(50),
+            &regs,
+        );
+        assert!(!release_after_shutdown.consumed);
+        assert!(release_after_shutdown.synthetic_events.is_empty());
     }
 
     #[test]

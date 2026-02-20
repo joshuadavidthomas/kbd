@@ -42,6 +42,7 @@ pub(crate) struct ListenerState {
 
 const POLL_TIMEOUT_MS: i32 = 25;
 const INOTIFY_BUFFER_SIZE: usize = 4096;
+const VIRTUAL_FORWARDER_DEVICE_NAME: &str = "evdev-hotkey-virtual-keyboard";
 #[cfg(feature = "grab")]
 const MAX_FORWARDABLE_KEY_CODE: u16 = 767;
 
@@ -69,7 +70,7 @@ impl UinputForwarder {
 
         let device = VirtualDevice::builder()
             .map_err(|err| Error::DeviceAccess(format!("Failed to open /dev/uinput: {err}")))?
-            .name("evdev-hotkey-virtual-keyboard")
+            .name(VIRTUAL_FORWARDER_DEVICE_NAME)
             .with_keys(&keys)
             .map_err(|err| Error::DeviceAccess(format!("Failed to configure uinput keys: {err}")))?
             .build()
@@ -497,6 +498,10 @@ fn open_devices(
     Ok(devices)
 }
 
+fn should_ignore_device(info: &DeviceInfo, grab: bool) -> bool {
+    grab && info.name == VIRTUAL_FORWARDER_DEVICE_NAME
+}
+
 fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
     #[allow(unused_mut)]
     let mut device = Device::open(path).map_err(|e| format!("Failed to open {:?}: {}", path, e))?;
@@ -506,6 +511,12 @@ fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
     }
 
     let info = DeviceInfo::from_device(&device);
+    if should_ignore_device(&info, grab) {
+        return Err(format!(
+            "Ignoring internal virtual forwarding device {:?}",
+            path
+        ));
+    }
 
     if grab {
         #[cfg(feature = "grab")]
@@ -937,6 +948,7 @@ fn listener_loop(
 
     loop {
         if stop_flag.load(Ordering::SeqCst) {
+            emit_shutdown_tap_hold_releases(&mut tap_hold_runtime, &mut key_event_forwarder);
             release_pressed_keys(&devices, &key_state);
             return;
         }
@@ -947,6 +959,7 @@ fn listener_loop(
             Err(err) => {
                 tracing::warn!("Poll error, stopping listener: {}", err);
                 stop_flag.store(true, Ordering::SeqCst);
+                emit_shutdown_tap_hold_releases(&mut tap_hold_runtime, &mut key_event_forwarder);
                 release_pressed_keys(&devices, &key_state);
                 return;
             }
@@ -1342,6 +1355,19 @@ fn should_drop_device(err: &io::Error) -> bool {
     err.raw_os_error() == Some(libc::ENODEV)
         || err.kind() == io::ErrorKind::NotFound
         || err.kind() == io::ErrorKind::UnexpectedEof
+}
+
+fn emit_shutdown_tap_hold_releases(
+    tap_hold_runtime: &mut crate::tap_hold::TapHoldRuntime,
+    key_event_forwarder: &mut Option<Box<dyn KeyEventForwarder>>,
+) {
+    for (syn_key, syn_value) in tap_hold_runtime.release_all() {
+        if let Some(forwarder) = key_event_forwarder.as_mut() {
+            if let Err(err) = forwarder.forward_key_event(syn_key, syn_value) {
+                tracing::warn!("Failed emitting tap-hold shutdown synthetic event: {}", err);
+            }
+        }
+    }
 }
 
 fn release_pressed_keys(devices: &[DeviceState], key_state: &SharedKeyState) {
@@ -3155,6 +3181,18 @@ mod tests {
             vendor,
             product,
         }
+    }
+
+    #[test]
+    fn internal_virtual_forwarder_device_is_ignored_when_grab_enabled() {
+        let info = test_device_info(VIRTUAL_FORWARDER_DEVICE_NAME, 0, 0);
+        assert!(should_ignore_device(&info, true));
+    }
+
+    #[test]
+    fn internal_virtual_forwarder_device_is_not_ignored_without_grab() {
+        let info = test_device_info(VIRTUAL_FORWARDER_DEVICE_NAME, 0, 0);
+        assert!(!should_ignore_device(&info, false));
     }
 
     fn device_registration(
