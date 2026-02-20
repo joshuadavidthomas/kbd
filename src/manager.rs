@@ -206,10 +206,18 @@ impl HotkeyManagerBuilder {
     }
 }
 
+/// Where a hotkey press was matched: global registrations, a named mode, or
+/// a device-specific registration.
+#[derive(Clone, Debug)]
+pub(crate) enum PressOrigin {
+    Global,
+    Mode(String),
+    Device(DeviceRegistrationId),
+}
+
 pub(crate) struct ActiveHotkeyPress {
     pub(crate) registration_key: HotkeyKey,
-    pub(crate) mode_name: Option<String>,
-    pub(crate) device_registration_id: Option<DeviceRegistrationId>,
+    pub(crate) origin: PressOrigin,
     pub(crate) pressed_at: Instant,
     pub(crate) press_dispatch_state: PressDispatchState,
 }

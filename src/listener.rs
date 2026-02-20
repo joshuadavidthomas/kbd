@@ -2,8 +2,8 @@ use crate::device::{is_keyboard_device, DeviceInfo};
 use crate::error::Error;
 use crate::manager::{
     is_modifier_key, normalize_modifiers, ActiveHotkeyPress, Callback, DeviceHotkeyRegistration,
-    DeviceRegistrationId, HotkeyKey, HotkeyRegistration, PressDispatchState, RepeatBehavior,
-    SequenceId, SequenceRegistration,
+    DeviceRegistrationId, HotkeyKey, HotkeyRegistration, PressDispatchState, PressOrigin,
+    RepeatBehavior, SequenceId, SequenceRegistration,
 };
 use crate::mode::{
     dispatch_mode_key_event, find_callbacks_for_active_press, pop_timed_out_modes, ModeDefinition,
@@ -663,8 +663,7 @@ fn collect_device_specific_dispatch(
                 key,
                 ActiveHotkeyPress {
                     registration_key: device_hotkey_key,
-                    mode_name: None,
-                    device_registration_id: Some(reg_id),
+                    origin: PressOrigin::Device(reg_id),
                     pressed_at: now,
                     press_dispatch_state,
                 },
@@ -676,7 +675,7 @@ fn collect_device_specific_dispatch(
         }
         0 => {
             if let Some(active) = active_presses.remove(&key) {
-                if active.device_registration_id == Some(reg_id) {
+                if matches!(active.origin, PressOrigin::Device(id) if id == reg_id) {
                     if active.press_dispatch_state == PressDispatchState::Pending {
                         if let Some(min_hold) = registration.callbacks.min_hold {
                             if now.duration_since(active.pressed_at) >= min_hold {
@@ -693,7 +692,7 @@ fn collect_device_specific_dispatch(
         }
         2 => {
             if let Some(active) = active_presses.get_mut(&key) {
-                if active.device_registration_id == Some(reg_id) {
+                if matches!(active.origin, PressOrigin::Device(id) if id == reg_id) {
                     let hold_satisfied = registration.callbacks.min_hold.is_none_or(|min_hold| {
                         now.duration_since(active.pressed_at) >= min_hold
                     });
@@ -795,8 +794,7 @@ fn collect_non_modifier_dispatch(
                     key,
                     ActiveHotkeyPress {
                         registration_key,
-                        mode_name: None,
-                        device_registration_id: None,
+                        origin: PressOrigin::Global,
                         pressed_at: now,
                         press_dispatch_state,
                     },

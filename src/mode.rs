@@ -7,7 +7,7 @@ use evdev::KeyCode;
 use crate::error::Error;
 use crate::manager::{
     normalize_modifiers, validate_hotkey_binding, ActiveHotkeyPress, Callback, HotkeyKey,
-    HotkeyOptions, HotkeyRegistration, PressDispatchState, RepeatBehavior,
+    HotkeyOptions, HotkeyRegistration, PressDispatchState, PressOrigin, RepeatBehavior,
 };
 
 // Mode options
@@ -222,8 +222,7 @@ fn dispatch_mode_press(
                 hotkey_key.0,
                 ActiveHotkeyPress {
                     registration_key: hotkey_key.clone(),
-                    mode_name: Some(mode_name.clone()),
-                    device_registration_id: None,
+                    origin: PressOrigin::Mode(mode_name.clone()),
                     pressed_at: now,
                     press_dispatch_state,
                 },
@@ -260,19 +259,18 @@ fn dispatch_mode_release(
     stack: &mut ModeStack,
     active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
 ) -> ModeEventDispatch {
-    let is_mode_press = active_presses
-        .get(&key)
-        .is_some_and(|active| active.mode_name.is_some());
-
-    if !is_mode_press {
+    let Some(active) = active_presses.get(&key) else {
         return ModeEventDispatch::PassThrough;
-    }
+    };
+    let PressOrigin::Mode(ref mode_name) = active.origin else {
+        return ModeEventDispatch::PassThrough;
+    };
+    let mode_name = mode_name.clone();
 
     let active = active_presses.remove(&key).unwrap();
-    let mode_name = active.mode_name.as_ref().unwrap();
 
     let Some(registration) = definitions
-        .get(mode_name)
+        .get(&mode_name)
         .and_then(|def| def.bindings.get(&active.registration_key))
     else {
         return ModeEventDispatch::Handled {
@@ -314,14 +312,16 @@ fn dispatch_mode_repeat(
 ) -> ModeEventDispatch {
     let is_mode_press = active_presses
         .get(&key)
-        .is_some_and(|active| active.mode_name.is_some());
+        .is_some_and(|active| matches!(active.origin, PressOrigin::Mode(_)));
 
     if !is_mode_press {
         return ModeEventDispatch::PassThrough;
     }
 
     let active = active_presses.get_mut(&key).unwrap();
-    let mode_name = active.mode_name.as_ref().unwrap();
+    let PressOrigin::Mode(ref mode_name) = active.origin else {
+        unreachable!();
+    };
 
     let Some(registration) = definitions
         .get(mode_name)
@@ -363,22 +363,18 @@ pub(crate) fn find_callbacks_for_active_press<'a>(
         crate::manager::DeviceHotkeyRegistration,
     >,
 ) -> Option<&'a crate::manager::HotkeyCallbacks> {
-    if let Some(mode_name) = &active.mode_name {
-        return mode_definitions
+    match &active.origin {
+        PressOrigin::Mode(mode_name) => mode_definitions
             .get(mode_name)
             .and_then(|def| def.bindings.get(&active.registration_key))
-            .map(|reg| &reg.callbacks);
+            .map(|reg| &reg.callbacks),
+        PressOrigin::Device(device_reg_id) => device_registrations
+            .get(device_reg_id)
+            .map(|reg| &reg.callbacks),
+        PressOrigin::Global => global_registrations
+            .get(&active.registration_key)
+            .map(|reg| &reg.callbacks),
     }
-
-    if let Some(device_reg_id) = active.device_registration_id {
-        return device_registrations
-            .get(&device_reg_id)
-            .map(|reg| &reg.callbacks);
-    }
-
-    global_registrations
-        .get(&active.registration_key)
-        .map(|reg| &reg.callbacks)
 }
 
 // Shared mode state between manager and listener
@@ -1262,8 +1258,7 @@ mod tests {
 
         let active = ActiveHotkeyPress {
             registration_key: key,
-            mode_name: None,
-            device_registration_id: None,
+            origin: PressOrigin::Global,
             pressed_at: Instant::now(),
             press_dispatch_state: PressDispatchState::Dispatched,
         };
@@ -1293,8 +1288,7 @@ mod tests {
 
         let active = ActiveHotkeyPress {
             registration_key: key,
-            mode_name: Some("resize".to_string()),
-            device_registration_id: None,
+            origin: PressOrigin::Mode("resize".to_string()),
             pressed_at: Instant::now(),
             press_dispatch_state: PressDispatchState::Dispatched,
         };
