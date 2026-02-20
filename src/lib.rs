@@ -1,6 +1,9 @@
 pub use backend::Backend;
 pub use device::DeviceFilter;
 pub use error::Error;
+pub use events::HotkeyEvent;
+#[cfg(any(feature = "tokio", feature = "async-std"))]
+pub use events::HotkeyEventStream;
 pub use hotkey::{Hotkey, HotkeySequence, ParseHotkeyError};
 pub use manager::{
     Handle, HotkeyManager, HotkeyManagerBuilder, HotkeyOptions, SequenceHandle, SequenceOptions,
@@ -12,6 +15,7 @@ pub use tap_hold::{HoldAction, TapAction, TapHoldOptions};
 mod backend;
 mod device;
 mod error;
+mod events;
 mod hotkey;
 mod listener;
 mod manager;

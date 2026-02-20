@@ -516,7 +516,7 @@ complete those first.
 
 ### 3.1 Async API
 
-**Status: Not Started**
+**Status: Complete**
 
 Provide an `async` interface alongside the callback API. Feature-gated behind
 `tokio` and `async-std` features.
@@ -534,12 +534,12 @@ while let Some(event) = stream.next().await {
 ```
 
 Success criteria checklist:
-- [ ] An async stream-based interface is available as an alternative to callbacks for receiving hotkey events.
-- [ ] The stream delivers press, release, sequence-step, and mode-change events.
-- [ ] The async interface is behind a feature flag so non-async users pay no dependency cost.
-- [ ] The async and callback interfaces can coexist (enabling one does not disable the other).
-- [ ] The stream completes cleanly when the manager shuts down.
-- [ ] Tests cover: event delivery, clean completion on shutdown, and feature-gated compilation.
+- [x] An async stream-based interface is available as an alternative to callbacks for receiving hotkey events.
+- [x] The stream delivers press, release, sequence-step, and mode-change events.
+- [x] The async interface is behind a feature flag so non-async users pay no dependency cost.
+- [x] The async and callback interfaces can coexist (enabling one does not disable the other).
+- [x] The stream completes cleanly when the manager shuts down.
+- [x] Tests cover: event delivery, clean completion on shutdown, and feature-gated compilation.
 
 ### 3.2 Debouncing / rate limiting
 
@@ -613,7 +613,7 @@ unchecked items and complete those first.
 
 | Section | Status |
 |---------|--------|
-| 3.1 Async API | Not Started (0/6 checked) |
+| 3.1 Async API | Complete (6/6 checked) |
 | 3.2 Debouncing / rate limiting | Not Started (0/4 checked) |
 | 3.3 Key state query | In Progress (0/5 checked) |
 | 3.4 Configuration serialization | Not Started (0/5 checked) |

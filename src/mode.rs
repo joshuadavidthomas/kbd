@@ -5,9 +5,11 @@ use std::time::{Duration, Instant};
 use evdev::KeyCode;
 
 use crate::error::Error;
+use crate::events::{EventHub, HotkeyEvent};
 use crate::manager::{
-    normalize_modifiers, validate_hotkey_binding, ActiveHotkeyPress, Callback, HotkeyKey,
-    HotkeyOptions, HotkeyRegistration, PressDispatchState, PressOrigin, RepeatBehavior,
+    attach_hotkey_events, normalize_modifiers, validate_hotkey_binding, ActiveHotkeyPress,
+    Callback, HotkeyKey, HotkeyOptions, HotkeyRegistration, PressDispatchState, PressOrigin,
+    RepeatBehavior,
 };
 
 // Mode options
@@ -382,13 +384,19 @@ pub(crate) fn find_callbacks_for_active_press<'a>(
 pub(crate) struct ModeRegistry {
     pub(crate) definitions: Arc<Mutex<HashMap<String, ModeDefinition>>>,
     pub(crate) stack: Arc<Mutex<ModeStack>>,
+    pub(crate) event_hub: EventHub,
 }
 
 impl ModeRegistry {
     pub(crate) fn new() -> Self {
+        Self::with_event_hub(EventHub::default())
+    }
+
+    pub(crate) fn with_event_hub(event_hub: EventHub) -> Self {
         Self {
             definitions: Arc::new(Mutex::new(HashMap::new())),
             stack: Arc::new(Mutex::new(ModeStack::default())),
+            event_hub,
         }
     }
 }
@@ -424,10 +432,19 @@ impl ModeController {
             .lock()
             .unwrap()
             .push(name.to_string(), now);
+        self.registry
+            .event_hub
+            .emit(HotkeyEvent::ModeChanged(self.active_mode()));
     }
 
     pub fn pop(&self) -> Option<String> {
-        self.registry.stack.lock().unwrap().pop()
+        let popped = self.registry.stack.lock().unwrap().pop();
+        if popped.is_some() {
+            self.registry
+                .event_hub
+                .emit(HotkeyEvent::ModeChanged(self.active_mode()));
+        }
+        popped
     }
 
     pub fn active_mode(&self) -> Option<String> {
@@ -481,9 +498,13 @@ impl ModeBuilder {
             });
         }
 
-        let registration = HotkeyRegistration {
-            callbacks: options.build_callbacks(callback),
-        };
+        let callbacks = attach_hotkey_events(
+            options.build_callbacks(callback),
+            &hotkey_key,
+            &self.controller.registry.event_hub,
+        );
+
+        let registration = HotkeyRegistration { callbacks };
 
         self.bindings.insert(hotkey_key, registration);
         Ok(())
@@ -507,6 +528,7 @@ mod tests {
                     counter.fetch_add(1, Ordering::SeqCst);
                 }),
                 on_release: None,
+                has_release_callback: false,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
                 passthrough: false,
@@ -527,6 +549,7 @@ mod tests {
                 on_release: Some(Arc::new(move || {
                     rc.fetch_add(1, Ordering::SeqCst);
                 })),
+                has_release_callback: true,
                 min_hold: None,
                 repeat_behavior: RepeatBehavior::Ignore,
                 passthrough: false,
@@ -1265,8 +1288,7 @@ mod tests {
 
         let no_modes = HashMap::new();
         let no_devices = HashMap::new();
-        let callbacks =
-            find_callbacks_for_active_press(&active, &global, &no_modes, &no_devices);
+        let callbacks = find_callbacks_for_active_press(&active, &global, &no_modes, &no_devices);
         assert!(callbacks.is_some());
         (callbacks.unwrap().on_press)();
         assert_eq!(counter.load(Ordering::SeqCst), 1);
