@@ -1,4 +1,5 @@
 pub use backend::Backend;
+pub use device::DeviceFilter;
 pub use error::Error;
 pub use hotkey::{Hotkey, HotkeySequence, ParseHotkeyError};
 pub use manager::{

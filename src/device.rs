@@ -3,6 +3,55 @@ use crate::permission::get_permission_error_message;
 use evdev::{Device, KeyCode};
 use std::path::PathBuf;
 
+/// Filter for restricting hotkeys to specific input devices.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeviceFilter {
+    /// Match devices whose name contains the given substring.
+    NameContains(String),
+    /// Match devices by USB vendor and product ID.
+    UsbId { vendor: u16, product: u16 },
+}
+
+impl DeviceFilter {
+    /// Create a filter that matches devices whose name contains the given pattern.
+    pub fn name_contains(pattern: impl Into<String>) -> Self {
+        DeviceFilter::NameContains(pattern.into())
+    }
+
+    /// Create a filter that matches devices by USB vendor and product ID.
+    pub fn usb(vendor: u16, product: u16) -> Self {
+        DeviceFilter::UsbId { vendor, product }
+    }
+
+    pub(crate) fn matches(&self, info: &DeviceInfo) -> bool {
+        match self {
+            DeviceFilter::NameContains(pattern) => info.name.contains(pattern.as_str()),
+            DeviceFilter::UsbId { vendor, product } => {
+                info.vendor == *vendor && info.product == *product
+            }
+        }
+    }
+}
+
+/// Internal device identification extracted at open time.
+#[derive(Clone, Debug)]
+pub(crate) struct DeviceInfo {
+    pub(crate) name: String,
+    pub(crate) vendor: u16,
+    pub(crate) product: u16,
+}
+
+impl DeviceInfo {
+    pub(crate) fn from_device(device: &Device) -> Self {
+        let input_id = device.input_id();
+        Self {
+            name: device.name().unwrap_or("").to_string(),
+            vendor: input_id.vendor(),
+            product: input_id.product(),
+        }
+    }
+}
+
 pub(crate) fn is_keyboard_device(device: &Device) -> bool {
     device
         .supported_keys()
@@ -61,4 +110,59 @@ pub(crate) fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
     }
 
     Ok(keyboards)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_device_info(name: &str, vendor: u16, product: u16) -> DeviceInfo {
+        DeviceInfo {
+            name: name.to_string(),
+            vendor,
+            product,
+        }
+    }
+
+    #[test]
+    fn name_contains_matches_substring() {
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let info = test_device_info("Elgato StreamDeck XL", 0x0fd9, 0x006c);
+        assert!(filter.matches(&info));
+    }
+
+    #[test]
+    fn name_contains_rejects_non_matching() {
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let info = test_device_info("AT Translated Set 2 keyboard", 0x0001, 0x0001);
+        assert!(!filter.matches(&info));
+    }
+
+    #[test]
+    fn name_contains_is_case_sensitive() {
+        let filter = DeviceFilter::name_contains("streamdeck");
+        let info = test_device_info("StreamDeck", 0x0001, 0x0001);
+        assert!(!filter.matches(&info));
+    }
+
+    #[test]
+    fn usb_id_matches_exact_vendor_product() {
+        let filter = DeviceFilter::usb(0x1234, 0x5678);
+        let info = test_device_info("Some Device", 0x1234, 0x5678);
+        assert!(filter.matches(&info));
+    }
+
+    #[test]
+    fn usb_id_rejects_wrong_vendor() {
+        let filter = DeviceFilter::usb(0x1234, 0x5678);
+        let info = test_device_info("Some Device", 0xFFFF, 0x5678);
+        assert!(!filter.matches(&info));
+    }
+
+    #[test]
+    fn usb_id_rejects_wrong_product() {
+        let filter = DeviceFilter::usb(0x1234, 0x5678);
+        let info = test_device_info("Some Device", 0x1234, 0xFFFF);
+        assert!(!filter.matches(&info));
+    }
 }

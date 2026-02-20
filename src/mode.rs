@@ -7,7 +7,7 @@ use evdev::KeyCode;
 use crate::error::Error;
 use crate::manager::{
     normalize_modifiers, validate_hotkey_binding, ActiveHotkeyPress, Callback, HotkeyKey,
-    HotkeyOptions, HotkeyRegistration, PressDispatchState, RepeatBehavior,
+    HotkeyOptions, HotkeyRegistration, PressDispatchState, PressOrigin, RepeatBehavior,
 };
 
 // Mode options
@@ -222,7 +222,7 @@ fn dispatch_mode_press(
                 hotkey_key.0,
                 ActiveHotkeyPress {
                     registration_key: hotkey_key.clone(),
-                    mode_name: Some(mode_name.clone()),
+                    origin: PressOrigin::Mode(mode_name.clone()),
                     pressed_at: now,
                     press_dispatch_state,
                 },
@@ -259,19 +259,18 @@ fn dispatch_mode_release(
     stack: &mut ModeStack,
     active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
 ) -> ModeEventDispatch {
-    let is_mode_press = active_presses
-        .get(&key)
-        .is_some_and(|active| active.mode_name.is_some());
-
-    if !is_mode_press {
+    let Some(active) = active_presses.get(&key) else {
         return ModeEventDispatch::PassThrough;
-    }
+    };
+    let PressOrigin::Mode(ref mode_name) = active.origin else {
+        return ModeEventDispatch::PassThrough;
+    };
+    let mode_name = mode_name.clone();
 
     let active = active_presses.remove(&key).unwrap();
-    let mode_name = active.mode_name.as_ref().unwrap();
 
     let Some(registration) = definitions
-        .get(mode_name)
+        .get(&mode_name)
         .and_then(|def| def.bindings.get(&active.registration_key))
     else {
         return ModeEventDispatch::Handled {
@@ -313,14 +312,16 @@ fn dispatch_mode_repeat(
 ) -> ModeEventDispatch {
     let is_mode_press = active_presses
         .get(&key)
-        .is_some_and(|active| active.mode_name.is_some());
+        .is_some_and(|active| matches!(active.origin, PressOrigin::Mode(_)));
 
     if !is_mode_press {
         return ModeEventDispatch::PassThrough;
     }
 
     let active = active_presses.get_mut(&key).unwrap();
-    let mode_name = active.mode_name.as_ref().unwrap();
+    let PressOrigin::Mode(ref mode_name) = active.origin else {
+        unreachable!();
+    };
 
     let Some(registration) = definitions
         .get(mode_name)
@@ -350,19 +351,29 @@ fn dispatch_mode_repeat(
     }
 }
 
-/// Look up a registration for an active press, checking mode definitions
-/// when the press originated from a mode, or global registrations otherwise.
-pub(crate) fn find_registration_for_active_press<'a>(
+/// Look up a registration's callbacks for an active press, checking mode definitions
+/// when the press originated from a mode, device registrations when the press
+/// originated from a device-specific hotkey, or global registrations otherwise.
+pub(crate) fn find_callbacks_for_active_press<'a>(
     active: &ActiveHotkeyPress,
     global_registrations: &'a HashMap<HotkeyKey, HotkeyRegistration>,
     mode_definitions: &'a HashMap<String, ModeDefinition>,
-) -> Option<&'a HotkeyRegistration> {
-    if let Some(mode_name) = &active.mode_name {
-        mode_definitions
+    device_registrations: &'a HashMap<
+        crate::manager::DeviceRegistrationId,
+        crate::manager::DeviceHotkeyRegistration,
+    >,
+) -> Option<&'a crate::manager::HotkeyCallbacks> {
+    match &active.origin {
+        PressOrigin::Mode(mode_name) => mode_definitions
             .get(mode_name)
             .and_then(|def| def.bindings.get(&active.registration_key))
-    } else {
-        global_registrations.get(&active.registration_key)
+            .map(|reg| &reg.callbacks),
+        PressOrigin::Device(device_reg_id) => device_registrations
+            .get(device_reg_id)
+            .map(|reg| &reg.callbacks),
+        PressOrigin::Global => global_registrations
+            .get(&active.registration_key)
+            .map(|reg| &reg.callbacks),
     }
 }
 
@@ -1238,7 +1249,7 @@ mod tests {
     // find_registration_for_active_press tests
 
     #[test]
-    fn find_registration_finds_global_press() {
+    fn find_callbacks_finds_global_press() {
         let counter = Arc::new(AtomicUsize::new(0));
         let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
 
@@ -1247,20 +1258,22 @@ mod tests {
 
         let active = ActiveHotkeyPress {
             registration_key: key,
-            mode_name: None,
+            origin: PressOrigin::Global,
             pressed_at: Instant::now(),
             press_dispatch_state: PressDispatchState::Dispatched,
         };
 
         let no_modes = HashMap::new();
-        let reg = find_registration_for_active_press(&active, &global, &no_modes);
-        assert!(reg.is_some());
-        (reg.unwrap().callbacks.on_press)();
+        let no_devices = HashMap::new();
+        let callbacks =
+            find_callbacks_for_active_press(&active, &global, &no_modes, &no_devices);
+        assert!(callbacks.is_some());
+        (callbacks.unwrap().on_press)();
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 
     #[test]
-    fn find_registration_finds_mode_press() {
+    fn find_callbacks_finds_mode_press() {
         let counter = Arc::new(AtomicUsize::new(0));
         let key = (KeyCode::KEY_H, vec![]);
 
@@ -1275,15 +1288,17 @@ mod tests {
 
         let active = ActiveHotkeyPress {
             registration_key: key,
-            mode_name: Some("resize".to_string()),
+            origin: PressOrigin::Mode("resize".to_string()),
             pressed_at: Instant::now(),
             press_dispatch_state: PressDispatchState::Dispatched,
         };
 
         let no_global = HashMap::new();
-        let reg = find_registration_for_active_press(&active, &no_global, &definitions);
-        assert!(reg.is_some());
-        (reg.unwrap().callbacks.on_press)();
+        let no_devices = HashMap::new();
+        let callbacks =
+            find_callbacks_for_active_press(&active, &no_global, &definitions, &no_devices);
+        assert!(callbacks.is_some());
+        (callbacks.unwrap().on_press)();
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 }
