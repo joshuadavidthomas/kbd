@@ -1,7 +1,10 @@
 use crate::device::find_keyboard_devices;
 use crate::error::Error;
 use crate::listener::{spawn_listener_thread, ListenerConfig, ListenerState};
-use crate::manager::{HotkeyKey, HotkeyRegistration, SequenceId, SequenceRegistration};
+use crate::manager::{
+    DeviceHotkeyRegistration, DeviceRegistrationId, HotkeyKey, HotkeyRegistration, SequenceId,
+    SequenceRegistration,
+};
 use crate::mode::ModeRegistry;
 
 #[cfg(feature = "portal")]
@@ -23,6 +26,7 @@ pub trait HotkeyBackend: Send + Sync {
         &self,
         registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+        device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
         stop_flag: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Error>;
 
@@ -41,6 +45,7 @@ impl HotkeyBackend for EvdevBackend {
         &self,
         registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+        device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
         stop_flag: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Error> {
         let keyboards = find_keyboard_devices()?;
@@ -49,6 +54,7 @@ impl HotkeyBackend for EvdevBackend {
             ListenerState {
                 registrations,
                 sequence_registrations,
+                device_registrations,
                 stop_flag,
                 mode_registry: self.mode_registry.clone(),
             },
@@ -154,6 +160,9 @@ impl HotkeyBackend for PortalBackend {
         &self,
         _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+        _device_registrations: Arc<
+            Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
+        >,
         stop_flag: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Error> {
         std::thread::Builder::new()

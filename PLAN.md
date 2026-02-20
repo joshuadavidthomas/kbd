@@ -424,7 +424,7 @@ Success criteria checklist:
 
 ### 2.4 Device-specific hotkeys
 
-**Status: Not Started** · **Priority: Medium — natural fit for evdev**
+**Status: Complete** · **Priority: Medium — natural fit for evdev**
 
 Different hotkeys for different keyboards. The evdev backend already has
 per-device file descriptors — just need to associate registrations with device
@@ -456,11 +456,11 @@ a modifier held on keyboard A does not accidentally satisfy a hotkey bound to
 keyboard B.
 
 Success criteria checklist:
-- [ ] Hotkeys can be restricted to specific input devices (by name pattern, vendor/product ID, or similar filter).
-- [ ] A hotkey bound to device A does not fire from events on device B.
-- [ ] Modifier state is tracked per device: a modifier held on one keyboard does not satisfy a device-specific hotkey bound to a different keyboard.
-- [ ] Global (unfiltered) hotkeys still use aggregate modifier state across all devices.
-- [ ] Tests cover: device-specific match, device-specific miss, per-device modifier isolation, and global aggregate behavior.
+- [x] Hotkeys can be restricted to specific input devices (by name pattern, vendor/product ID, or similar filter).
+- [x] A hotkey bound to device A does not fire from events on device B.
+- [x] Modifier state is tracked per device: a modifier held on one keyboard does not satisfy a device-specific hotkey bound to a different keyboard.
+- [x] Global (unfiltered) hotkeys still use aggregate modifier state across all devices.
+- [x] Tests cover: device-specific match, device-specific miss, per-device modifier isolation, and global aggregate behavior.
 
 ### 2.5 Tap vs. hold (dual-function keys)
 
@@ -507,7 +507,7 @@ complete those first.
 | 2.1 Key sequences / chords | Complete (9/9 checked) |
 | 2.2 Event grabbing | Complete (6/6 checked) |
 | 2.3 Modes / layers | Complete (7/7 checked) |
-| 2.4 Device-specific hotkeys | Not Started (0/5 checked) |
+| 2.4 Device-specific hotkeys | Complete (5/5 checked) |
 | 2.5 Tap vs. hold | Not Started (0/7 checked) |
 
 ---
@@ -711,7 +711,7 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | 2.1 | Key sequences / chords | Complete | 9/9 ✓ |
 | 2.2 | Event grabbing (EVIOCGRAB + uinput) | Complete | 6/6 ✓ |
 | 2.3 | Modes / layers | Complete | 7/7 ✓ |
-| 2.4 | Device-specific hotkeys | Not Started | 0/5 |
+| 2.4 | Device-specific hotkeys | Complete | 5/5 ✓ |
 | 2.5 | Tap vs. hold | Not Started | 0/7 |
 | **Phase 3** | **Polish** | **⛔ Blocked on Phase 2** | |
 | 3.1 | Async API | Not Started | 0/6 |

@@ -1,4 +1,5 @@
 use crate::backend::{build_backend, resolve_backend, Backend};
+use crate::device::DeviceFilter;
 use crate::error::Error;
 use crate::hotkey::{Hotkey, HotkeySequence};
 use crate::mode::{ModeBuilder, ModeController, ModeDefinition, ModeOptions, ModeRegistry};
@@ -52,6 +53,7 @@ pub struct HotkeyOptions {
     min_hold: Option<Duration>,
     repeat_behavior: RepeatBehavior,
     passthrough: bool,
+    device_filter: Option<DeviceFilter>,
 }
 
 impl HotkeyOptions {
@@ -87,6 +89,12 @@ impl HotkeyOptions {
         self
     }
 
+    /// Restrict this hotkey to events from devices matching the given filter.
+    pub fn device(mut self, filter: DeviceFilter) -> Self {
+        self.device_filter = Some(filter);
+        self
+    }
+
     pub(crate) fn build_callbacks<F>(self, callback: F) -> HotkeyCallbacks
     where
         F: Fn() + Send + Sync + 'static,
@@ -111,6 +119,15 @@ impl HotkeyOptions {
 /// Hotkey registration with modifiers
 #[derive(Clone)]
 pub(crate) struct HotkeyRegistration {
+    pub(crate) callbacks: HotkeyCallbacks,
+}
+
+pub(crate) type DeviceRegistrationId = u64;
+
+#[derive(Clone)]
+pub(crate) struct DeviceHotkeyRegistration {
+    pub(crate) hotkey_key: HotkeyKey,
+    pub(crate) filter: DeviceFilter,
     pub(crate) callbacks: HotkeyCallbacks,
 }
 
@@ -192,6 +209,7 @@ impl HotkeyManagerBuilder {
 pub(crate) struct ActiveHotkeyPress {
     pub(crate) registration_key: HotkeyKey,
     pub(crate) mode_name: Option<String>,
+    pub(crate) device_registration_id: Option<DeviceRegistrationId>,
     pub(crate) pressed_at: Instant,
     pub(crate) press_dispatch_state: PressDispatchState,
 }
@@ -275,24 +293,46 @@ fn remove_registration_if_matches(
     None
 }
 
+#[derive(Clone)]
+enum RegistrationLocation {
+    Global(HotkeyKey),
+    Device(DeviceRegistrationId),
+}
+
 /// Handle for unregistering a specific hotkey
 #[derive(Clone)]
 pub struct Handle {
-    key: HotkeyKey,
+    location: RegistrationLocation,
     registration_marker: Callback,
     manager: Arc<HotkeyManagerInner>,
 }
 
 impl std::fmt::Debug for Handle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Handle").field("key", &self.key).finish()
+        match &self.location {
+            RegistrationLocation::Global(key) => {
+                f.debug_struct("Handle").field("key", key).finish()
+            }
+            RegistrationLocation::Device(id) => f
+                .debug_struct("Handle")
+                .field("device_registration_id", id)
+                .finish(),
+        }
     }
 }
 
 impl Handle {
     pub fn unregister(self) -> Result<(), Error> {
-        self.manager
-            .remove_hotkey(&self.key, &self.registration_marker)
+        match &self.location {
+            RegistrationLocation::Global(key) => {
+                self.manager
+                    .remove_hotkey(key, &self.registration_marker)
+            }
+            RegistrationLocation::Device(id) => {
+                self.manager.remove_device_hotkey(*id);
+                Ok(())
+            }
+        }
     }
 }
 
@@ -321,8 +361,10 @@ impl SequenceHandle {
 struct HotkeyManagerInner {
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+    device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
     mode_registry: ModeRegistry,
     next_sequence_id: AtomicU64,
+    next_device_reg_id: AtomicU64,
     backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
     stop_flag: Arc<AtomicBool>,
     operation_lock: Mutex<()>,
@@ -401,8 +443,10 @@ impl HotkeyManager {
         let inner = Arc::new(HotkeyManagerInner {
             registrations: Arc::new(Mutex::new(HashMap::new())),
             sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+            device_registrations: Arc::new(Mutex::new(HashMap::new())),
             mode_registry,
             next_sequence_id: AtomicU64::new(1),
+            next_device_reg_id: AtomicU64::new(1),
             backend_impl: backend_impl.clone(),
             stop_flag: Arc::new(AtomicBool::new(false)),
             operation_lock: Mutex::new(()),
@@ -412,6 +456,7 @@ impl HotkeyManager {
         let listener = backend_impl.start_listener(
             inner.registrations.clone(),
             inner.sequence_registrations.clone(),
+            inner.device_registrations.clone(),
             inner.stop_flag.clone(),
         )?;
 
@@ -454,7 +499,19 @@ impl HotkeyManager {
 
         validate_hotkey_binding(key, modifiers)?;
 
+        let device_filter = options.device_filter.clone();
         let hotkey_key = (key, normalize_modifiers(modifiers));
+
+        if let Some(filter) = device_filter {
+            if self.active_backend != Backend::Evdev {
+                return Err(Error::UnsupportedFeature(
+                    "device-specific hotkeys are only supported by the evdev backend".to_string(),
+                ));
+            }
+
+            return self.register_device_hotkey(hotkey_key, filter, options, callback);
+        }
+
         let registration = HotkeyRegistration {
             callbacks: options.build_callbacks(callback),
         };
@@ -489,7 +546,54 @@ impl HotkeyManager {
         }
 
         Ok(Handle {
-            key: hotkey_key,
+            location: RegistrationLocation::Global(hotkey_key),
+            registration_marker,
+            manager: self.inner.clone(),
+        })
+    }
+
+    fn register_device_hotkey<F>(
+        &self,
+        hotkey_key: HotkeyKey,
+        filter: DeviceFilter,
+        options: HotkeyOptions,
+        callback: F,
+    ) -> Result<Handle, Error>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        {
+            let device_registrations = self.inner.device_registrations.lock().unwrap();
+            let conflict = device_registrations.values().any(|existing| {
+                existing.hotkey_key == hotkey_key && existing.filter == filter
+            });
+            if conflict {
+                return Err(already_registered_error(&hotkey_key));
+            }
+        }
+
+        let callbacks = options.build_callbacks(callback);
+        let registration_marker = callbacks.on_press.clone();
+
+        let id = self
+            .inner
+            .next_device_reg_id
+            .fetch_add(1, Ordering::SeqCst);
+
+        let registration = DeviceHotkeyRegistration {
+            hotkey_key,
+            filter,
+            callbacks,
+        };
+
+        self.inner
+            .device_registrations
+            .lock()
+            .unwrap()
+            .insert(id, registration);
+
+        Ok(Handle {
+            location: RegistrationLocation::Device(id),
             registration_marker,
             manager: self.inner.clone(),
         })
@@ -656,7 +760,19 @@ impl HotkeyManager {
 
         validate_hotkey_binding(key, modifiers)?;
 
+        let device_filter = options.device_filter.clone();
         let hotkey_key = (key, normalize_modifiers(modifiers));
+
+        if let Some(filter) = device_filter {
+            if self.active_backend != Backend::Evdev {
+                return Err(Error::UnsupportedFeature(
+                    "device-specific hotkeys are only supported by the evdev backend".to_string(),
+                ));
+            }
+
+            return self.replace_device_hotkey(hotkey_key, filter, options, callback);
+        }
+
         let registration = HotkeyRegistration {
             callbacks: options.build_callbacks(callback),
         };
@@ -703,7 +819,63 @@ impl HotkeyManager {
         }
 
         Ok(Handle {
-            key: hotkey_key,
+            location: RegistrationLocation::Global(hotkey_key),
+            registration_marker,
+            manager: self.inner.clone(),
+        })
+    }
+
+    fn replace_device_hotkey<F>(
+        &self,
+        hotkey_key: HotkeyKey,
+        filter: DeviceFilter,
+        options: HotkeyOptions,
+        callback: F,
+    ) -> Result<Handle, Error>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let callbacks = options.build_callbacks(callback);
+        let registration_marker = callbacks.on_press.clone();
+
+        let mut device_registrations = self.inner.device_registrations.lock().unwrap();
+
+        // Find and replace existing registration with same key+filter
+        let existing_id = device_registrations
+            .iter()
+            .find(|(_, existing)| {
+                existing.hotkey_key == hotkey_key && existing.filter == filter
+            })
+            .map(|(id, _)| *id);
+
+        let id = if let Some(existing_id) = existing_id {
+            device_registrations.insert(
+                existing_id,
+                DeviceHotkeyRegistration {
+                    hotkey_key,
+                    filter,
+                    callbacks,
+                },
+            );
+            existing_id
+        } else {
+            let id = self
+                .inner
+                .next_device_reg_id
+                .fetch_add(1, Ordering::SeqCst);
+            device_registrations.insert(
+                id,
+                DeviceHotkeyRegistration {
+                    hotkey_key,
+                    filter,
+                    callbacks,
+                },
+            );
+            id
+        };
+
+        Ok(Handle {
+            location: RegistrationLocation::Device(id),
             registration_marker,
             manager: self.inner.clone(),
         })
@@ -745,6 +917,7 @@ impl HotkeyManager {
 
             self.inner.registrations.lock().unwrap().clear();
             self.inner.sequence_registrations.lock().unwrap().clear();
+            self.inner.device_registrations.lock().unwrap().clear();
             self.inner.mode_registry.definitions.lock().unwrap().clear();
             self.inner.mode_registry.stack.lock().unwrap().clear();
         }
@@ -839,6 +1012,11 @@ impl HotkeyManagerInner {
             .lock()
             .unwrap()
             .remove(&sequence_id);
+    }
+
+    fn remove_device_hotkey(&self, id: DeviceRegistrationId) {
+        let _operation_guard = self.operation_lock.lock().unwrap();
+        self.device_registrations.lock().unwrap().remove(&id);
     }
 }
 
@@ -978,6 +1156,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1002,6 +1181,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1029,6 +1209,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1067,6 +1248,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1105,6 +1287,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1133,6 +1316,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1170,6 +1354,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1206,6 +1391,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1237,6 +1423,7 @@ mod tests {
             &self,
             _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
             _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+            _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
@@ -1261,8 +1448,10 @@ mod tests {
             inner: Arc::new(HotkeyManagerInner {
                 registrations: Arc::new(Mutex::new(HashMap::new())),
                 sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+                device_registrations: Arc::new(Mutex::new(HashMap::new())),
                 mode_registry: ModeRegistry::new(),
                 next_sequence_id: AtomicU64::new(1),
+                next_device_reg_id: AtomicU64::new(1),
                 backend_impl,
                 stop_flag: Arc::new(AtomicBool::new(false)),
                 operation_lock: Mutex::new(()),
@@ -1917,8 +2106,10 @@ mod tests {
             inner: Arc::new(HotkeyManagerInner {
                 registrations: Arc::new(Mutex::new(HashMap::new())),
                 sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+                device_registrations: Arc::new(Mutex::new(HashMap::new())),
                 mode_registry: ModeRegistry::new(),
                 next_sequence_id: AtomicU64::new(1),
+                next_device_reg_id: AtomicU64::new(1),
                 backend_impl: Arc::new(FakeBackend),
                 stop_flag: Arc::new(AtomicBool::new(false)),
                 operation_lock: Mutex::new(()),
@@ -2148,8 +2339,10 @@ mod tests {
             inner: Arc::new(HotkeyManagerInner {
                 registrations: Arc::new(Mutex::new(HashMap::new())),
                 sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+                device_registrations: Arc::new(Mutex::new(HashMap::new())),
                 mode_registry: ModeRegistry::new(),
                 next_sequence_id: AtomicU64::new(1),
+                next_device_reg_id: AtomicU64::new(1),
                 backend_impl: Arc::new(FakeBackend),
                 stop_flag: Arc::new(AtomicBool::new(false)),
                 operation_lock: Mutex::new(()),
@@ -2164,5 +2357,194 @@ mod tests {
             .unwrap();
 
         assert!(matches!(err, Error::UnsupportedFeature(_)));
+    }
+
+    #[test]
+    fn device_specific_registration_stores_in_device_registrations() {
+        let manager = manager_with_fake_backend();
+
+        let handle = manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
+                || {},
+            )
+            .unwrap();
+
+        // Should NOT be in global registrations
+        assert!(!manager.is_registered(KeyCode::KEY_1, &[]));
+
+        // Should be in device registrations
+        assert_eq!(
+            manager.inner.device_registrations.lock().unwrap().len(),
+            1
+        );
+
+        handle.unregister().unwrap();
+        assert!(manager.inner.device_registrations.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn device_specific_duplicate_same_filter_returns_error() {
+        let manager = manager_with_fake_backend();
+        let filter = DeviceFilter::name_contains("StreamDeck");
+
+        manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(filter.clone()),
+                || {},
+            )
+            .unwrap();
+
+        let err = manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(filter),
+                || {},
+            )
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::AlreadyRegistered { .. }));
+    }
+
+    #[test]
+    fn device_specific_different_filter_no_conflict() {
+        let manager = manager_with_fake_backend();
+
+        manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
+                || {},
+            )
+            .unwrap();
+
+        manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(DeviceFilter::usb(0x1234, 0x5678)),
+                || {},
+            )
+            .unwrap();
+
+        assert_eq!(
+            manager.inner.device_registrations.lock().unwrap().len(),
+            2
+        );
+    }
+
+    #[test]
+    fn device_specific_and_global_same_key_no_conflict() {
+        let manager = manager_with_fake_backend();
+
+        // Global registration
+        manager.register(KeyCode::KEY_1, &[], || {}).unwrap();
+
+        // Device-specific registration with same key
+        manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
+                || {},
+            )
+            .unwrap();
+
+        assert!(manager.is_registered(KeyCode::KEY_1, &[]));
+        assert_eq!(
+            manager.inner.device_registrations.lock().unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn device_specific_replace_overwrites_existing() {
+        let manager = manager_with_fake_backend();
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let count = Arc::new(AtomicUsize::new(0));
+
+        manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(filter.clone()),
+                || {},
+            )
+            .unwrap();
+
+        let count_clone = count.clone();
+        manager
+            .replace_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(filter),
+                move || {
+                    count_clone.fetch_add(1, Ordering::SeqCst);
+                },
+            )
+            .unwrap();
+
+        // Should still be one registration
+        let device_regs = manager.inner.device_registrations.lock().unwrap();
+        assert_eq!(device_regs.len(), 1);
+        let (_, reg) = device_regs.iter().next().unwrap();
+        (reg.callbacks.on_press)();
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn device_specific_rejected_on_portal_backend() {
+        let manager = HotkeyManager {
+            inner: Arc::new(HotkeyManagerInner {
+                registrations: Arc::new(Mutex::new(HashMap::new())),
+                sequence_registrations: Arc::new(Mutex::new(HashMap::new())),
+                device_registrations: Arc::new(Mutex::new(HashMap::new())),
+                mode_registry: ModeRegistry::new(),
+                next_sequence_id: AtomicU64::new(1),
+                next_device_reg_id: AtomicU64::new(1),
+                backend_impl: Arc::new(FakeBackend),
+                stop_flag: Arc::new(AtomicBool::new(false)),
+                operation_lock: Mutex::new(()),
+                listener: Mutex::new(None),
+            }),
+            active_backend: Backend::Portal,
+        };
+
+        let err = manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
+                || {},
+            )
+            .err()
+            .unwrap();
+
+        assert!(matches!(err, Error::UnsupportedFeature(_)));
+    }
+
+    #[test]
+    fn unregister_all_clears_device_registrations() {
+        let manager = manager_with_fake_backend();
+
+        manager
+            .register_with_options(
+                KeyCode::KEY_1,
+                &[],
+                HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
+                || {},
+            )
+            .unwrap();
+
+        manager.unregister_all().unwrap();
+
+        assert!(manager.inner.device_registrations.lock().unwrap().is_empty());
     }
 }

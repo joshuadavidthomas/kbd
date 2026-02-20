@@ -1,12 +1,13 @@
-use crate::device::is_keyboard_device;
+use crate::device::{is_keyboard_device, DeviceInfo};
 use crate::error::Error;
 use crate::manager::{
-    is_modifier_key, normalize_modifiers, ActiveHotkeyPress, Callback, HotkeyKey,
-    HotkeyRegistration, PressDispatchState, RepeatBehavior, SequenceId, SequenceRegistration,
+    is_modifier_key, normalize_modifiers, ActiveHotkeyPress, Callback, DeviceHotkeyRegistration,
+    DeviceRegistrationId, HotkeyKey, HotkeyRegistration, PressDispatchState, RepeatBehavior,
+    SequenceId, SequenceRegistration,
 };
 use crate::mode::{
-    dispatch_mode_key_event, find_registration_for_active_press, pop_timed_out_modes,
-    ModeDefinition, ModeEventDispatch, ModeRegistry,
+    dispatch_mode_key_event, find_callbacks_for_active_press, pop_timed_out_modes, ModeDefinition,
+    ModeEventDispatch, ModeRegistry,
 };
 
 #[cfg(feature = "grab")]
@@ -28,6 +29,8 @@ use std::time::Instant;
 pub(crate) struct ListenerState {
     pub(crate) registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     pub(crate) sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+    pub(crate) device_registrations:
+        Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) mode_registry: ModeRegistry,
 }
@@ -330,6 +333,7 @@ impl SequenceRuntime {
 
 struct DeviceState {
     path: PathBuf,
+    info: DeviceInfo,
     device: Device,
     active_presses: HashMap<KeyCode, ActiveHotkeyPress>,
 }
@@ -371,6 +375,13 @@ impl ModifierTracker {
             .values()
             .flat_map(|keys| keys.iter().copied())
             .collect()
+    }
+
+    fn device_modifiers(&self, device_path: &Path) -> HashSet<KeyCode> {
+        self.pressed_modifiers
+            .get(device_path)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -459,6 +470,8 @@ fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
         return Err(format!("Device {:?} is not a keyboard", path));
     }
 
+    let info = DeviceInfo::from_device(&device);
+
     if grab {
         #[cfg(feature = "grab")]
         {
@@ -477,6 +490,7 @@ fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
 
     Ok(DeviceState {
         path: path.to_path_buf(),
+        info,
         device,
         active_presses: HashMap::new(),
     })
@@ -564,6 +578,7 @@ fn collect_due_hold_callbacks(
     now: Instant,
     registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
     mode_definitions: &HashMap<String, ModeDefinition>,
+    device_registrations: &HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>,
     active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
 ) -> Vec<Callback> {
     let mut callbacks = Vec::new();
@@ -573,23 +588,133 @@ fn collect_due_hold_callbacks(
             continue;
         }
 
-        let Some(registration) =
-            find_registration_for_active_press(active, registrations, mode_definitions)
-        else {
+        let Some(hotkey_callbacks) = find_callbacks_for_active_press(
+            active,
+            registrations,
+            mode_definitions,
+            device_registrations,
+        ) else {
             continue;
         };
 
-        let Some(min_hold) = registration.callbacks.min_hold else {
+        let Some(min_hold) = hotkey_callbacks.min_hold else {
             continue;
         };
 
         if now.duration_since(active.pressed_at) >= min_hold {
-            callbacks.push(registration.callbacks.on_press.clone());
+            callbacks.push(hotkey_callbacks.on_press.clone());
             active.press_dispatch_state = PressDispatchState::Dispatched;
         }
     }
 
     callbacks
+}
+
+struct DeviceSpecificDispatch {
+    callbacks: Vec<Callback>,
+    matched: bool,
+    passthrough: bool,
+}
+
+fn collect_device_specific_dispatch(
+    key: KeyCode,
+    value: i32,
+    now: Instant,
+    device_info: &DeviceInfo,
+    device_modifiers: &HashSet<KeyCode>,
+    device_registrations: &HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>,
+    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+) -> DeviceSpecificDispatch {
+    let modifier_signature = active_modifier_signature(device_modifiers);
+    let device_hotkey_key = (key, modifier_signature);
+
+    // Find matching device registration
+    let matching = device_registrations
+        .iter()
+        .find(|(_, reg)| reg.hotkey_key == device_hotkey_key && reg.filter.matches(device_info));
+
+    let Some((reg_id, registration)) = matching else {
+        return DeviceSpecificDispatch {
+            callbacks: Vec::new(),
+            matched: false,
+            passthrough: false,
+        };
+    };
+
+    let reg_id = *reg_id;
+    let mut callbacks = Vec::new();
+    let passthrough = registration.callbacks.passthrough;
+
+    match value {
+        1 => {
+            let press_dispatch_state = registration
+                .callbacks
+                .min_hold
+                .map(|min_hold| {
+                    if min_hold.is_zero() {
+                        PressDispatchState::Dispatched
+                    } else {
+                        PressDispatchState::Pending
+                    }
+                })
+                .unwrap_or(PressDispatchState::Dispatched);
+
+            active_presses.insert(
+                key,
+                ActiveHotkeyPress {
+                    registration_key: device_hotkey_key,
+                    mode_name: None,
+                    device_registration_id: Some(reg_id),
+                    pressed_at: now,
+                    press_dispatch_state,
+                },
+            );
+
+            if press_dispatch_state == PressDispatchState::Dispatched {
+                callbacks.push(registration.callbacks.on_press.clone());
+            }
+        }
+        0 => {
+            if let Some(active) = active_presses.remove(&key) {
+                if active.device_registration_id == Some(reg_id) {
+                    if active.press_dispatch_state == PressDispatchState::Pending {
+                        if let Some(min_hold) = registration.callbacks.min_hold {
+                            if now.duration_since(active.pressed_at) >= min_hold {
+                                callbacks.push(registration.callbacks.on_press.clone());
+                            }
+                        }
+                    }
+
+                    if let Some(callback) = &registration.callbacks.on_release {
+                        callbacks.push(callback.clone());
+                    }
+                }
+            }
+        }
+        2 => {
+            if let Some(active) = active_presses.get_mut(&key) {
+                if active.device_registration_id == Some(reg_id) {
+                    let hold_satisfied = registration.callbacks.min_hold.is_none_or(|min_hold| {
+                        now.duration_since(active.pressed_at) >= min_hold
+                    });
+
+                    if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger
+                        && hold_satisfied
+                    {
+                        callbacks.push(registration.callbacks.on_press.clone());
+                        active.press_dispatch_state = PressDispatchState::Dispatched;
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    DeviceSpecificDispatch {
+        callbacks,
+        matched: true,
+        passthrough,
+    }
 }
 
 struct NonModifierDispatch {
@@ -671,6 +796,7 @@ fn collect_non_modifier_dispatch(
                     ActiveHotkeyPress {
                         registration_key,
                         mode_name: None,
+                        device_registration_id: None,
                         pressed_at: now,
                         press_dispatch_state,
                     },
@@ -763,6 +889,7 @@ fn listener_loop(
     let ListenerState {
         registrations,
         sequence_registrations,
+        device_registrations,
         stop_flag,
         mode_registry,
     } = shared;
@@ -803,11 +930,13 @@ fn listener_loop(
                 &registrations_guard,
             ));
 
+            let device_regs_guard = device_registrations.lock().unwrap();
             for device in &mut devices {
                 callbacks.extend(collect_due_hold_callbacks(
                     now,
                     &registrations_guard,
                     &mode_definitions_guard,
+                    &device_regs_guard,
                     &mut device.active_presses,
                 ));
             }
@@ -902,63 +1031,92 @@ fn listener_loop(
                             (mode_callbacks, should_forward)
                         }
                         ModeEventDispatch::PassThrough => {
-                            // Fall through to sequence and global dispatch
-                            let registrations_guard = registrations.lock().unwrap();
-                            let sequence_guard = sequence_registrations.lock().unwrap();
-
-                            let mut sequence_dispatch = SequenceDispatch::empty();
-                            if value == 1 {
-                                sequence_dispatch = sequence_runtime.on_key_press(
-                                    hotkey_key,
-                                    now,
-                                    &registrations_guard,
-                                    &sequence_guard,
-                                );
-                            } else if value == 0 {
-                                sequence_runtime.on_key_release(key, now);
-                            }
-
-                            let mut callbacks = sequence_dispatch.callbacks;
-                            callbacks.extend(collect_callbacks_for_synthetic_keys(
-                                &sequence_dispatch.synthetic_keys,
-                                &registrations_guard,
-                            ));
-
-                            let suppress_followup = suppress_sequence_followup_key_event(
-                                &mut suppressed_sequence_keys,
+                            // Device-specific dispatch takes priority
+                            let device_modifiers =
+                                modifier_tracker.device_modifiers(&device_path);
+                            let device_info = devices[device_index].info.clone();
+                            let device_regs_guard =
+                                device_registrations.lock().unwrap();
+                            let device_dispatch = collect_device_specific_dispatch(
                                 key,
                                 value,
-                                sequence_dispatch.suppress_current_key_press,
+                                now,
+                                &device_info,
+                                &device_modifiers,
+                                &device_regs_guard,
+                                &mut devices[device_index].active_presses,
                             );
+                            drop(device_regs_guard);
 
-                            let non_modifier_dispatch = if suppress_followup {
-                                NonModifierDispatch {
-                                    callbacks: Vec::new(),
-                                    matched_hotkey: true,
-                                    passthrough: false,
-                                }
+                            if device_dispatch.matched {
+                                let should_forward = should_forward_key_event_in_grab_mode(
+                                    config.grab,
+                                    true,
+                                    device_dispatch.passthrough,
+                                );
+                                (device_dispatch.callbacks, should_forward)
                             } else {
-                                collect_non_modifier_dispatch(
-                                    key,
-                                    value,
-                                    now,
-                                    &active_modifiers,
+                                // Fall through to sequence and global dispatch
+                                let registrations_guard = registrations.lock().unwrap();
+                                let sequence_guard =
+                                    sequence_registrations.lock().unwrap();
+
+                                let mut sequence_dispatch = SequenceDispatch::empty();
+                                if value == 1 {
+                                    sequence_dispatch = sequence_runtime.on_key_press(
+                                        hotkey_key,
+                                        now,
+                                        &registrations_guard,
+                                        &sequence_guard,
+                                    );
+                                } else if value == 0 {
+                                    sequence_runtime.on_key_release(key, now);
+                                }
+
+                                let mut callbacks = sequence_dispatch.callbacks;
+                                callbacks.extend(collect_callbacks_for_synthetic_keys(
+                                    &sequence_dispatch.synthetic_keys,
                                     &registrations_guard,
-                                    &mut devices[device_index].active_presses,
-                                    sequence_dispatch.suppress_current_key_press,
-                                )
-                            };
+                                ));
 
-                            let should_forward_event = should_forward_key_event_in_grab_mode(
-                                config.grab,
-                                sequence_dispatch.suppress_current_key_press
-                                    || non_modifier_dispatch.matched_hotkey,
-                                non_modifier_dispatch.passthrough,
-                            );
+                                let suppress_followup =
+                                    suppress_sequence_followup_key_event(
+                                        &mut suppressed_sequence_keys,
+                                        key,
+                                        value,
+                                        sequence_dispatch.suppress_current_key_press,
+                                    );
 
-                            callbacks.extend(non_modifier_dispatch.callbacks);
+                                let non_modifier_dispatch = if suppress_followup {
+                                    NonModifierDispatch {
+                                        callbacks: Vec::new(),
+                                        matched_hotkey: true,
+                                        passthrough: false,
+                                    }
+                                } else {
+                                    collect_non_modifier_dispatch(
+                                        key,
+                                        value,
+                                        now,
+                                        &active_modifiers,
+                                        &registrations_guard,
+                                        &mut devices[device_index].active_presses,
+                                        sequence_dispatch.suppress_current_key_press,
+                                    )
+                                };
 
-                            (callbacks, should_forward_event)
+                                let should_forward_event =
+                                    should_forward_key_event_in_grab_mode(
+                                        config.grab,
+                                        sequence_dispatch.suppress_current_key_press
+                                            || non_modifier_dispatch.matched_hotkey,
+                                        non_modifier_dispatch.passthrough,
+                                    );
+
+                                callbacks.extend(non_modifier_dispatch.callbacks);
+
+                                (callbacks, should_forward_event)
+                            }
                         }
                     }
                 };
@@ -1207,6 +1365,7 @@ fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<HotplugFsEvent>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::DeviceFilter;
     use crate::manager::{HotkeyCallbacks, RepeatBehavior};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
@@ -2091,6 +2250,7 @@ mod tests {
             t0 + Duration::from_millis(60),
             &registrations,
             &HashMap::new(),
+            &HashMap::new(),
             &mut active_presses,
         ));
 
@@ -2510,6 +2670,7 @@ mod tests {
             ListenerState {
                 registrations,
                 sequence_registrations,
+                device_registrations: Arc::new(Mutex::new(HashMap::new())),
                 stop_flag: stop_flag.clone(),
                 mode_registry: ModeRegistry::new(),
             },
@@ -2607,5 +2768,321 @@ mod tests {
 
         buffer.extend_from_slice(event_bytes);
         buffer.extend_from_slice(&name_bytes);
+    }
+
+    fn test_device_info(name: &str, vendor: u16, product: u16) -> DeviceInfo {
+        DeviceInfo {
+            name: name.to_string(),
+            vendor,
+            product,
+        }
+    }
+
+    fn device_registration(
+        id: DeviceRegistrationId,
+        hotkey_key: HotkeyKey,
+        filter: DeviceFilter,
+        counter: Arc<AtomicUsize>,
+    ) -> (DeviceRegistrationId, DeviceHotkeyRegistration) {
+        (
+            id,
+            DeviceHotkeyRegistration {
+                hotkey_key,
+                filter,
+                callbacks: no_release_callbacks(counter),
+            },
+        )
+    }
+
+    #[test]
+    fn device_specific_hotkey_fires_on_matching_device() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let key = (KeyCode::KEY_1, vec![]);
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let info = test_device_info("Elgato StreamDeck XL", 0x0fd9, 0x006c);
+
+        let device_regs: HashMap<DeviceRegistrationId, DeviceHotkeyRegistration> =
+            [device_registration(1, key, filter, count.clone())]
+                .into_iter()
+                .collect();
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        let dispatch = collect_device_specific_dispatch(
+            KeyCode::KEY_1,
+            1,
+            now,
+            &info,
+            &modifiers,
+            &device_regs,
+            &mut active_presses,
+        );
+
+        assert!(dispatch.matched);
+        dispatch_callbacks(dispatch.callbacks);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn device_specific_hotkey_does_not_fire_on_wrong_device() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let key = (KeyCode::KEY_1, vec![]);
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let info = test_device_info("AT Translated Set 2 keyboard", 0x0001, 0x0001);
+
+        let device_regs: HashMap<DeviceRegistrationId, DeviceHotkeyRegistration> =
+            [device_registration(1, key, filter, count.clone())]
+                .into_iter()
+                .collect();
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        let dispatch = collect_device_specific_dispatch(
+            KeyCode::KEY_1,
+            1,
+            now,
+            &info,
+            &modifiers,
+            &device_regs,
+            &mut active_presses,
+        );
+
+        assert!(!dispatch.matched);
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn device_specific_hotkey_uses_per_device_modifiers() {
+        let count = Arc::new(AtomicUsize::new(0));
+        // Register Ctrl+A on StreamDeck
+        let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let info = test_device_info("StreamDeck", 0x0fd9, 0x006c);
+
+        let device_regs: HashMap<DeviceRegistrationId, DeviceHotkeyRegistration> =
+            [device_registration(1, key, filter, count.clone())]
+                .into_iter()
+                .collect();
+
+        // Device does NOT have Ctrl pressed (another device does)
+        let device_modifiers: HashSet<KeyCode> = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        let dispatch = collect_device_specific_dispatch(
+            KeyCode::KEY_A,
+            1,
+            now,
+            &info,
+            &device_modifiers,
+            &device_regs,
+            &mut active_presses,
+        );
+
+        // Should NOT match because device doesn't have Ctrl
+        assert!(!dispatch.matched);
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn device_specific_hotkey_matches_with_correct_per_device_modifiers() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let info = test_device_info("StreamDeck", 0x0fd9, 0x006c);
+
+        let device_regs: HashMap<DeviceRegistrationId, DeviceHotkeyRegistration> =
+            [device_registration(1, key, filter, count.clone())]
+                .into_iter()
+                .collect();
+
+        // Device HAS Ctrl pressed
+        let device_modifiers: HashSet<KeyCode> =
+            [KeyCode::KEY_LEFTCTRL].into_iter().collect();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        let dispatch = collect_device_specific_dispatch(
+            KeyCode::KEY_A,
+            1,
+            now,
+            &info,
+            &device_modifiers,
+            &device_regs,
+            &mut active_presses,
+        );
+
+        assert!(dispatch.matched);
+        dispatch_callbacks(dispatch.callbacks);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn global_hotkey_uses_aggregate_modifiers_unchanged() {
+        // Global hotkey should still use aggregate modifiers
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let p = press_count.clone();
+
+        let callbacks = HotkeyCallbacks {
+            on_press: Arc::new(move || {
+                p.fetch_add(1, Ordering::SeqCst);
+            }),
+            on_release: None,
+            min_hold: None,
+            repeat_behavior: RepeatBehavior::Ignore,
+            passthrough: false,
+        };
+
+        let mut registrations = HashMap::new();
+        registrations.insert(
+            (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]),
+            HotkeyRegistration { callbacks },
+        );
+
+        // Aggregate modifiers include Ctrl (from any device)
+        let aggregate: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL].into_iter().collect();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        dispatch_callbacks(collect_non_modifier_callbacks(
+            KeyCode::KEY_A,
+            1,
+            now,
+            &aggregate,
+            &registrations,
+            &mut active_presses,
+            false,
+        ));
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn modifier_tracker_returns_per_device_modifiers() {
+        let mut tracker = ModifierTracker::default();
+        let device_a = PathBuf::from("/dev/input/event100");
+        let device_b = PathBuf::from("/dev/input/event101");
+
+        tracker.press(&device_a, KeyCode::KEY_LEFTCTRL);
+        tracker.press(&device_b, KeyCode::KEY_LEFTSHIFT);
+
+        let a_mods = tracker.device_modifiers(&device_a);
+        assert!(a_mods.contains(&KeyCode::KEY_LEFTCTRL));
+        assert!(!a_mods.contains(&KeyCode::KEY_LEFTSHIFT));
+
+        let b_mods = tracker.device_modifiers(&device_b);
+        assert!(!b_mods.contains(&KeyCode::KEY_LEFTCTRL));
+        assert!(b_mods.contains(&KeyCode::KEY_LEFTSHIFT));
+
+        // Aggregate has both
+        let agg = tracker.active_modifiers();
+        assert!(agg.contains(&KeyCode::KEY_LEFTCTRL));
+        assert!(agg.contains(&KeyCode::KEY_LEFTSHIFT));
+    }
+
+    #[test]
+    fn modifier_tracker_returns_empty_for_unknown_device() {
+        let tracker = ModifierTracker::default();
+        let unknown = PathBuf::from("/dev/input/event999");
+        assert!(tracker.device_modifiers(&unknown).is_empty());
+    }
+
+    #[test]
+    fn device_specific_usb_id_filter_matches() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let key = (KeyCode::KEY_F1, vec![]);
+        let filter = DeviceFilter::usb(0x1234, 0x5678);
+        let info = test_device_info("Custom Macro Pad", 0x1234, 0x5678);
+
+        let device_regs: HashMap<DeviceRegistrationId, DeviceHotkeyRegistration> =
+            [device_registration(1, key, filter, count.clone())]
+                .into_iter()
+                .collect();
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        let dispatch = collect_device_specific_dispatch(
+            KeyCode::KEY_F1,
+            1,
+            now,
+            &info,
+            &modifiers,
+            &device_regs,
+            &mut active_presses,
+        );
+
+        assert!(dispatch.matched);
+        dispatch_callbacks(dispatch.callbacks);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn device_specific_release_fires_after_press() {
+        let press_count = Arc::new(AtomicUsize::new(0));
+        let release_count = Arc::new(AtomicUsize::new(0));
+        let pc = press_count.clone();
+        let rc = release_count.clone();
+
+        let filter = DeviceFilter::name_contains("StreamDeck");
+        let info = test_device_info("StreamDeck", 0x0fd9, 0x006c);
+        let key = (KeyCode::KEY_1, vec![]);
+
+        let device_regs: HashMap<DeviceRegistrationId, DeviceHotkeyRegistration> = [(
+            1,
+            DeviceHotkeyRegistration {
+                hotkey_key: key,
+                filter,
+                callbacks: HotkeyCallbacks {
+                    on_press: Arc::new(move || {
+                        pc.fetch_add(1, Ordering::SeqCst);
+                    }),
+                    on_release: Some(Arc::new(move || {
+                        rc.fetch_add(1, Ordering::SeqCst);
+                    })),
+                    min_hold: None,
+                    repeat_behavior: RepeatBehavior::Ignore,
+                    passthrough: false,
+                },
+            },
+        )]
+        .into_iter()
+        .collect();
+
+        let modifiers = HashSet::new();
+        let mut active_presses = HashMap::new();
+        let now = Instant::now();
+
+        // Press
+        let press_dispatch = collect_device_specific_dispatch(
+            KeyCode::KEY_1,
+            1,
+            now,
+            &info,
+            &modifiers,
+            &device_regs,
+            &mut active_presses,
+        );
+        dispatch_callbacks(press_dispatch.callbacks);
+
+        // Release
+        let release_dispatch = collect_device_specific_dispatch(
+            KeyCode::KEY_1,
+            0,
+            now + Duration::from_millis(10),
+            &info,
+            &modifiers,
+            &device_regs,
+            &mut active_presses,
+        );
+        dispatch_callbacks(release_dispatch.callbacks);
+
+        assert_eq!(press_count.load(Ordering::SeqCst), 1);
+        assert_eq!(release_count.load(Ordering::SeqCst), 1);
     }
 }

@@ -223,6 +223,7 @@ fn dispatch_mode_press(
                 ActiveHotkeyPress {
                     registration_key: hotkey_key.clone(),
                     mode_name: Some(mode_name.clone()),
+                    device_registration_id: None,
                     pressed_at: now,
                     press_dispatch_state,
                 },
@@ -350,20 +351,34 @@ fn dispatch_mode_repeat(
     }
 }
 
-/// Look up a registration for an active press, checking mode definitions
-/// when the press originated from a mode, or global registrations otherwise.
-pub(crate) fn find_registration_for_active_press<'a>(
+/// Look up a registration's callbacks for an active press, checking mode definitions
+/// when the press originated from a mode, device registrations when the press
+/// originated from a device-specific hotkey, or global registrations otherwise.
+pub(crate) fn find_callbacks_for_active_press<'a>(
     active: &ActiveHotkeyPress,
     global_registrations: &'a HashMap<HotkeyKey, HotkeyRegistration>,
     mode_definitions: &'a HashMap<String, ModeDefinition>,
-) -> Option<&'a HotkeyRegistration> {
+    device_registrations: &'a HashMap<
+        crate::manager::DeviceRegistrationId,
+        crate::manager::DeviceHotkeyRegistration,
+    >,
+) -> Option<&'a crate::manager::HotkeyCallbacks> {
     if let Some(mode_name) = &active.mode_name {
-        mode_definitions
+        return mode_definitions
             .get(mode_name)
             .and_then(|def| def.bindings.get(&active.registration_key))
-    } else {
-        global_registrations.get(&active.registration_key)
+            .map(|reg| &reg.callbacks);
     }
+
+    if let Some(device_reg_id) = active.device_registration_id {
+        return device_registrations
+            .get(&device_reg_id)
+            .map(|reg| &reg.callbacks);
+    }
+
+    global_registrations
+        .get(&active.registration_key)
+        .map(|reg| &reg.callbacks)
 }
 
 // Shared mode state between manager and listener
@@ -1238,7 +1253,7 @@ mod tests {
     // find_registration_for_active_press tests
 
     #[test]
-    fn find_registration_finds_global_press() {
+    fn find_callbacks_finds_global_press() {
         let counter = Arc::new(AtomicUsize::new(0));
         let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
 
@@ -1248,19 +1263,22 @@ mod tests {
         let active = ActiveHotkeyPress {
             registration_key: key,
             mode_name: None,
+            device_registration_id: None,
             pressed_at: Instant::now(),
             press_dispatch_state: PressDispatchState::Dispatched,
         };
 
         let no_modes = HashMap::new();
-        let reg = find_registration_for_active_press(&active, &global, &no_modes);
-        assert!(reg.is_some());
-        (reg.unwrap().callbacks.on_press)();
+        let no_devices = HashMap::new();
+        let callbacks =
+            find_callbacks_for_active_press(&active, &global, &no_modes, &no_devices);
+        assert!(callbacks.is_some());
+        (callbacks.unwrap().on_press)();
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 
     #[test]
-    fn find_registration_finds_mode_press() {
+    fn find_callbacks_finds_mode_press() {
         let counter = Arc::new(AtomicUsize::new(0));
         let key = (KeyCode::KEY_H, vec![]);
 
@@ -1276,14 +1294,17 @@ mod tests {
         let active = ActiveHotkeyPress {
             registration_key: key,
             mode_name: Some("resize".to_string()),
+            device_registration_id: None,
             pressed_at: Instant::now(),
             press_dispatch_state: PressDispatchState::Dispatched,
         };
 
         let no_global = HashMap::new();
-        let reg = find_registration_for_active_press(&active, &no_global, &definitions);
-        assert!(reg.is_some());
-        (reg.unwrap().callbacks.on_press)();
+        let no_devices = HashMap::new();
+        let callbacks =
+            find_callbacks_for_active_press(&active, &no_global, &definitions, &no_devices);
+        assert!(callbacks.is_some());
+        (callbacks.unwrap().on_press)();
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 }
