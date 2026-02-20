@@ -71,7 +71,6 @@ impl PressTimingConfig {
 
 #[derive(Default)]
 struct PressInvocationState {
-    last_attempt: Option<Instant>,
     last_dispatch: Option<Instant>,
 }
 
@@ -98,24 +97,25 @@ impl PressInvocationLimiter {
         }
 
         let mut state = self.state.lock().unwrap();
+        let Some(last_dispatch) = state.last_dispatch else {
+            state.last_dispatch = Some(now);
+            return true;
+        };
 
-        if let Some(debounce) = self.config.debounce {
-            if let Some(last_attempt) = state.last_attempt {
-                if now.saturating_duration_since(last_attempt) < debounce {
-                    state.last_attempt = Some(now);
-                    return false;
-                }
-            }
-
-            state.last_attempt = Some(now);
+        if self
+            .config
+            .debounce
+            .is_some_and(|debounce| now.saturating_duration_since(last_dispatch) < debounce)
+        {
+            return false;
         }
 
-        if let Some(max_rate) = self.config.max_rate {
-            if let Some(last_dispatch) = state.last_dispatch {
-                if now.saturating_duration_since(last_dispatch) < max_rate {
-                    return false;
-                }
-            }
+        if self
+            .config
+            .max_rate
+            .is_some_and(|max_rate| now.saturating_duration_since(last_dispatch) < max_rate)
+        {
+            return false;
         }
 
         state.last_dispatch = Some(now);
@@ -398,9 +398,8 @@ pub(crate) fn attach_hotkey_events(
     let press_hotkey = hotkey.clone();
     let press_limiter = invocation_limiter.clone();
     let wrapped_press: Callback = Arc::new(move || {
-        press_event_hub.emit(HotkeyEvent::Pressed(press_hotkey.clone()));
-
         if press_limiter.should_dispatch_now() {
+            press_event_hub.emit(HotkeyEvent::Pressed(press_hotkey.clone()));
             on_press();
         }
     });
@@ -411,8 +410,8 @@ pub(crate) fn attach_hotkey_events(
             let release_hotkey = hotkey.clone();
             let release_limiter = invocation_limiter.clone();
             Some(Arc::new(move || {
-                release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
                 if release_limiter.should_dispatch_now() {
+                    release_event_hub.emit(HotkeyEvent::Released(release_hotkey.clone()));
                     release_callback();
                 }
             }) as Callback)
@@ -1435,8 +1434,8 @@ mod tests {
 
         assert!(limiter.should_dispatch_at(start));
         assert!(!limiter.should_dispatch_at(start + Duration::from_millis(50)));
-        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(130)));
-        assert!(limiter.should_dispatch_at(start + Duration::from_millis(250)));
+        assert!(limiter.should_dispatch_at(start + Duration::from_millis(130)));
+        assert!(!limiter.should_dispatch_at(start + Duration::from_millis(200)));
     }
 
     #[test]
