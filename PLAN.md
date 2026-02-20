@@ -374,7 +374,7 @@ Success criteria checklist:
 
 ### 2.3 Modes / layers
 
-**Status: Not Started** · **Priority: High — no Rust crate has this**
+**Status: Complete** · **Priority: High — no Rust crate has this**
 
 Named groups of hotkeys that can be pushed/popped like a stack. Inspired by
 swhkd's mode system and QMK firmware layers.
@@ -414,13 +414,13 @@ collisions and supports same key combos in different modes by design. Mode
 transitions are push/pop operations on that stack.
 
 Success criteria checklist:
-- [ ] Named groups of hotkeys (modes) can be defined and activated/deactivated at runtime.
-- [ ] Modes behave as a stack: the most recently activated mode's bindings take priority.
-- [ ] The same key combo can exist in different modes without conflict.
-- [ ] A oneshot option auto-deactivates the mode after one hotkey fires.
-- [ ] A swallow option suppresses all non-matching key events while the mode is active.
-- [ ] A timeout option auto-deactivates the mode after a period of inactivity.
-- [ ] Tests cover: activation/deactivation, oneshot, swallow, timeout, stack ordering, and same-key-different-mode.
+- [x] Named groups of hotkeys (modes) can be defined and activated/deactivated at runtime.
+- [x] Modes behave as a stack: the most recently activated mode's bindings take priority.
+- [x] The same key combo can exist in different modes without conflict.
+- [x] A oneshot option auto-deactivates the mode after one hotkey fires.
+- [x] A swallow option suppresses all non-matching key events while the mode is active.
+- [x] A timeout option auto-deactivates the mode after a period of inactivity.
+- [x] Tests cover: activation/deactivation, oneshot, swallow, timeout, stack ordering, and same-key-different-mode.
 
 ### 2.4 Device-specific hotkeys
 
@@ -506,7 +506,7 @@ complete those first.
 |---------|--------|
 | 2.1 Key sequences / chords | Complete (9/9 checked) |
 | 2.2 Event grabbing | Complete (6/6 checked) |
-| 2.3 Modes / layers | Not Started (0/7 checked) |
+| 2.3 Modes / layers | Complete (7/7 checked) |
 | 2.4 Device-specific hotkeys | Not Started (0/5 checked) |
 | 2.5 Tap vs. hold | Not Started (0/7 checked) |
 
@@ -710,7 +710,7 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | **Phase 2** | **Power features** | **▶ In Progress** | |
 | 2.1 | Key sequences / chords | Complete | 9/9 ✓ |
 | 2.2 | Event grabbing (EVIOCGRAB + uinput) | Complete | 6/6 ✓ |
-| 2.3 | Modes / layers | Not Started | 0/7 |
+| 2.3 | Modes / layers | Complete | 7/7 ✓ |
 | 2.4 | Device-specific hotkeys | Not Started | 0/5 |
 | 2.5 | Tap vs. hold | Not Started | 0/7 |
 | **Phase 3** | **Polish** | **⛔ Blocked on Phase 2** | |

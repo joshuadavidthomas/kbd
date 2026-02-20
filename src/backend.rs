@@ -1,7 +1,8 @@
 use crate::device::find_keyboard_devices;
 use crate::error::Error;
-use crate::listener::{spawn_listener_thread, ListenerConfig};
+use crate::listener::{spawn_listener_thread, ListenerConfig, ListenerState};
 use crate::manager::{HotkeyKey, HotkeyRegistration, SequenceId, SequenceRegistration};
+use crate::mode::ModeRegistry;
 
 #[cfg(feature = "portal")]
 use evdev::KeyCode;
@@ -32,6 +33,7 @@ pub trait HotkeyBackend: Send + Sync {
 
 pub(crate) struct EvdevBackend {
     grab: bool,
+    mode_registry: ModeRegistry,
 }
 
 impl HotkeyBackend for EvdevBackend {
@@ -44,9 +46,12 @@ impl HotkeyBackend for EvdevBackend {
         let keyboards = find_keyboard_devices()?;
         spawn_listener_thread(
             keyboards,
-            registrations,
-            sequence_registrations,
-            stop_flag,
+            ListenerState {
+                registrations,
+                sequence_registrations,
+                stop_flag,
+                mode_registry: self.mode_registry.clone(),
+            },
             ListenerConfig { grab: self.grab },
         )
     }
@@ -458,10 +463,17 @@ fn probe_portal_support() -> bool {
     false
 }
 
-pub(crate) fn build_backend(backend: Backend, grab: bool) -> Result<Box<dyn HotkeyBackend>, Error> {
+pub(crate) fn build_backend(
+    backend: Backend,
+    grab: bool,
+    mode_registry: ModeRegistry,
+) -> Result<Box<dyn HotkeyBackend>, Error> {
     match backend {
         #[cfg(feature = "evdev")]
-        Backend::Evdev => Ok(Box::new(EvdevBackend { grab })),
+        Backend::Evdev => Ok(Box::new(EvdevBackend {
+            grab,
+            mode_registry,
+        })),
         #[cfg(not(feature = "evdev"))]
         Backend::Evdev => Err(Error::BackendUnavailable(
             "evdev backend (compile with evdev feature)",

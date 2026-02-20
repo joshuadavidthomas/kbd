@@ -1,8 +1,12 @@
 use crate::device::is_keyboard_device;
 use crate::error::Error;
 use crate::manager::{
-    is_modifier_key, normalize_modifiers, ActiveHotkeyPress, HotkeyKey, HotkeyRegistration,
-    PressDispatchState, RepeatBehavior, SequenceId, SequenceRegistration,
+    is_modifier_key, normalize_modifiers, ActiveHotkeyPress, Callback, HotkeyKey,
+    HotkeyRegistration, PressDispatchState, RepeatBehavior, SequenceId, SequenceRegistration,
+};
+use crate::mode::{
+    dispatch_mode_key_event, find_registration_for_active_press, pop_timed_out_modes,
+    ModeDefinition, ModeEventDispatch, ModeRegistry,
 };
 
 #[cfg(feature = "grab")]
@@ -21,7 +25,12 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
-type Callback = Arc<dyn Fn() + Send + Sync>;
+pub(crate) struct ListenerState {
+    pub(crate) registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
+    pub(crate) sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+    pub(crate) stop_flag: Arc<AtomicBool>,
+    pub(crate) mode_registry: ModeRegistry,
+}
 
 const POLL_TIMEOUT_MS: i32 = 25;
 const INOTIFY_BUFFER_SIZE: usize = 4096;
@@ -400,11 +409,9 @@ enum HotplugPathChange {
     Unchanged,
 }
 
-pub fn spawn_listener_thread(
+pub(crate) fn spawn_listener_thread(
     keyboard_paths: Vec<PathBuf>,
-    registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-    sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-    stop_flag: Arc<AtomicBool>,
+    shared: ListenerState,
     config: ListenerConfig,
 ) -> Result<JoinHandle<()>, Error> {
     let devices = open_devices(keyboard_paths, config)?;
@@ -414,15 +421,7 @@ pub fn spawn_listener_thread(
     thread::Builder::new()
         .name("evdev-hotkey-listener".into())
         .spawn(move || {
-            listener_loop(
-                devices,
-                inotify_fd,
-                registrations,
-                sequence_registrations,
-                stop_flag,
-                config,
-                key_event_forwarder,
-            );
+            listener_loop(devices, inotify_fd, shared, config, key_event_forwarder);
         })
         .map_err(|e| Error::ThreadSpawn(format!("Failed to spawn listener thread: {}", e)))
 }
@@ -564,6 +563,7 @@ fn collect_callbacks_for_synthetic_keys(
 fn collect_due_hold_callbacks(
     now: Instant,
     registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
+    mode_definitions: &HashMap<String, ModeDefinition>,
     active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
 ) -> Vec<Callback> {
     let mut callbacks = Vec::new();
@@ -573,7 +573,9 @@ fn collect_due_hold_callbacks(
             continue;
         }
 
-        let Some(registration) = registrations.get(&active.registration_key) else {
+        let Some(registration) =
+            find_registration_for_active_press(active, registrations, mode_definitions)
+        else {
             continue;
         };
 
@@ -668,6 +670,7 @@ fn collect_non_modifier_dispatch(
                     key,
                     ActiveHotkeyPress {
                         registration_key,
+                        mode_name: None,
                         pressed_at: now,
                         press_dispatch_state,
                     },
@@ -707,8 +710,7 @@ fn collect_non_modifier_dispatch(
                     let hold_satisfied = registration
                         .callbacks
                         .min_hold
-                        .map(|min_hold| now.duration_since(active.pressed_at) >= min_hold)
-                        .unwrap_or(true);
+                        .is_none_or(|min_hold| now.duration_since(active.pressed_at) >= min_hold);
 
                     if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger
                         && hold_satisfied
@@ -754,12 +756,16 @@ fn collect_non_modifier_callbacks(
 fn listener_loop(
     mut devices: Vec<DeviceState>,
     inotify_fd: RawFdGuard,
-    registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-    sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-    stop_flag: Arc<AtomicBool>,
+    shared: ListenerState,
     config: ListenerConfig,
     mut key_event_forwarder: Option<Box<dyn KeyEventForwarder>>,
 ) {
+    let ListenerState {
+        registrations,
+        sequence_registrations,
+        stop_flag,
+        mode_registry,
+    } = shared;
     let mut modifier_tracker = ModifierTracker::default();
     let mut sequence_runtime = SequenceRuntime::default();
     let mut suppressed_sequence_keys = HashSet::new();
@@ -783,6 +789,12 @@ fn listener_loop(
             let now = Instant::now();
             let registrations_guard = registrations.lock().unwrap();
             let sequence_guard = sequence_registrations.lock().unwrap();
+            let mode_definitions_guard = mode_registry.definitions.lock().unwrap();
+            let mut mode_stack_guard = mode_registry.stack.lock().unwrap();
+
+            // Check mode timeouts
+            pop_timed_out_modes(&mut mode_stack_guard, &mode_definitions_guard, now);
+
             let timeout_dispatch =
                 sequence_runtime.on_tick(now, &registrations_guard, &sequence_guard);
             let mut callbacks = timeout_dispatch.callbacks;
@@ -795,6 +807,7 @@ fn listener_loop(
                 callbacks.extend(collect_due_hold_callbacks(
                     now,
                     &registrations_guard,
+                    &mode_definitions_guard,
                     &mut device.active_presses,
                 ));
             }
@@ -859,62 +872,95 @@ fn listener_loop(
                 let (callbacks, should_forward_event) = {
                     let now = Instant::now();
                     let active_modifiers = modifier_tracker.active_modifiers();
-                    let registrations_guard = registrations.lock().unwrap();
-                    let sequence_guard = sequence_registrations.lock().unwrap();
+                    let hotkey_key = (key, active_modifier_signature(&active_modifiers));
 
-                    let mut sequence_dispatch = SequenceDispatch::empty();
-                    if value == 1 {
-                        sequence_dispatch = sequence_runtime.on_key_press(
-                            (key, active_modifier_signature(&active_modifiers)),
-                            now,
-                            &registrations_guard,
-                            &sequence_guard,
-                        );
-                    } else if value == 0 {
-                        sequence_runtime.on_key_release(key, now);
-                    }
-
-                    let mut callbacks = sequence_dispatch.callbacks;
-                    callbacks.extend(collect_callbacks_for_synthetic_keys(
-                        &sequence_dispatch.synthetic_keys,
-                        &registrations_guard,
-                    ));
-
-                    let suppress_followup = suppress_sequence_followup_key_event(
-                        &mut suppressed_sequence_keys,
-                        key,
-                        value,
-                        sequence_dispatch.suppress_current_key_press,
-                    );
-
-                    let non_modifier_dispatch = if suppress_followup {
-                        NonModifierDispatch {
-                            callbacks: Vec::new(),
-                            matched_hotkey: true,
-                            passthrough: false,
-                        }
-                    } else {
-                        collect_non_modifier_dispatch(
-                            key,
+                    // Mode dispatch takes priority over sequences and global
+                    let mode_dispatch = {
+                        let mode_definitions_guard = mode_registry.definitions.lock().unwrap();
+                        let mut mode_stack_guard = mode_registry.stack.lock().unwrap();
+                        dispatch_mode_key_event(
+                            &hotkey_key,
                             value,
                             now,
-                            &active_modifiers,
-                            &registrations_guard,
+                            &mode_definitions_guard,
+                            &mut mode_stack_guard,
                             &mut devices[device_index].active_presses,
-                            sequence_dispatch.suppress_current_key_press,
                         )
                     };
 
-                    let should_forward_event = should_forward_key_event_in_grab_mode(
-                        config.grab,
-                        sequence_dispatch.suppress_current_key_press
-                            || non_modifier_dispatch.matched_hotkey,
-                        non_modifier_dispatch.passthrough,
-                    );
+                    match mode_dispatch {
+                        ModeEventDispatch::Swallowed => (Vec::new(), false),
+                        ModeEventDispatch::Handled {
+                            callbacks: mode_callbacks,
+                            passthrough,
+                        } => {
+                            let should_forward = should_forward_key_event_in_grab_mode(
+                                config.grab,
+                                true,
+                                passthrough,
+                            );
+                            (mode_callbacks, should_forward)
+                        }
+                        ModeEventDispatch::PassThrough => {
+                            // Fall through to sequence and global dispatch
+                            let registrations_guard = registrations.lock().unwrap();
+                            let sequence_guard = sequence_registrations.lock().unwrap();
 
-                    callbacks.extend(non_modifier_dispatch.callbacks);
+                            let mut sequence_dispatch = SequenceDispatch::empty();
+                            if value == 1 {
+                                sequence_dispatch = sequence_runtime.on_key_press(
+                                    hotkey_key,
+                                    now,
+                                    &registrations_guard,
+                                    &sequence_guard,
+                                );
+                            } else if value == 0 {
+                                sequence_runtime.on_key_release(key, now);
+                            }
 
-                    (callbacks, should_forward_event)
+                            let mut callbacks = sequence_dispatch.callbacks;
+                            callbacks.extend(collect_callbacks_for_synthetic_keys(
+                                &sequence_dispatch.synthetic_keys,
+                                &registrations_guard,
+                            ));
+
+                            let suppress_followup = suppress_sequence_followup_key_event(
+                                &mut suppressed_sequence_keys,
+                                key,
+                                value,
+                                sequence_dispatch.suppress_current_key_press,
+                            );
+
+                            let non_modifier_dispatch = if suppress_followup {
+                                NonModifierDispatch {
+                                    callbacks: Vec::new(),
+                                    matched_hotkey: true,
+                                    passthrough: false,
+                                }
+                            } else {
+                                collect_non_modifier_dispatch(
+                                    key,
+                                    value,
+                                    now,
+                                    &active_modifiers,
+                                    &registrations_guard,
+                                    &mut devices[device_index].active_presses,
+                                    sequence_dispatch.suppress_current_key_press,
+                                )
+                            };
+
+                            let should_forward_event = should_forward_key_event_in_grab_mode(
+                                config.grab,
+                                sequence_dispatch.suppress_current_key_press
+                                    || non_modifier_dispatch.matched_hotkey,
+                                non_modifier_dispatch.passthrough,
+                            );
+
+                            callbacks.extend(non_modifier_dispatch.callbacks);
+
+                            (callbacks, should_forward_event)
+                        }
+                    }
                 };
 
                 dispatch_callbacks(callbacks);
@@ -2044,6 +2090,7 @@ mod tests {
         dispatch_callbacks(collect_due_hold_callbacks(
             t0 + Duration::from_millis(60),
             &registrations,
+            &HashMap::new(),
             &mut active_presses,
         ));
 
@@ -2460,9 +2507,12 @@ mod tests {
         listener_loop(
             Vec::new(),
             read_fd,
-            registrations,
-            sequence_registrations,
-            stop_flag.clone(),
+            ListenerState {
+                registrations,
+                sequence_registrations,
+                stop_flag: stop_flag.clone(),
+                mode_registry: ModeRegistry::new(),
+            },
             ListenerConfig::default(),
             None,
         );

@@ -47,7 +47,7 @@ fn explicit_evdev_request_is_respected() {
 fn explicit_grab_request_reports_feature_disabled_error() {
     let err = HotkeyManager::builder()
         .backend(Backend::Evdev)
-        .grab(true)
+        .grab()
         .build()
         .err()
         .unwrap();
@@ -60,7 +60,7 @@ fn explicit_grab_request_reports_feature_disabled_error() {
 fn portal_backend_rejects_grab_requests() {
     let err = HotkeyManager::builder()
         .backend(Backend::Portal)
-        .grab(true)
+        .grab()
         .build()
         .err()
         .unwrap();

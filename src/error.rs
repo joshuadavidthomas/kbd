@@ -17,6 +17,7 @@ pub enum Error {
     UnsupportedFeature(String),
     InvalidSequence(String),
     InvalidHotkey(String),
+    ModeAlreadyDefined(String),
 }
 
 impl fmt::Display for Error {
@@ -39,6 +40,9 @@ impl fmt::Display for Error {
             Error::UnsupportedFeature(message) => write!(f, "Unsupported feature: {}", message),
             Error::InvalidSequence(message) => write!(f, "Invalid sequence: {}", message),
             Error::InvalidHotkey(message) => write!(f, "Invalid hotkey: {}", message),
+            Error::ModeAlreadyDefined(name) => {
+                write!(f, "Mode is already defined: {}", name)
+            }
         }
     }
 }
