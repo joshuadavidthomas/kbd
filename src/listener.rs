@@ -31,6 +31,8 @@ pub(crate) struct ListenerState {
     pub(crate) sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
     pub(crate) device_registrations:
         Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+    pub(crate) tap_hold_registrations:
+        Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) mode_registry: ModeRegistry,
 }
@@ -888,11 +890,13 @@ fn listener_loop(
         registrations,
         sequence_registrations,
         device_registrations,
+        tap_hold_registrations,
         stop_flag,
         mode_registry,
     } = shared;
     let mut modifier_tracker = ModifierTracker::default();
     let mut sequence_runtime = SequenceRuntime::default();
+    let mut tap_hold_runtime = crate::tap_hold::TapHoldRuntime::default();
     let mut suppressed_sequence_keys = HashSet::new();
 
     loop {
@@ -910,7 +914,7 @@ fn listener_loop(
             }
         };
 
-        let timeout_callbacks = {
+        let (timeout_callbacks, tap_hold_tick_synthetics) = {
             let now = Instant::now();
             let registrations_guard = registrations.lock().unwrap();
             let sequence_guard = sequence_registrations.lock().unwrap();
@@ -919,6 +923,9 @@ fn listener_loop(
 
             // Check mode timeouts
             pop_timed_out_modes(&mut mode_stack_guard, &mode_definitions_guard, now);
+
+            // Check tap-hold threshold
+            let tap_hold_tick = tap_hold_runtime.on_tick(now);
 
             let timeout_dispatch =
                 sequence_runtime.on_tick(now, &registrations_guard, &sequence_guard);
@@ -939,9 +946,18 @@ fn listener_loop(
                 ));
             }
 
-            callbacks
+            (callbacks, tap_hold_tick.synthetic_events)
         };
         dispatch_callbacks(timeout_callbacks);
+
+        // Emit any synthetic events from tap-hold threshold resolution
+        for (syn_key, syn_value) in tap_hold_tick_synthetics {
+            if let Some(forwarder) = key_event_forwarder.as_mut() {
+                if let Err(err) = forwarder.forward_key_event(syn_key, syn_value) {
+                    tracing::warn!("Failed emitting tap-hold synthetic event: {}", err);
+                }
+            }
+        }
 
         if inotify_ready {
             process_hotplug_events(
@@ -993,6 +1009,31 @@ fn listener_loop(
                             }
                         }
                     }
+                    continue;
+                }
+
+                // Tap-hold processing happens before all other dispatch.
+                // If consumed, we skip forwarding and hotkey dispatch entirely.
+                let tap_hold_dispatch = {
+                    let tap_hold_regs_guard = tap_hold_registrations.lock().unwrap();
+                    tap_hold_runtime.process_key_event(
+                        key,
+                        value,
+                        Instant::now(),
+                        &tap_hold_regs_guard,
+                    )
+                };
+
+                // Emit any synthetic events from tap-hold resolution
+                for (syn_key, syn_value) in &tap_hold_dispatch.synthetic_events {
+                    if let Some(forwarder) = key_event_forwarder.as_mut() {
+                        if let Err(err) = forwarder.forward_key_event(*syn_key, *syn_value) {
+                            tracing::warn!("Failed emitting tap-hold synthetic event: {}", err);
+                        }
+                    }
+                }
+
+                if tap_hold_dispatch.consumed {
                     continue;
                 }
 
@@ -2669,6 +2710,7 @@ mod tests {
                 registrations,
                 sequence_registrations,
                 device_registrations: Arc::new(Mutex::new(HashMap::new())),
+                tap_hold_registrations: Arc::new(Mutex::new(HashMap::new())),
                 stop_flag: stop_flag.clone(),
                 mode_registry: ModeRegistry::new(),
             },

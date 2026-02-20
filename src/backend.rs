@@ -6,6 +6,7 @@ use crate::manager::{
     SequenceRegistration,
 };
 use crate::mode::ModeRegistry;
+use crate::tap_hold::TapHoldRegistration;
 
 #[cfg(feature = "portal")]
 use evdev::KeyCode;
@@ -27,6 +28,7 @@ pub trait HotkeyBackend: Send + Sync {
         registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
         device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+        tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Error>;
 
@@ -46,6 +48,7 @@ impl HotkeyBackend for EvdevBackend {
         registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
         device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+        tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Error> {
         let keyboards = find_keyboard_devices()?;
@@ -55,6 +58,7 @@ impl HotkeyBackend for EvdevBackend {
                 registrations,
                 sequence_registrations,
                 device_registrations,
+                tap_hold_registrations,
                 stop_flag,
                 mode_registry: self.mode_registry.clone(),
             },
@@ -163,6 +167,7 @@ impl HotkeyBackend for PortalBackend {
         _device_registrations: Arc<
             Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
         >,
+        _tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Error> {
         std::thread::Builder::new()

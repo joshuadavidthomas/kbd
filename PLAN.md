@@ -464,7 +464,7 @@ Success criteria checklist:
 
 ### 2.5 Tap vs. hold (dual-function keys)
 
-**Status: Not Started** · **Priority: Medium — popular in keyboard community**
+**Status: Complete** · **Priority: Medium — popular in keyboard community**
 
 A key does one thing when tapped, another when held. This is keyd's
 `overload()` and QMK's `LT()`/`MT()`.
@@ -487,13 +487,13 @@ model: resolve as "hold" if another key is pressed while the key is down, or
 if held past the threshold duration.
 
 Success criteria checklist:
-- [ ] A key can be configured to perform one action on tap and a different action when held.
-- [ ] Tap resolves when the key is released before the threshold duration.
-- [ ] Hold resolves when the key is held past the threshold duration.
-- [ ] Hold resolves early if another key is pressed while the dual-function key is down (keyd model).
-- [ ] Tap/hold requires event grabbing; requesting it without grab support returns a clear error.
-- [ ] The tap action produces the expected key event visible to other applications (synthetic emission).
-- [ ] Tests cover: tap, hold by duration, hold by interrupting keypress, and missing-grab error.
+- [x] A key can be configured to perform one action on tap and a different action when held.
+- [x] Tap resolves when the key is released before the threshold duration.
+- [x] Hold resolves when the key is held past the threshold duration.
+- [x] Hold resolves early if another key is pressed while the dual-function key is down (keyd model).
+- [x] Tap/hold requires event grabbing; requesting it without grab support returns a clear error.
+- [x] The tap action produces the expected key event visible to other applications (synthetic emission).
+- [x] Tests cover: tap, hold by duration, hold by interrupting keypress, and missing-grab error.
 
 ### Phase 2 completion gate
 
@@ -508,7 +508,7 @@ complete those first.
 | 2.2 Event grabbing | Complete (6/6 checked) |
 | 2.3 Modes / layers | Complete (7/7 checked) |
 | 2.4 Device-specific hotkeys | Complete (5/5 checked) |
-| 2.5 Tap vs. hold | Not Started (0/7 checked) |
+| 2.5 Tap vs. hold | Complete (7/7 checked) |
 
 ---
 
@@ -707,13 +707,13 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | 1.5 | Device hotplug | Complete | 4/4 ✓ |
 | 1.6 | Event loop architecture (poll/epoll + clean shutdown path) | Complete | 5/5 ✓ |
 | 1.1b | Portal backend (behind feature flag) | Complete | (part of 1.1) |
-| **Phase 2** | **Power features** | **▶ In Progress** | |
+| **Phase 2** | **Power features** | **✅ Complete** | |
 | 2.1 | Key sequences / chords | Complete | 9/9 ✓ |
 | 2.2 | Event grabbing (EVIOCGRAB + uinput) | Complete | 6/6 ✓ |
 | 2.3 | Modes / layers | Complete | 7/7 ✓ |
 | 2.4 | Device-specific hotkeys | Complete | 5/5 ✓ |
-| 2.5 | Tap vs. hold | Not Started | 0/7 |
-| **Phase 3** | **Polish** | **⛔ Blocked on Phase 2** | |
+| 2.5 | Tap vs. hold | Complete | 7/7 ✓ |
+| **Phase 3** | **Polish** | **▶ In Progress** | |
 | 3.1 | Async API | Not Started | 0/6 |
 | 3.2 | Debouncing / rate limiting | Not Started | 0/4 |
 | 3.3 | Key state query | In Progress | 0/5 |
