@@ -28,7 +28,7 @@ use crate::key::Key;
 use crate::key::Modifier;
 
 /// Layer identifier used by layer-control actions.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LayerName(Box<str>);
 
 impl LayerName {
@@ -40,12 +40,6 @@ impl LayerName {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-impl fmt::Debug for LayerName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "LayerName({})", self.0)
     }
 }
 
