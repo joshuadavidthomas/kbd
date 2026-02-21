@@ -3,19 +3,20 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use evdev::KeyCode;
+use crate::key::Key;
+use crate::key::Modifier;
 
 /// What happens when a dual-function key is tapped (pressed and released quickly).
 #[derive(Clone, Debug)]
 pub enum TapAction {
     /// Emit a synthetic key press+release visible to other applications.
-    Emit(KeyCode),
+    Emit(Key),
 }
 
 impl TapAction {
     /// Create a tap action that emits a synthetic key event.
     #[must_use]
-    pub fn emit(key: KeyCode) -> Self {
+    pub fn emit(key: Key) -> Self {
         TapAction::Emit(key)
     }
 }
@@ -24,14 +25,14 @@ impl TapAction {
 #[derive(Clone, Debug)]
 pub enum HoldAction {
     /// Act as a modifier key: synthetically pressed while held, released on key up.
-    Modifier(KeyCode),
+    Modifier(Modifier),
 }
 
 impl HoldAction {
     /// Create a hold action that acts as a modifier key.
     #[must_use]
-    pub fn modifier(key: KeyCode) -> Self {
-        HoldAction::Modifier(key)
+    pub fn modifier(modifier: Modifier) -> Self {
+        HoldAction::Modifier(modifier)
     }
 }
 
@@ -73,12 +74,9 @@ pub(crate) struct TapHoldRegistration {
 }
 
 /// Result of tap-hold processing for a key event.
+/// Synthetic events use `evdev::KeyCode` because they are emitted via uinput.
 pub(crate) struct TapHoldDispatch {
-    /// Synthetic key events to emit via uinput: (key, value).
-    /// value: 1 = press, 0 = release.
-    pub(crate) synthetic_events: Vec<(KeyCode, i32)>,
-    /// Whether the current input key event was consumed by tap-hold
-    /// (should not be forwarded to applications or processed as a hotkey).
+    pub(crate) synthetic_events: Vec<(evdev::KeyCode, i32)>,
     pub(crate) consumed: bool,
 }
 
@@ -91,19 +89,12 @@ impl TapHoldDispatch {
     }
 }
 
-/// Whether a pending tap-hold key has been resolved as "hold".
-///
-/// The tap case is not represented here because tap is discovered
-/// at release time (key released before threshold, no hold resolution).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HoldResolution {
-    /// Still waiting — neither threshold nor interrupting key has triggered hold.
     Pending,
-    /// Resolved as hold: modifier is synthetically active.
     Resolved,
 }
 
-/// Tracks a currently active (pressed) tap-hold key.
 struct ActiveTapHold {
     pressed_at: Instant,
     hold_resolution: HoldResolution,
@@ -112,26 +103,20 @@ struct ActiveTapHold {
 
 /// State machine for tap-hold key processing.
 ///
-/// Processes all key events to detect:
-/// - Tap: tap-hold key released before threshold
-/// - Hold by duration: tap-hold key held past threshold
-/// - Hold by interruption: another key pressed while tap-hold key is pending
+/// Keyed by `Key` (our abstraction). The listener converts evdev key codes
+/// to `Key` before calling into this runtime.
 #[derive(Default)]
 pub(crate) struct TapHoldRuntime {
-    active: HashMap<KeyCode, ActiveTapHold>,
+    active: HashMap<Key, ActiveTapHold>,
 }
 
 impl TapHoldRuntime {
-    /// Process a key event through the tap-hold state machine.
-    ///
-    /// Must be called for ALL key events (not just tap-hold keys) so that
-    /// interrupting keypresses can trigger early hold resolution.
     pub(crate) fn process_key_event(
         &mut self,
-        key: KeyCode,
+        key: Key,
         value: i32,
         now: Instant,
-        registrations: &HashMap<KeyCode, TapHoldRegistration>,
+        registrations: &HashMap<Key, TapHoldRegistration>,
     ) -> TapHoldDispatch {
         match value {
             1 => self.on_key_press(key, now, registrations),
@@ -141,22 +126,21 @@ impl TapHoldRuntime {
         }
     }
 
-    /// Check for threshold-based hold resolution on each tick.
     pub(crate) fn on_tick(&mut self, now: Instant) -> TapHoldDispatch {
-        let mut keys_to_resolve: Vec<(Instant, u16, KeyCode)> = self
+        let mut keys_to_resolve: Vec<(Instant, Key)> = self
             .active
             .iter()
             .filter_map(|(key, active)| {
                 (active.hold_resolution == HoldResolution::Pending
                     && now.saturating_duration_since(active.pressed_at)
                         >= active.registration.threshold)
-                    .then_some((active.pressed_at, key.code(), *key))
+                    .then_some((active.pressed_at, *key))
             })
             .collect();
-        keys_to_resolve.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
+        keys_to_resolve.sort_by_key(|(pressed_at, key)| (*pressed_at, *key));
 
         let mut synthetic_events = Vec::new();
-        for (_, _, key) in keys_to_resolve {
+        for (_, key) in keys_to_resolve {
             if let Some(active) = self.active.get_mut(&key) {
                 active.hold_resolution = HoldResolution::Resolved;
                 synthetic_events.extend(hold_press_events(&active.registration.hold_action));
@@ -173,23 +157,19 @@ impl TapHoldRuntime {
         }
     }
 
-    /// Release any currently resolved hold actions and clear active tap-hold state.
-    pub(crate) fn release_all(&mut self) -> Vec<(KeyCode, i32)> {
-        let mut keys_to_release: Vec<(Instant, u16, KeyCode)> = self
+    pub(crate) fn release_all(&mut self) -> Vec<(evdev::KeyCode, i32)> {
+        let mut keys_to_release: Vec<(Instant, Key)> = self
             .active
             .iter()
             .filter_map(|(key, active)| {
-                (active.hold_resolution == HoldResolution::Resolved).then_some((
-                    active.pressed_at,
-                    key.code(),
-                    *key,
-                ))
+                (active.hold_resolution == HoldResolution::Resolved)
+                    .then_some((active.pressed_at, *key))
             })
             .collect();
-        keys_to_release.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
+        keys_to_release.sort_by_key(|(pressed_at, key)| (*pressed_at, *key));
 
         let mut synthetic_events = Vec::new();
-        for (_, _, key) in keys_to_release {
+        for (_, key) in keys_to_release {
             if let Some(active) = self.active.remove(&key) {
                 synthetic_events.extend(hold_release_events(&active.registration.hold_action));
             }
@@ -201,9 +181,9 @@ impl TapHoldRuntime {
 
     fn on_key_press(
         &mut self,
-        key: KeyCode,
+        key: Key,
         now: Instant,
-        registrations: &HashMap<KeyCode, TapHoldRegistration>,
+        registrations: &HashMap<Key, TapHoldRegistration>,
     ) -> TapHoldDispatch {
         let mut synthetic_events = self.resolve_pending_holds_for_interrupt(key);
 
@@ -237,7 +217,7 @@ impl TapHoldRuntime {
         }
     }
 
-    fn on_key_release(&mut self, key: KeyCode) -> TapHoldDispatch {
+    fn on_key_release(&mut self, key: Key) -> TapHoldDispatch {
         let Some(active) = self.active.remove(&key) else {
             return TapHoldDispatch::none();
         };
@@ -260,7 +240,7 @@ impl TapHoldRuntime {
         }
     }
 
-    fn on_key_repeat(&self, key: KeyCode) -> TapHoldDispatch {
+    fn on_key_repeat(&self, key: Key) -> TapHoldDispatch {
         if self.active.contains_key(&key) {
             return TapHoldDispatch {
                 synthetic_events: Vec::new(),
@@ -271,19 +251,19 @@ impl TapHoldRuntime {
         TapHoldDispatch::none()
     }
 
-    fn resolve_pending_holds_for_interrupt(&mut self, key: KeyCode) -> Vec<(KeyCode, i32)> {
-        let mut keys_to_resolve: Vec<(Instant, u16, KeyCode)> = self
+    fn resolve_pending_holds_for_interrupt(&mut self, key: Key) -> Vec<(evdev::KeyCode, i32)> {
+        let mut keys_to_resolve: Vec<(Instant, Key)> = self
             .active
             .iter()
             .filter_map(|(active_key, active)| {
                 (*active_key != key && active.hold_resolution == HoldResolution::Pending)
-                    .then_some((active.pressed_at, active_key.code(), *active_key))
+                    .then_some((active.pressed_at, *active_key))
             })
             .collect();
-        keys_to_resolve.sort_by_key(|(pressed_at, key_code, _)| (*pressed_at, *key_code));
+        keys_to_resolve.sort_by_key(|(pressed_at, key)| (*pressed_at, *key));
 
         let mut synthetic_events = Vec::new();
-        for (_, _, key_to_resolve) in keys_to_resolve {
+        for (_, key_to_resolve) in keys_to_resolve {
             if let Some(active) = self.active.get_mut(&key_to_resolve) {
                 active.hold_resolution = HoldResolution::Resolved;
                 synthetic_events.extend(hold_press_events(&active.registration.hold_action));
@@ -294,21 +274,24 @@ impl TapHoldRuntime {
     }
 }
 
-fn tap_events(action: &TapAction) -> Vec<(KeyCode, i32)> {
+fn tap_events(action: &TapAction) -> Vec<(evdev::KeyCode, i32)> {
     match action {
-        TapAction::Emit(key) => vec![(*key, 1), (*key, 0)],
+        TapAction::Emit(key) => {
+            let code = key.to_evdev();
+            vec![(code, 1), (code, 0)]
+        }
     }
 }
 
-fn hold_press_events(action: &HoldAction) -> Vec<(KeyCode, i32)> {
+fn hold_press_events(action: &HoldAction) -> Vec<(evdev::KeyCode, i32)> {
     match action {
-        HoldAction::Modifier(key) => vec![(*key, 1)],
+        HoldAction::Modifier(modifier) => vec![(modifier.to_evdev(), 1)],
     }
 }
 
-fn hold_release_events(action: &HoldAction) -> Vec<(KeyCode, i32)> {
+fn hold_release_events(action: &HoldAction) -> Vec<(evdev::KeyCode, i32)> {
     match action {
-        HoldAction::Modifier(key) => vec![(*key, 0)],
+        HoldAction::Modifier(modifier) => vec![(modifier.to_evdev(), 0)],
     }
 }
 
@@ -319,8 +302,8 @@ mod tests {
     use super::*;
 
     fn make_registrations(
-        entries: Vec<(KeyCode, TapAction, HoldAction, Duration)>,
-    ) -> HashMap<KeyCode, TapHoldRegistration> {
+        entries: Vec<(Key, TapAction, HoldAction, Duration)>,
+    ) -> HashMap<Key, TapHoldRegistration> {
         entries
             .into_iter()
             .map(|(key, tap, hold, threshold)| {
@@ -337,11 +320,11 @@ mod tests {
             .collect()
     }
 
-    fn capslock_as_ctrl_esc(threshold_ms: u64) -> HashMap<KeyCode, TapHoldRegistration> {
+    fn capslock_as_ctrl_esc(threshold_ms: u64) -> HashMap<Key, TapHoldRegistration> {
         make_registrations(vec![(
-            KeyCode::KEY_CAPSLOCK,
-            TapAction::emit(KeyCode::KEY_ESC),
-            HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+            Key::CapsLock,
+            TapAction::emit(Key::Escape),
+            HoldAction::modifier(Modifier::Ctrl),
             Duration::from_millis(threshold_ms),
         )])
     }
@@ -352,23 +335,15 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        // Press CapsLock
-        let press_dispatch = runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        let press_dispatch = runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
         assert!(press_dispatch.consumed);
         assert!(press_dispatch.synthetic_events.is_empty());
 
-        // Release CapsLock before threshold
-        let release_dispatch = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
+        let release_dispatch =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(50), &regs);
         assert!(release_dispatch.consumed);
-        assert_eq!(
-            release_dispatch.synthetic_events,
-            vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
-        );
+        let esc = Key::Escape.to_evdev();
+        assert_eq!(release_dispatch.synthetic_events, vec![(esc, 1), (esc, 0)]);
     }
 
     #[test]
@@ -377,26 +352,19 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        // Press CapsLock
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
-        // Tick before threshold — no resolution
         let early_tick = runtime.on_tick(t0 + Duration::from_millis(100));
         assert!(early_tick.synthetic_events.is_empty());
 
-        // Tick at threshold — resolves as hold
+        let ctrl = Modifier::Ctrl.to_evdev();
         let hold_tick = runtime.on_tick(t0 + Duration::from_millis(200));
-        assert_eq!(hold_tick.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
+        assert_eq!(hold_tick.synthetic_events, vec![(ctrl, 1)]);
 
-        // Release CapsLock — releases the modifier
-        let release = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(500),
-            &regs,
-        );
+        let release =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(500), &regs);
         assert!(release.consumed);
-        assert_eq!(release.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 0)]);
+        assert_eq!(release.synthetic_events, vec![(ctrl, 0)]);
     }
 
     #[test]
@@ -405,25 +373,18 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        // Press CapsLock
-        let press = runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        let press = runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
         assert!(press.consumed);
 
-        // Press 'A' while CapsLock is pending — resolves as hold
-        let interrupt =
-            runtime.process_key_event(KeyCode::KEY_A, 1, t0 + Duration::from_millis(50), &regs);
-        assert!(!interrupt.consumed); // 'A' should NOT be consumed
-        assert_eq!(interrupt.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
+        let ctrl = Modifier::Ctrl.to_evdev();
+        let interrupt = runtime.process_key_event(Key::A, 1, t0 + Duration::from_millis(50), &regs);
+        assert!(!interrupt.consumed);
+        assert_eq!(interrupt.synthetic_events, vec![(ctrl, 1)]);
 
-        // Release CapsLock — releases modifier
-        let release = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(100),
-            &regs,
-        );
+        let release =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(100), &regs);
         assert!(release.consumed);
-        assert_eq!(release.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 0)]);
+        assert_eq!(release.synthetic_events, vec![(ctrl, 0)]);
     }
 
     #[test]
@@ -432,8 +393,7 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        // Press a normal key — not consumed, no synthetic events
-        let dispatch = runtime.process_key_event(KeyCode::KEY_A, 1, t0, &regs);
+        let dispatch = runtime.process_key_event(Key::A, 1, t0, &regs);
         assert!(!dispatch.consumed);
         assert!(dispatch.synthetic_events.is_empty());
     }
@@ -444,16 +404,13 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
-        // First interrupt resolves as hold
-        let first =
-            runtime.process_key_event(KeyCode::KEY_A, 1, t0 + Duration::from_millis(50), &regs);
-        assert_eq!(first.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
+        let ctrl = Modifier::Ctrl.to_evdev();
+        let first = runtime.process_key_event(Key::A, 1, t0 + Duration::from_millis(50), &regs);
+        assert_eq!(first.synthetic_events, vec![(ctrl, 1)]);
 
-        // Second key press — already resolved, no extra synthetic events
-        let second =
-            runtime.process_key_event(KeyCode::KEY_B, 1, t0 + Duration::from_millis(60), &regs);
+        let second = runtime.process_key_event(Key::B, 1, t0 + Duration::from_millis(60), &regs);
         assert!(second.synthetic_events.is_empty());
         assert!(!second.consumed);
     }
@@ -464,10 +421,9 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
         runtime.on_tick(t0 + Duration::from_millis(200));
 
-        // Subsequent ticks should not produce more events
         let tick = runtime.on_tick(t0 + Duration::from_millis(300));
         assert!(tick.synthetic_events.is_empty());
     }
@@ -478,14 +434,10 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
-        let repeat = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            2,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
+        let repeat =
+            runtime.process_key_event(Key::CapsLock, 2, t0 + Duration::from_millis(50), &regs);
         assert!(repeat.consumed);
         assert!(repeat.synthetic_events.is_empty());
     }
@@ -496,10 +448,9 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
-        let repeat =
-            runtime.process_key_event(KeyCode::KEY_A, 2, t0 + Duration::from_millis(50), &regs);
+        let repeat = runtime.process_key_event(Key::A, 2, t0 + Duration::from_millis(50), &regs);
         assert!(!repeat.consumed);
         assert!(repeat.synthetic_events.is_empty());
     }
@@ -510,11 +461,9 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
-        // Release a different key — noop
-        let release =
-            runtime.process_key_event(KeyCode::KEY_A, 0, t0 + Duration::from_millis(50), &regs);
+        let release = runtime.process_key_event(Key::A, 0, t0 + Duration::from_millis(50), &regs);
         assert!(!release.consumed);
         assert!(release.synthetic_events.is_empty());
     }
@@ -524,33 +473,18 @@ mod tests {
         let mut runtime = TapHoldRuntime::default();
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
+        let esc = Key::Escape.to_evdev();
 
-        // First tap
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
-        let release1 = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
-        assert_eq!(
-            release1.synthetic_events,
-            vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
-        );
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
+        let release1 =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(50), &regs);
+        assert_eq!(release1.synthetic_events, vec![(esc, 1), (esc, 0)]);
 
-        // Second tap
         let t1 = t0 + Duration::from_millis(500);
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t1, &regs);
-        let release2 = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t1 + Duration::from_millis(50),
-            &regs,
-        );
-        assert_eq!(
-            release2.synthetic_events,
-            vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
-        );
+        runtime.process_key_event(Key::CapsLock, 1, t1, &regs);
+        let release2 =
+            runtime.process_key_event(Key::CapsLock, 0, t1 + Duration::from_millis(50), &regs);
+        assert_eq!(release2.synthetic_events, vec![(esc, 1), (esc, 0)]);
     }
 
     #[test]
@@ -559,29 +493,16 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        // First: hold
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
         runtime.on_tick(t0 + Duration::from_millis(200));
-        runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(500),
-            &regs,
-        );
+        runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(500), &regs);
 
-        // Second: tap
         let t1 = t0 + Duration::from_secs(1);
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t1, &regs);
-        let release = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t1 + Duration::from_millis(50),
-            &regs,
-        );
-        assert_eq!(
-            release.synthetic_events,
-            vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
-        );
+        runtime.process_key_event(Key::CapsLock, 1, t1, &regs);
+        let release =
+            runtime.process_key_event(Key::CapsLock, 0, t1 + Duration::from_millis(50), &regs);
+        let esc = Key::Escape.to_evdev();
+        assert_eq!(release.synthetic_events, vec![(esc, 1), (esc, 0)]);
     }
 
     #[test]
@@ -590,48 +511,41 @@ mod tests {
         let t0 = Instant::now();
         let regs = make_registrations(vec![
             (
-                KeyCode::KEY_CAPSLOCK,
-                TapAction::emit(KeyCode::KEY_ESC),
-                HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Key::CapsLock,
+                TapAction::emit(Key::Escape),
+                HoldAction::modifier(Modifier::Ctrl),
                 Duration::from_millis(200),
             ),
             (
-                KeyCode::KEY_TAB,
-                TapAction::emit(KeyCode::KEY_ENTER),
-                HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                Key::Tab,
+                TapAction::emit(Key::Enter),
+                HoldAction::modifier(Modifier::Alt),
                 Duration::from_millis(200),
             ),
         ]);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        let ctrl = Modifier::Ctrl.to_evdev();
+        let enter = Key::Enter.to_evdev();
+
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
         let hold_tick = runtime.on_tick(t0 + Duration::from_millis(200));
-        assert_eq!(hold_tick.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
+        assert_eq!(hold_tick.synthetic_events, vec![(ctrl, 1)]);
 
         let tab_press =
-            runtime.process_key_event(KeyCode::KEY_TAB, 1, t0 + Duration::from_millis(210), &regs);
+            runtime.process_key_event(Key::Tab, 1, t0 + Duration::from_millis(210), &regs);
         assert!(tab_press.consumed);
         assert!(tab_press.synthetic_events.is_empty());
 
-        let caps_release = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(220),
-            &regs,
-        );
+        let caps_release =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(220), &regs);
         assert!(caps_release.consumed);
-        assert_eq!(
-            caps_release.synthetic_events,
-            vec![(KeyCode::KEY_LEFTCTRL, 0)]
-        );
+        assert_eq!(caps_release.synthetic_events, vec![(ctrl, 0)]);
 
         let tab_release =
-            runtime.process_key_event(KeyCode::KEY_TAB, 0, t0 + Duration::from_millis(240), &regs);
+            runtime.process_key_event(Key::Tab, 0, t0 + Duration::from_millis(240), &regs);
         assert!(tab_release.consumed);
-        assert_eq!(
-            tab_release.synthetic_events,
-            vec![(KeyCode::KEY_ENTER, 1), (KeyCode::KEY_ENTER, 0)]
-        );
+        assert_eq!(tab_release.synthetic_events, vec![(enter, 1), (enter, 0)]);
     }
 
     #[test]
@@ -640,52 +554,44 @@ mod tests {
         let t0 = Instant::now();
         let regs = make_registrations(vec![
             (
-                KeyCode::KEY_CAPSLOCK,
-                TapAction::emit(KeyCode::KEY_ESC),
-                HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Key::CapsLock,
+                TapAction::emit(Key::Escape),
+                HoldAction::modifier(Modifier::Ctrl),
                 Duration::from_millis(200),
             ),
             (
-                KeyCode::KEY_TAB,
-                TapAction::emit(KeyCode::KEY_ENTER),
-                HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                Key::Tab,
+                TapAction::emit(Key::Enter),
+                HoldAction::modifier(Modifier::Alt),
                 Duration::from_millis(200),
             ),
         ]);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        let ctrl = Modifier::Ctrl.to_evdev();
+        let alt = Modifier::Alt.to_evdev();
+
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
         let tab_press =
-            runtime.process_key_event(KeyCode::KEY_TAB, 1, t0 + Duration::from_millis(10), &regs);
+            runtime.process_key_event(Key::Tab, 1, t0 + Duration::from_millis(10), &regs);
         assert!(tab_press.consumed);
-        assert_eq!(tab_press.synthetic_events, vec![(KeyCode::KEY_LEFTCTRL, 1)]);
+        assert_eq!(tab_press.synthetic_events, vec![(ctrl, 1)]);
 
-        let a_press =
-            runtime.process_key_event(KeyCode::KEY_A, 1, t0 + Duration::from_millis(20), &regs);
+        let a_press = runtime.process_key_event(Key::A, 1, t0 + Duration::from_millis(20), &regs);
         assert!(!a_press.consumed);
-        assert_eq!(a_press.synthetic_events, vec![(KeyCode::KEY_LEFTALT, 1)]);
+        assert_eq!(a_press.synthetic_events, vec![(alt, 1)]);
 
         let second_a_press =
-            runtime.process_key_event(KeyCode::KEY_A, 1, t0 + Duration::from_millis(30), &regs);
+            runtime.process_key_event(Key::A, 1, t0 + Duration::from_millis(30), &regs);
         assert!(second_a_press.synthetic_events.is_empty());
 
-        let caps_release = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(40),
-            &regs,
-        );
-        assert_eq!(
-            caps_release.synthetic_events,
-            vec![(KeyCode::KEY_LEFTCTRL, 0)]
-        );
+        let caps_release =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(40), &regs);
+        assert_eq!(caps_release.synthetic_events, vec![(ctrl, 0)]);
 
         let tab_release =
-            runtime.process_key_event(KeyCode::KEY_TAB, 0, t0 + Duration::from_millis(50), &regs);
-        assert_eq!(
-            tab_release.synthetic_events,
-            vec![(KeyCode::KEY_LEFTALT, 0)]
-        );
+            runtime.process_key_event(Key::Tab, 0, t0 + Duration::from_millis(50), &regs);
+        assert_eq!(tab_release.synthetic_events, vec![(alt, 0)]);
     }
 
     #[test]
@@ -694,22 +600,16 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
         let earlier = t0.checked_sub(Duration::from_millis(1)).unwrap_or(t0);
         let earlier_tick = runtime.on_tick(earlier);
         assert!(earlier_tick.synthetic_events.is_empty());
 
-        let release_dispatch = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
-        assert_eq!(
-            release_dispatch.synthetic_events,
-            vec![(KeyCode::KEY_ESC, 1), (KeyCode::KEY_ESC, 0)]
-        );
+        let release_dispatch =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(50), &regs);
+        let esc = Key::Escape.to_evdev();
+        assert_eq!(release_dispatch.synthetic_events, vec![(esc, 1), (esc, 0)]);
     }
 
     #[test]
@@ -718,18 +618,15 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
         runtime.on_tick(t0 + Duration::from_millis(200));
 
+        let ctrl = Modifier::Ctrl.to_evdev();
         let shutdown_releases = runtime.release_all();
-        assert_eq!(shutdown_releases, vec![(KeyCode::KEY_LEFTCTRL, 0)]);
+        assert_eq!(shutdown_releases, vec![(ctrl, 0)]);
 
-        let release_after_shutdown = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(250),
-            &regs,
-        );
+        let release_after_shutdown =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(250), &regs);
         assert!(!release_after_shutdown.consumed);
         assert!(release_after_shutdown.synthetic_events.is_empty());
     }
@@ -740,17 +637,13 @@ mod tests {
         let t0 = Instant::now();
         let regs = capslock_as_ctrl_esc(200);
 
-        runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
 
         let shutdown_releases = runtime.release_all();
         assert!(shutdown_releases.is_empty());
 
-        let release_after_shutdown = runtime.process_key_event(
-            KeyCode::KEY_CAPSLOCK,
-            0,
-            t0 + Duration::from_millis(50),
-            &regs,
-        );
+        let release_after_shutdown =
+            runtime.process_key_event(Key::CapsLock, 0, t0 + Duration::from_millis(50), &regs);
         assert!(!release_after_shutdown.consumed);
         assert!(release_after_shutdown.synthetic_events.is_empty());
     }
@@ -761,7 +654,7 @@ mod tests {
         let t0 = Instant::now();
         let regs = HashMap::new();
 
-        let dispatch = runtime.process_key_event(KeyCode::KEY_CAPSLOCK, 1, t0, &regs);
+        let dispatch = runtime.process_key_event(Key::CapsLock, 1, t0, &regs);
         assert!(!dispatch.consumed);
         assert!(dispatch.synthetic_events.is_empty());
     }

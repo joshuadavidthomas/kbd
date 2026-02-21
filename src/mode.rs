@@ -4,14 +4,13 @@ use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
-use evdev::KeyCode;
-
 use crate::error::Error;
 use crate::events::EventHub;
 use crate::events::HotkeyEvent;
+use crate::key::Key;
+use crate::key::Modifier;
 use crate::manager::attach_hotkey_events;
 use crate::manager::normalize_modifiers;
-use crate::manager::validate_hotkey_binding;
 use crate::manager::ActiveHotkeyPress;
 use crate::manager::Callback;
 use crate::manager::HotkeyKey;
@@ -192,7 +191,7 @@ pub(crate) fn dispatch_mode_key_event(
     now: Instant,
     definitions: &HashMap<String, ModeDefinition>,
     stack: &mut ModeStack,
-    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
 ) -> ModeEventDispatch {
     match value {
         1 => dispatch_mode_press(hotkey_key, now, definitions, stack, active_presses),
@@ -207,7 +206,7 @@ fn dispatch_mode_press(
     now: Instant,
     definitions: &HashMap<String, ModeDefinition>,
     stack: &mut ModeStack,
-    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
 ) -> ModeEventDispatch {
     if stack.is_empty() {
         return ModeEventDispatch::PassThrough;
@@ -267,11 +266,11 @@ fn dispatch_mode_press(
 }
 
 fn dispatch_mode_release(
-    key: KeyCode,
+    key: Key,
     now: Instant,
     definitions: &HashMap<String, ModeDefinition>,
     stack: &mut ModeStack,
-    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
 ) -> ModeEventDispatch {
     let Some(active) = active_presses.get(&key) else {
         return ModeEventDispatch::PassThrough;
@@ -319,10 +318,10 @@ fn dispatch_mode_release(
 }
 
 fn dispatch_mode_repeat(
-    key: KeyCode,
+    key: Key,
     now: Instant,
     definitions: &HashMap<String, ModeDefinition>,
-    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
 ) -> ModeEventDispatch {
     let is_mode_press = active_presses
         .get(&key)
@@ -500,8 +499,8 @@ impl ModeBuilder {
 
     pub fn register<F>(
         &mut self,
-        key: KeyCode,
-        modifiers: &[KeyCode],
+        key: Key,
+        modifiers: &[Modifier],
         callback: F,
     ) -> Result<(), Error>
     where
@@ -512,15 +511,14 @@ impl ModeBuilder {
 
     pub fn register_with_options<F>(
         &mut self,
-        key: KeyCode,
-        modifiers: &[KeyCode],
+        key: Key,
+        modifiers: &[Modifier],
         options: HotkeyOptions,
         callback: F,
     ) -> Result<(), Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
-        validate_hotkey_binding(key, modifiers)?;
         let hotkey_key = (key, normalize_modifiers(modifiers));
 
         if self.bindings.contains_key(&hotkey_key) {
@@ -716,7 +714,7 @@ mod tests {
     fn lookup_empty_stack_passes_through() {
         let stack = ModeStack::default();
         let definitions = HashMap::new();
-        let key = (KeyCode::KEY_H, vec![]);
+        let key = (Key::H, vec![]);
 
         assert!(matches!(
             lookup_hotkey_in_modes(&key, &stack, &definitions),
@@ -731,7 +729,7 @@ mod tests {
         stack.push("resize".to_string(), t0);
 
         let counter = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_H, vec![]);
+        let key = (Key::H, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -767,7 +765,7 @@ mod tests {
 
         let base_counter = Arc::new(AtomicUsize::new(0));
         let overlay_counter = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_H, vec![]);
+        let key = (Key::H, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -809,7 +807,7 @@ mod tests {
 
         let counter_a = Arc::new(AtomicUsize::new(0));
         let counter_b = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_F, vec![]);
+        let key = (Key::F, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -855,8 +853,8 @@ mod tests {
         let t0 = Instant::now();
         stack.push("swallow_mode".to_string(), t0);
 
-        let bound_key = (KeyCode::KEY_H, vec![]);
-        let unbound_key = (KeyCode::KEY_J, vec![]);
+        let bound_key = (Key::H, vec![]);
+        let unbound_key = (Key::J, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -889,7 +887,7 @@ mod tests {
         let t0 = Instant::now();
         stack.push("normal_mode".to_string(), t0);
 
-        let unbound_key = (KeyCode::KEY_Z, vec![]);
+        let unbound_key = (Key::Z, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -910,7 +908,7 @@ mod tests {
         stack.push("base".to_string(), t0);
         stack.push("swallow_layer".to_string(), t0);
 
-        let key = (KeyCode::KEY_A, vec![]);
+        let key = (Key::A, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -1025,7 +1023,7 @@ mod tests {
         stack.push("resize".to_string(), t0);
 
         let counter = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_H, vec![]);
+        let key = (Key::H, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -1045,7 +1043,7 @@ mod tests {
         };
         dispatch_callbacks(callbacks);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
-        assert!(active_presses.contains_key(&KeyCode::KEY_H));
+        assert!(active_presses.contains_key(&Key::H));
     }
 
     #[test]
@@ -1056,7 +1054,7 @@ mod tests {
 
         let press_count = Arc::new(AtomicUsize::new(0));
         let release_count = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_H, vec![]);
+        let key = (Key::H, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -1105,7 +1103,7 @@ mod tests {
         stack.push("oneshot_mode".to_string(), t0);
 
         let counter = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_F, vec![]);
+        let key = (Key::F, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -1138,7 +1136,7 @@ mod tests {
         stack.push("overlay".to_string(), t0);
 
         let counter = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_G, vec![]);
+        let key = (Key::G, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(
@@ -1181,7 +1179,7 @@ mod tests {
             make_definition(ModeOptions::new().swallow(), vec![]),
         );
 
-        let unbound_key = (KeyCode::KEY_Z, vec![]);
+        let unbound_key = (Key::Z, vec![]);
         let mut active_presses = HashMap::new();
         let dispatch = dispatch_mode_key_event(
             &unbound_key,
@@ -1199,7 +1197,7 @@ mod tests {
     fn mode_dispatch_passes_through_when_no_modes_active() {
         let mut stack = ModeStack::default();
         let t0 = Instant::now();
-        let key = (KeyCode::KEY_A, vec![]);
+        let key = (Key::A, vec![]);
         let mut active_presses = HashMap::new();
 
         let dispatch = dispatch_mode_key_event(
@@ -1226,7 +1224,7 @@ mod tests {
             make_definition(ModeOptions::new(), vec![]),
         );
 
-        let key = (KeyCode::KEY_Q, vec![]);
+        let key = (Key::Q, vec![]);
         let mut active_presses = HashMap::new();
         let dispatch =
             dispatch_mode_key_event(&key, 1, t0, &definitions, &mut stack, &mut active_presses);
@@ -1273,8 +1271,8 @@ mod tests {
         let controller = ModeController::new(registry);
         let mut builder = ModeBuilder::new(controller);
 
-        builder.register(KeyCode::KEY_H, &[], || {}).unwrap();
-        builder.register(KeyCode::KEY_J, &[], || {}).unwrap();
+        builder.register(Key::H, &[], || {}).unwrap();
+        builder.register(Key::J, &[], || {}).unwrap();
 
         assert_eq!(builder.bindings.len(), 2);
     }
@@ -1285,25 +1283,11 @@ mod tests {
         let controller = ModeController::new(registry);
         let mut builder = ModeBuilder::new(controller);
 
-        builder.register(KeyCode::KEY_H, &[], || {}).unwrap();
+        builder.register(Key::H, &[], || {}).unwrap();
 
-        let err = builder.register(KeyCode::KEY_H, &[], || {}).err().unwrap();
+        let err = builder.register(Key::H, &[], || {}).err().unwrap();
 
         assert!(matches!(err, Error::AlreadyRegistered { .. }));
-    }
-
-    #[test]
-    fn mode_builder_validates_hotkey_bindings() {
-        let registry = ModeRegistry::new();
-        let controller = ModeController::new(registry);
-        let mut builder = ModeBuilder::new(controller);
-
-        let err = builder
-            .register(KeyCode::KEY_LEFTCTRL, &[], || {})
-            .err()
-            .unwrap();
-
-        assert!(matches!(err, Error::InvalidHotkey(_)));
     }
 
     // find_registration_for_active_press tests
@@ -1311,7 +1295,7 @@ mod tests {
     #[test]
     fn find_callbacks_finds_global_press() {
         let counter = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
+        let key = (Key::A, vec![Modifier::Ctrl]);
 
         let mut global = HashMap::new();
         global.insert(key.clone(), make_registration(counter.clone()));
@@ -1334,7 +1318,7 @@ mod tests {
     #[test]
     fn find_callbacks_finds_mode_press() {
         let counter = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_H, vec![]);
+        let key = (Key::H, vec![]);
 
         let mut definitions = HashMap::new();
         definitions.insert(

@@ -32,8 +32,9 @@ use crate::device::is_keyboard_device;
 use crate::device::DeviceInfo;
 use crate::error::Error;
 use crate::events::HotkeyEvent;
+use crate::key::Key;
+use crate::key::Modifier;
 use crate::key_state::SharedKeyState;
-use crate::manager::is_modifier_key;
 use crate::manager::normalize_modifiers;
 use crate::manager::ActiveHotkeyPress;
 use crate::manager::Callback;
@@ -59,7 +60,7 @@ pub(crate) struct ListenerState {
     pub(crate) device_registrations:
         Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
     pub(crate) tap_hold_registrations:
-        Arc<Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>>,
+        Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) key_state: SharedKeyState,
     pub(crate) mode_registry: ModeRegistry,
@@ -155,7 +156,7 @@ struct PendingStandalone {
 struct SequenceRuntime {
     active_sequences: Vec<ActiveSequence>,
     pending_standalone: Option<PendingStandalone>,
-    deferred_release_callbacks: HashMap<KeyCode, Callback>,
+    deferred_release_callbacks: HashMap<Key, Callback>,
 }
 
 struct SequenceDispatch {
@@ -377,7 +378,7 @@ impl SequenceRuntime {
         }
     }
 
-    fn on_key_release(&mut self, key: KeyCode, now: Instant) -> Vec<Callback> {
+    fn on_key_release(&mut self, key: Key, now: Instant) -> Vec<Callback> {
         if let Some(pending) = self.pending_standalone.as_mut() {
             if pending.key.0 == key && pending.released_at.is_none() {
                 pending.released_at = Some(now);
@@ -395,7 +396,7 @@ struct DeviceState {
     path: PathBuf,
     info: DeviceInfo,
     device: Device,
-    active_presses: HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: HashMap<Key, ActiveHotkeyPress>,
     pressed_keys: HashSet<KeyCode>,
 }
 
@@ -407,21 +408,21 @@ impl DeviceState {
 
 #[derive(Default)]
 struct ModifierTracker {
-    pressed_modifiers: HashMap<PathBuf, HashSet<KeyCode>>,
+    pressed_modifiers: HashMap<PathBuf, HashSet<Modifier>>,
 }
 
 impl ModifierTracker {
-    fn press(&mut self, device_path: &Path, key: KeyCode) {
+    fn press(&mut self, device_path: &Path, modifier: Modifier) {
         self.pressed_modifiers
             .entry(device_path.to_path_buf())
             .or_default()
-            .insert(key);
+            .insert(modifier);
     }
 
-    fn release(&mut self, device_path: &Path, key: KeyCode) {
-        if let Some(keys) = self.pressed_modifiers.get_mut(device_path) {
-            keys.remove(&key);
-            if keys.is_empty() {
+    fn release(&mut self, device_path: &Path, modifier: Modifier) {
+        if let Some(modifiers) = self.pressed_modifiers.get_mut(device_path) {
+            modifiers.remove(&modifier);
+            if modifiers.is_empty() {
                 self.pressed_modifiers.remove(device_path);
             }
         }
@@ -431,14 +432,14 @@ impl ModifierTracker {
         self.pressed_modifiers.remove(device_path);
     }
 
-    fn active_modifiers(&self) -> HashSet<KeyCode> {
+    fn active_modifiers(&self) -> HashSet<Modifier> {
         self.pressed_modifiers
             .values()
-            .flat_map(|keys| keys.iter().copied())
+            .flat_map(|mods| mods.iter().copied())
             .collect()
     }
 
-    fn device_modifiers(&self, device_path: &Path) -> HashSet<KeyCode> {
+    fn device_modifiers(&self, device_path: &Path) -> HashSet<Modifier> {
         self.pressed_modifiers
             .get(device_path)
             .cloned()
@@ -625,9 +626,8 @@ fn init_inotify_watcher() -> Result<RawFdGuard, Error> {
     Ok(fd_guard)
 }
 
-fn active_modifier_signature(active: &HashSet<KeyCode>) -> Vec<KeyCode> {
-    let modifiers: Vec<KeyCode> = active.iter().copied().collect();
-    normalize_modifiers(&modifiers)
+fn active_modifier_signature(active: &HashSet<Modifier>) -> Vec<Modifier> {
+    normalize_modifiers(&active.iter().copied().collect::<Vec<_>>())
 }
 
 fn invoke_callback(callback: &Callback) -> bool {
@@ -661,7 +661,7 @@ fn collect_due_hold_callbacks(
     registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
     mode_definitions: &HashMap<String, ModeDefinition>,
     device_registrations: &HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>,
-    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
 ) -> Vec<Callback> {
     let mut callbacks = Vec::new();
 
@@ -699,13 +699,13 @@ struct DeviceSpecificDispatch {
 }
 
 fn collect_device_specific_dispatch(
-    key: KeyCode,
+    key: Key,
     value: i32,
     now: Instant,
     device_info: &DeviceInfo,
-    device_modifiers: &HashSet<KeyCode>,
+    device_modifiers: &HashSet<Modifier>,
     device_registrations: &HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>,
-    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
 ) -> DeviceSpecificDispatch {
     let modifier_signature = active_modifier_signature(device_modifiers);
     let device_hotkey_key = (key, modifier_signature);
@@ -813,8 +813,8 @@ fn should_forward_key_event_in_grab_mode(
 }
 
 fn suppress_sequence_followup_key_event(
-    suppressed_keys: &mut HashSet<KeyCode>,
-    key: KeyCode,
+    suppressed_keys: &mut HashSet<Key>,
+    key: Key,
     value: i32,
     suppress_current_key_press: bool,
 ) -> bool {
@@ -831,12 +831,12 @@ fn suppress_sequence_followup_key_event(
 }
 
 fn collect_non_modifier_dispatch(
-    key: KeyCode,
+    key: Key,
     value: i32,
     now: Instant,
-    active_modifiers: &HashSet<KeyCode>,
+    active_modifiers: &HashSet<Modifier>,
     registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
     suppress_press: bool,
 ) -> NonModifierDispatch {
     let mut callbacks = Vec::new();
@@ -938,12 +938,12 @@ fn collect_non_modifier_dispatch(
 
 #[cfg(test)]
 fn collect_non_modifier_callbacks(
-    key: KeyCode,
+    key: Key,
     value: i32,
     now: Instant,
-    active_modifiers: &HashSet<KeyCode>,
+    active_modifiers: &HashSet<Modifier>,
     registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-    active_presses: &mut HashMap<KeyCode, ActiveHotkeyPress>,
+    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
     suppress_press: bool,
 ) -> Vec<Callback> {
     collect_non_modifier_dispatch(
@@ -978,7 +978,7 @@ fn listener_loop(
     let mut modifier_tracker = ModifierTracker::default();
     let mut sequence_runtime = SequenceRuntime::default();
     let mut tap_hold_runtime = crate::tap_hold::TapHoldRuntime::default();
-    let mut suppressed_sequence_keys = HashSet::new();
+    let mut suppressed_sequence_keys: HashSet<Key> = HashSet::new();
 
     loop {
         if stop_flag.load(Ordering::SeqCst) {
@@ -1105,10 +1105,11 @@ fn listener_loop(
                     value,
                 );
 
-                if is_modifier_key(key) {
+                // Convert evdev keycode at the boundary
+                if let Some(modifier) = Modifier::from_evdev(key) {
                     match value {
-                        1 => modifier_tracker.press(&device_path, key),
-                        0 => modifier_tracker.release(&device_path, key),
+                        1 => modifier_tracker.press(&device_path, modifier),
+                        0 => modifier_tracker.release(&device_path, modifier),
                         _ => {}
                     }
 
@@ -1122,12 +1123,24 @@ fn listener_loop(
                     continue;
                 }
 
+                let Some(abstract_key) = Key::from_evdev(key) else {
+                    // Unknown key — forward in grab mode, skip hotkey dispatch
+                    if config.grab {
+                        if let Some(forwarder) = key_event_forwarder.as_mut() {
+                            if let Err(err) = forwarder.forward_key_event(key, value) {
+                                tracing::warn!("Failed forwarding unknown key event: {}", err);
+                            }
+                        }
+                    }
+                    continue;
+                };
+
                 // Tap-hold processing happens before all other dispatch.
                 // If consumed, we skip forwarding and hotkey dispatch entirely.
                 let tap_hold_dispatch = {
                     let tap_hold_regs_guard = tap_hold_registrations.lock().unwrap();
                     tap_hold_runtime.process_key_event(
-                        key,
+                        abstract_key,
                         value,
                         Instant::now(),
                         &tap_hold_regs_guard,
@@ -1150,7 +1163,7 @@ fn listener_loop(
                 let (callbacks, should_forward_event, sequence_step_events, mode_change_event) = {
                     let now = Instant::now();
                     let active_modifiers = modifier_tracker.active_modifiers();
-                    let hotkey_key = (key, active_modifier_signature(&active_modifiers));
+                    let hotkey_key = (abstract_key, active_modifier_signature(&active_modifiers));
 
                     // Mode dispatch takes priority over sequences and global
                     let (mode_dispatch, mode_change_event) = {
@@ -1197,7 +1210,7 @@ fn listener_loop(
                             let device_info = devices[device_index].info.clone();
                             let device_regs_guard = device_registrations.lock().unwrap();
                             let device_dispatch = collect_device_specific_dispatch(
-                                key,
+                                abstract_key,
                                 value,
                                 now,
                                 &device_info,
@@ -1235,7 +1248,7 @@ fn listener_loop(
                                     );
                                 } else if value == 0 {
                                     sequence_release_callbacks =
-                                        sequence_runtime.on_key_release(key, now);
+                                        sequence_runtime.on_key_release(abstract_key, now);
                                 }
 
                                 let mut callbacks = sequence_dispatch.callbacks;
@@ -1248,7 +1261,7 @@ fn listener_loop(
 
                                 let suppress_followup = suppress_sequence_followup_key_event(
                                     &mut suppressed_sequence_keys,
-                                    key,
+                                    abstract_key,
                                     value,
                                     sequence_dispatch.suppress_current_key_press,
                                 );
@@ -1261,7 +1274,7 @@ fn listener_loop(
                                     }
                                 } else {
                                     collect_non_modifier_dispatch(
-                                        key,
+                                        abstract_key,
                                         value,
                                         now,
                                         &active_modifiers,
@@ -1604,16 +1617,10 @@ mod tests {
 
     #[test]
     fn modifier_signature_normalizes_left_and_right() {
-        let active: HashSet<KeyCode> = [KeyCode::KEY_RIGHTCTRL, KeyCode::KEY_LEFTSHIFT]
-            .iter()
-            .copied()
-            .collect();
+        let active: HashSet<Modifier> = [Modifier::Ctrl, Modifier::Shift].iter().copied().collect();
 
         let signature = active_modifier_signature(&active);
-        assert_eq!(
-            signature,
-            vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
-        );
+        assert_eq!(signature, vec![Modifier::Ctrl, Modifier::Shift]);
     }
 
     #[test]
@@ -1644,7 +1651,7 @@ mod tests {
     fn sequence_registration(
         steps: Vec<HotkeyKey>,
         timeout: Duration,
-        abort_key: KeyCode,
+        abort_key: Key,
         timeout_fallback: Option<HotkeyKey>,
         counter: Arc<AtomicUsize>,
     ) -> SequenceRegistration {
@@ -1677,8 +1684,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let sequence_count = Arc::new(AtomicUsize::new(0));
 
@@ -1688,7 +1695,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2.clone()],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 sequence_count.clone(),
             ),
@@ -1714,8 +1721,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let first_step = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let second_step = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let first_step = (Key::K, vec![Modifier::Ctrl]);
+        let second_step = (Key::C, vec![Modifier::Ctrl]);
 
         let mut sequence_registrations = HashMap::new();
         sequence_registrations.insert(
@@ -1723,7 +1730,7 @@ mod tests {
             sequence_registration(
                 vec![first_step.clone(), second_step],
                 Duration::from_millis(100),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -1748,9 +1755,9 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let first_step = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let second_step = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
-        let third_step = (KeyCode::KEY_D, vec![KeyCode::KEY_LEFTCTRL]);
+        let first_step = (Key::K, vec![Modifier::Ctrl]);
+        let second_step = (Key::C, vec![Modifier::Ctrl]);
+        let third_step = (Key::D, vec![Modifier::Ctrl]);
 
         let mut sequence_registrations = HashMap::new();
         sequence_registrations.insert(
@@ -1758,7 +1765,7 @@ mod tests {
             sequence_registration(
                 vec![first_step.clone(), second_step.clone(), third_step],
                 Duration::from_millis(100),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -1788,8 +1795,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let sequence_count = Arc::new(AtomicUsize::new(0));
         let mut sequence_registrations = HashMap::new();
@@ -1798,7 +1805,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2.clone()],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 sequence_count.clone(),
             ),
@@ -1829,9 +1836,9 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
-        let wrong_key = (KeyCode::KEY_X, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
+        let wrong_key = (Key::X, vec![Modifier::Ctrl]);
 
         let sequence_count = Arc::new(AtomicUsize::new(0));
         let mut sequence_registrations = HashMap::new();
@@ -1840,7 +1847,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2.clone()],
                 Duration::from_millis(100),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 sequence_count.clone(),
             ),
@@ -1872,8 +1879,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let standalone_count = Arc::new(AtomicUsize::new(0));
         let sequence_count = Arc::new(AtomicUsize::new(0));
@@ -1892,7 +1899,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 sequence_count,
             ),
@@ -1918,8 +1925,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let press_count = Arc::new(AtomicUsize::new(0));
         let release_count = Arc::new(AtomicUsize::new(0));
@@ -1951,7 +1958,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -1981,8 +1988,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let press_count = Arc::new(AtomicUsize::new(0));
         let release_count = Arc::new(AtomicUsize::new(0));
@@ -2014,7 +2021,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -2054,8 +2061,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let press_count = Arc::new(AtomicUsize::new(0));
         let press_count_clone = press_count.clone();
@@ -2083,7 +2090,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -2107,8 +2114,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let press_count = Arc::new(AtomicUsize::new(0));
         let release_count = Arc::new(AtomicUsize::new(0));
@@ -2140,7 +2147,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -2176,8 +2183,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let standalone_count = Arc::new(AtomicUsize::new(0));
         let standalone_count_clone = standalone_count.clone();
@@ -2205,7 +2212,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -2241,8 +2248,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let standalone_count = Arc::new(AtomicUsize::new(0));
         let standalone_count_clone = standalone_count.clone();
@@ -2270,7 +2277,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -2300,8 +2307,8 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
 
         let sequence_count = Arc::new(AtomicUsize::new(0));
         let mut sequence_registrations = HashMap::new();
@@ -2310,7 +2317,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2.clone()],
                 Duration::from_millis(100),
-                KeyCode::KEY_Q,
+                Key::Q,
                 None,
                 sequence_count.clone(),
             ),
@@ -2320,7 +2327,7 @@ mod tests {
 
         runtime.on_key_press(sequence_key_1, t0, &registrations, &sequence_registrations);
         runtime.on_key_press(
-            (KeyCode::KEY_Q, vec![]),
+            (Key::Q, vec![]),
             t0 + Duration::from_millis(10),
             &registrations,
             &sequence_registrations,
@@ -2343,9 +2350,9 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let first_step = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let complete_a = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
-        let complete_b = (KeyCode::KEY_U, vec![KeyCode::KEY_LEFTCTRL]);
+        let first_step = (Key::K, vec![Modifier::Ctrl]);
+        let complete_a = (Key::C, vec![Modifier::Ctrl]);
+        let complete_b = (Key::U, vec![Modifier::Ctrl]);
 
         let sequence_a_count = Arc::new(AtomicUsize::new(0));
         let sequence_b_count = Arc::new(AtomicUsize::new(0));
@@ -2356,7 +2363,7 @@ mod tests {
             sequence_registration(
                 vec![first_step.clone(), complete_a.clone()],
                 Duration::from_millis(100),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 sequence_a_count.clone(),
             ),
@@ -2366,7 +2373,7 @@ mod tests {
             sequence_registration(
                 vec![first_step.clone(), complete_b],
                 Duration::from_millis(100),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 None,
                 sequence_b_count.clone(),
             ),
@@ -2393,9 +2400,9 @@ mod tests {
         let mut runtime = SequenceRuntime::default();
         let t0 = Instant::now();
 
-        let sequence_key_1 = (KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]);
-        let sequence_key_2 = (KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]);
-        let fallback_key = (KeyCode::KEY_F, vec![]);
+        let sequence_key_1 = (Key::K, vec![Modifier::Ctrl]);
+        let sequence_key_2 = (Key::C, vec![Modifier::Ctrl]);
+        let fallback_key = (Key::F, vec![]);
 
         let fallback_count = Arc::new(AtomicUsize::new(0));
 
@@ -2413,7 +2420,7 @@ mod tests {
             sequence_registration(
                 vec![sequence_key_1.clone(), sequence_key_2],
                 Duration::from_millis(50),
-                KeyCode::KEY_ESC,
+                Key::Escape,
                 Some(fallback_key),
                 Arc::new(AtomicUsize::new(0)),
             ),
@@ -2458,16 +2465,16 @@ mod tests {
 
         let mut registrations = HashMap::new();
         registrations.insert(
-            (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]),
+            (Key::A, vec![Modifier::Ctrl]),
             HotkeyRegistration { callbacks },
         );
 
-        let modifiers: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL].into_iter().collect();
+        let modifiers: HashSet<Modifier> = [Modifier::Ctrl].into_iter().collect();
         let mut active_presses = HashMap::new();
         let t0 = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             t0,
             &modifiers,
@@ -2476,7 +2483,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             0,
             t0 + Duration::from_millis(10),
             &modifiers,
@@ -2491,7 +2498,7 @@ mod tests {
 
     #[test]
     fn suppressed_sequence_followup_events_are_consumed_until_release() {
-        let key = KeyCode::KEY_A;
+        let key = Key::A;
         let mut suppressed = HashSet::new();
 
         assert!(!suppress_sequence_followup_key_event(
@@ -2531,12 +2538,12 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let dispatch = collect_non_modifier_dispatch(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             Instant::now(),
             &modifiers,
@@ -2566,12 +2573,12 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let dispatch = collect_non_modifier_dispatch(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             Instant::now(),
             &modifiers,
@@ -2606,14 +2613,14 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let t0 = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             t0,
             &modifiers,
@@ -2622,7 +2629,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             0,
             t0 + Duration::from_millis(20),
             &modifiers,
@@ -2631,7 +2638,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             t0,
             &modifiers,
@@ -2640,7 +2647,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             0,
             t0 + Duration::from_millis(70),
             &modifiers,
@@ -2669,14 +2676,14 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let t0 = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             t0,
             &modifiers,
@@ -2694,7 +2701,7 @@ mod tests {
         ));
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             0,
             t0 + Duration::from_millis(70),
             &modifiers,
@@ -2723,14 +2730,14 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &modifiers,
@@ -2740,7 +2747,7 @@ mod tests {
         ));
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             2,
             now + Duration::from_millis(20),
             &modifiers,
@@ -2750,7 +2757,7 @@ mod tests {
         ));
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             2,
             now + Duration::from_millis(60),
             &modifiers,
@@ -2779,14 +2786,14 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &modifiers,
@@ -2795,7 +2802,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             0,
             now + Duration::from_millis(1),
             &modifiers,
@@ -2824,14 +2831,14 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &modifiers,
@@ -2840,7 +2847,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             2,
             now + Duration::from_millis(60),
             &modifiers,
@@ -2849,7 +2856,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             0,
             now + Duration::from_millis(70),
             &modifiers,
@@ -2878,14 +2885,14 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &modifiers,
@@ -2894,7 +2901,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             2,
             now + Duration::from_millis(1),
             &modifiers,
@@ -2923,14 +2930,14 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &modifiers,
@@ -2939,7 +2946,7 @@ mod tests {
             false,
         ));
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             2,
             now + Duration::from_millis(1),
             &modifiers,
@@ -2968,14 +2975,14 @@ mod tests {
         };
 
         let mut registrations = HashMap::new();
-        registrations.insert((KeyCode::KEY_A, vec![]), HotkeyRegistration { callbacks });
+        registrations.insert((Key::A, vec![]), HotkeyRegistration { callbacks });
 
         let modifiers = HashSet::new();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &modifiers,
@@ -2986,7 +2993,7 @@ mod tests {
 
         for offset in 1..=64 {
             dispatch_callbacks(collect_non_modifier_callbacks(
-                KeyCode::KEY_A,
+                Key::A,
                 2,
                 now + Duration::from_millis(offset),
                 &modifiers,
@@ -3005,13 +3012,13 @@ mod tests {
         let device_a = PathBuf::from("/dev/input/event100");
         let device_b = PathBuf::from("/dev/input/event101");
 
-        tracker.press(&device_a, KeyCode::KEY_LEFTCTRL);
-        tracker.press(&device_b, KeyCode::KEY_LEFTSHIFT);
+        tracker.press(&device_a, Modifier::Ctrl);
+        tracker.press(&device_b, Modifier::Shift);
         tracker.disconnect(&device_a);
 
         let active = tracker.active_modifiers();
-        assert!(!active.contains(&KeyCode::KEY_LEFTCTRL));
-        assert!(active.contains(&KeyCode::KEY_LEFTSHIFT));
+        assert!(!active.contains(&Modifier::Ctrl));
+        assert!(active.contains(&Modifier::Shift));
     }
 
     #[test]
@@ -3257,7 +3264,7 @@ mod tests {
     #[test]
     fn device_specific_hotkey_fires_on_matching_device() {
         let count = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_1, vec![]);
+        let key = (Key::Num1, vec![]);
         let filter = DeviceFilter::name_contains("StreamDeck");
         let info = test_device_info("Elgato StreamDeck XL", 0x0fd9, 0x006c);
 
@@ -3271,7 +3278,7 @@ mod tests {
         let now = Instant::now();
 
         let dispatch = collect_device_specific_dispatch(
-            KeyCode::KEY_1,
+            Key::Num1,
             1,
             now,
             &info,
@@ -3288,7 +3295,7 @@ mod tests {
     #[test]
     fn device_specific_hotkey_does_not_fire_on_wrong_device() {
         let count = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_1, vec![]);
+        let key = (Key::Num1, vec![]);
         let filter = DeviceFilter::name_contains("StreamDeck");
         let info = test_device_info("AT Translated Set 2 keyboard", 0x0001, 0x0001);
 
@@ -3302,7 +3309,7 @@ mod tests {
         let now = Instant::now();
 
         let dispatch = collect_device_specific_dispatch(
-            KeyCode::KEY_1,
+            Key::Num1,
             1,
             now,
             &info,
@@ -3319,7 +3326,7 @@ mod tests {
     fn device_specific_hotkey_uses_per_device_modifiers() {
         let count = Arc::new(AtomicUsize::new(0));
         // Register Ctrl+A on StreamDeck
-        let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
+        let key = (Key::A, vec![Modifier::Ctrl]);
         let filter = DeviceFilter::name_contains("StreamDeck");
         let info = test_device_info("StreamDeck", 0x0fd9, 0x006c);
 
@@ -3329,12 +3336,12 @@ mod tests {
                 .collect();
 
         // Device does NOT have Ctrl pressed (another device does)
-        let device_modifiers: HashSet<KeyCode> = HashSet::new();
+        let device_modifiers: HashSet<Modifier> = HashSet::new();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         let dispatch = collect_device_specific_dispatch(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &info,
@@ -3351,7 +3358,7 @@ mod tests {
     #[test]
     fn device_specific_hotkey_matches_with_correct_per_device_modifiers() {
         let count = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
+        let key = (Key::A, vec![Modifier::Ctrl]);
         let filter = DeviceFilter::name_contains("StreamDeck");
         let info = test_device_info("StreamDeck", 0x0fd9, 0x006c);
 
@@ -3361,12 +3368,12 @@ mod tests {
                 .collect();
 
         // Device HAS Ctrl pressed
-        let device_modifiers: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL].into_iter().collect();
+        let device_modifiers: HashSet<Modifier> = [Modifier::Ctrl].into_iter().collect();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         let dispatch = collect_device_specific_dispatch(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &info,
@@ -3399,17 +3406,17 @@ mod tests {
 
         let mut registrations = HashMap::new();
         registrations.insert(
-            (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]),
+            (Key::A, vec![Modifier::Ctrl]),
             HotkeyRegistration { callbacks },
         );
 
         // Aggregate modifiers include Ctrl (from any device)
-        let aggregate: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL].into_iter().collect();
+        let aggregate: HashSet<Modifier> = [Modifier::Ctrl].into_iter().collect();
         let mut active_presses = HashMap::new();
         let now = Instant::now();
 
         dispatch_callbacks(collect_non_modifier_callbacks(
-            KeyCode::KEY_A,
+            Key::A,
             1,
             now,
             &aggregate,
@@ -3427,21 +3434,21 @@ mod tests {
         let device_a = PathBuf::from("/dev/input/event100");
         let device_b = PathBuf::from("/dev/input/event101");
 
-        tracker.press(&device_a, KeyCode::KEY_LEFTCTRL);
-        tracker.press(&device_b, KeyCode::KEY_LEFTSHIFT);
+        tracker.press(&device_a, Modifier::Ctrl);
+        tracker.press(&device_b, Modifier::Shift);
 
         let a_mods = tracker.device_modifiers(&device_a);
-        assert!(a_mods.contains(&KeyCode::KEY_LEFTCTRL));
-        assert!(!a_mods.contains(&KeyCode::KEY_LEFTSHIFT));
+        assert!(a_mods.contains(&Modifier::Ctrl));
+        assert!(!a_mods.contains(&Modifier::Shift));
 
         let b_mods = tracker.device_modifiers(&device_b);
-        assert!(!b_mods.contains(&KeyCode::KEY_LEFTCTRL));
-        assert!(b_mods.contains(&KeyCode::KEY_LEFTSHIFT));
+        assert!(!b_mods.contains(&Modifier::Ctrl));
+        assert!(b_mods.contains(&Modifier::Shift));
 
         // Aggregate has both
         let agg = tracker.active_modifiers();
-        assert!(agg.contains(&KeyCode::KEY_LEFTCTRL));
-        assert!(agg.contains(&KeyCode::KEY_LEFTSHIFT));
+        assert!(agg.contains(&Modifier::Ctrl));
+        assert!(agg.contains(&Modifier::Shift));
     }
 
     #[test]
@@ -3456,11 +3463,11 @@ mod tests {
         let key_state = SharedKeyState::new();
         let mut pressed_keys = HashSet::new();
 
-        update_pressed_key_state(&mut pressed_keys, &key_state, KeyCode::KEY_A, 1);
-        assert!(key_state.is_pressed(KeyCode::KEY_A));
+        update_pressed_key_state(&mut pressed_keys, &key_state, Key::A.to_evdev(), 1);
+        assert!(key_state.is_pressed(Key::A.to_evdev()));
 
-        update_pressed_key_state(&mut pressed_keys, &key_state, KeyCode::KEY_A, 0);
-        assert!(!key_state.is_pressed(KeyCode::KEY_A));
+        update_pressed_key_state(&mut pressed_keys, &key_state, Key::A.to_evdev(), 0);
+        assert!(!key_state.is_pressed(Key::A.to_evdev()));
     }
 
     #[test]
@@ -3470,19 +3477,29 @@ mod tests {
         let mut tracker = ModifierTracker::default();
         let device = PathBuf::from("/dev/input/event200");
 
-        tracker.press(&device, KeyCode::KEY_LEFTCTRL);
-        update_pressed_key_state(&mut pressed_keys, &key_state, KeyCode::KEY_LEFTCTRL, 1);
-        assert_eq!(key_state.active_modifiers(), tracker.active_modifiers());
+        tracker.press(&device, Modifier::Ctrl);
+        update_pressed_key_state(&mut pressed_keys, &key_state, Modifier::Ctrl.to_evdev(), 1);
+        let key_state_modifiers: HashSet<Modifier> = key_state
+            .active_modifiers()
+            .into_iter()
+            .filter_map(Modifier::from_evdev)
+            .collect();
+        assert_eq!(key_state_modifiers, tracker.active_modifiers());
 
-        tracker.release(&device, KeyCode::KEY_LEFTCTRL);
-        update_pressed_key_state(&mut pressed_keys, &key_state, KeyCode::KEY_LEFTCTRL, 0);
-        assert_eq!(key_state.active_modifiers(), tracker.active_modifiers());
+        tracker.release(&device, Modifier::Ctrl);
+        update_pressed_key_state(&mut pressed_keys, &key_state, Modifier::Ctrl.to_evdev(), 0);
+        let key_state_modifiers: HashSet<Modifier> = key_state
+            .active_modifiers()
+            .into_iter()
+            .filter_map(Modifier::from_evdev)
+            .collect();
+        assert_eq!(key_state_modifiers, tracker.active_modifiers());
     }
 
     #[test]
     fn device_specific_usb_id_filter_matches() {
         let count = Arc::new(AtomicUsize::new(0));
-        let key = (KeyCode::KEY_F1, vec![]);
+        let key = (Key::F1, vec![]);
         let filter = DeviceFilter::usb(0x1234, 0x5678);
         let info = test_device_info("Custom Macro Pad", 0x1234, 0x5678);
 
@@ -3496,7 +3513,7 @@ mod tests {
         let now = Instant::now();
 
         let dispatch = collect_device_specific_dispatch(
-            KeyCode::KEY_F1,
+            Key::F1,
             1,
             now,
             &info,
@@ -3519,7 +3536,7 @@ mod tests {
 
         let filter = DeviceFilter::name_contains("StreamDeck");
         let info = test_device_info("StreamDeck", 0x0fd9, 0x006c);
-        let key = (KeyCode::KEY_1, vec![]);
+        let key = (Key::Num1, vec![]);
 
         let device_regs: HashMap<DeviceRegistrationId, DeviceHotkeyRegistration> = [(
             1,
@@ -3549,7 +3566,7 @@ mod tests {
 
         // Press
         let press_dispatch = collect_device_specific_dispatch(
-            KeyCode::KEY_1,
+            Key::Num1,
             1,
             now,
             &info,
@@ -3561,7 +3578,7 @@ mod tests {
 
         // Release
         let release_dispatch = collect_device_specific_dispatch(
-            KeyCode::KEY_1,
+            Key::Num1,
             0,
             now + Duration::from_millis(10),
             &info,

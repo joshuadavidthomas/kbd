@@ -1,7 +1,6 @@
 use std::fmt;
 use std::str::FromStr;
 
-use evdev::KeyCode;
 #[cfg(feature = "serde")]
 use serde::de::Error as _;
 #[cfg(feature = "serde")]
@@ -13,10 +12,13 @@ use serde::Serialize;
 #[cfg(feature = "serde")]
 use serde::Serializer;
 
+use crate::key::Key;
+use crate::key::Modifier;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hotkey {
-    key: KeyCode,
-    modifiers: Vec<KeyCode>,
+    key: Key,
+    modifiers: Vec<Modifier>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,23 +36,20 @@ pub enum ParseHotkeyError {
 }
 
 impl Hotkey {
-    pub fn new(key: KeyCode, mut modifiers: Vec<KeyCode>) -> Self {
-        modifiers = modifiers
-            .into_iter()
-            .map(canonical_modifier)
-            .collect::<Vec<_>>();
+    #[must_use]
+    pub fn new(key: Key, mut modifiers: Vec<Modifier>) -> Self {
         modifiers.sort();
         modifiers.dedup();
         Self { key, modifiers }
     }
 
     #[must_use]
-    pub fn key(&self) -> KeyCode {
+    pub fn key(&self) -> Key {
         self.key
     }
 
     #[must_use]
-    pub fn modifiers(&self) -> &[KeyCode] {
+    pub fn modifiers(&self) -> &[Modifier] {
         &self.modifiers
     }
 }
@@ -171,13 +170,8 @@ impl<'de> Deserialize<'de> for HotkeySequence {
 
 impl fmt::Display for Hotkey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut parts: Vec<&str> = self
-            .modifiers
-            .iter()
-            .copied()
-            .map(display_modifier)
-            .collect();
-        parts.push(display_key(self.key));
+        let mut parts: Vec<&str> = self.modifiers.iter().map(|m| m.as_str()).collect();
+        parts.push(self.key.as_str());
         write!(f, "{}", parts.join("+"))
     }
 }
@@ -203,265 +197,137 @@ impl fmt::Display for ParseHotkeyError {
 
 impl std::error::Error for ParseHotkeyError {}
 
-fn parse_modifier(token: &str) -> Option<KeyCode> {
+fn parse_modifier(token: &str) -> Option<Modifier> {
     match token.to_ascii_lowercase().as_str() {
-        "ctrl" | "control" => Some(KeyCode::KEY_LEFTCTRL),
-        "shift" => Some(KeyCode::KEY_LEFTSHIFT),
-        "alt" => Some(KeyCode::KEY_LEFTALT),
-        "super" | "meta" | "win" | "windows" => Some(KeyCode::KEY_LEFTMETA),
+        "ctrl" | "control" => Some(Modifier::Ctrl),
+        "shift" => Some(Modifier::Shift),
+        "alt" => Some(Modifier::Alt),
+        "super" | "meta" | "win" | "windows" => Some(Modifier::Super),
         _ => None,
     }
 }
 
-pub(crate) fn canonical_modifier(key: KeyCode) -> KeyCode {
-    match key {
-        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => KeyCode::KEY_LEFTCTRL,
-        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => KeyCode::KEY_LEFTALT,
-        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => KeyCode::KEY_LEFTSHIFT,
-        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => KeyCode::KEY_LEFTMETA,
-        _ => key,
-    }
-}
-
 #[allow(clippy::too_many_lines)]
-fn parse_key(token: &str) -> Option<KeyCode> {
+fn parse_key(token: &str) -> Option<Key> {
     let upper = token.to_ascii_uppercase();
     match upper.as_str() {
-        "RETURN" | "ENTER" => Some(KeyCode::KEY_ENTER),
-        "ESC" | "ESCAPE" => Some(KeyCode::KEY_ESC),
-        "SPACE" => Some(KeyCode::KEY_SPACE),
-        "TAB" => Some(KeyCode::KEY_TAB),
-        "DELETE" | "DEL" => Some(KeyCode::KEY_DELETE),
-        "BACKSPACE" | "BS" => Some(KeyCode::KEY_BACKSPACE),
-        "INSERT" | "INS" => Some(KeyCode::KEY_INSERT),
-        "HOME" => Some(KeyCode::KEY_HOME),
-        "END" => Some(KeyCode::KEY_END),
-        "PAGEUP" | "PGUP" => Some(KeyCode::KEY_PAGEUP),
-        "PAGEDOWN" | "PGDOWN" | "PGDN" => Some(KeyCode::KEY_PAGEDOWN),
-        "LEFT" => Some(KeyCode::KEY_LEFT),
-        "RIGHT" => Some(KeyCode::KEY_RIGHT),
-        "UP" => Some(KeyCode::KEY_UP),
-        "DOWN" => Some(KeyCode::KEY_DOWN),
-        "MINUS" | "DASH" => Some(KeyCode::KEY_MINUS),
-        "EQUAL" | "PLUS" => Some(KeyCode::KEY_EQUAL),
-        "LEFTBRACKET" | "LBRACKET" => Some(KeyCode::KEY_LEFTBRACE),
-        "RIGHTBRACKET" | "RBRACKET" => Some(KeyCode::KEY_RIGHTBRACE),
-        "BACKSLASH" | "PIPE" => Some(KeyCode::KEY_BACKSLASH),
-        "SEMICOLON" => Some(KeyCode::KEY_SEMICOLON),
-        "APOSTROPHE" | "QUOTE" => Some(KeyCode::KEY_APOSTROPHE),
-        "GRAVE" | "BACKTICK" => Some(KeyCode::KEY_GRAVE),
-        "COMMA" => Some(KeyCode::KEY_COMMA),
-        "PERIOD" | "DOT" => Some(KeyCode::KEY_DOT),
-        "SLASH" => Some(KeyCode::KEY_SLASH),
-        "NUMPAD0" | "KP0" => Some(KeyCode::KEY_KP0),
-        "NUMPAD1" | "KP1" => Some(KeyCode::KEY_KP1),
-        "NUMPAD2" | "KP2" => Some(KeyCode::KEY_KP2),
-        "NUMPAD3" | "KP3" => Some(KeyCode::KEY_KP3),
-        "NUMPAD4" | "KP4" => Some(KeyCode::KEY_KP4),
-        "NUMPAD5" | "KP5" => Some(KeyCode::KEY_KP5),
-        "NUMPAD6" | "KP6" => Some(KeyCode::KEY_KP6),
-        "NUMPAD7" | "KP7" => Some(KeyCode::KEY_KP7),
-        "NUMPAD8" | "KP8" => Some(KeyCode::KEY_KP8),
-        "NUMPAD9" | "KP9" => Some(KeyCode::KEY_KP9),
-        "NUMPADDOT" | "KPDOT" => Some(KeyCode::KEY_KPDOT),
-        "NUMPADPLUS" | "KPPLUS" => Some(KeyCode::KEY_KPPLUS),
-        "NUMPADMINUS" | "KPMINUS" => Some(KeyCode::KEY_KPMINUS),
-        "NUMPADASTERISK" | "NUMPADMULTIPLY" | "KPASTERISK" => Some(KeyCode::KEY_KPASTERISK),
-        "NUMPADSLASH" | "KPSLASH" => Some(KeyCode::KEY_KPSLASH),
-        "NUMPADENTER" | "KPENTER" => Some(KeyCode::KEY_KPENTER),
-        "F1" => Some(KeyCode::KEY_F1),
-        "F2" => Some(KeyCode::KEY_F2),
-        "F3" => Some(KeyCode::KEY_F3),
-        "F4" => Some(KeyCode::KEY_F4),
-        "F5" => Some(KeyCode::KEY_F5),
-        "F6" => Some(KeyCode::KEY_F6),
-        "F7" => Some(KeyCode::KEY_F7),
-        "F8" => Some(KeyCode::KEY_F8),
-        "F9" => Some(KeyCode::KEY_F9),
-        "F10" => Some(KeyCode::KEY_F10),
-        "F11" => Some(KeyCode::KEY_F11),
-        "F12" => Some(KeyCode::KEY_F12),
-        "F13" => Some(KeyCode::KEY_F13),
-        "F14" => Some(KeyCode::KEY_F14),
-        "F15" => Some(KeyCode::KEY_F15),
-        "F16" => Some(KeyCode::KEY_F16),
-        "F17" => Some(KeyCode::KEY_F17),
-        "F18" => Some(KeyCode::KEY_F18),
-        "F19" => Some(KeyCode::KEY_F19),
-        "F20" => Some(KeyCode::KEY_F20),
-        "F21" => Some(KeyCode::KEY_F21),
-        "F22" => Some(KeyCode::KEY_F22),
-        "F23" => Some(KeyCode::KEY_F23),
-        "F24" => Some(KeyCode::KEY_F24),
+        "RETURN" | "ENTER" => Some(Key::Enter),
+        "ESC" | "ESCAPE" => Some(Key::Escape),
+        "SPACE" => Some(Key::Space),
+        "TAB" => Some(Key::Tab),
+        "DELETE" | "DEL" => Some(Key::Delete),
+        "BACKSPACE" | "BS" => Some(Key::Backspace),
+        "INSERT" | "INS" => Some(Key::Insert),
+        "CAPSLOCK" => Some(Key::CapsLock),
+        "HOME" => Some(Key::Home),
+        "END" => Some(Key::End),
+        "PAGEUP" | "PGUP" => Some(Key::PageUp),
+        "PAGEDOWN" | "PGDOWN" | "PGDN" => Some(Key::PageDown),
+        "LEFT" => Some(Key::Left),
+        "RIGHT" => Some(Key::Right),
+        "UP" => Some(Key::Up),
+        "DOWN" => Some(Key::Down),
+        "MINUS" | "DASH" => Some(Key::Minus),
+        "EQUAL" | "PLUS" => Some(Key::Equal),
+        "LEFTBRACKET" | "LBRACKET" => Some(Key::LeftBracket),
+        "RIGHTBRACKET" | "RBRACKET" => Some(Key::RightBracket),
+        "BACKSLASH" | "PIPE" => Some(Key::Backslash),
+        "SEMICOLON" => Some(Key::Semicolon),
+        "APOSTROPHE" | "QUOTE" => Some(Key::Apostrophe),
+        "GRAVE" | "BACKTICK" => Some(Key::Grave),
+        "COMMA" => Some(Key::Comma),
+        "PERIOD" | "DOT" => Some(Key::Period),
+        "SLASH" => Some(Key::Slash),
+        "NUMPAD0" | "KP0" => Some(Key::Numpad0),
+        "NUMPAD1" | "KP1" => Some(Key::Numpad1),
+        "NUMPAD2" | "KP2" => Some(Key::Numpad2),
+        "NUMPAD3" | "KP3" => Some(Key::Numpad3),
+        "NUMPAD4" | "KP4" => Some(Key::Numpad4),
+        "NUMPAD5" | "KP5" => Some(Key::Numpad5),
+        "NUMPAD6" | "KP6" => Some(Key::Numpad6),
+        "NUMPAD7" | "KP7" => Some(Key::Numpad7),
+        "NUMPAD8" | "KP8" => Some(Key::Numpad8),
+        "NUMPAD9" | "KP9" => Some(Key::Numpad9),
+        "NUMPADDOT" | "KPDOT" => Some(Key::NumpadDot),
+        "NUMPADPLUS" | "KPPLUS" => Some(Key::NumpadPlus),
+        "NUMPADMINUS" | "KPMINUS" => Some(Key::NumpadMinus),
+        "NUMPADASTERISK" | "NUMPADMULTIPLY" | "KPASTERISK" => Some(Key::NumpadMultiply),
+        "NUMPADSLASH" | "KPSLASH" => Some(Key::NumpadDivide),
+        "NUMPADENTER" | "KPENTER" => Some(Key::NumpadEnter),
+        "F1" => Some(Key::F1),
+        "F2" => Some(Key::F2),
+        "F3" => Some(Key::F3),
+        "F4" => Some(Key::F4),
+        "F5" => Some(Key::F5),
+        "F6" => Some(Key::F6),
+        "F7" => Some(Key::F7),
+        "F8" => Some(Key::F8),
+        "F9" => Some(Key::F9),
+        "F10" => Some(Key::F10),
+        "F11" => Some(Key::F11),
+        "F12" => Some(Key::F12),
+        "F13" => Some(Key::F13),
+        "F14" => Some(Key::F14),
+        "F15" => Some(Key::F15),
+        "F16" => Some(Key::F16),
+        "F17" => Some(Key::F17),
+        "F18" => Some(Key::F18),
+        "F19" => Some(Key::F19),
+        "F20" => Some(Key::F20),
+        "F21" => Some(Key::F21),
+        "F22" => Some(Key::F22),
+        "F23" => Some(Key::F23),
+        "F24" => Some(Key::F24),
         _ if upper.len() == 1 => match upper.chars().next().unwrap() {
-            'A' => Some(KeyCode::KEY_A),
-            'B' => Some(KeyCode::KEY_B),
-            'C' => Some(KeyCode::KEY_C),
-            'D' => Some(KeyCode::KEY_D),
-            'E' => Some(KeyCode::KEY_E),
-            'F' => Some(KeyCode::KEY_F),
-            'G' => Some(KeyCode::KEY_G),
-            'H' => Some(KeyCode::KEY_H),
-            'I' => Some(KeyCode::KEY_I),
-            'J' => Some(KeyCode::KEY_J),
-            'K' => Some(KeyCode::KEY_K),
-            'L' => Some(KeyCode::KEY_L),
-            'M' => Some(KeyCode::KEY_M),
-            'N' => Some(KeyCode::KEY_N),
-            'O' => Some(KeyCode::KEY_O),
-            'P' => Some(KeyCode::KEY_P),
-            'Q' => Some(KeyCode::KEY_Q),
-            'R' => Some(KeyCode::KEY_R),
-            'S' => Some(KeyCode::KEY_S),
-            'T' => Some(KeyCode::KEY_T),
-            'U' => Some(KeyCode::KEY_U),
-            'V' => Some(KeyCode::KEY_V),
-            'W' => Some(KeyCode::KEY_W),
-            'X' => Some(KeyCode::KEY_X),
-            'Y' => Some(KeyCode::KEY_Y),
-            'Z' => Some(KeyCode::KEY_Z),
-            '0' => Some(KeyCode::KEY_0),
-            '1' => Some(KeyCode::KEY_1),
-            '2' => Some(KeyCode::KEY_2),
-            '3' => Some(KeyCode::KEY_3),
-            '4' => Some(KeyCode::KEY_4),
-            '5' => Some(KeyCode::KEY_5),
-            '6' => Some(KeyCode::KEY_6),
-            '7' => Some(KeyCode::KEY_7),
-            '8' => Some(KeyCode::KEY_8),
-            '9' => Some(KeyCode::KEY_9),
-            '-' => Some(KeyCode::KEY_MINUS),
-            '=' => Some(KeyCode::KEY_EQUAL),
-            '[' => Some(KeyCode::KEY_LEFTBRACE),
-            ']' => Some(KeyCode::KEY_RIGHTBRACE),
-            '\\' => Some(KeyCode::KEY_BACKSLASH),
-            ';' => Some(KeyCode::KEY_SEMICOLON),
-            '\'' => Some(KeyCode::KEY_APOSTROPHE),
-            '`' => Some(KeyCode::KEY_GRAVE),
-            ',' => Some(KeyCode::KEY_COMMA),
-            '.' => Some(KeyCode::KEY_DOT),
-            '/' => Some(KeyCode::KEY_SLASH),
+            'A' => Some(Key::A),
+            'B' => Some(Key::B),
+            'C' => Some(Key::C),
+            'D' => Some(Key::D),
+            'E' => Some(Key::E),
+            'F' => Some(Key::F),
+            'G' => Some(Key::G),
+            'H' => Some(Key::H),
+            'I' => Some(Key::I),
+            'J' => Some(Key::J),
+            'K' => Some(Key::K),
+            'L' => Some(Key::L),
+            'M' => Some(Key::M),
+            'N' => Some(Key::N),
+            'O' => Some(Key::O),
+            'P' => Some(Key::P),
+            'Q' => Some(Key::Q),
+            'R' => Some(Key::R),
+            'S' => Some(Key::S),
+            'T' => Some(Key::T),
+            'U' => Some(Key::U),
+            'V' => Some(Key::V),
+            'W' => Some(Key::W),
+            'X' => Some(Key::X),
+            'Y' => Some(Key::Y),
+            'Z' => Some(Key::Z),
+            '0' => Some(Key::Num0),
+            '1' => Some(Key::Num1),
+            '2' => Some(Key::Num2),
+            '3' => Some(Key::Num3),
+            '4' => Some(Key::Num4),
+            '5' => Some(Key::Num5),
+            '6' => Some(Key::Num6),
+            '7' => Some(Key::Num7),
+            '8' => Some(Key::Num8),
+            '9' => Some(Key::Num9),
+            '-' => Some(Key::Minus),
+            '=' => Some(Key::Equal),
+            '[' => Some(Key::LeftBracket),
+            ']' => Some(Key::RightBracket),
+            '\\' => Some(Key::Backslash),
+            ';' => Some(Key::Semicolon),
+            '\'' => Some(Key::Apostrophe),
+            '`' => Some(Key::Grave),
+            ',' => Some(Key::Comma),
+            '.' => Some(Key::Period),
+            '/' => Some(Key::Slash),
             _ => None,
         },
         _ => None,
-    }
-}
-
-fn display_modifier(modifier: KeyCode) -> &'static str {
-    match modifier {
-        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => "Ctrl",
-        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => "Shift",
-        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => "Alt",
-        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => "Super",
-        _ => "Unknown",
-    }
-}
-
-#[allow(clippy::too_many_lines)]
-fn display_key(key: KeyCode) -> &'static str {
-    match key {
-        KeyCode::KEY_ENTER => "Enter",
-        KeyCode::KEY_KPENTER => "NumpadEnter",
-        KeyCode::KEY_ESC => "Esc",
-        KeyCode::KEY_SPACE => "Space",
-        KeyCode::KEY_TAB => "Tab",
-        KeyCode::KEY_DELETE => "Delete",
-        KeyCode::KEY_BACKSPACE => "Backspace",
-        KeyCode::KEY_INSERT => "Insert",
-        KeyCode::KEY_HOME => "Home",
-        KeyCode::KEY_END => "End",
-        KeyCode::KEY_PAGEUP => "PageUp",
-        KeyCode::KEY_PAGEDOWN => "PageDown",
-        KeyCode::KEY_LEFT => "Left",
-        KeyCode::KEY_RIGHT => "Right",
-        KeyCode::KEY_UP => "Up",
-        KeyCode::KEY_DOWN => "Down",
-        KeyCode::KEY_MINUS => "Minus",
-        KeyCode::KEY_EQUAL => "Equal",
-        KeyCode::KEY_LEFTBRACE => "LeftBracket",
-        KeyCode::KEY_RIGHTBRACE => "RightBracket",
-        KeyCode::KEY_BACKSLASH => "Backslash",
-        KeyCode::KEY_SEMICOLON => "Semicolon",
-        KeyCode::KEY_APOSTROPHE => "Apostrophe",
-        KeyCode::KEY_GRAVE => "Grave",
-        KeyCode::KEY_COMMA => "Comma",
-        KeyCode::KEY_DOT => "Dot",
-        KeyCode::KEY_SLASH => "Slash",
-        KeyCode::KEY_KP0 => "Numpad0",
-        KeyCode::KEY_KP1 => "Numpad1",
-        KeyCode::KEY_KP2 => "Numpad2",
-        KeyCode::KEY_KP3 => "Numpad3",
-        KeyCode::KEY_KP4 => "Numpad4",
-        KeyCode::KEY_KP5 => "Numpad5",
-        KeyCode::KEY_KP6 => "Numpad6",
-        KeyCode::KEY_KP7 => "Numpad7",
-        KeyCode::KEY_KP8 => "Numpad8",
-        KeyCode::KEY_KP9 => "Numpad9",
-        KeyCode::KEY_KPDOT => "NumpadDot",
-        KeyCode::KEY_KPPLUS => "NumpadPlus",
-        KeyCode::KEY_KPMINUS => "NumpadMinus",
-        KeyCode::KEY_KPASTERISK => "NumpadAsterisk",
-        KeyCode::KEY_KPSLASH => "NumpadSlash",
-        KeyCode::KEY_F1 => "F1",
-        KeyCode::KEY_F2 => "F2",
-        KeyCode::KEY_F3 => "F3",
-        KeyCode::KEY_F4 => "F4",
-        KeyCode::KEY_F5 => "F5",
-        KeyCode::KEY_F6 => "F6",
-        KeyCode::KEY_F7 => "F7",
-        KeyCode::KEY_F8 => "F8",
-        KeyCode::KEY_F9 => "F9",
-        KeyCode::KEY_F10 => "F10",
-        KeyCode::KEY_F11 => "F11",
-        KeyCode::KEY_F12 => "F12",
-        KeyCode::KEY_F13 => "F13",
-        KeyCode::KEY_F14 => "F14",
-        KeyCode::KEY_F15 => "F15",
-        KeyCode::KEY_F16 => "F16",
-        KeyCode::KEY_F17 => "F17",
-        KeyCode::KEY_F18 => "F18",
-        KeyCode::KEY_F19 => "F19",
-        KeyCode::KEY_F20 => "F20",
-        KeyCode::KEY_F21 => "F21",
-        KeyCode::KEY_F22 => "F22",
-        KeyCode::KEY_F23 => "F23",
-        KeyCode::KEY_F24 => "F24",
-        KeyCode::KEY_A => "A",
-        KeyCode::KEY_B => "B",
-        KeyCode::KEY_C => "C",
-        KeyCode::KEY_D => "D",
-        KeyCode::KEY_E => "E",
-        KeyCode::KEY_F => "F",
-        KeyCode::KEY_G => "G",
-        KeyCode::KEY_H => "H",
-        KeyCode::KEY_I => "I",
-        KeyCode::KEY_J => "J",
-        KeyCode::KEY_K => "K",
-        KeyCode::KEY_L => "L",
-        KeyCode::KEY_M => "M",
-        KeyCode::KEY_N => "N",
-        KeyCode::KEY_O => "O",
-        KeyCode::KEY_P => "P",
-        KeyCode::KEY_Q => "Q",
-        KeyCode::KEY_R => "R",
-        KeyCode::KEY_S => "S",
-        KeyCode::KEY_T => "T",
-        KeyCode::KEY_U => "U",
-        KeyCode::KEY_V => "V",
-        KeyCode::KEY_W => "W",
-        KeyCode::KEY_X => "X",
-        KeyCode::KEY_Y => "Y",
-        KeyCode::KEY_Z => "Z",
-        KeyCode::KEY_0 => "0",
-        KeyCode::KEY_1 => "1",
-        KeyCode::KEY_2 => "2",
-        KeyCode::KEY_3 => "3",
-        KeyCode::KEY_4 => "4",
-        KeyCode::KEY_5 => "5",
-        KeyCode::KEY_6 => "6",
-        KeyCode::KEY_7 => "7",
-        KeyCode::KEY_8 => "8",
-        KeyCode::KEY_9 => "9",
-        _ => "Unknown",
     }
 }

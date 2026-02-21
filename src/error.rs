@@ -1,6 +1,7 @@
 use std::fmt;
 
-use evdev::KeyCode;
+use crate::key::Key;
+use crate::key::Modifier;
 
 #[derive(Debug)]
 pub enum Error {
@@ -11,10 +12,7 @@ pub enum Error {
     BackendUnavailable(&'static str),
     BackendInit(String),
     ManagerStopped,
-    AlreadyRegistered {
-        key: KeyCode,
-        modifiers: Vec<KeyCode>,
-    },
+    AlreadyRegistered { key: Key, modifiers: Vec<Modifier> },
     UnsupportedFeature(String),
     InvalidSequence(String),
     InvalidHotkey(String),

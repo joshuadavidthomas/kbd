@@ -6,11 +6,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread::JoinHandle;
 
-#[cfg(feature = "portal")]
-use evdev::KeyCode;
-
 use crate::device::find_keyboard_devices;
 use crate::error::Error;
+use crate::key::Key;
 use crate::key_state::SharedKeyState;
 use crate::listener::spawn_listener_thread;
 use crate::listener::ListenerConfig;
@@ -36,7 +34,7 @@ pub trait HotkeyBackend: Send + Sync {
         registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
         device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-        tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
+        tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
         key_state: SharedKeyState,
     ) -> Result<JoinHandle<()>, Error>;
@@ -57,7 +55,7 @@ impl HotkeyBackend for EvdevBackend {
         registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
         device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-        tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
+        tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
         key_state: SharedKeyState,
     ) -> Result<JoinHandle<()>, Error> {
@@ -104,7 +102,7 @@ impl PortalClient for AshpdPortalClient {
             .iter()
             .map(|hotkey| {
                 let shortcut_id = shortcut_id(hotkey);
-                let trigger = format_portal_trigger(hotkey)?;
+                let trigger = format_portal_trigger(hotkey);
                 Ok(NewShortcut::new(shortcut_id, format!("Hotkey {trigger}"))
                     .preferred_trigger(Some(trigger.as_str())))
             })
@@ -177,7 +175,7 @@ impl HotkeyBackend for PortalBackend {
         _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
         _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
         _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-        _tap_hold_registrations: Arc<Mutex<HashMap<evdev::KeyCode, TapHoldRegistration>>>,
+        _tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
         stop_flag: Arc<AtomicBool>,
         _key_state: SharedKeyState,
     ) -> Result<JoinHandle<()>, Error> {
@@ -229,108 +227,18 @@ impl HotkeyBackend for PortalBackend {
 #[cfg(feature = "portal")]
 fn shortcut_id(hotkey: &HotkeyKey) -> String {
     let mut components = Vec::with_capacity(hotkey.1.len() + 1);
-    components.extend(hotkey.1.iter().copied().map(key_component));
-    components.push(key_component(hotkey.0));
+    for modifier in &hotkey.1 {
+        components.push(format!("{modifier:?}").to_ascii_lowercase());
+    }
+    components.push(format!("{:?}", hotkey.0).to_ascii_lowercase());
     format!("keybound-{}", components.join("-"))
 }
 
 #[cfg(feature = "portal")]
-fn key_component(key: KeyCode) -> String {
-    format!("{key:?}").to_ascii_lowercase()
-}
-
-#[cfg(feature = "portal")]
-fn format_portal_trigger(hotkey: &HotkeyKey) -> Result<String, Error> {
-    let mut parts = Vec::new();
-
-    for modifier in &hotkey.1 {
-        let Some(label) = modifier_label(*modifier) else {
-            return Err(Error::BackendInit(format!(
-                "Unsupported modifier for portal backend: {modifier:?}"
-            )));
-        };
-        parts.push(label.to_string());
-    }
-
-    let Some(key_label) = key_label(hotkey.0) else {
-        return Err(Error::BackendInit(format!(
-            "Unsupported key for portal backend: {:?}",
-            hotkey.0
-        )));
-    };
-    parts.push(key_label.to_string());
-
-    Ok(parts.join("+"))
-}
-
-#[cfg(feature = "portal")]
-fn modifier_label(key: KeyCode) -> Option<&'static str> {
-    match key {
-        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => Some("Ctrl"),
-        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => Some("Shift"),
-        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => Some("Alt"),
-        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => Some("Super"),
-        _ => None,
-    }
-}
-
-#[cfg(feature = "portal")]
-fn key_label(key: KeyCode) -> Option<&'static str> {
-    match key {
-        KeyCode::KEY_A => Some("A"),
-        KeyCode::KEY_B => Some("B"),
-        KeyCode::KEY_C => Some("C"),
-        KeyCode::KEY_D => Some("D"),
-        KeyCode::KEY_E => Some("E"),
-        KeyCode::KEY_F => Some("F"),
-        KeyCode::KEY_G => Some("G"),
-        KeyCode::KEY_H => Some("H"),
-        KeyCode::KEY_I => Some("I"),
-        KeyCode::KEY_J => Some("J"),
-        KeyCode::KEY_K => Some("K"),
-        KeyCode::KEY_L => Some("L"),
-        KeyCode::KEY_M => Some("M"),
-        KeyCode::KEY_N => Some("N"),
-        KeyCode::KEY_O => Some("O"),
-        KeyCode::KEY_P => Some("P"),
-        KeyCode::KEY_Q => Some("Q"),
-        KeyCode::KEY_R => Some("R"),
-        KeyCode::KEY_S => Some("S"),
-        KeyCode::KEY_T => Some("T"),
-        KeyCode::KEY_U => Some("U"),
-        KeyCode::KEY_V => Some("V"),
-        KeyCode::KEY_W => Some("W"),
-        KeyCode::KEY_X => Some("X"),
-        KeyCode::KEY_Y => Some("Y"),
-        KeyCode::KEY_Z => Some("Z"),
-        KeyCode::KEY_0 => Some("0"),
-        KeyCode::KEY_1 => Some("1"),
-        KeyCode::KEY_2 => Some("2"),
-        KeyCode::KEY_3 => Some("3"),
-        KeyCode::KEY_4 => Some("4"),
-        KeyCode::KEY_5 => Some("5"),
-        KeyCode::KEY_6 => Some("6"),
-        KeyCode::KEY_7 => Some("7"),
-        KeyCode::KEY_8 => Some("8"),
-        KeyCode::KEY_9 => Some("9"),
-        KeyCode::KEY_ENTER => Some("Enter"),
-        KeyCode::KEY_ESC => Some("Escape"),
-        KeyCode::KEY_TAB => Some("Tab"),
-        KeyCode::KEY_SPACE => Some("Space"),
-        KeyCode::KEY_F1 => Some("F1"),
-        KeyCode::KEY_F2 => Some("F2"),
-        KeyCode::KEY_F3 => Some("F3"),
-        KeyCode::KEY_F4 => Some("F4"),
-        KeyCode::KEY_F5 => Some("F5"),
-        KeyCode::KEY_F6 => Some("F6"),
-        KeyCode::KEY_F7 => Some("F7"),
-        KeyCode::KEY_F8 => Some("F8"),
-        KeyCode::KEY_F9 => Some("F9"),
-        KeyCode::KEY_F10 => Some("F10"),
-        KeyCode::KEY_F11 => Some("F11"),
-        KeyCode::KEY_F12 => Some("F12"),
-        _ => None,
-    }
+fn format_portal_trigger(hotkey: &HotkeyKey) -> String {
+    let mut parts: Vec<String> = hotkey.1.iter().map(|m| m.as_str().to_string()).collect();
+    parts.push(hotkey.0.as_str().to_string());
+    parts.join("+")
 }
 
 #[cfg(all(feature = "portal", feature = "evdev"))]
@@ -516,6 +424,7 @@ pub(crate) fn build_backend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::key::Modifier;
 
     #[test]
     #[cfg(feature = "evdev")]
@@ -598,22 +507,19 @@ mod tests {
     #[test]
     #[cfg(feature = "portal")]
     fn portal_trigger_formats_supported_key() {
-        let hotkey = (
-            KeyCode::KEY_A,
-            vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-        );
+        let hotkey = (Key::A, vec![Modifier::Ctrl, Modifier::Shift]);
 
-        assert_eq!(format_portal_trigger(&hotkey).unwrap(), "Ctrl+Shift+A");
+        assert_eq!(format_portal_trigger(&hotkey), "Ctrl+Shift+A");
     }
 
     #[test]
     #[cfg(feature = "portal")]
-    fn portal_trigger_rejects_unknown_key() {
-        let hotkey = (KeyCode::KEY_VOLUMEUP, vec![KeyCode::KEY_LEFTCTRL]);
-        assert!(matches!(
-            format_portal_trigger(&hotkey),
-            Err(Error::BackendInit(_))
-        ));
+    fn portal_trigger_formats_all_keys_successfully() {
+        // With the Key abstraction, all Key variants have valid display strings,
+        // so format_portal_trigger always succeeds.
+        let hotkey = (Key::F24, vec![Modifier::Ctrl]);
+        let trigger = format_portal_trigger(&hotkey);
+        assert!(!trigger.is_empty());
     }
 
     #[cfg(feature = "portal")]
@@ -642,8 +548,8 @@ mod tests {
             fail: false,
         }));
 
-        let key_a = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
-        let key_b = (KeyCode::KEY_B, vec![KeyCode::KEY_LEFTCTRL]);
+        let key_a = (Key::A, vec![Modifier::Ctrl]);
+        let key_b = (Key::B, vec![Modifier::Ctrl]);
 
         backend.register_hotkey(&key_a).unwrap();
         backend.register_hotkey(&key_b).unwrap();
@@ -663,7 +569,7 @@ mod tests {
             fail: true,
         }));
 
-        let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
+        let key = (Key::A, vec![Modifier::Ctrl]);
         let err = backend.register_hotkey(&key).unwrap_err();
 
         assert!(matches!(err, Error::BackendInit(_)));
@@ -698,7 +604,7 @@ mod tests {
             fail_on_call: 2,
         }));
 
-        let key = (KeyCode::KEY_A, vec![KeyCode::KEY_LEFTCTRL]);
+        let key = (Key::A, vec![Modifier::Ctrl]);
 
         backend.register_hotkey(&key).unwrap();
         let err = backend.register_hotkey(&key).unwrap_err();
