@@ -1,0 +1,67 @@
+name: test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/test.yml
+      - src/**
+      - tests/**
+      - Cargo.toml
+      - Cargo.lock
+      - Justfile
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/test.yml
+      - src/**
+      - tests/**
+      - Cargo.toml
+      - Cargo.lock
+      - Justfile
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  should-run:
+    if: "${{ github.event_name != 'push' || !contains(github.event.head_commit.message, ':bookmark: bump version') }}"
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+
+  test:
+    runs-on: ubuntu-24.04
+    needs: [should-run]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c
+        with:
+          cache: true
+
+      - name: Run tests
+        run: cargo test -q --all-features
+
+  tests:
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+    steps:
+      - name: OK
+        if: ${{ !(contains(needs.*.result, 'failure')) }}
+        run: exit 0
+      - name: Fail
+        if: ${{ contains(needs.*.result, 'failure') }}
+        run: exit 1
