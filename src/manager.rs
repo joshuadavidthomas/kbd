@@ -1,3 +1,32 @@
+mod callbacks;
+mod handles;
+mod options;
+mod registration;
+
+pub use handles::Handle;
+pub use handles::SequenceHandle;
+pub use handles::TapHoldHandle;
+pub use options::HotkeyManagerBuilder;
+pub use options::HotkeyOptions;
+pub use options::SequenceOptions;
+
+pub(crate) use callbacks::Callback;
+pub(crate) use callbacks::HotkeyCallbacks;
+pub(crate) use callbacks::PressDispatchState;
+pub(crate) use callbacks::PressTimingConfig;
+pub(crate) use callbacks::RepeatBehavior;
+pub(crate) use handles::RegistrationLocation;
+pub(crate) use registration::attach_hotkey_events;
+pub(crate) use registration::normalize_modifiers;
+pub(crate) use registration::ActiveHotkeyPress;
+pub(crate) use registration::DeviceHotkeyRegistration;
+pub(crate) use registration::DeviceRegistrationId;
+pub(crate) use registration::HotkeyKey;
+pub(crate) use registration::HotkeyRegistration;
+pub(crate) use registration::PressOrigin;
+pub(crate) use registration::SequenceId;
+pub(crate) use registration::SequenceRegistration;
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
@@ -7,7 +36,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread::JoinHandle;
 use std::time::Duration;
-use std::time::Instant;
 
 use crate::backend::build_backend;
 use crate::backend::resolve_backend;
@@ -31,531 +59,28 @@ use crate::tap_hold::TapAction;
 use crate::tap_hold::TapHoldOptions;
 use crate::tap_hold::TapHoldRegistration;
 
-/// Callback storage type
-pub(crate) type Callback = Arc<dyn Fn() + Send + Sync>;
-
-#[derive(Clone, Default)]
-pub(crate) enum ReleaseBehavior {
-    #[default]
-    Disabled,
-    SameAsPress,
-    Custom(Callback),
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum RepeatBehavior {
-    #[default]
-    Ignore,
-    Trigger,
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum PressDispatchState {
-    #[default]
-    Pending,
-    Dispatched,
-}
-
-#[derive(Clone)]
-pub(crate) struct HotkeyCallbacks {
-    pub(crate) on_press: Callback,
-    pub(crate) on_release: Option<Callback>,
-    pub(crate) wait_for_release: bool,
-    pub(crate) min_hold: Option<Duration>,
-    pub(crate) repeat_behavior: RepeatBehavior,
-    pub(crate) passthrough: bool,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PressTimingConfig {
-    pub(crate) debounce: Option<Duration>,
-    pub(crate) max_rate: Option<Duration>,
-}
-
-impl PressTimingConfig {
-    pub(crate) fn new(debounce: Option<Duration>, max_rate: Option<Duration>) -> Self {
-        Self {
-            debounce: debounce.filter(|duration| !duration.is_zero()),
-            max_rate: max_rate.filter(|duration| !duration.is_zero()),
-        }
-    }
-
-    fn is_disabled(&self) -> bool {
-        self.debounce.is_none() && self.max_rate.is_none()
-    }
-}
-
-#[derive(Default)]
-struct PressInvocationState {
-    last_dispatch: Option<Instant>,
-}
-
-struct PressInvocationLimiter {
-    config: PressTimingConfig,
-    state: Mutex<PressInvocationState>,
-}
-
-impl PressInvocationLimiter {
-    fn new(config: PressTimingConfig) -> Self {
-        Self {
-            config,
-            state: Mutex::new(PressInvocationState::default()),
-        }
-    }
-
-    fn should_dispatch_now(&self) -> bool {
-        self.should_dispatch_at(Instant::now())
-    }
-
-    fn should_dispatch_at(&self, now: Instant) -> bool {
-        if self.config.is_disabled() {
-            return true;
-        }
-
-        let mut state = self.state.lock().unwrap();
-        let Some(last_dispatch) = state.last_dispatch else {
-            state.last_dispatch = Some(now);
-            return true;
-        };
-
-        if self
-            .config
-            .debounce
-            .is_some_and(|debounce| now.saturating_duration_since(last_dispatch) < debounce)
-        {
-            return false;
-        }
-
-        if self
-            .config
-            .max_rate
-            .is_some_and(|max_rate| now.saturating_duration_since(last_dispatch) < max_rate)
-        {
-            return false;
-        }
-
-        state.last_dispatch = Some(now);
-        true
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct HotkeyOptions {
-    release_behavior: ReleaseBehavior,
-    min_hold: Option<Duration>,
-    repeat_behavior: RepeatBehavior,
-    passthrough: bool,
-    debounce: Option<Duration>,
-    max_rate: Option<Duration>,
-    device_filter: Option<DeviceFilter>,
-}
-
-impl HotkeyOptions {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    #[must_use]
-    pub fn on_release(mut self) -> Self {
-        self.release_behavior = ReleaseBehavior::SameAsPress;
-        self
-    }
-
-    #[must_use]
-    pub fn on_release_callback<F>(mut self, callback: F) -> Self
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        self.release_behavior = ReleaseBehavior::Custom(Arc::new(callback));
-        self
-    }
-
-    #[must_use]
-    pub fn min_hold(mut self, min_hold: Duration) -> Self {
-        self.min_hold = Some(min_hold);
-        self
-    }
-
-    #[must_use]
-    pub fn trigger_on_repeat(mut self) -> Self {
-        self.repeat_behavior = RepeatBehavior::Trigger;
-        self
-    }
-
-    #[must_use]
-    pub fn passthrough(mut self) -> Self {
-        self.passthrough = true;
-        self
-    }
-
-    /// Suppress press callback invocations until there has been at least this
-    /// much quiet time since the previous press attempt.
-    #[must_use]
-    pub fn debounce(mut self, duration: Duration) -> Self {
-        self.debounce = Some(duration);
-        self
-    }
-
-    /// Cap press callback invocations to at most one successful dispatch per
-    /// interval.
-    #[must_use]
-    pub fn max_rate(mut self, interval: Duration) -> Self {
-        self.max_rate = Some(interval);
-        self
-    }
-
-    /// Restrict this hotkey to events from devices matching the given filter.
-    #[must_use]
-    pub fn device(mut self, filter: DeviceFilter) -> Self {
-        self.device_filter = Some(filter);
-        self
-    }
-
-    pub(crate) fn press_timing_config(&self) -> PressTimingConfig {
-        PressTimingConfig::new(self.debounce, self.max_rate)
-    }
-
-    pub(crate) fn build_callbacks<F>(self, callback: F) -> HotkeyCallbacks
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        let press_callback: Callback = Arc::new(callback);
-        let (release_callback, wait_for_release) = match self.release_behavior {
-            ReleaseBehavior::Disabled => (None, false),
-            ReleaseBehavior::SameAsPress => (Some(press_callback.clone()), true),
-            ReleaseBehavior::Custom(callback) => (Some(callback), true),
-        };
-
-        HotkeyCallbacks {
-            on_press: press_callback,
-            on_release: release_callback,
-            wait_for_release,
-            min_hold: self.min_hold,
-            repeat_behavior: self.repeat_behavior,
-            passthrough: self.passthrough,
-        }
-    }
-}
-
-/// Hotkey registration with modifiers
-#[derive(Clone)]
-pub(crate) struct HotkeyRegistration {
-    pub(crate) callbacks: HotkeyCallbacks,
-}
-
-pub(crate) type DeviceRegistrationId = u64;
-
-#[derive(Clone)]
-pub(crate) struct DeviceHotkeyRegistration {
-    pub(crate) hotkey_key: HotkeyKey,
-    pub(crate) filter: DeviceFilter,
-    pub(crate) callbacks: HotkeyCallbacks,
-}
-
-pub(crate) type SequenceId = u64;
-
-#[derive(Clone)]
-pub(crate) struct SequenceRegistration {
-    pub(crate) steps: Vec<HotkeyKey>,
-    pub(crate) callback: Callback,
-    pub(crate) timeout: Duration,
-    pub(crate) abort_key: Key,
-    pub(crate) timeout_fallback: Option<HotkeyKey>,
-}
-
-#[derive(Clone)]
-pub struct SequenceOptions {
-    timeout: Duration,
-    abort_key: Key,
-    timeout_fallback: Option<Hotkey>,
-}
-
-impl Default for SequenceOptions {
-    fn default() -> Self {
-        Self {
-            timeout: Duration::from_secs(1),
-            abort_key: Key::Escape,
-            timeout_fallback: None,
-        }
-    }
-}
-
-impl SequenceOptions {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    #[must_use]
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-    }
-
-    #[must_use]
-    pub fn abort_key(mut self, key: Key) -> Self {
-        self.abort_key = key;
-        self
-    }
-
-    #[must_use]
-    pub fn timeout_fallback(mut self, hotkey: Hotkey) -> Self {
-        self.timeout_fallback = Some(hotkey);
-        self
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-struct ManagerRuntimeOptions {
-    grab: bool,
-}
-
-pub struct HotkeyManagerBuilder {
-    requested_backend: Option<Backend>,
-    options: ManagerRuntimeOptions,
-}
-
-impl HotkeyManagerBuilder {
-    #[must_use]
-    pub fn backend(mut self, backend: Backend) -> Self {
-        self.requested_backend = Some(backend);
-        self
-    }
-
-    #[must_use]
-    pub fn grab(mut self) -> Self {
-        self.options.grab = true;
-        self
-    }
-
-    pub fn build(self) -> Result<HotkeyManager, Error> {
-        HotkeyManager::with_backend_internal(self.requested_backend, self.options)
-    }
-}
-
-/// Where a hotkey press was matched: global registrations, a named mode, or
-/// a device-specific registration.
-#[derive(Clone, Debug)]
-pub(crate) enum PressOrigin {
-    Global,
-    Mode(String),
-    Device(DeviceRegistrationId),
-}
-
-pub(crate) struct ActiveHotkeyPress {
-    pub(crate) registration_key: HotkeyKey,
-    pub(crate) origin: PressOrigin,
-    pub(crate) pressed_at: Instant,
-    pub(crate) press_dispatch_state: PressDispatchState,
-}
-
-/// Key used to identify hotkey registrations: (`target_key`, `normalized_modifiers`)
-pub(crate) type HotkeyKey = (Key, Vec<Modifier>);
-
-pub(crate) fn normalize_modifiers(modifiers: &[Modifier]) -> Vec<Modifier> {
-    let mut normalized: Vec<Modifier> = modifiers.to_vec();
-    normalized.sort();
-    normalized.dedup();
-    normalized
-}
-
-pub(crate) fn attach_hotkey_events(
-    callbacks: HotkeyCallbacks,
-    hotkey_key: &HotkeyKey,
-    event_hub: &EventHub,
-    press_timing: PressTimingConfig,
-) -> HotkeyCallbacks {
-    let HotkeyCallbacks {
-        on_press,
-        on_release,
-        wait_for_release,
-        min_hold,
-        repeat_behavior,
-        passthrough,
-    } = callbacks;
-
-    let hotkey = Hotkey::new(hotkey_key.0, hotkey_key.1.clone());
-
-    let invocation_limiter = Arc::new(PressInvocationLimiter::new(press_timing));
-
-    let press_event_hub = event_hub.clone();
-    let press_hotkey = hotkey.clone();
-    let press_limiter = invocation_limiter.clone();
-    let wrapped_press: Callback = Arc::new(move || {
-        if press_limiter.should_dispatch_now() {
-            press_event_hub.emit(&HotkeyEvent::Pressed(press_hotkey.clone()));
-            on_press();
-        }
-    });
-
-    let wrapped_release = match on_release {
-        Some(release_callback) => {
-            let release_event_hub = event_hub.clone();
-            let release_hotkey = hotkey.clone();
-            let release_limiter = invocation_limiter.clone();
-            Some(Arc::new(move || {
-                if release_limiter.should_dispatch_now() {
-                    release_event_hub.emit(&HotkeyEvent::Released(release_hotkey.clone()));
-                    release_callback();
-                }
-            }) as Callback)
-        }
-        None => {
-            #[cfg(any(feature = "tokio", feature = "async-std"))]
-            {
-                let release_event_hub = event_hub.clone();
-                let release_hotkey = hotkey.clone();
-                Some(Arc::new(move || {
-                    release_event_hub.emit(&HotkeyEvent::Released(release_hotkey.clone()));
-                }) as Callback)
-            }
-
-            #[cfg(not(any(feature = "tokio", feature = "async-std")))]
-            {
-                None
-            }
-        }
-    };
-
-    HotkeyCallbacks {
-        on_press: wrapped_press,
-        on_release: wrapped_release,
-        wait_for_release,
-        min_hold,
-        repeat_behavior,
-        passthrough,
-    }
-}
-
-fn already_registered_error(hotkey_key: &HotkeyKey) -> Error {
-    Error::AlreadyRegistered {
-        key: hotkey_key.0,
-        modifiers: hotkey_key.1.clone(),
-    }
-}
-
-fn remove_registration_if_matches(
-    registrations: &mut HashMap<HotkeyKey, HotkeyRegistration>,
-    hotkey_key: &HotkeyKey,
-    registration_marker: &Callback,
-) -> Option<HotkeyRegistration> {
-    let should_remove = registrations
-        .get(hotkey_key)
-        .is_some_and(|current| Arc::ptr_eq(&current.callbacks.on_press, registration_marker));
-
-    if should_remove {
-        return registrations.remove(hotkey_key);
-    }
-
-    None
-}
-
-#[derive(Clone)]
-enum RegistrationLocation {
-    Global(HotkeyKey),
-    Device(DeviceRegistrationId),
-}
-
-/// Handle for unregistering a specific hotkey
-#[derive(Clone)]
-pub struct Handle {
-    location: RegistrationLocation,
-    registration_marker: Callback,
-    manager: Arc<HotkeyManagerInner>,
-}
-
-impl std::fmt::Debug for Handle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.location {
-            RegistrationLocation::Global(key) => f
-                .debug_struct("Handle")
-                .field("key", key)
-                .finish_non_exhaustive(),
-            RegistrationLocation::Device(id) => f
-                .debug_struct("Handle")
-                .field("device_registration_id", id)
-                .finish_non_exhaustive(),
-        }
-    }
-}
-
-impl Handle {
-    pub fn unregister(self) -> Result<(), Error> {
-        match &self.location {
-            RegistrationLocation::Global(key) => {
-                self.manager.remove_hotkey(key, &self.registration_marker)
-            }
-            RegistrationLocation::Device(id) => {
-                self.manager
-                    .remove_device_hotkey(*id, &self.registration_marker);
-                Ok(())
-            }
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct SequenceHandle {
-    id: SequenceId,
-    manager: Arc<HotkeyManagerInner>,
-}
-
-impl std::fmt::Debug for SequenceHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SequenceHandle")
-            .field("id", &self.id)
-            .finish_non_exhaustive()
-    }
-}
-
-impl SequenceHandle {
-    pub fn unregister(self) -> Result<(), Error> {
-        self.manager.remove_sequence(self.id);
-        Ok(())
-    }
-}
-
-/// Handle for unregistering a tap-hold key binding.
-#[derive(Clone)]
-pub struct TapHoldHandle {
-    key: Key,
-    registration_marker: Arc<()>,
-    manager: Arc<HotkeyManagerInner>,
-}
-
-impl std::fmt::Debug for TapHoldHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TapHoldHandle")
-            .field("key", &self.key)
-            .finish_non_exhaustive()
-    }
-}
-
-impl TapHoldHandle {
-    pub fn unregister(self) -> Result<(), Error> {
-        self.manager
-            .remove_tap_hold(self.key, &self.registration_marker);
-        Ok(())
-    }
-}
+use callbacks::PressInvocationLimiter;
+use options::ManagerRuntimeOptions;
+use registration::already_registered_error;
+use registration::remove_registration_if_matches;
 
 /// Inner state shared between `HotkeyManager` and Handles
-struct HotkeyManagerInner {
-    registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-    sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-    device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-    tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
-    mode_registry: ModeRegistry,
+pub(crate) struct HotkeyManagerInner {
+    pub(crate) registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
+    pub(crate) sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
+    pub(crate) device_registrations:
+        Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
+    pub(crate) tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
+    pub(crate) mode_registry: ModeRegistry,
     next_sequence_id: AtomicU64,
     next_device_reg_id: AtomicU64,
-    backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
-    stop_flag: Arc<AtomicBool>,
-    event_hub: EventHub,
-    key_state: SharedKeyState,
-    grab_enabled: bool,
-    operation_lock: Mutex<()>,
-    listener: Mutex<Option<JoinHandle<()>>>,
+    pub(crate) backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
+    pub(crate) stop_flag: Arc<AtomicBool>,
+    pub(crate) event_hub: EventHub,
+    pub(crate) key_state: SharedKeyState,
+    pub(crate) grab_enabled: bool,
+    pub(crate) operation_lock: Mutex<()>,
+    pub(crate) listener: Mutex<Option<JoinHandle<()>>>,
 }
 
 /// Global hotkey manager for Linux
@@ -857,11 +382,6 @@ impl HotkeyManager {
             ));
         }
 
-        // Key and Modifier are separate types, so no validation needed
-        // for modifier-vs-key confusion. We just normalize.
-
-        let _ = steps; // steps are validated by the type system
-
         let normalized_steps: Vec<HotkeyKey> = steps
             .iter()
             .map(|step| (step.key(), normalize_modifiers(step.modifiers())))
@@ -987,7 +507,12 @@ impl HotkeyManager {
         }
     }
 
-    pub fn replace<F>(&self, key: Key, modifiers: &[Modifier], callback: F) -> Result<Handle, Error>
+    pub fn replace<F>(
+        &self,
+        key: Key,
+        modifiers: &[Modifier],
+        callback: F,
+    ) -> Result<Handle, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -1105,7 +630,6 @@ impl HotkeyManager {
 
         let mut device_registrations = self.inner.device_registrations.lock().unwrap();
 
-        // Find and replace existing registration with same key+filter
         let existing_id = device_registrations
             .iter()
             .find(|(_, existing)| existing.hotkey_key == hotkey_key && existing.filter == filter)
@@ -1168,8 +692,6 @@ impl HotkeyManager {
                     .to_string(),
             ));
         }
-
-        // Key type cannot be a modifier, so no validation needed
 
         {
             let tap_hold_regs = self.inner.tap_hold_registrations.lock().unwrap();
@@ -1340,7 +862,6 @@ impl Drop for HotkeyManager {
     }
 }
 
-// Private methods for Handle
 impl HotkeyManagerInner {
     fn remove_hotkey(&self, key: &HotkeyKey, registration_marker: &Callback) -> Result<(), Error> {
         let _operation_guard = self.operation_lock.lock().unwrap();
@@ -1412,6 +933,8 @@ mod tests {
     use std::sync::Barrier;
     use std::sync::Mutex;
     use std::thread::JoinHandle;
+    use std::time::Duration;
+    use std::time::Instant;
 
     use super::*;
     #[cfg(any(feature = "tokio", feature = "async-std"))]
@@ -1965,7 +1488,9 @@ mod tests {
         }
     }
 
-    fn manager_with_backend(backend_impl: Arc<dyn crate::backend::HotkeyBackend>) -> HotkeyManager {
+    fn manager_with_backend(
+        backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
+    ) -> HotkeyManager {
         manager_with_backend_and_grab(backend_impl, false)
     }
 
@@ -2204,7 +1729,9 @@ mod tests {
         let manager = manager_with_fake_backend();
         let calls = Arc::new(AtomicUsize::new(0));
 
-        manager.register(Key::E, &[Modifier::Shift], || {}).unwrap();
+        manager
+            .register(Key::E, &[Modifier::Shift], || {})
+            .unwrap();
 
         let calls_clone = calls.clone();
         manager
@@ -2826,7 +2353,6 @@ mod tests {
             })
             .unwrap();
 
-        // Both modes registered KEY_F without conflict
         let definitions = manager.inner.mode_registry.definitions.lock().unwrap();
         assert!(definitions
             .get("mode_a")
@@ -2850,7 +2376,6 @@ mod tests {
 
         let result = manager.define_mode("nested", ModeOptions::new(), |m| {
             let mc = m.mode_controller();
-            // Controller should be functional
             mc.push("test");
             assert_eq!(mc.active_mode(), Some("test".to_string()));
             mc.pop();
@@ -2898,10 +2423,7 @@ mod tests {
             )
             .unwrap();
 
-        // Should NOT be in global registrations
         assert!(!manager.is_registered(Key::Num1, &[]));
-
-        // Should be in device registrations
         assert_eq!(manager.inner.device_registrations.lock().unwrap().len(), 1);
 
         handle.unregister().unwrap();
@@ -2964,10 +2486,8 @@ mod tests {
     fn device_specific_and_global_same_key_no_conflict() {
         let manager = manager_with_fake_backend();
 
-        // Global registration
         manager.register(Key::Num1, &[], || {}).unwrap();
 
-        // Device-specific registration with same key
         manager
             .register_with_options(
                 Key::Num1,
@@ -3008,7 +2528,6 @@ mod tests {
             )
             .unwrap();
 
-        // Should still be one registration
         let device_regs = manager.inner.device_registrations.lock().unwrap();
         assert_eq!(device_regs.len(), 1);
         let (_, reg) = device_regs.iter().next().unwrap();
