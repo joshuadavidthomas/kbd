@@ -21,13 +21,9 @@ pub(crate) struct DeviceManager {
 
 impl DeviceManager {
     #[must_use]
-    pub(crate) fn poll_fds(&self) -> Vec<RawFd> {
-        self.device_fds.clone()
+    pub(crate) fn poll_fds(&self) -> &[RawFd] {
+        &self.device_fds
     }
 
-    pub(crate) fn process_polled_events(
-        _polled_device_fds: &[libc::pollfd],
-        _key_state: &mut KeyState,
-    ) {
-    }
+    pub(crate) fn process_polled_events(_: &[libc::pollfd], _: &mut KeyState) {}
 }

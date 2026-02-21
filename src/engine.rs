@@ -178,7 +178,7 @@ impl Engine {
             revents: 0,
         });
 
-        for fd in device_fds {
+        for &fd in device_fds {
             poll_fds.push(libc::pollfd {
                 fd,
                 events: libc::POLLIN,
@@ -455,5 +455,21 @@ mod tests {
             .expect("shutdown command should send");
 
         runtime.join().expect("engine thread should join");
+    }
+
+    #[test]
+    fn command_sender_reports_manager_stopped_after_engine_exit() {
+        let runtime = EngineRuntime::spawn().expect("engine should spawn");
+        let commands = runtime.commands();
+
+        commands
+            .send(Command::Shutdown)
+            .expect("shutdown command should send");
+        runtime.join().expect("engine thread should join");
+
+        let send_result = commands.send(Command::Unregister {
+            id: BindingId::new(),
+        });
+        assert!(matches!(send_result, Err(Error::ManagerStopped)));
     }
 }
