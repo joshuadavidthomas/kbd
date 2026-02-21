@@ -49,12 +49,12 @@ Reference: `archive/v0/src/key.rs`, `archive/v0/src/hotkey.rs`
 
 ### 1.2 Action and binding types (`src/action.rs`, `src/binding.rs`)
 
-- [ ] `Action` enum with `Callback(Box<dyn Fn() + Send + Sync>)` variant. Other variants (`EmitKey`, `PushLayer`, etc.) defined but not yet functional — they exist in the type so the API is forward-compatible.
-- [ ] `impl<F: Fn() + Send + Sync + 'static> From<F> for Action` — closures auto-convert.
-- [ ] `BindingId` newtype (u64 or similar) for unique identification.
-- [ ] `BindingOptions` struct with `passthrough` field (as enum, not bool). Other option fields can be added in later phases.
-- [ ] `DeviceFilter` enum (name pattern, USB vendor/product) — type defined, filtering implemented in Phase 4.
-- [ ] Tests: Action from closure, BindingId uniqueness.
+- [x] `Action` enum with `Callback(Box<dyn Fn() + Send + Sync>)` variant. Other variants (`EmitKey`, `PushLayer`, etc.) defined but not yet functional — they exist in the type so the API is forward-compatible.
+- [x] `impl<F: Fn() + Send + Sync + 'static> From<F> for Action` — closures auto-convert.
+- [x] `BindingId` newtype (u64 or similar) for unique identification.
+- [x] `BindingOptions` struct with `passthrough` field (as enum, not bool). Other option fields can be added in later phases.
+- [x] `DeviceFilter` enum (name pattern, USB vendor/product) — type defined, filtering implemented in Phase 4.
+- [x] Tests: Action from closure, BindingId uniqueness.
 
 ### 1.3 Error type (`src/error.rs`)
 
@@ -119,7 +119,7 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 | Section | Items |
 |---------|-------|
 | 1.1 Key types | 9/9 |
-| 1.2 Action and binding | 0/6 |
+| 1.2 Action and binding | 6/6 |
 | 1.3 Error type | 0/4 |
 | 1.4 Engine skeleton | 0/7 |
 | 1.5 Device reading | 0/7 |
