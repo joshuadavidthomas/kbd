@@ -686,12 +686,14 @@ means platform backends can be added without touching existing code:
 | macOS    | CGEventTap / IOKit        | `macos`      |
 | Windows  | Low-level keyboard hooks  | `windows`    |
 
-If/when this happens, the crate should be renamed to something
-platform-neutral (`keybind`, `hotkey-daemon`, `hkd`, or similar) and
-`keybound` becomes a thin re-export crate for backwards compatibility.
+If/when this happens, new platform backends plug into the existing
+`HotkeyBackend` trait without touching Linux code. The crate was renamed
+from `evdev-hotkey` to `keybound` in Phase 4.3 to reflect this
+platform-neutral aspiration.
 
-This is **not committed scope** — it's an architectural option that Phase 1.1
-preserves for free. Ship Linux-first, prove the API, expand later.
+macOS and Windows backends are **not committed scope** — they are
+architectural options that the backend trait preserves for free. Ship
+Linux-first, prove the API, expand later.
 
 ---
 
