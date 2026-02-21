@@ -2,7 +2,8 @@
 //!
 //! keybound prevents duplicate registrations by default and returns a clear
 //! error. Use `replace()` to intentionally swap a callback, or call
-//! `handle.unregister()` to explicitly remove a registration.
+//! `handle.unregister()` to explicitly remove a registration. Handles also
+//! unregister automatically when the last clone is dropped.
 //!
 //! ```sh
 //! cargo run --example conflict_detection
