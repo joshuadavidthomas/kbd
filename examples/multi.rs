@@ -1,5 +1,5 @@
 use evdev::KeyCode;
-use evdev_hotkey::HotkeyManager;
+use keybound::HotkeyManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Multiple hotkeys example");

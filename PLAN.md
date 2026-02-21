@@ -1,4 +1,4 @@
-# evdev-hotkey: Roadmap
+# keybound: Roadmap
 
 ## Vision
 
@@ -16,7 +16,7 @@ The Linux hotkey ecosystem has a gap:
 - `hotkey-listener` — only 15 supported keys, no Meta/Super
 - XDG GlobalShortcuts portal — doesn't work on Sway/wlroots, no TTY
 
-No crate bridges these approaches. `evdev-hotkey` will be the first library
+No crate bridges these approaches. `keybound` will be the first library
 that "just works" across all Linux environments, and the only Rust crate with
 key sequences, modal layers, and event interception.
 
@@ -686,12 +686,14 @@ means platform backends can be added without touching existing code:
 | macOS    | CGEventTap / IOKit        | `macos`      |
 | Windows  | Low-level keyboard hooks  | `windows`    |
 
-If/when this happens, the crate should be renamed to something
-platform-neutral (`keybind`, `hotkey-daemon`, `hkd`, or similar) and
-`evdev-hotkey` becomes a thin re-export crate for backwards compatibility.
+If/when this happens, new platform backends plug into the existing
+`HotkeyBackend` trait without touching Linux code. The crate was renamed
+from `evdev-hotkey` to `keybound` in Phase 4.3 to reflect this
+platform-neutral aspiration.
 
-This is **not committed scope** — it's an architectural option that Phase 1.1
-preserves for free. Ship Linux-first, prove the API, expand later.
+macOS and Windows backends are **not committed scope** — they are
+architectural options that the backend trait preserves for free. Ship
+Linux-first, prove the API, expand later.
 
 ---
 
@@ -721,7 +723,7 @@ preserves for free. Ship Linux-first, prove the API, expand later.
 | **Phase 4** | **Expansion (not committed)** | **Not Started** | |
 | 4.1 | macOS backend (CGEventTap / IOKit) | Not Started | — |
 | 4.2 | Windows backend (low-level keyboard hooks) | Not Started | — |
-| 4.3 | Rename crate to something platform-neutral | Not Started | — |
+| 4.3 | Rename crate to something platform-neutral | Complete | ✓ |
 
 Phase 1 makes the crate publishable. Phase 2 makes it the obvious choice.
 Phase 3 makes it production-ready for demanding applications.

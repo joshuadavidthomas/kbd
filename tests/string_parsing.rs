@@ -1,6 +1,6 @@
 use evdev::KeyCode;
-use evdev_hotkey::Hotkey;
-use evdev_hotkey::HotkeySequence;
+use keybound::Hotkey;
+use keybound::HotkeySequence;
 
 #[test]
 fn parses_hotkey_with_aliases_case_insensitive() {
@@ -41,7 +41,7 @@ fn parses_extended_key_ranges() {
         ("PageDown", KeyCode::KEY_PAGEDOWN),
         ("Numpad1", KeyCode::KEY_KP1),
         ("NumpadEnter", KeyCode::KEY_KPENTER),
-        ("Plus", KeyCode::KEY_EQUAL),
+        ("Equal", KeyCode::KEY_EQUAL),
         ("Minus", KeyCode::KEY_MINUS),
         ("Comma", KeyCode::KEY_COMMA),
         ("Slash", KeyCode::KEY_SLASH),

@@ -1,31 +1,42 @@
-# evdev-hotkey
+# keybound
 
-Global hotkey listener for Linux using evdev. Works on both X11 and Wayland.
+Global hotkey library for Linux — works on Wayland, X11, and TTY.
 
 ## Features
 
-- **Cross-desktop**: Works on X11 and Wayland by reading directly from `/dev/input`
-- **Multiple hotkeys**: Register any number of global shortcuts
-- **Simple API**: Type-safe with `evdev::KeyCode` and optional string parsing for config-driven shortcuts
-- **Config serialization (feature-gated)**: Deserialize hotkey, sequence, and mode bindings from TOML/JSON/YAML via serde
-- **Automatic device discovery**: No need to manually glob for keyboard devices
-- **Permission checking**: Helpful error messages guide users through setup
-- **Lightweight dependencies**: Uses `evdev`, `libc`, and `tracing`
+- **Cross-desktop**: Works on Wayland, X11, and TTY with automatic backend selection
+- **Dual backend**: XDG GlobalShortcuts portal (no root needed) with evdev fallback
+- **Key sequences**: Multi-step combos like `Ctrl+K, Ctrl+C` with configurable timeout
+- **Modes / layers**: Named groups of hotkeys with stack-based activation (oneshot, swallow, timeout)
+- **Event grabbing**: Exclusive capture via `EVIOCGRAB` with uinput re-emission of non-hotkey events
+- **Tap vs. hold**: Dual-function keys (tap for one action, hold for another)
+- **Device-specific hotkeys**: Filter by device name, vendor/product ID
+- **Press / release / hold**: Separate callbacks, minimum hold duration, repeat control
+- **String parsing**: `"Ctrl+Shift+A".parse::<Hotkey>()` with aliases and round-trip display
+- **Async API**: Optional tokio/async-std event streams
+- **Config serialization**: Load hotkey definitions from TOML/JSON/YAML via serde
+- **Debouncing / rate limiting**: Per-hotkey timing controls
+- **Key state queries**: Thread-safe access to currently pressed keys and active modifiers
+- **Device hotplug**: Automatic detection of connected/disconnected keyboards
+- **Simple API**: Type-safe with `evdev::KeyCode`
+- **Lightweight**: Minimal dependencies, feature-gated extras
 
 ## Requirements
 
-Your user must be allowed to read `/dev/input/event*` devices. On many systems this means being in the `input` group:
+When using the evdev backend, your user must be allowed to read `/dev/input/event*` devices. On many systems this means being in the `input` group:
 
 ```bash
 sudo usermod -aG input $USER
 # Then log out and log back in
 ```
 
+The portal backend (XDG GlobalShortcuts) does not require special permissions.
+
 ## Installation
 
 ```toml
 [dependencies]
-evdev-hotkey = "0.1"
+keybound = "0.1"
 evdev = "0.13"
 ```
 
@@ -35,7 +46,7 @@ evdev = "0.13"
 
 ```rust
 use evdev::KeyCode;
-use evdev_hotkey::HotkeyManager;
+use keybound::HotkeyManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = HotkeyManager::new()?;
@@ -98,7 +109,7 @@ handle.unregister()?;
 
 ```rust
 use evdev::KeyCode;
-use evdev_hotkey::{HotkeyManager, HotkeyOptions};
+use keybound::{HotkeyManager, HotkeyOptions};
 use std::time::Duration;
 
 let manager = HotkeyManager::new()?;
@@ -125,12 +136,12 @@ Enable exclusive capture with the `grab` feature when you need daemon-style inte
 
 ```toml
 [dependencies]
-evdev-hotkey = { version = "0.1", features = ["grab"] }
+keybound = { version = "0.1", features = ["grab"] }
 ```
 
 ```rust
 use evdev::KeyCode;
-use evdev_hotkey::{Backend, HotkeyManager, HotkeyOptions};
+use keybound::{Backend, HotkeyManager, HotkeyOptions};
 
 let manager = HotkeyManager::builder()
     .backend(Backend::Evdev)
@@ -156,7 +167,7 @@ Grab mode is only supported on the evdev backend. Requesting grab on portal (or 
 ### Parse Hotkeys from Strings
 
 ```rust
-use evdev_hotkey::{Hotkey, HotkeySequence};
+use keybound::{Hotkey, HotkeySequence};
 
 let hotkey = "Ctrl+Shift+A".parse::<Hotkey>()?;
 let sequence = "Ctrl+K, Ctrl+C".parse::<HotkeySequence>()?;
@@ -171,13 +182,13 @@ Enable serde support when loading bindings from config files:
 
 ```toml
 [dependencies]
-evdev-hotkey = { version = "0.1", features = ["serde"] }
+keybound = { version = "0.1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 ```
 
 ```rust
-use evdev_hotkey::{ActionId, ActionMap, HotkeyConfig, HotkeyManager};
+use keybound::{ActionId, ActionMap, HotkeyConfig, HotkeyManager};
 
 let manager = HotkeyManager::new()?;
 
@@ -236,23 +247,16 @@ let _handle2 = manager.register(
 
 ## Platform Support
 
-This crate is **Linux-only**. For macOS or Windows, consider:
-- macOS: `hotkey` crate
-- Windows: use a native Windows hotkey crate (this crate is Linux-only)
+This crate currently targets **Linux**. The backend trait architecture is designed to support additional platforms in the future.
 
 ## How It Works
 
-Unlike other hotkey crates that rely on X11 or desktop-specific APIs, `evdev-hotkey` reads directly from `/dev/input/event*` devices. This means it works on **both X11 and Wayland** without any desktop environment integration.
+`keybound` auto-selects the best available backend:
 
-## Comparison to evdev-shortcut
+1. **XDG GlobalShortcuts portal** — tried first when the `portal` feature is enabled. Works without root on compositors that support it (KDE Plasma, GNOME, Hyprland).
+2. **evdev** — falls back to reading directly from `/dev/input/event*` devices. Works everywhere on Linux (Wayland, X11, TTY, headless) but requires `input` group membership.
 
-| Feature | evdev-hotkey | evdev-shortcut |
-|---------|--------------|----------------|
-| Key type | `evdev::KeyCode` directly | Custom `Key` enum |
-| API style | Sync closures | Async streams |
-| Device discovery | Automatic | Manual (`glob`) |
-| Permission checking | Yes, with helpful errors | No |
-| Requires tokio | No | Yes |
+The caller never needs to know which backend is active. For explicit control, use `HotkeyManager::with_backend(Backend::Evdev)` or `HotkeyManager::with_backend(Backend::Portal)`.
 
 ## License
 

@@ -213,7 +213,7 @@ fn parse_modifier(token: &str) -> Option<KeyCode> {
     }
 }
 
-fn canonical_modifier(key: KeyCode) -> KeyCode {
+pub(crate) fn canonical_modifier(key: KeyCode) -> KeyCode {
     match key {
         KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => KeyCode::KEY_LEFTCTRL,
         KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => KeyCode::KEY_LEFTALT,
@@ -377,7 +377,7 @@ fn display_key(key: KeyCode) -> &'static str {
         KeyCode::KEY_UP => "Up",
         KeyCode::KEY_DOWN => "Down",
         KeyCode::KEY_MINUS => "Minus",
-        KeyCode::KEY_EQUAL => "Plus",
+        KeyCode::KEY_EQUAL => "Equal",
         KeyCode::KEY_LEFTBRACE => "LeftBracket",
         KeyCode::KEY_RIGHTBRACE => "RightBracket",
         KeyCode::KEY_BACKSLASH => "Backslash",
