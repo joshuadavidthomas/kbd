@@ -11,6 +11,8 @@ Create a feature branch and build it using red/green TDD. You **MUST** run the t
 
 Before starting work, load the thinking-in-rust skill and any other relevant rust skill to the phase of work you are implementing.
 
+Do not remove TODO comments unless you are actually implementing what that TODO says. TODO comments preserve important project context and must stay in place until completed. If you remove or rewrite a TODO without implementing it, you must explicitly explain why.
+
 Stop when the section is complete. You must complete the section.
 
 After completing the work, start the `review_loop` tool once with fresh context and default iterations. Instruct each looping agent to read the relevant rust skills before working and to commit after completing its review. It's important for the review loop to spend time thinking before acting.

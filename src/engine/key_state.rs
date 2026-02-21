@@ -12,5 +12,10 @@
 //! Prior art: `archive/v0/src/key_state.rs`,
 //! `archive/v0/src/listener/device.rs` (`ModifierTracker`)
 
+// TODO: KeyState struct — what's currently pressed
+// TODO: Per-device key tracking (for device-specific bindings)
+// TODO: active_modifiers() — derived from pressed keys, not parallel state
+// TODO: Cleanup on device disconnect (no stuck modifiers)
+
 #[derive(Debug, Default)]
 pub(crate) struct KeyState;
