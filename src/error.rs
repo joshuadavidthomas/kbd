@@ -7,20 +7,20 @@
 pub enum Error {
     #[error("parse error: {0}")]
     Parse(#[from] crate::key::ParseHotkeyError),
-    #[error("hotkey is already registered")]
+    #[error("hotkey registration conflicts with an existing binding")]
     AlreadyRegistered,
-    #[error("backend initialization failed")]
+    #[error("failed to initialize the selected backend")]
     BackendInit,
-    #[error("requested backend is unavailable")]
+    #[error("selected backend is not available on this system")]
     BackendUnavailable,
-    #[error("permission denied")]
+    #[error("missing permissions to access input devices")]
     PermissionDenied,
-    #[error("device error")]
+    #[error("input device operation failed")]
     DeviceError,
-    #[error("unsupported feature")]
+    #[error("requested feature is unsupported by the selected backend")]
     UnsupportedFeature,
-    #[error("manager has stopped")]
+    #[error("hotkey manager is no longer running")]
     ManagerStopped,
-    #[error("engine error")]
+    #[error("hotkey engine encountered an internal failure")]
     EngineError,
 }
