@@ -4,7 +4,6 @@ use evdev::Device;
 use evdev::KeyCode;
 
 use crate::error::Error;
-use crate::permission::get_permission_error_message;
 
 /// Filter for restricting hotkeys to specific input devices.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,12 +104,22 @@ pub(crate) fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
 
     if keyboards.is_empty() {
         if event_device_count > 0 && permission_denied_count == event_device_count {
-            return Err(Error::PermissionDenied(get_permission_error_message()));
+            return Err(Error::PermissionDenied(permission_error_message()));
         }
         return Err(Error::NoKeyboardsFound);
     }
 
     Ok(keyboards)
+}
+
+fn permission_error_message() -> String {
+    let username = std::env::var("USER").unwrap_or_else(|_| "<username>".into());
+
+    format!(
+        "The evdev backend requires access to /dev/input/event* devices. If access is denied, try:\n\
+         sudo usermod -aG input {username}\n\
+         Then log out and log back in for changes to take effect."
+    )
 }
 
 #[cfg(test)]

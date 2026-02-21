@@ -424,6 +424,7 @@ pub(crate) fn build_backend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "portal")]
     use crate::key::Modifier;
 
     #[test]

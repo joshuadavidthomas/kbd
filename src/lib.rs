@@ -55,5 +55,4 @@ mod key_state;
 mod listener;
 mod manager;
 mod mode;
-mod permission;
 mod tap_hold;

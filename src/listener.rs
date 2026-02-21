@@ -1,962 +1,48 @@
-use std::collections::HashMap;
+pub(crate) mod device;
+pub(crate) mod dispatch;
+pub(crate) mod forwarding;
+pub(crate) mod hotplug;
+pub(crate) mod io;
+pub(crate) mod sequence;
+pub(crate) mod state;
+
 use std::collections::HashSet;
-use std::ffi::CStr;
-use std::io;
-use std::mem::size_of;
-use std::os::unix::io::AsRawFd;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread::JoinHandle;
-use std::thread::{
-    self,
-};
 use std::time::Instant;
 
-#[cfg(feature = "grab")]
-use evdev::uinput::VirtualDevice;
-#[cfg(feature = "grab")]
-use evdev::AttributeSet;
-use evdev::Device;
-use evdev::EventSummary;
-#[cfg(feature = "grab")]
-use evdev::EventType;
-#[cfg(feature = "grab")]
-use evdev::InputEvent;
-use evdev::KeyCode;
+use device::DeviceState;
+use device::ModifierTracker;
+use dispatch::active_modifier_signature;
+use dispatch::collect_callbacks_for_synthetic_keys;
+use dispatch::collect_device_specific_dispatch;
+use dispatch::collect_due_hold_callbacks;
+use dispatch::collect_non_modifier_dispatch;
+use dispatch::dispatch_callbacks;
+use dispatch::should_forward_key_event_in_grab_mode;
+use dispatch::suppress_sequence_followup_key_event;
+use dispatch::NonModifierDispatch;
+use forwarding::KeyEventForwarder;
+use hotplug::process_hotplug_events;
+use hotplug::RawFdGuard;
+use io::emit_shutdown_tap_hold_releases;
+use io::poll_ready_sources;
+use io::read_key_events;
+use io::release_pressed_keys;
+use io::remove_device_by_fd;
+use io::should_drop_device;
+pub(crate) use io::spawn_listener_thread;
+use io::update_pressed_key_state;
+use sequence::SequenceDispatch;
+use sequence::SequenceRuntime;
+pub(crate) use state::ListenerConfig;
+pub(crate) use state::ListenerState;
 
-use crate::device::is_keyboard_device;
-use crate::device::DeviceInfo;
-use crate::error::Error;
 use crate::events::HotkeyEvent;
 use crate::key::Key;
 use crate::key::Modifier;
-use crate::key_state::SharedKeyState;
-use crate::manager::normalize_modifiers;
-use crate::manager::ActiveHotkeyPress;
-use crate::manager::Callback;
-use crate::manager::DeviceHotkeyRegistration;
-use crate::manager::DeviceRegistrationId;
-use crate::manager::HotkeyKey;
-use crate::manager::HotkeyRegistration;
-use crate::manager::PressDispatchState;
-use crate::manager::PressOrigin;
-use crate::manager::RepeatBehavior;
-use crate::manager::SequenceId;
-use crate::manager::SequenceRegistration;
 use crate::mode::dispatch_mode_key_event;
-use crate::mode::find_callbacks_for_active_press;
 use crate::mode::pop_timed_out_modes;
-use crate::mode::ModeDefinition;
 use crate::mode::ModeEventDispatch;
-use crate::mode::ModeRegistry;
-
-pub(crate) struct ListenerState {
-    pub(crate) registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-    pub(crate) sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-    pub(crate) device_registrations:
-        Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-    pub(crate) tap_hold_registrations:
-        Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-    pub(crate) stop_flag: Arc<AtomicBool>,
-    pub(crate) key_state: SharedKeyState,
-    pub(crate) mode_registry: ModeRegistry,
-}
-
-const POLL_TIMEOUT_MS: i32 = 25;
-const INOTIFY_BUFFER_SIZE: usize = 4096;
-const VIRTUAL_FORWARDER_DEVICE_NAME: &str = "keybound-virtual-keyboard";
-#[cfg(feature = "grab")]
-const MAX_FORWARDABLE_KEY_CODE: u16 = 767;
-
-#[derive(Clone, Copy, Default)]
-pub(crate) struct ListenerConfig {
-    pub(crate) grab: bool,
-}
-
-trait KeyEventForwarder: Send {
-    fn forward_key_event(&mut self, key: KeyCode, value: i32) -> Result<(), Error>;
-}
-
-#[cfg(feature = "grab")]
-struct UinputForwarder {
-    device: VirtualDevice,
-}
-
-#[cfg(feature = "grab")]
-impl UinputForwarder {
-    fn new() -> Result<Self, Error> {
-        let mut keys = AttributeSet::<KeyCode>::new();
-        for code in 0..=MAX_FORWARDABLE_KEY_CODE {
-            keys.insert(KeyCode::new(code));
-        }
-
-        let device = VirtualDevice::builder()
-            .map_err(|err| Error::DeviceAccess(format!("Failed to open /dev/uinput: {err}")))?
-            .name(VIRTUAL_FORWARDER_DEVICE_NAME)
-            .with_keys(&keys)
-            .map_err(|err| Error::DeviceAccess(format!("Failed to configure uinput keys: {err}")))?
-            .build()
-            .map_err(|err| Error::DeviceAccess(format!("Failed to create uinput device: {err}")))?;
-
-        Ok(Self { device })
-    }
-}
-
-#[cfg(feature = "grab")]
-impl KeyEventForwarder for UinputForwarder {
-    fn forward_key_event(&mut self, key: KeyCode, value: i32) -> Result<(), Error> {
-        let key_event = InputEvent::new(EventType::KEY.0, key.code(), value);
-        self.device.emit(&[key_event]).map_err(|err| {
-            Error::DeviceAccess(format!("Failed forwarding key event via uinput: {err}"))
-        })
-    }
-}
-
-fn create_key_event_forwarder(
-    grab_enabled: bool,
-) -> Result<Option<Box<dyn KeyEventForwarder>>, Error> {
-    if !grab_enabled {
-        return Ok(None);
-    }
-
-    #[cfg(feature = "grab")]
-    {
-        Ok(Some(Box::new(UinputForwarder::new()?)))
-    }
-
-    #[cfg(not(feature = "grab"))]
-    {
-        Err(Error::UnsupportedFeature(
-            "event grabbing support is not compiled in (enable the `grab` feature)".to_string(),
-        ))
-    }
-}
-
-#[derive(Clone)]
-struct ActiveSequence {
-    id: SequenceId,
-    next_step_index: usize,
-    deadline: Instant,
-}
-
-#[derive(Clone)]
-struct PendingStandalone {
-    key: HotkeyKey,
-    pressed_at: Instant,
-    released_at: Option<Instant>,
-    deadline: Instant,
-    press_dispatched: bool,
-}
-
-#[derive(Default)]
-struct SequenceRuntime {
-    active_sequences: Vec<ActiveSequence>,
-    pending_standalone: Option<PendingStandalone>,
-    deferred_release_callbacks: HashMap<Key, Callback>,
-}
-
-struct SequenceDispatch {
-    callbacks: Vec<Callback>,
-    synthetic_keys: Vec<HotkeyKey>,
-    step_events: Vec<HotkeyEvent>,
-    suppress_current_key_press: bool,
-}
-
-impl SequenceDispatch {
-    fn empty() -> Self {
-        Self {
-            callbacks: Vec::new(),
-            synthetic_keys: Vec::new(),
-            step_events: Vec::new(),
-            suppress_current_key_press: false,
-        }
-    }
-}
-
-impl SequenceRuntime {
-    fn on_tick(
-        &mut self,
-        now: Instant,
-        registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-        sequence_registrations: &HashMap<SequenceId, SequenceRegistration>,
-    ) -> SequenceDispatch {
-        let mut callbacks = Vec::new();
-        let mut synthetic_keys = Vec::new();
-
-        if let Some(pending) = self.pending_standalone.as_mut() {
-            if now >= pending.deadline {
-                let mut should_clear_pending = true;
-
-                if let Some(registration) = registrations.get(&pending.key) {
-                    let hold_satisfied = registration.callbacks.min_hold.is_none_or(|min_hold| {
-                        let held_for = pending.released_at.map_or_else(
-                            || now.duration_since(pending.pressed_at),
-                            |released_at| released_at.duration_since(pending.pressed_at),
-                        );
-                        held_for >= min_hold
-                    });
-
-                    if !pending.press_dispatched {
-                        if hold_satisfied {
-                            callbacks.push(registration.callbacks.on_press.clone());
-                            pending.press_dispatched = true;
-                        } else if pending.released_at.is_none() {
-                            if let Some(min_hold) = registration.callbacks.min_hold {
-                                pending.deadline = pending.pressed_at + min_hold;
-                                should_clear_pending = false;
-                            }
-                        }
-                    }
-
-                    if pending.press_dispatched {
-                        if pending.released_at.is_some() {
-                            if let Some(on_release) = &registration.callbacks.on_release {
-                                callbacks.push(on_release.clone());
-                            }
-                            should_clear_pending = true;
-                        } else {
-                            should_clear_pending = !registration.callbacks.wait_for_release;
-                            if should_clear_pending {
-                                if let Some(on_release) = &registration.callbacks.on_release {
-                                    self.deferred_release_callbacks
-                                        .insert(pending.key.0, on_release.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if should_clear_pending {
-                    self.pending_standalone = None;
-                }
-            }
-        }
-
-        let mut retained = Vec::with_capacity(self.active_sequences.len());
-        for active in self.active_sequences.drain(..) {
-            if now < active.deadline {
-                retained.push(active);
-                continue;
-            }
-
-            if let Some(registration) = sequence_registrations.get(&active.id) {
-                if let Some(timeout_fallback) = &registration.timeout_fallback {
-                    synthetic_keys.push(timeout_fallback.clone());
-                }
-            }
-        }
-
-        self.active_sequences = retained;
-
-        SequenceDispatch {
-            callbacks,
-            synthetic_keys,
-            step_events: Vec::new(),
-            suppress_current_key_press: false,
-        }
-    }
-
-    fn on_key_press(
-        &mut self,
-        key: HotkeyKey,
-        now: Instant,
-        registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-        sequence_registrations: &HashMap<SequenceId, SequenceRegistration>,
-    ) -> SequenceDispatch {
-        self.deferred_release_callbacks.remove(&key.0);
-
-        if self
-            .pending_standalone
-            .as_ref()
-            .is_some_and(|pending| !pending.press_dispatched)
-        {
-            self.pending_standalone = None;
-        }
-
-        self.active_sequences.retain(|active| {
-            sequence_registrations
-                .get(&active.id)
-                .is_some_and(|registration| registration.abort_key != key.0)
-        });
-
-        let mut callbacks = Vec::new();
-        let mut step_events = Vec::new();
-        let mut retained = Vec::with_capacity(self.active_sequences.len());
-        let mut matched_existing_sequence = false;
-
-        for mut active in self.active_sequences.drain(..) {
-            let Some(registration) = sequence_registrations.get(&active.id) else {
-                continue;
-            };
-
-            if registration
-                .steps
-                .get(active.next_step_index)
-                .is_some_and(|expected| *expected == key)
-            {
-                matched_existing_sequence = true;
-
-                if active.next_step_index + 1 == registration.steps.len() {
-                    callbacks.push(registration.callback.clone());
-                } else {
-                    active.next_step_index += 1;
-                    active.deadline = now + registration.timeout;
-                    step_events.push(HotkeyEvent::SequenceStep {
-                        id: active.id,
-                        step: active.next_step_index,
-                        total: registration.steps.len(),
-                    });
-                    retained.push(active);
-                }
-            }
-        }
-
-        self.active_sequences = retained;
-
-        let mut started_sequences: Vec<ActiveSequence> = Vec::new();
-        let mut earliest_deadline = None;
-        for (id, registration) in sequence_registrations {
-            if registration
-                .steps
-                .first()
-                .is_some_and(|first_step| *first_step == key)
-            {
-                earliest_deadline = Some(
-                    earliest_deadline.map_or(now + registration.timeout, |current: Instant| {
-                        current.min(now + registration.timeout)
-                    }),
-                );
-
-                started_sequences.push(ActiveSequence {
-                    id: *id,
-                    next_step_index: 1,
-                    deadline: now + registration.timeout,
-                });
-                step_events.push(HotkeyEvent::SequenceStep {
-                    id: *id,
-                    step: 1,
-                    total: registration.steps.len(),
-                });
-            }
-        }
-
-        let mut suppress_current_key_press = matched_existing_sequence;
-
-        if !started_sequences.is_empty() {
-            self.active_sequences.extend(started_sequences);
-
-            if registrations.contains_key(&key) {
-                suppress_current_key_press = true;
-                if let Some(deadline) = earliest_deadline {
-                    let can_replace_pending = self
-                        .pending_standalone
-                        .as_ref()
-                        .is_none_or(|pending| !pending.press_dispatched);
-
-                    if can_replace_pending {
-                        self.pending_standalone = Some(PendingStandalone {
-                            key,
-                            pressed_at: now,
-                            released_at: None,
-                            deadline,
-                            press_dispatched: false,
-                        });
-                    }
-                }
-            }
-        }
-
-        SequenceDispatch {
-            callbacks,
-            synthetic_keys: Vec::new(),
-            step_events,
-            suppress_current_key_press,
-        }
-    }
-
-    fn on_key_release(&mut self, key: Key, now: Instant) -> Vec<Callback> {
-        if let Some(pending) = self.pending_standalone.as_mut() {
-            if pending.key.0 == key && pending.released_at.is_none() {
-                pending.released_at = Some(now);
-            }
-        }
-
-        self.deferred_release_callbacks
-            .remove(&key)
-            .into_iter()
-            .collect()
-    }
-}
-
-struct DeviceState {
-    path: PathBuf,
-    info: DeviceInfo,
-    device: Device,
-    active_presses: HashMap<Key, ActiveHotkeyPress>,
-    pressed_keys: HashSet<KeyCode>,
-}
-
-impl DeviceState {
-    fn fd(&self) -> i32 {
-        self.device.as_raw_fd()
-    }
-}
-
-#[derive(Default)]
-struct ModifierTracker {
-    pressed_modifiers: HashMap<PathBuf, HashSet<Modifier>>,
-}
-
-impl ModifierTracker {
-    fn press(&mut self, device_path: &Path, modifier: Modifier) {
-        self.pressed_modifiers
-            .entry(device_path.to_path_buf())
-            .or_default()
-            .insert(modifier);
-    }
-
-    fn release(&mut self, device_path: &Path, modifier: Modifier) {
-        if let Some(modifiers) = self.pressed_modifiers.get_mut(device_path) {
-            modifiers.remove(&modifier);
-            if modifiers.is_empty() {
-                self.pressed_modifiers.remove(device_path);
-            }
-        }
-    }
-
-    fn disconnect(&mut self, device_path: &Path) {
-        self.pressed_modifiers.remove(device_path);
-    }
-
-    fn active_modifiers(&self) -> HashSet<Modifier> {
-        self.pressed_modifiers
-            .values()
-            .flat_map(|mods| mods.iter().copied())
-            .collect()
-    }
-
-    fn device_modifiers(&self, device_path: &Path) -> HashSet<Modifier> {
-        self.pressed_modifiers
-            .get(device_path)
-            .cloned()
-            .unwrap_or_default()
-    }
-}
-
-struct RawFdGuard(i32);
-
-impl RawFdGuard {
-    fn new(fd: i32) -> Self {
-        Self(fd)
-    }
-
-    fn raw_fd(&self) -> i32 {
-        self.0
-    }
-}
-
-impl Drop for RawFdGuard {
-    fn drop(&mut self) {
-        if self.0 >= 0 {
-            unsafe {
-                libc::close(self.0);
-            }
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct HotplugFsEvent {
-    mask: u32,
-    device_name: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum HotplugPathChange {
-    Added(PathBuf),
-    Removed(PathBuf),
-    Unchanged,
-}
-
-pub(crate) fn spawn_listener_thread(
-    keyboard_paths: Vec<PathBuf>,
-    shared: ListenerState,
-    config: ListenerConfig,
-) -> Result<JoinHandle<()>, Error> {
-    let devices = open_devices(keyboard_paths, config)?;
-    let inotify_fd = init_inotify_watcher()?;
-    let key_event_forwarder = create_key_event_forwarder(config.grab)?;
-
-    thread::Builder::new()
-        .name("keybound-listener".into())
-        .spawn(move || {
-            listener_loop(devices, &inotify_fd, shared, config, key_event_forwarder);
-        })
-        .map_err(|e| Error::ThreadSpawn(format!("Failed to spawn listener thread: {e}")))
-}
-
-fn open_devices(
-    keyboard_paths: Vec<PathBuf>,
-    config: ListenerConfig,
-) -> Result<Vec<DeviceState>, Error> {
-    let mut devices: Vec<DeviceState> = Vec::new();
-    let mut last_error: Option<String> = None;
-
-    for path in keyboard_paths {
-        match open_device(&path, config.grab) {
-            Ok(device) => devices.push(device),
-            Err(err) => {
-                last_error = Some(err);
-            }
-        }
-    }
-
-    if devices.is_empty() {
-        return Err(Error::DeviceAccess(last_error.unwrap_or_else(|| {
-            "Failed to open any keyboard devices for listening".into()
-        })));
-    }
-
-    Ok(devices)
-}
-
-fn should_ignore_device(info: &DeviceInfo, grab: bool) -> bool {
-    grab && info.name == VIRTUAL_FORWARDER_DEVICE_NAME
-}
-
-fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String> {
-    #[allow(unused_mut)]
-    let mut device =
-        Device::open(path).map_err(|e| format!("Failed to open {}: {e}", path.display()))?;
-
-    if !is_keyboard_device(&device) {
-        return Err(format!("Device {} is not a keyboard", path.display()));
-    }
-
-    let info = DeviceInfo::from_device(&device);
-    if should_ignore_device(&info, grab) {
-        return Err(format!(
-            "Ignoring internal virtual forwarding device {}",
-            path.display()
-        ));
-    }
-
-    if grab {
-        #[cfg(feature = "grab")]
-        {
-            device.grab().map_err(|e| {
-                format!(
-                    "Failed to grab {} for exclusive capture: {e}",
-                    path.display()
-                )
-            })?;
-        }
-
-        #[cfg(not(feature = "grab"))]
-        {
-            return Err("event grabbing support is not compiled in".to_string());
-        }
-    }
-
-    set_nonblocking(device.as_raw_fd(), path)?;
-
-    Ok(DeviceState {
-        path: path.to_path_buf(),
-        info,
-        device,
-        active_presses: HashMap::new(),
-        pressed_keys: HashSet::new(),
-    })
-}
-
-fn set_nonblocking(fd: i32, path: &Path) -> Result<(), String> {
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
-    if flags == -1 {
-        return Err(format!(
-            "Failed to get file status flags for {}",
-            path.display()
-        ));
-    }
-
-    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
-        return Err(format!(
-            "Failed to set non-blocking mode for {}",
-            path.display()
-        ));
-    }
-
-    Ok(())
-}
-
-fn init_inotify_watcher() -> Result<RawFdGuard, Error> {
-    let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
-    if fd < 0 {
-        return Err(Error::DeviceAccess(format!(
-            "Failed to initialize inotify watcher: {}",
-            io::Error::last_os_error()
-        )));
-    }
-
-    let fd_guard = RawFdGuard::new(fd);
-    let input_path = std::ffi::CString::new("/dev/input").unwrap();
-    let watch_result = unsafe {
-        libc::inotify_add_watch(
-            fd_guard.raw_fd(),
-            input_path.as_ptr(),
-            libc::IN_CREATE
-                | libc::IN_DELETE
-                | libc::IN_MOVED_FROM
-                | libc::IN_MOVED_TO
-                | libc::IN_DELETE_SELF
-                | libc::IN_MOVE_SELF,
-        )
-    };
-
-    if watch_result < 0 {
-        return Err(Error::DeviceAccess(format!(
-            "Failed to watch /dev/input for hotplug events: {}",
-            io::Error::last_os_error()
-        )));
-    }
-
-    Ok(fd_guard)
-}
-
-fn active_modifier_signature(active: &HashSet<Modifier>) -> Vec<Modifier> {
-    normalize_modifiers(&active.iter().copied().collect::<Vec<_>>())
-}
-
-fn invoke_callback(callback: &Callback) -> bool {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        callback();
-    }))
-    .is_err()
-}
-
-fn dispatch_callbacks(callbacks: Vec<Callback>) {
-    for callback in callbacks {
-        if invoke_callback(&callback) {
-            tracing::error!("Hotkey callback panicked; listener continues");
-        }
-    }
-}
-
-fn collect_callbacks_for_synthetic_keys(
-    synthetic_keys: &[HotkeyKey],
-    registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-) -> Vec<Callback> {
-    synthetic_keys
-        .iter()
-        .filter_map(|key| registrations.get(key))
-        .map(|registration| registration.callbacks.on_press.clone())
-        .collect()
-}
-
-fn collect_due_hold_callbacks(
-    now: Instant,
-    registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-    mode_definitions: &HashMap<String, ModeDefinition>,
-    device_registrations: &HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>,
-    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
-) -> Vec<Callback> {
-    let mut callbacks = Vec::new();
-
-    for active in active_presses.values_mut() {
-        if active.press_dispatch_state != PressDispatchState::Pending {
-            continue;
-        }
-
-        let Some(hotkey_callbacks) = find_callbacks_for_active_press(
-            active,
-            registrations,
-            mode_definitions,
-            device_registrations,
-        ) else {
-            continue;
-        };
-
-        let Some(min_hold) = hotkey_callbacks.min_hold else {
-            continue;
-        };
-
-        if now.duration_since(active.pressed_at) >= min_hold {
-            callbacks.push(hotkey_callbacks.on_press.clone());
-            active.press_dispatch_state = PressDispatchState::Dispatched;
-        }
-    }
-
-    callbacks
-}
-
-struct DeviceSpecificDispatch {
-    callbacks: Vec<Callback>,
-    matched: bool,
-    passthrough: bool,
-}
-
-fn collect_device_specific_dispatch(
-    key: Key,
-    value: i32,
-    now: Instant,
-    device_info: &DeviceInfo,
-    device_modifiers: &HashSet<Modifier>,
-    device_registrations: &HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>,
-    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
-) -> DeviceSpecificDispatch {
-    let modifier_signature = active_modifier_signature(device_modifiers);
-    let device_hotkey_key = (key, modifier_signature);
-
-    // Find matching device registration
-    let matching = device_registrations
-        .iter()
-        .find(|(_, reg)| reg.hotkey_key == device_hotkey_key && reg.filter.matches(device_info));
-
-    let Some((reg_id, registration)) = matching else {
-        return DeviceSpecificDispatch {
-            callbacks: Vec::new(),
-            matched: false,
-            passthrough: false,
-        };
-    };
-
-    let reg_id = *reg_id;
-    let mut callbacks = Vec::new();
-    let passthrough = registration.callbacks.passthrough;
-
-    match value {
-        1 => {
-            let press_dispatch_state = registration.callbacks.min_hold.map_or(
-                PressDispatchState::Dispatched,
-                |min_hold| {
-                    if min_hold.is_zero() {
-                        PressDispatchState::Dispatched
-                    } else {
-                        PressDispatchState::Pending
-                    }
-                },
-            );
-
-            active_presses.insert(
-                key,
-                ActiveHotkeyPress {
-                    registration_key: device_hotkey_key,
-                    origin: PressOrigin::Device(reg_id),
-                    pressed_at: now,
-                    press_dispatch_state,
-                },
-            );
-
-            if press_dispatch_state == PressDispatchState::Dispatched {
-                callbacks.push(registration.callbacks.on_press.clone());
-            }
-        }
-        0 => {
-            if let Some(active) = active_presses.remove(&key) {
-                if matches!(active.origin, PressOrigin::Device(id) if id == reg_id) {
-                    if active.press_dispatch_state == PressDispatchState::Pending {
-                        if let Some(min_hold) = registration.callbacks.min_hold {
-                            if now.duration_since(active.pressed_at) >= min_hold {
-                                callbacks.push(registration.callbacks.on_press.clone());
-                            }
-                        }
-                    }
-
-                    if let Some(callback) = &registration.callbacks.on_release {
-                        callbacks.push(callback.clone());
-                    }
-                }
-            }
-        }
-        2 => {
-            if let Some(active) = active_presses.get_mut(&key) {
-                if matches!(active.origin, PressOrigin::Device(id) if id == reg_id) {
-                    let hold_satisfied = registration
-                        .callbacks
-                        .min_hold
-                        .is_none_or(|min_hold| now.duration_since(active.pressed_at) >= min_hold);
-
-                    if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger
-                        && hold_satisfied
-                    {
-                        callbacks.push(registration.callbacks.on_press.clone());
-                        active.press_dispatch_state = PressDispatchState::Dispatched;
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-
-    DeviceSpecificDispatch {
-        callbacks,
-        matched: true,
-        passthrough,
-    }
-}
-
-struct NonModifierDispatch {
-    callbacks: Vec<Callback>,
-    matched_hotkey: bool,
-    passthrough: bool,
-}
-
-fn should_forward_key_event_in_grab_mode(
-    grab_enabled: bool,
-    matched_hotkey: bool,
-    passthrough: bool,
-) -> bool {
-    grab_enabled && (!matched_hotkey || passthrough)
-}
-
-fn suppress_sequence_followup_key_event(
-    suppressed_keys: &mut HashSet<Key>,
-    key: Key,
-    value: i32,
-    suppress_current_key_press: bool,
-) -> bool {
-    if value == 1 && suppress_current_key_press {
-        suppressed_keys.insert(key);
-    }
-
-    let suppress_followup = value != 1 && suppressed_keys.contains(&key);
-    if value == 0 && suppress_followup {
-        suppressed_keys.remove(&key);
-    }
-
-    suppress_followup
-}
-
-fn collect_non_modifier_dispatch(
-    key: Key,
-    value: i32,
-    now: Instant,
-    active_modifiers: &HashSet<Modifier>,
-    registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
-    suppress_press: bool,
-) -> NonModifierDispatch {
-    let mut callbacks = Vec::new();
-    let mut matched_hotkey = suppress_press;
-    let mut passthrough = false;
-
-    match value {
-        1 => {
-            if suppress_press {
-                return NonModifierDispatch {
-                    callbacks,
-                    matched_hotkey,
-                    passthrough,
-                };
-            }
-
-            let modifier_signature = active_modifier_signature(active_modifiers);
-            let registration_key = (key, modifier_signature);
-
-            if let Some(registration) = registrations.get(&registration_key) {
-                matched_hotkey = true;
-                passthrough = registration.callbacks.passthrough;
-
-                let press_dispatch_state = registration.callbacks.min_hold.map_or(
-                    PressDispatchState::Dispatched,
-                    |min_hold| {
-                        if min_hold.is_zero() {
-                            PressDispatchState::Dispatched
-                        } else {
-                            PressDispatchState::Pending
-                        }
-                    },
-                );
-
-                active_presses.insert(
-                    key,
-                    ActiveHotkeyPress {
-                        registration_key,
-                        origin: PressOrigin::Global,
-                        pressed_at: now,
-                        press_dispatch_state,
-                    },
-                );
-
-                if press_dispatch_state == PressDispatchState::Dispatched {
-                    callbacks.push(registration.callbacks.on_press.clone());
-                }
-            }
-        }
-        0 => {
-            if let Some(active) = active_presses.remove(&key) {
-                if let Some(registration) = registrations.get(&active.registration_key) {
-                    matched_hotkey = true;
-                    passthrough = registration.callbacks.passthrough;
-
-                    if active.press_dispatch_state == PressDispatchState::Pending {
-                        if let Some(min_hold) = registration.callbacks.min_hold {
-                            if now.duration_since(active.pressed_at) >= min_hold {
-                                callbacks.push(registration.callbacks.on_press.clone());
-                            }
-                        }
-                    }
-
-                    if let Some(callback) = &registration.callbacks.on_release {
-                        callbacks.push(callback.clone());
-                    }
-                }
-            }
-        }
-        2 => {
-            if let Some(active) = active_presses.get_mut(&key) {
-                if let Some(registration) = registrations.get(&active.registration_key) {
-                    matched_hotkey = true;
-                    passthrough = registration.callbacks.passthrough;
-
-                    let hold_satisfied = registration
-                        .callbacks
-                        .min_hold
-                        .is_none_or(|min_hold| now.duration_since(active.pressed_at) >= min_hold);
-
-                    if registration.callbacks.repeat_behavior == RepeatBehavior::Trigger
-                        && hold_satisfied
-                    {
-                        callbacks.push(registration.callbacks.on_press.clone());
-                        active.press_dispatch_state = PressDispatchState::Dispatched;
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-
-    NonModifierDispatch {
-        callbacks,
-        matched_hotkey,
-        passthrough,
-    }
-}
-
-#[cfg(test)]
-fn collect_non_modifier_callbacks(
-    key: Key,
-    value: i32,
-    now: Instant,
-    active_modifiers: &HashSet<Modifier>,
-    registrations: &HashMap<HotkeyKey, HotkeyRegistration>,
-    active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
-    suppress_press: bool,
-) -> Vec<Callback> {
-    collect_non_modifier_dispatch(
-        key,
-        value,
-        now,
-        active_modifiers,
-        registrations,
-        active_presses,
-        suppress_press,
-    )
-    .callbacks
-}
 
 #[allow(clippy::too_many_lines)]
 fn listener_loop(
@@ -1006,7 +92,6 @@ fn listener_loop(
             let mode_definitions_guard = mode_registry.definitions.lock().unwrap();
             let mut mode_stack_guard = mode_registry.stack.lock().unwrap();
 
-            // Check mode timeouts
             let timed_out_modes =
                 pop_timed_out_modes(&mut mode_stack_guard, &mode_definitions_guard, now);
             let timeout_mode_change_event = if timed_out_modes.is_empty() {
@@ -1015,7 +100,6 @@ fn listener_loop(
                 Some(mode_stack_guard.top().map(str::to_string))
             };
 
-            // Check tap-hold threshold
             let tap_hold_tick = tap_hold_runtime.on_tick(now);
 
             let timeout_dispatch =
@@ -1052,7 +136,6 @@ fn listener_loop(
 
         dispatch_callbacks(timeout_callbacks);
 
-        // Emit any synthetic events from tap-hold threshold resolution
         for (syn_key, syn_value) in tap_hold_tick_synthetics {
             if let Some(forwarder) = key_event_forwarder.as_mut() {
                 if let Err(err) = forwarder.forward_key_event(syn_key, syn_value) {
@@ -1105,7 +188,6 @@ fn listener_loop(
                     value,
                 );
 
-                // Convert evdev keycode at the boundary
                 if let Some(modifier) = Modifier::from_evdev(key) {
                     match value {
                         1 => modifier_tracker.press(&device_path, modifier),
@@ -1124,7 +206,6 @@ fn listener_loop(
                 }
 
                 let Some(abstract_key) = Key::from_evdev(key) else {
-                    // Unknown key — forward in grab mode, skip hotkey dispatch
                     if config.grab {
                         if let Some(forwarder) = key_event_forwarder.as_mut() {
                             if let Err(err) = forwarder.forward_key_event(key, value) {
@@ -1135,8 +216,6 @@ fn listener_loop(
                     continue;
                 };
 
-                // Tap-hold processing happens before all other dispatch.
-                // If consumed, we skip forwarding and hotkey dispatch entirely.
                 let tap_hold_dispatch = {
                     let tap_hold_regs_guard = tap_hold_registrations.lock().unwrap();
                     tap_hold_runtime.process_key_event(
@@ -1147,7 +226,6 @@ fn listener_loop(
                     )
                 };
 
-                // Emit any synthetic events from tap-hold resolution
                 for (syn_key, syn_value) in &tap_hold_dispatch.synthetic_events {
                     if let Some(forwarder) = key_event_forwarder.as_mut() {
                         if let Err(err) = forwarder.forward_key_event(*syn_key, *syn_value) {
@@ -1165,7 +243,6 @@ fn listener_loop(
                     let active_modifiers = modifier_tracker.active_modifiers();
                     let hotkey_key = (abstract_key, active_modifier_signature(&active_modifiers));
 
-                    // Mode dispatch takes priority over sequences and global
                     let (mode_dispatch, mode_change_event) = {
                         let mode_definitions_guard = mode_registry.definitions.lock().unwrap();
                         let mut mode_stack_guard = mode_registry.stack.lock().unwrap();
@@ -1205,7 +282,6 @@ fn listener_loop(
                             )
                         }
                         ModeEventDispatch::PassThrough => {
-                            // Device-specific dispatch takes priority
                             let device_modifiers = modifier_tracker.device_modifiers(&device_path);
                             let device_info = devices[device_index].info.clone();
                             let device_regs_guard = device_registrations.lock().unwrap();
@@ -1233,7 +309,6 @@ fn listener_loop(
                                     mode_change_event,
                                 )
                             } else {
-                                // Fall through to sequence and global dispatch
                                 let registrations_guard = registrations.lock().unwrap();
                                 let sequence_guard = sequence_registrations.lock().unwrap();
 
@@ -1328,292 +403,59 @@ fn listener_loop(
     }
 }
 
-fn poll_ready_sources(
-    inotify_fd: i32,
-    devices: &[DeviceState],
-) -> io::Result<(bool, Vec<(i32, i16)>)> {
-    let mut pollfds = Vec::with_capacity(devices.len() + 1);
-    pollfds.push(libc::pollfd {
-        fd: inotify_fd,
-        events: libc::POLLIN,
-        revents: 0,
-    });
-
-    for device in devices {
-        pollfds.push(libc::pollfd {
-            fd: device.fd(),
-            events: libc::POLLIN,
-            revents: 0,
-        });
-    }
-
-    let poll_result = unsafe {
-        libc::poll(
-            pollfds.as_mut_ptr(),
-            pollfds.len() as libc::nfds_t,
-            POLL_TIMEOUT_MS,
-        )
-    };
-
-    if poll_result < 0 {
-        let err = io::Error::last_os_error();
-        if err.kind() == io::ErrorKind::Interrupted {
-            return Ok((false, Vec::new()));
-        }
-        return Err(err);
-    }
-
-    let inotify_revents = pollfds[0].revents;
-    if inotify_revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
-        return Err(io::Error::other(
-            "inotify source became invalid while polling",
-        ));
-    }
-
-    let inotify_ready = inotify_revents & libc::POLLIN != 0;
-    let ready_devices = pollfds
-        .iter()
-        .skip(1)
-        .filter_map(|pollfd| {
-            if pollfd.revents == 0 {
-                None
-            } else {
-                Some((pollfd.fd, pollfd.revents))
-            }
-        })
-        .collect();
-
-    Ok((inotify_ready, ready_devices))
-}
-
-fn read_key_events(device: &mut Device) -> io::Result<Vec<(KeyCode, i32)>> {
-    let mut events = Vec::new();
-
-    for event in device.fetch_events()? {
-        if let EventSummary::Key(_, key, value) = event.destructure() {
-            events.push((key, value));
-        }
-    }
-
-    Ok(events)
-}
-
-fn should_drop_device(err: &io::Error) -> bool {
-    err.raw_os_error() == Some(libc::ENODEV)
-        || err.kind() == io::ErrorKind::NotFound
-        || err.kind() == io::ErrorKind::UnexpectedEof
-}
-
-fn emit_shutdown_tap_hold_releases(
-    tap_hold_runtime: &mut crate::tap_hold::TapHoldRuntime,
-    key_event_forwarder: &mut Option<Box<dyn KeyEventForwarder>>,
-) {
-    for (syn_key, syn_value) in tap_hold_runtime.release_all() {
-        if let Some(forwarder) = key_event_forwarder.as_mut() {
-            if let Err(err) = forwarder.forward_key_event(syn_key, syn_value) {
-                tracing::warn!("Failed emitting tap-hold shutdown synthetic event: {}", err);
-            }
-        }
-    }
-}
-
-fn release_pressed_keys(devices: &[DeviceState], key_state: &SharedKeyState) {
-    for device in devices {
-        key_state.release_keys(device.pressed_keys.iter().copied());
-    }
-}
-
-fn update_pressed_key_state(
-    pressed_keys: &mut HashSet<KeyCode>,
-    key_state: &SharedKeyState,
-    key: KeyCode,
-    value: i32,
-) {
-    match value {
-        1 => {
-            if pressed_keys.insert(key) {
-                key_state.press(key);
-            }
-        }
-        0 => {
-            if pressed_keys.remove(&key) {
-                key_state.release(key);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn remove_device_by_fd(
-    fd: i32,
-    devices: &mut Vec<DeviceState>,
-    modifier_tracker: &mut ModifierTracker,
-    key_state: &SharedKeyState,
-) {
-    if let Some(index) = devices.iter().position(|device| device.fd() == fd) {
-        let removed = devices.swap_remove(index);
-        key_state.release_keys(removed.pressed_keys.iter().copied());
-        modifier_tracker.disconnect(&removed.path);
-    }
-}
-
-fn remove_device_by_path(
-    path: &Path,
-    devices: &mut Vec<DeviceState>,
-    modifier_tracker: &mut ModifierTracker,
-    key_state: &SharedKeyState,
-) {
-    if let Some(index) = devices.iter().position(|device| device.path == path) {
-        let removed = devices.swap_remove(index);
-        key_state.release_keys(removed.pressed_keys.iter().copied());
-        modifier_tracker.disconnect(&removed.path);
-    } else {
-        modifier_tracker.disconnect(path);
-    }
-}
-
-fn classify_hotplug_change(
-    event: &HotplugFsEvent,
-    known_paths: &mut HashSet<PathBuf>,
-) -> HotplugPathChange {
-    if !event.device_name.starts_with("event") {
-        return HotplugPathChange::Unchanged;
-    }
-
-    let path = PathBuf::from("/dev/input").join(&event.device_name);
-
-    if event.mask & (libc::IN_CREATE | libc::IN_MOVED_TO) != 0 && known_paths.insert(path.clone()) {
-        return HotplugPathChange::Added(path);
-    }
-
-    if event.mask
-        & (libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF)
-        != 0
-    {
-        known_paths.remove(&path);
-        return HotplugPathChange::Removed(path);
-    }
-
-    HotplugPathChange::Unchanged
-}
-
-fn process_hotplug_events(
-    inotify_fd: i32,
-    devices: &mut Vec<DeviceState>,
-    modifier_tracker: &mut ModifierTracker,
-    key_state: &SharedKeyState,
-    config: ListenerConfig,
-) {
-    let mut buffer = [0u8; INOTIFY_BUFFER_SIZE];
-
-    loop {
-        let bytes_read = unsafe {
-            libc::read(
-                inotify_fd,
-                buffer.as_mut_ptr().cast::<libc::c_void>(),
-                buffer.len(),
-            )
-        };
-
-        if bytes_read < 0 {
-            let err = io::Error::last_os_error();
-            if err.kind() == io::ErrorKind::WouldBlock {
-                break;
-            }
-
-            tracing::warn!("Failed reading inotify events: {}", err);
-            break;
-        }
-
-        if bytes_read == 0 {
-            break;
-        }
-
-        let mut known_paths: HashSet<PathBuf> =
-            devices.iter().map(|device| device.path.clone()).collect();
-
-        for event in parse_hotplug_events(&buffer, bytes_read.cast_unsigned()) {
-            match classify_hotplug_change(&event, &mut known_paths) {
-                HotplugPathChange::Added(path) => match open_device(&path, config.grab) {
-                    Ok(device_state) => {
-                        devices.push(device_state);
-                    }
-                    Err(err) => {
-                        tracing::debug!("Ignoring hotplugged device {:?}: {}", path, err);
-                    }
-                },
-                HotplugPathChange::Removed(path) => {
-                    remove_device_by_path(&path, devices, modifier_tracker, key_state);
-                }
-                HotplugPathChange::Unchanged => {}
-            }
-        }
-    }
-}
-
-fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<HotplugFsEvent> {
-    let mut events = Vec::new();
-    let mut offset = 0usize;
-
-    while offset + size_of::<libc::inotify_event>() <= bytes_read {
-        #[allow(clippy::cast_ptr_alignment)] // using read_unaligned below
-        let event_ptr = unsafe { buffer.as_ptr().add(offset).cast::<libc::inotify_event>() };
-        let event = unsafe { std::ptr::read_unaligned(event_ptr) };
-
-        let name_start = offset + size_of::<libc::inotify_event>();
-        let Some(name_end) = name_start.checked_add(event.len as usize) else {
-            break;
-        };
-
-        let device_name = if event.len > 0 && name_end <= bytes_read {
-            let name_slice = &buffer[name_start..name_end];
-            let cstr_end = name_slice
-                .iter()
-                .position(|byte| *byte == 0)
-                .unwrap_or(name_slice.len());
-
-            if cstr_end == 0 {
-                String::new()
-            } else {
-                CStr::from_bytes_with_nul(&name_slice[..=cstr_end.min(name_slice.len() - 1)])
-                    .ok()
-                    .and_then(|value| value.to_str().ok())
-                    .map_or_else(
-                        || String::from_utf8_lossy(&name_slice[..cstr_end]).to_string(),
-                        std::string::ToString::to_string,
-                    )
-            }
-        } else {
-            String::new()
-        };
-
-        events.push(HotplugFsEvent {
-            mask: event.mask,
-            device_name,
-        });
-
-        let Some(next_offset) =
-            offset.checked_add(size_of::<libc::inotify_event>() + event.len as usize)
-        else {
-            break;
-        };
-        offset = next_offset;
-    }
-
-    events
-}
-
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::collections::HashSet;
+    use std::path::PathBuf;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::sync::Mutex;
     use std::time::Duration;
+    use std::time::Instant;
 
-    use super::*;
+    use super::device::ModifierTracker;
+    use super::dispatch::active_modifier_signature;
+    use super::dispatch::collect_callbacks_for_synthetic_keys;
+    use super::dispatch::collect_device_specific_dispatch;
+    use super::dispatch::collect_due_hold_callbacks;
+    use super::dispatch::collect_non_modifier_callbacks;
+    use super::dispatch::collect_non_modifier_dispatch;
+    use super::dispatch::dispatch_callbacks;
+    use super::dispatch::invoke_callback;
+    use super::dispatch::should_forward_key_event_in_grab_mode;
+    use super::dispatch::suppress_sequence_followup_key_event;
+    use super::hotplug::classify_hotplug_change;
+    use super::hotplug::parse_hotplug_events;
+    use super::hotplug::HotplugFsEvent;
+    use super::hotplug::HotplugPathChange;
+    use super::hotplug::RawFdGuard;
+    use super::io::poll_ready_sources;
+    use super::io::should_ignore_device;
+    use super::io::update_pressed_key_state;
+    use super::listener_loop;
+    use super::sequence::SequenceRuntime;
+    use super::state::ListenerConfig;
+    use super::state::ListenerState;
+    use super::state::POLL_TIMEOUT_MS;
+    use super::state::VIRTUAL_FORWARDER_DEVICE_NAME;
     use crate::device::DeviceFilter;
+    use crate::device::DeviceInfo;
+    use crate::events::HotkeyEvent;
+    use crate::key::Key;
+    use crate::key::Modifier;
+    use crate::key_state::SharedKeyState;
+    use crate::manager::Callback;
+    use crate::manager::DeviceHotkeyRegistration;
+    use crate::manager::DeviceRegistrationId;
     use crate::manager::HotkeyCallbacks;
+    use crate::manager::HotkeyKey;
+    use crate::manager::HotkeyRegistration;
     use crate::manager::RepeatBehavior;
+    use crate::manager::SequenceRegistration;
+    use crate::mode::ModeRegistry;
 
     #[test]
     fn modifier_signature_normalizes_left_and_right() {
@@ -3099,7 +1941,7 @@ mod tests {
         drop(write_fd);
 
         let err = poll_ready_sources(read_fd.raw_fd(), &[]).err().unwrap();
-        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert_eq!(err.kind(), std::io::ErrorKind::Other);
     }
 
     #[test]
