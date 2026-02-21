@@ -18,6 +18,7 @@ use crate::device::DeviceFilter;
 use crate::error::Error;
 use crate::events::EventHub;
 use crate::events::HotkeyEvent;
+use crate::hotkey::canonical_modifier;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::key_state::SharedKeyState;
@@ -385,16 +386,6 @@ pub(crate) fn validate_hotkey_binding(key: KeyCode, modifiers: &[KeyCode]) -> Re
     }
 
     Ok(())
-}
-
-fn canonical_modifier(key: KeyCode) -> KeyCode {
-    match key {
-        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => KeyCode::KEY_LEFTCTRL,
-        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => KeyCode::KEY_LEFTALT,
-        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => KeyCode::KEY_LEFTSHIFT,
-        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => KeyCode::KEY_LEFTMETA,
-        _ => key,
-    }
 }
 
 pub(crate) fn normalize_modifiers(modifiers: &[KeyCode]) -> Vec<KeyCode> {
