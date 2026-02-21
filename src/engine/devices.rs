@@ -218,7 +218,13 @@ impl DeviceManager {
         }
     }
 
-    fn process_device_fd(&mut self, fd: RawFd, revents: i16, key_state: &mut KeyState) {
+    fn process_device_fd(
+        &mut self,
+        fd: RawFd,
+        revents: i16,
+        key_state: &mut KeyState,
+        collected_events: &mut Vec<DeviceKeyEvent>,
+    ) {
         if (revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL)) != 0 {
             self.remove_device_fd(fd, key_state);
             return;
@@ -243,7 +249,11 @@ impl DeviceManager {
                 );
 
                 for event in events {
-                    key_state.apply_device_event(fd, event.key, event.transition);
+                    collected_events.push(DeviceKeyEvent {
+                        device_fd: fd,
+                        key: event.key,
+                        transition: event.transition,
+                    });
                 }
             }
             Err(error) if should_drop_device(&error) => {
@@ -262,7 +272,9 @@ impl DeviceManager {
         &mut self,
         polled_fds: &[libc::pollfd],
         key_state: &mut KeyState,
-    ) {
+    ) -> Vec<DeviceKeyEvent> {
+        let mut collected_events = Vec::new();
+
         let ready_fds: Vec<_> = polled_fds
             .iter()
             .filter(|pollfd| pollfd.revents != 0)
@@ -277,9 +289,11 @@ impl DeviceManager {
             {
                 self.process_hotplug_events(key_state);
             } else {
-                self.process_device_fd(fd, revents, key_state);
+                self.process_device_fd(fd, revents, key_state, &mut collected_events);
             }
         }
+
+        collected_events
     }
 }
 
@@ -388,6 +402,13 @@ where
 
     device_paths.sort_unstable();
     Ok(device_paths)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeviceKeyEvent {
+    pub(crate) device_fd: RawFd,
+    pub(crate) key: Key,
+    pub(crate) transition: KeyTransition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

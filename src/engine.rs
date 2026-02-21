@@ -52,6 +52,7 @@ use std::thread;
 
 use crate::action::Action;
 use crate::binding::BindingId;
+use crate::engine::devices::DeviceKeyEvent;
 use crate::key::Hotkey;
 use crate::Error;
 
@@ -280,8 +281,56 @@ impl Engine {
     }
 
     fn process_polled_events(&mut self, poll_fds: &[libc::pollfd]) {
-        self.devices
+        let events = self
+            .devices
             .process_polled_events(&poll_fds[1..], &mut self.key_state);
+
+        for event in events {
+            self.process_key_event(event);
+        }
+    }
+
+    fn process_key_event(&mut self, event: DeviceKeyEvent) {
+        self.key_state
+            .apply_device_event(event.device_fd, event.key, event.transition);
+
+        let active_modifiers = self.key_state.active_modifiers();
+        let result = matcher::match_key_event(
+            event.key,
+            event.transition,
+            &active_modifiers,
+            &self.binding_ids_by_hotkey,
+            &self.bindings_by_id,
+        );
+
+        if let matcher::MatchResult::Matched(action) = result {
+            execute_action(action);
+        }
+    }
+}
+
+/// Execute an action with panic isolation — a panicking callback never
+/// kills the engine thread.
+fn execute_action(action: &Action) {
+    match action {
+        Action::Callback(callback) => {
+            if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                callback();
+            })) {
+                tracing::error!(
+                    panic_info = format!("{panic:?}"),
+                    "user callback panicked — panic caught, engine continues"
+                );
+            }
+        }
+        Action::EmitKey(..)
+        | Action::EmitSequence(..)
+        | Action::PushLayer(..)
+        | Action::PopLayer
+        | Action::ToggleLayer(..)
+        | Action::Swallow => {
+            // These action types are handled in later phases.
+        }
     }
 }
 
@@ -405,12 +454,19 @@ impl WakeFd {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
     use std::sync::mpsc;
+    use std::sync::Arc;
     use std::time::Duration;
 
+    use super::devices::DeviceKeyEvent;
+    use super::key_state::KeyTransition;
     use super::Command;
+    use super::Engine;
     use super::EngineRuntime;
     use super::RegisteredBinding;
+    use super::WakeFd;
     use crate::binding::BindingId;
     use crate::key::Hotkey;
     use crate::Action;
@@ -550,5 +606,215 @@ mod tests {
     fn test_binding(id: BindingId, key: Key, modifiers: &[Modifier]) -> RegisteredBinding {
         let hotkey = Hotkey::new(key, modifiers.to_vec());
         RegisteredBinding::new(id, hotkey, Action::Swallow)
+    }
+
+    /// Create a minimal engine for unit testing (no devices, no event loop).
+    fn test_engine() -> Engine {
+        let wake_fd = Arc::new(WakeFd::new().expect("wake fd should create"));
+        let (_tx, rx) = mpsc::channel();
+        Engine::new(rx, wake_fd)
+    }
+
+    fn press_key(engine: &mut Engine, key: Key, device_fd: i32) {
+        engine.process_key_event(DeviceKeyEvent {
+            device_fd,
+            key,
+            transition: KeyTransition::Press,
+        });
+    }
+
+    fn release_key(engine: &mut Engine, key: Key, device_fd: i32) {
+        engine.process_key_event(DeviceKeyEvent {
+            device_fd,
+            key,
+            transition: KeyTransition::Release,
+        });
+    }
+
+    #[test]
+    fn matching_hotkey_fires_callback() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.register_binding(binding).unwrap();
+
+        // Simulate: press Ctrl, then press C
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn unmatched_event_does_not_fire_any_callback() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.register_binding(binding).unwrap();
+
+        // Press V instead of C (with Ctrl held)
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::V, 10);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn modifier_combination_must_match_exactly() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.register_binding(binding).unwrap();
+
+        // Press Ctrl+Shift+C — binding only wants Ctrl+C
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::LeftShift, 10);
+        press_key(&mut engine, Key::C, 10);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn multi_modifier_hotkey_fires_when_all_held() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::A, vec![Modifier::Ctrl, Modifier::Shift]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::LeftShift, 10);
+        press_key(&mut engine, Key::A, 10);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn hotkey_without_modifiers_fires_on_bare_keypress() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::Escape, vec![]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::Escape, 10);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn release_does_not_fire_callback() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.register_binding(binding).unwrap();
+
+        // Press the hotkey so it fires once
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Release should not fire again
+        release_key(&mut engine, Key::C, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn panicking_callback_does_not_kill_engine() {
+        let mut engine = test_engine();
+        let post_panic_counter = Arc::new(AtomicUsize::new(0));
+        let post_panic_clone = Arc::clone(&post_panic_counter);
+
+        // Register a binding that panics
+        let id1 = BindingId::new();
+        let hotkey1 = Hotkey::new(Key::P, vec![Modifier::Ctrl]);
+        let action1 = Action::from(move || {
+            panic!("intentional test panic");
+        });
+        engine
+            .register_binding(RegisteredBinding::new(id1, hotkey1, action1))
+            .unwrap();
+
+        // Register a second binding that increments a counter
+        let id2 = BindingId::new();
+        let hotkey2 = Hotkey::new(Key::Q, vec![Modifier::Ctrl]);
+        let action2 = Action::from(move || {
+            post_panic_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        engine
+            .register_binding(RegisteredBinding::new(id2, hotkey2, action2))
+            .unwrap();
+
+        // Trigger the panicking callback
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::P, 10);
+        // Engine should still be alive
+
+        // Release P, then press Q
+        release_key(&mut engine, Key::P, 10);
+        press_key(&mut engine, Key::Q, 10);
+
+        assert_eq!(post_panic_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn right_modifier_satisfies_binding() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.register_binding(binding).unwrap();
+
+        // Use RightCtrl instead of LeftCtrl — should still match
+        press_key(&mut engine, Key::RightCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 }
