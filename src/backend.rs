@@ -1,26 +1,17 @@
-use std::collections::HashMap;
 #[cfg(feature = "portal")]
 use std::collections::HashSet;
-use std::sync::atomic::AtomicBool;
+#[cfg(feature = "portal")]
 use std::sync::Arc;
+#[cfg(feature = "portal")]
 use std::sync::Mutex;
 use std::thread::JoinHandle;
 
 use crate::device::find_keyboard_devices;
 use crate::error::Error;
-use crate::key::Key;
-use crate::key_state::SharedKeyState;
 use crate::listener::spawn_listener_thread;
 use crate::listener::ListenerConfig;
 use crate::listener::ListenerState;
-use crate::manager::DeviceHotkeyRegistration;
-use crate::manager::DeviceRegistrationId;
 use crate::manager::HotkeyKey;
-use crate::manager::HotkeyRegistration;
-use crate::manager::SequenceId;
-use crate::manager::SequenceRegistration;
-use crate::mode::ModeRegistry;
-use crate::tap_hold::TapHoldRegistration;
 
 /// The input backend used by a [`HotkeyManager`](crate::HotkeyManager).
 ///
@@ -44,59 +35,73 @@ pub enum Backend {
     Portal,
 }
 
+/// Interface implemented by each input backend (evdev, portal, etc.).
+///
+/// The [`HotkeyManager`](crate::HotkeyManager) owns a `dyn HotkeyBackend`
+/// and delegates listener startup, registration notifications, and capability
+/// queries to it.
 pub trait HotkeyBackend: Send + Sync {
-    fn start_listener(
-        &self,
-        registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-        sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-        device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-        tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
-        stop_flag: Arc<AtomicBool>,
-        key_state: SharedKeyState,
-    ) -> Result<JoinHandle<()>, Error>;
+    /// Spawn a background thread that monitors keyboard input and dispatches
+    /// hotkey callbacks.
+    ///
+    /// `state` contains shared registration maps, a stop flag, key-state
+    /// tracker, and mode registry — everything the listener needs to match
+    /// incoming events against registered hotkeys.
+    fn start_listener(&self, state: ListenerState) -> Result<JoinHandle<()>, Error>;
 
-    fn register_hotkey(&self, hotkey: &HotkeyKey) -> Result<(), Error>;
-
-    fn unregister_hotkey(&self, hotkey: &HotkeyKey) -> Result<(), Error>;
-}
-
-pub(crate) struct EvdevBackend {
-    grab: bool,
-    mode_registry: ModeRegistry,
-}
-
-impl HotkeyBackend for EvdevBackend {
-    fn start_listener(
-        &self,
-        registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-        sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-        device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-        tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
-        stop_flag: Arc<AtomicBool>,
-        key_state: SharedKeyState,
-    ) -> Result<JoinHandle<()>, Error> {
-        let keyboards = find_keyboard_devices()?;
-        spawn_listener_thread(
-            keyboards,
-            ListenerState {
-                registrations,
-                sequence_registrations,
-                device_registrations,
-                tap_hold_registrations,
-                stop_flag,
-                key_state,
-                mode_registry: self.mode_registry.clone(),
-            },
-            ListenerConfig { grab: self.grab },
-        )
+    /// Whether this backend supports multi-step key sequences.
+    fn supports_sequences(&self) -> bool {
+        false
     }
 
+    /// Whether this backend supports modal hotkey layers.
+    fn supports_modes(&self) -> bool {
+        false
+    }
+
+    /// Whether this backend supports filtering hotkeys by input device.
+    fn supports_device_filter(&self) -> bool {
+        false
+    }
+
+    /// Notify the backend that a hotkey was registered.
+    ///
+    /// Backends that track registrations externally (e.g. portal) override
+    /// this. Backends where the listener reads shared state directly (e.g.
+    /// evdev) can use the default no-op.
     fn register_hotkey(&self, _hotkey: &HotkeyKey) -> Result<(), Error> {
         Ok(())
     }
 
+    /// Notify the backend that a hotkey was unregistered.
+    ///
+    /// See [`register_hotkey`](HotkeyBackend::register_hotkey) for when to
+    /// override.
     fn unregister_hotkey(&self, _hotkey: &HotkeyKey) -> Result<(), Error> {
         Ok(())
+    }
+}
+
+pub(crate) struct EvdevBackend {
+    grab: bool,
+}
+
+impl HotkeyBackend for EvdevBackend {
+    fn start_listener(&self, state: ListenerState) -> Result<JoinHandle<()>, Error> {
+        let keyboards = find_keyboard_devices()?;
+        spawn_listener_thread(keyboards, state, ListenerConfig { grab: self.grab })
+    }
+
+    fn supports_sequences(&self) -> bool {
+        true
+    }
+
+    fn supports_modes(&self) -> bool {
+        true
+    }
+
+    fn supports_device_filter(&self) -> bool {
+        true
     }
 }
 
@@ -186,15 +191,8 @@ impl PortalBackend {
 
 #[cfg(feature = "portal")]
 impl HotkeyBackend for PortalBackend {
-    fn start_listener(
-        &self,
-        _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-        _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-        _device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-        _tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
-        stop_flag: Arc<AtomicBool>,
-        _key_state: SharedKeyState,
-    ) -> Result<JoinHandle<()>, Error> {
+    fn start_listener(&self, state: ListenerState) -> Result<JoinHandle<()>, Error> {
+        let stop_flag = state.stop_flag;
         std::thread::Builder::new()
             .name("portal-listener".to_string())
             .spawn(move || {
@@ -413,17 +411,10 @@ fn probe_portal_support() -> bool {
 }
 
 #[cfg_attr(not(feature = "evdev"), allow(unused_variables))]
-pub(crate) fn build_backend(
-    backend: Backend,
-    grab: bool,
-    mode_registry: ModeRegistry,
-) -> Result<Box<dyn HotkeyBackend>, Error> {
+pub(crate) fn build_backend(backend: Backend, grab: bool) -> Result<Box<dyn HotkeyBackend>, Error> {
     match backend {
         #[cfg(feature = "evdev")]
-        Backend::Evdev => Ok(Box::new(EvdevBackend {
-            grab,
-            mode_registry,
-        })),
+        Backend::Evdev => Ok(Box::new(EvdevBackend { grab })),
         #[cfg(not(feature = "evdev"))]
         Backend::Evdev => Err(Error::BackendUnavailable(
             "evdev backend (compile with evdev feature)",
@@ -440,6 +431,8 @@ pub(crate) fn build_backend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "portal")]
+    use crate::key::Key;
     #[cfg(feature = "portal")]
     use crate::key::Modifier;
 

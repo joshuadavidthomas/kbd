@@ -185,7 +185,7 @@ impl HotkeyManager {
         let event_hub = EventHub::new();
         let mode_registry = ModeRegistry::with_event_hub(event_hub.clone());
         let backend_impl: Arc<dyn crate::backend::HotkeyBackend> =
-            build_backend(backend, options.grab, mode_registry.clone())?.into();
+            build_backend(backend, options.grab)?.into();
 
         let tap_hold_registrations = Arc::new(Mutex::new(HashMap::new()));
         let key_state = SharedKeyState::new();
@@ -207,14 +207,16 @@ impl HotkeyManager {
             listener: Mutex::new(None),
         });
 
-        let listener = backend_impl.start_listener(
-            inner.registrations.clone(),
-            inner.sequence_registrations.clone(),
-            inner.device_registrations.clone(),
-            inner.tap_hold_registrations.clone(),
-            inner.stop_flag.clone(),
+        let listener_state = crate::listener::ListenerState {
+            registrations: inner.registrations.clone(),
+            sequence_registrations: inner.sequence_registrations.clone(),
+            device_registrations: inner.device_registrations.clone(),
+            tap_hold_registrations: inner.tap_hold_registrations.clone(),
+            stop_flag: inner.stop_flag.clone(),
             key_state,
-        )?;
+            mode_registry: inner.mode_registry.clone(),
+        };
+        let listener = backend_impl.start_listener(listener_state)?;
 
         *inner.listener.lock().unwrap() = Some(listener);
 
@@ -275,7 +277,7 @@ impl HotkeyManager {
         let hotkey_key = (key, normalize_modifiers(modifiers));
 
         if let Some(filter) = device_filter {
-            if self.active_backend != Backend::Evdev {
+            if !self.inner.backend_impl.supports_device_filter() {
                 return Err(Error::UnsupportedFeature(
                     "device-specific hotkeys are only supported by the evdev backend".to_string(),
                 ));
@@ -403,7 +405,7 @@ impl HotkeyManager {
             return Err(Error::ManagerStopped);
         }
 
-        if self.active_backend != Backend::Evdev {
+        if !self.inner.backend_impl.supports_sequences() {
             return Err(Error::UnsupportedFeature(
                 "key sequences are only supported by the evdev backend".to_string(),
             ));
@@ -481,7 +483,7 @@ impl HotkeyManager {
             return Err(Error::ManagerStopped);
         }
 
-        if self.active_backend != Backend::Evdev {
+        if !self.inner.backend_impl.supports_modes() {
             return Err(Error::UnsupportedFeature(
                 "modes are only supported by the evdev backend".to_string(),
             ));
@@ -589,7 +591,7 @@ impl HotkeyManager {
         let hotkey_key = (key, normalize_modifiers(modifiers));
 
         if let Some(filter) = device_filter {
-            if self.active_backend != Backend::Evdev {
+            if !self.inner.backend_impl.supports_device_filter() {
                 return Err(Error::UnsupportedFeature(
                     "device-specific hotkeys are only supported by the evdev backend".to_string(),
                 ));
@@ -1216,19 +1218,24 @@ mod tests {
     impl crate::backend::HotkeyBackend for FakeBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
                 .spawn(|| {})
                 .map_err(|err| Error::ThreadSpawn(err.to_string()))
+        }
+
+        fn supports_sequences(&self) -> bool {
+            true
+        }
+
+        fn supports_modes(&self) -> bool {
+            true
+        }
+
+        fn supports_device_filter(&self) -> bool {
+            true
         }
 
         fn register_hotkey(&self, _hotkey: &HotkeyKey) -> Result<(), Error> {
@@ -1245,14 +1252,7 @@ mod tests {
     impl crate::backend::HotkeyBackend for UnregisterFailBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1277,14 +1277,7 @@ mod tests {
     impl crate::backend::HotkeyBackend for BlockingUnregisterFailBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1320,14 +1313,7 @@ mod tests {
     impl crate::backend::HotkeyBackend for BlockingUnregisterSuccessBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1363,14 +1349,7 @@ mod tests {
     impl crate::backend::HotkeyBackend for CountingUnregisterBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1396,14 +1375,7 @@ mod tests {
     impl crate::backend::HotkeyBackend for BlockingRegisterSuccessBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1438,14 +1410,7 @@ mod tests {
     impl crate::backend::HotkeyBackend for BlockingRegisterThenUnregisterFailBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1479,14 +1444,7 @@ mod tests {
     impl crate::backend::HotkeyBackend for FailsSecondRegisterBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1515,14 +1473,7 @@ mod tests {
     impl crate::backend::HotkeyBackend for ConcurrentRegisterBackend {
         fn start_listener(
             &self,
-            _registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
-            _sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
-            _device_registrations: Arc<
-                Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
-            >,
-            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
-            _stop_flag: Arc<AtomicBool>,
-            _key_state: SharedKeyState,
+            _state: crate::listener::ListenerState,
         ) -> Result<JoinHandle<()>, Error> {
             std::thread::Builder::new()
                 .name("fake-listener".to_string())
@@ -1573,7 +1524,22 @@ mod tests {
         }
     }
 
-    fn portal_manager_with_fake_backend() -> HotkeyManager {
+    // A backend with no advanced capabilities (simulates portal-like limitations).
+    struct LimitedBackend;
+
+    impl crate::backend::HotkeyBackend for LimitedBackend {
+        fn start_listener(
+            &self,
+            _state: crate::listener::ListenerState,
+        ) -> Result<JoinHandle<()>, Error> {
+            std::thread::Builder::new()
+                .name("fake-listener".to_string())
+                .spawn(|| {})
+                .map_err(|err| Error::ThreadSpawn(err.to_string()))
+        }
+    }
+
+    fn manager_with_limited_backend() -> HotkeyManager {
         let event_hub = EventHub::new();
         let mode_registry = ModeRegistry::with_event_hub(event_hub.clone());
 
@@ -1586,7 +1552,7 @@ mod tests {
                 mode_registry,
                 next_sequence_id: AtomicU64::new(1),
                 next_device_reg_id: AtomicU64::new(1),
-                backend_impl: Arc::new(FakeBackend),
+                backend_impl: Arc::new(LimitedBackend),
                 stop_flag: Arc::new(AtomicBool::new(false)),
                 event_hub,
                 key_state: SharedKeyState::new(),
@@ -2393,8 +2359,8 @@ mod tests {
     }
 
     #[test]
-    fn sequence_registration_is_rejected_on_non_evdev_backend() {
-        let manager = portal_manager_with_fake_backend();
+    fn sequence_registration_is_rejected_when_unsupported() {
+        let manager = manager_with_limited_backend();
 
         let sequence = HotkeySequence::new(vec![
             Hotkey::new(Key::K, vec![]),
@@ -2568,8 +2534,8 @@ mod tests {
     }
 
     #[test]
-    fn define_mode_is_rejected_on_non_evdev_backend() {
-        let manager = portal_manager_with_fake_backend();
+    fn define_mode_is_rejected_when_unsupported() {
+        let manager = manager_with_limited_backend();
 
         let err = manager
             .define_mode("resize", ModeOptions::new(), |_m| Ok(()))
@@ -2705,8 +2671,8 @@ mod tests {
     }
 
     #[test]
-    fn device_specific_rejected_on_portal_backend() {
-        let manager = portal_manager_with_fake_backend();
+    fn device_specific_rejected_when_unsupported() {
+        let manager = manager_with_limited_backend();
 
         let err = manager
             .register_with_options(
