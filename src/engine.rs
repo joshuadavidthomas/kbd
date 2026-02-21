@@ -50,7 +50,9 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 
+use crate::action::Action;
 use crate::binding::BindingId;
+use crate::key::Hotkey;
 use crate::Error;
 
 pub(crate) mod devices;
@@ -62,20 +64,31 @@ pub(crate) mod tap_hold;
 #[cfg(feature = "grab")]
 pub(crate) mod forwarder;
 
-#[derive(Debug)]
 pub(crate) struct RegisteredBinding {
     id: BindingId,
+    hotkey: Hotkey,
+    action: Action,
 }
 
 impl RegisteredBinding {
     #[must_use]
-    pub(crate) const fn new(id: BindingId) -> Self {
-        Self { id }
+    pub(crate) fn new(id: BindingId, hotkey: Hotkey, action: Action) -> Self {
+        Self { id, hotkey, action }
     }
 
     #[must_use]
     pub(crate) const fn id(&self) -> BindingId {
         self.id
+    }
+
+    #[must_use]
+    pub(crate) fn hotkey(&self) -> &Hotkey {
+        &self.hotkey
+    }
+
+    #[must_use]
+    pub(crate) const fn action(&self) -> &Action {
+        &self.action
     }
 }
 
@@ -86,6 +99,10 @@ pub(crate) enum Command {
     },
     Unregister {
         id: BindingId,
+    },
+    IsRegistered {
+        hotkey: Hotkey,
+        reply: mpsc::Sender<bool>,
     },
     Shutdown,
 }
@@ -150,7 +167,8 @@ impl EngineRuntime {
 }
 
 pub(crate) struct Engine {
-    bindings: HashMap<BindingId, RegisteredBinding>,
+    bindings_by_id: HashMap<BindingId, RegisteredBinding>,
+    binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
     devices: devices::DeviceManager,
     key_state: key_state::KeyState,
     command_rx: mpsc::Receiver<Command>,
@@ -160,7 +178,8 @@ pub(crate) struct Engine {
 impl Engine {
     fn new(command_rx: mpsc::Receiver<Command>, wake_fd: Arc<WakeFd>) -> Self {
         Self {
-            bindings: HashMap::new(),
+            bindings_by_id: HashMap::new(),
+            binding_ids_by_hotkey: HashMap::new(),
             devices: devices::DeviceManager::default(),
             key_state: key_state::KeyState::default(),
             command_rx,
@@ -228,7 +247,12 @@ impl Engine {
                 LoopControl::Continue
             }
             Command::Unregister { id } => {
-                self.bindings.remove(&id);
+                self.unregister_binding(id);
+                LoopControl::Continue
+            }
+            Command::IsRegistered { hotkey, reply } => {
+                let is_registered = self.binding_ids_by_hotkey.contains_key(&hotkey);
+                let _ = reply.send(is_registered);
                 LoopControl::Continue
             }
             Command::Shutdown => LoopControl::Shutdown,
@@ -237,12 +261,22 @@ impl Engine {
 
     fn register_binding(&mut self, binding: RegisteredBinding) -> Result<(), Error> {
         let id = binding.id();
-        if self.bindings.contains_key(&id) {
+        let hotkey = binding.hotkey().clone();
+
+        if self.bindings_by_id.contains_key(&id) || self.binding_ids_by_hotkey.contains_key(&hotkey)
+        {
             return Err(Error::AlreadyRegistered);
         }
 
-        self.bindings.insert(id, binding);
+        self.binding_ids_by_hotkey.insert(hotkey, id);
+        self.bindings_by_id.insert(id, binding);
         Ok(())
+    }
+
+    fn unregister_binding(&mut self, id: BindingId) {
+        if let Some(binding) = self.bindings_by_id.remove(&id) {
+            self.binding_ids_by_hotkey.remove(binding.hotkey());
+        }
     }
 
     fn process_polled_events(&mut self, poll_fds: &[libc::pollfd]) {
@@ -377,15 +411,19 @@ mod tests {
     use super::Command;
     use super::EngineRuntime;
     use super::RegisteredBinding;
+    use crate::Action;
     use crate::binding::BindingId;
+    use crate::key::Hotkey;
     use crate::Error;
+    use crate::Key;
+    use crate::Modifier;
 
     #[test]
     fn engine_processes_register_and_unregister_commands() {
         let runtime = EngineRuntime::spawn().expect("engine should spawn");
 
         let id = BindingId::new();
-        let binding = RegisteredBinding::new(id);
+        let binding = test_binding(id, Key::A, &[Modifier::Ctrl]);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         runtime
@@ -410,16 +448,15 @@ mod tests {
     }
 
     #[test]
-    fn engine_rejects_duplicate_binding_ids() {
+    fn engine_rejects_duplicate_hotkeys() {
         let runtime = EngineRuntime::spawn().expect("engine should spawn");
 
-        let id = BindingId::new();
         let (first_reply_tx, first_reply_rx) = mpsc::channel();
 
         runtime
             .commands()
             .send(Command::Register {
-                binding: RegisteredBinding::new(id),
+                binding: test_binding(BindingId::new(), Key::B, &[Modifier::Alt]),
                 reply: first_reply_tx,
             })
             .expect("first register command should send");
@@ -433,7 +470,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: RegisteredBinding::new(id),
+                binding: test_binding(BindingId::new(), Key::B, &[Modifier::Alt]),
                 reply: second_reply_tx,
             })
             .expect("second register command should send");
@@ -442,6 +479,42 @@ mod tests {
             .recv_timeout(Duration::from_secs(1))
             .expect("second register command should receive reply");
         assert!(matches!(second_result, Err(Error::AlreadyRegistered)));
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn engine_reports_registration_queries() {
+        let runtime = EngineRuntime::spawn().expect("engine should spawn");
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Shift]);
+
+        let (register_reply_tx, register_reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::Register {
+                binding: RegisteredBinding::new(BindingId::new(), hotkey.clone(), Action::Swallow),
+                reply: register_reply_tx,
+            })
+            .expect("register command should send");
+
+        let register_result = register_reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("register command should receive reply");
+        assert!(register_result.is_ok());
+
+        let (query_reply_tx, query_reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::IsRegistered {
+                hotkey,
+                reply: query_reply_tx,
+            })
+            .expect("query command should send");
+
+        let is_registered = query_reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("query command should receive reply");
+        assert!(is_registered);
 
         runtime.shutdown().expect("engine should shutdown cleanly");
     }
@@ -472,5 +545,10 @@ mod tests {
             id: BindingId::new(),
         });
         assert!(matches!(send_result, Err(Error::ManagerStopped)));
+    }
+
+    fn test_binding(id: BindingId, key: Key, modifiers: &[Modifier]) -> RegisteredBinding {
+        let hotkey = Hotkey::new(key, modifiers.to_vec());
+        RegisteredBinding::new(id, hotkey, Action::Swallow)
     }
 }

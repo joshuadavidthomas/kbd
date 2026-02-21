@@ -68,3 +68,4 @@ pub use crate::key::ParseHotkeyError;
 pub use crate::layer::Layer;
 pub use crate::layer::LayerOptions;
 pub use crate::manager::HotkeyManager;
+pub use crate::manager::HotkeyManagerBuilder;

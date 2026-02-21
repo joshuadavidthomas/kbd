@@ -25,6 +25,7 @@ pub(crate) mod portal;
 // TODO: Auto-detection logic (portal probe → evdev fallback)
 
 /// Backend selection for explicit configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     /// Direct evdev device access. Requires `input` group membership.
     #[cfg(feature = "evdev")]
