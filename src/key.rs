@@ -336,7 +336,7 @@ impl FromStr for Hotkey {
 
         let mut key = None;
         let mut modifiers = Vec::new();
-        let mut modifier_keys = Vec::new();
+        let mut last_modifier_key = None;
 
         for segment in trimmed.split('+') {
             let token = segment.trim();
@@ -350,7 +350,7 @@ impl FromStr for Hotkey {
 
             if let Some(modifier) = Modifier::from_key(parsed_key) {
                 modifiers.push(modifier);
-                modifier_keys.push(parsed_key);
+                last_modifier_key = Some(parsed_key);
                 continue;
             }
 
@@ -362,7 +362,7 @@ impl FromStr for Hotkey {
         let key = if let Some(key) = key {
             key
         } else {
-            let key = modifier_keys.pop().ok_or(ParseHotkeyError::MissingKey)?;
+            let key = last_modifier_key.ok_or(ParseHotkeyError::MissingKey)?;
             modifiers.pop();
             key
         };
