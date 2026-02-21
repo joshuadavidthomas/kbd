@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use super::options::ModeDefinition;
 use crate::manager::HotkeyKey;
 use crate::manager::HotkeyRegistration;
-
-use super::options::ModeDefinition;
 
 struct ActiveMode {
     name: String,
@@ -127,11 +126,11 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use crate::key::Key;
-
     use super::*;
+    use crate::key::Key;
     use crate::mode::options::ModeOptions;
-    use crate::mode::tests::{make_definition, make_registration};
+    use crate::mode::tests::make_definition;
+    use crate::mode::tests::make_registration;
 
     #[test]
     fn mode_stack_push_and_pop() {

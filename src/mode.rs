@@ -7,12 +7,11 @@ pub(crate) mod stack;
 
 pub use builder::ModeBuilder;
 pub use controller::ModeController;
-pub use options::ModeOptions;
-
 pub(crate) use dispatch::dispatch_mode_key_event;
 pub(crate) use dispatch::find_callbacks_for_active_press;
 pub(crate) use dispatch::ModeEventDispatch;
 pub(crate) use options::ModeDefinition;
+pub use options::ModeOptions;
 pub(crate) use registry::ModeRegistry;
 pub(crate) use stack::pop_timed_out_modes;
 
@@ -22,14 +21,13 @@ pub(crate) mod tests {
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
 
+    use super::options::ModeDefinition;
+    use super::options::ModeOptions;
     use crate::manager::Callback;
     use crate::manager::HotkeyCallbacks;
     use crate::manager::HotkeyKey;
     use crate::manager::HotkeyRegistration;
     use crate::manager::RepeatBehavior;
-
-    use super::options::ModeDefinition;
-    use super::options::ModeOptions;
 
     pub(crate) fn make_registration(counter: Arc<AtomicUsize>) -> HotkeyRegistration {
         HotkeyRegistration {

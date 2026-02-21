@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use super::controller::ModeController;
 use crate::error::Error;
 use crate::key::Key;
 use crate::key::Modifier;
@@ -8,8 +9,6 @@ use crate::manager::normalize_modifiers;
 use crate::manager::HotkeyKey;
 use crate::manager::HotkeyOptions;
 use crate::manager::HotkeyRegistration;
-
-use super::controller::ModeController;
 
 pub struct ModeBuilder {
     pub(crate) bindings: HashMap<HotkeyKey, HotkeyRegistration>,

@@ -1,8 +1,7 @@
 use std::time::Instant;
 
-use crate::events::HotkeyEvent;
-
 use super::registry::ModeRegistry;
+use crate::events::HotkeyEvent;
 
 #[derive(Clone)]
 pub struct ModeController {

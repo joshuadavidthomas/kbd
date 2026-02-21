@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use crate::error::Error;
-use crate::key::Key;
-
 use super::callbacks::Callback;
 use super::registration::DeviceRegistrationId;
 use super::registration::HotkeyKey;
 use super::registration::SequenceId;
 use super::HotkeyManagerInner;
+use crate::error::Error;
+use crate::key::Key;
 
 #[derive(Clone)]
 pub(crate) enum RegistrationLocation {

@@ -2,10 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use crate::events::EventHub;
-
 use super::options::ModeDefinition;
 use super::stack::ModeStack;
+use crate::events::EventHub;
 
 #[derive(Clone)]
 pub(crate) struct ModeRegistry {

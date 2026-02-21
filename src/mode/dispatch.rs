@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use super::options::ModeDefinition;
+use super::stack::lookup_hotkey_in_modes;
+use super::stack::ModeLookupResult;
+use super::stack::ModeStack;
 use crate::key::Key;
 use crate::manager::ActiveHotkeyPress;
 use crate::manager::Callback;
@@ -12,11 +16,6 @@ use crate::manager::HotkeyRegistration;
 use crate::manager::PressDispatchState;
 use crate::manager::PressOrigin;
 use crate::manager::RepeatBehavior;
-
-use super::options::ModeDefinition;
-use super::stack::lookup_hotkey_in_modes;
-use super::stack::ModeLookupResult;
-use super::stack::ModeStack;
 
 pub(crate) enum ModeEventDispatch {
     PassThrough,
@@ -236,16 +235,16 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use super::*;
     use crate::key::Key;
     use crate::manager::ActiveHotkeyPress;
     use crate::manager::PressDispatchState;
     use crate::manager::PressOrigin;
     use crate::mode::options::ModeOptions;
-
-    use super::*;
-    use crate::mode::tests::{
-        dispatch_callbacks, make_definition, make_registration, make_registration_with_release,
-    };
+    use crate::mode::tests::dispatch_callbacks;
+    use crate::mode::tests::make_definition;
+    use crate::mode::tests::make_registration;
+    use crate::mode::tests::make_registration_with_release;
 
     #[test]
     fn mode_dispatch_press_fires_callback() {

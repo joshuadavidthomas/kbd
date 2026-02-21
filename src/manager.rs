@@ -3,21 +3,31 @@ mod handles;
 mod options;
 mod registration;
 
-pub use handles::Handle;
-pub use handles::SequenceHandle;
-pub use handles::TapHoldHandle;
-pub use options::HotkeyManagerBuilder;
-pub use options::HotkeyOptions;
-pub use options::SequenceOptions;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread::JoinHandle;
 
 pub(crate) use callbacks::Callback;
 pub(crate) use callbacks::HotkeyCallbacks;
 pub(crate) use callbacks::PressDispatchState;
-pub(crate) use callbacks::PressTimingConfig;
 pub(crate) use callbacks::RepeatBehavior;
+pub use handles::Handle;
 pub(crate) use handles::RegistrationLocation;
+pub use handles::SequenceHandle;
+pub use handles::TapHoldHandle;
+pub use options::HotkeyManagerBuilder;
+pub use options::HotkeyOptions;
+use options::ManagerRuntimeOptions;
+pub use options::SequenceOptions;
+use registration::already_registered_error;
 pub(crate) use registration::attach_hotkey_events;
 pub(crate) use registration::normalize_modifiers;
+use registration::remove_registration_if_matches;
 pub(crate) use registration::ActiveHotkeyPress;
 pub(crate) use registration::DeviceHotkeyRegistration;
 pub(crate) use registration::DeviceRegistrationId;
@@ -27,16 +37,6 @@ pub(crate) use registration::PressOrigin;
 pub(crate) use registration::SequenceId;
 pub(crate) use registration::SequenceRegistration;
 
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread::JoinHandle;
-use std::time::Duration;
-
 use crate::backend::build_backend;
 use crate::backend::resolve_backend;
 use crate::backend::Backend;
@@ -44,7 +44,6 @@ use crate::device::DeviceFilter;
 use crate::error::Error;
 use crate::events::EventHub;
 use crate::events::HotkeyEvent;
-use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::key::Key;
 use crate::key::Modifier;
@@ -58,11 +57,6 @@ use crate::tap_hold::HoldAction;
 use crate::tap_hold::TapAction;
 use crate::tap_hold::TapHoldOptions;
 use crate::tap_hold::TapHoldRegistration;
-
-use callbacks::PressInvocationLimiter;
-use options::ManagerRuntimeOptions;
-use registration::already_registered_error;
-use registration::remove_registration_if_matches;
 
 /// Inner state shared between `HotkeyManager` and Handles
 pub(crate) struct HotkeyManagerInner {
@@ -507,12 +501,7 @@ impl HotkeyManager {
         }
     }
 
-    pub fn replace<F>(
-        &self,
-        key: Key,
-        modifiers: &[Modifier],
-        callback: F,
-    ) -> Result<Handle, Error>
+    pub fn replace<F>(&self, key: Key, modifiers: &[Modifier], callback: F) -> Result<Handle, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -936,9 +925,12 @@ mod tests {
     use std::time::Duration;
     use std::time::Instant;
 
+    use super::callbacks::PressInvocationLimiter;
+    use super::callbacks::PressTimingConfig;
     use super::*;
     #[cfg(any(feature = "tokio", feature = "async-std"))]
     use crate::events::HotkeyEvent;
+    use crate::hotkey::Hotkey;
 
     #[test]
     fn normalizes_left_and_right_variants() {
@@ -1488,9 +1480,7 @@ mod tests {
         }
     }
 
-    fn manager_with_backend(
-        backend_impl: Arc<dyn crate::backend::HotkeyBackend>,
-    ) -> HotkeyManager {
+    fn manager_with_backend(backend_impl: Arc<dyn crate::backend::HotkeyBackend>) -> HotkeyManager {
         manager_with_backend_and_grab(backend_impl, false)
     }
 
@@ -1729,9 +1719,7 @@ mod tests {
         let manager = manager_with_fake_backend();
         let calls = Arc::new(AtomicUsize::new(0));
 
-        manager
-            .register(Key::E, &[Modifier::Shift], || {})
-            .unwrap();
+        manager.register(Key::E, &[Modifier::Shift], || {}).unwrap();
 
         let calls_clone = calls.clone();
         manager

@@ -3,6 +3,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+use super::callbacks::Callback;
+use super::callbacks::HotkeyCallbacks;
+use super::callbacks::PressDispatchState;
+use super::callbacks::PressInvocationLimiter;
+use super::callbacks::PressTimingConfig;
 use crate::device::DeviceFilter;
 use crate::error::Error;
 use crate::events::EventHub;
@@ -10,12 +15,6 @@ use crate::events::HotkeyEvent;
 use crate::hotkey::Hotkey;
 use crate::key::Key;
 use crate::key::Modifier;
-
-use super::callbacks::Callback;
-use super::callbacks::HotkeyCallbacks;
-use super::callbacks::PressDispatchState;
-use super::callbacks::PressInvocationLimiter;
-use super::callbacks::PressTimingConfig;
 
 /// Key used to identify hotkey registrations: (`target_key`, `normalized_modifiers`)
 pub(crate) type HotkeyKey = (Key, Vec<Modifier>);

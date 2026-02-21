@@ -1,13 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::device::DeviceFilter;
-
 use super::callbacks::Callback;
 use super::callbacks::HotkeyCallbacks;
 use super::callbacks::PressTimingConfig;
 use super::callbacks::ReleaseBehavior;
 use super::callbacks::RepeatBehavior;
+use crate::device::DeviceFilter;
 
 #[derive(Clone, Default)]
 pub struct HotkeyOptions {
