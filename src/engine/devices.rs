@@ -10,8 +10,26 @@
 //! `archive/v0/src/listener/hotplug.rs`,
 //! `archive/v0/src/device.rs`
 
-// TODO: DeviceManager — tracks active devices and their file descriptors
-// TODO: discover_devices() — scan /dev/input/ for keyboards
-// TODO: process_hotplug() — handle inotify events for add/remove
-// TODO: Device info (name, vendor/product ID) for DeviceFilter matching
-// TODO: Cleanup key state on device disconnect (no stuck keys)
+use std::os::fd::RawFd;
+
+use crate::engine::key_state::KeyState;
+
+#[derive(Debug, Default)]
+pub(crate) struct DeviceManager {
+    device_fds: Vec<RawFd>,
+}
+
+impl DeviceManager {
+    #[must_use]
+    pub(crate) fn poll_fds(&self) -> Vec<RawFd> {
+        self.device_fds.clone()
+    }
+
+    pub(crate) fn process_polled_events(
+        &mut self,
+        _polled_device_fds: &[libc::pollfd],
+        _key_state: &mut KeyState,
+    ) {
+        let _device_count = self.device_fds.len();
+    }
+}
