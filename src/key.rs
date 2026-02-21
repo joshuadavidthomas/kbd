@@ -172,7 +172,7 @@ impl Modifier {
     }
 
     #[must_use]
-    pub const fn from_key(key: Key) -> Option<Self> {
+    pub(crate) const fn from_key(key: Key) -> Option<Self> {
         match key {
             Key::LeftCtrl | Key::RightCtrl => Some(Self::Ctrl),
             Key::LeftShift | Key::RightShift => Some(Self::Shift),
