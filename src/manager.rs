@@ -23,16 +23,235 @@
 //! shared-state management). This file should stay small — if it grows
 //! past a few hundred lines, something is wrong.
 
-// TODO: HotkeyManager struct (command sender + wake + join handle)
-// TODO: HotkeyManager::new() — auto-detect backend, spawn engine
-// TODO: HotkeyManager::builder() — explicit configuration
-// TODO: register() — simple hotkey with closure (wraps in Action::Callback)
-// TODO: register_sequence() — multi-step hotkey
-// TODO: register_tap_hold() — dual-function key
-// TODO: define_layer() — register a Layer
-// TODO: push_layer() / pop_layer() — layer stack control
-// TODO: is_key_pressed() / active_modifiers() — state queries
-// TODO: Drop impl — send Shutdown command
+use std::fmt;
+use std::sync::mpsc;
+use std::sync::Mutex;
 
-/// Placeholder — see module docs.
-pub struct HotkeyManager;
+use crate::action::Action;
+use crate::backend::Backend;
+use crate::binding::BindingId;
+use crate::engine::Command;
+use crate::engine::CommandSender;
+use crate::engine::EngineRuntime;
+use crate::engine::RegisteredBinding;
+use crate::handle::Handle;
+use crate::key::Hotkey;
+use crate::key::Key;
+use crate::key::Modifier;
+use crate::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BackendSelection {
+    Auto,
+    Explicit(Backend),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GrabConfiguration {
+    Disabled,
+    Enabled,
+}
+
+/// Builder for explicit backend and runtime options.
+#[derive(Debug)]
+pub struct HotkeyManagerBuilder {
+    backend: BackendSelection,
+    grab: GrabConfiguration,
+}
+
+impl Default for HotkeyManagerBuilder {
+    fn default() -> Self {
+        Self {
+            backend: BackendSelection::Auto,
+            grab: GrabConfiguration::Disabled,
+        }
+    }
+}
+
+impl HotkeyManagerBuilder {
+    /// Force a specific backend instead of auto-detection.
+    #[must_use]
+    pub fn backend(mut self, backend: Backend) -> Self {
+        self.backend = BackendSelection::Explicit(backend);
+        self
+    }
+
+    /// Enable grab mode (backend support added in Phase 2).
+    #[must_use]
+    pub fn grab(mut self) -> Self {
+        self.grab = GrabConfiguration::Enabled;
+        self
+    }
+
+    /// Build and start a new manager instance.
+    pub fn build(self) -> Result<HotkeyManager, Error> {
+        let backend = resolve_backend(self.backend)?;
+        validate_grab_configuration(backend, self.grab)?;
+
+        let runtime = EngineRuntime::spawn()?;
+        let commands = runtime.commands();
+
+        Ok(HotkeyManager {
+            backend,
+            commands,
+            runtime: Mutex::new(Some(runtime)),
+        })
+    }
+}
+
+/// Public manager API.
+pub struct HotkeyManager {
+    backend: Backend,
+    commands: CommandSender,
+    runtime: Mutex<Option<EngineRuntime>>,
+}
+
+impl fmt::Debug for HotkeyManager {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let running = self
+            .runtime
+            .lock()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false);
+
+        f.debug_struct("HotkeyManager")
+            .field("backend", &self.backend)
+            .field("running", &running)
+            .finish_non_exhaustive()
+    }
+}
+
+impl HotkeyManager {
+    /// Create a manager with backend auto-detection.
+    pub fn new() -> Result<Self, Error> {
+        Self::builder().build()
+    }
+
+    /// Configure manager startup options.
+    #[must_use]
+    pub fn builder() -> HotkeyManagerBuilder {
+        HotkeyManagerBuilder::default()
+    }
+
+    #[must_use]
+    pub const fn active_backend(&self) -> Backend {
+        self.backend
+    }
+
+    /// Register a simple hotkey callback.
+    pub fn register<F>(
+        &self,
+        key: Key,
+        modifiers: &[Modifier],
+        callback: F,
+    ) -> Result<Handle, Error>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        self.register_action(key, modifiers, Action::from(callback))
+    }
+
+    /// Query whether a hotkey is currently registered.
+    pub fn is_registered(&self, key: Key, modifiers: &[Modifier]) -> Result<bool, Error> {
+        let hotkey = Hotkey::new(key, modifiers.to_vec());
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::IsRegistered {
+            hotkey,
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
+    /// Stop the manager and join the engine thread.
+    pub fn shutdown(self) -> Result<(), Error> {
+        self.shutdown_inner()
+    }
+
+    fn register_action(
+        &self,
+        key: Key,
+        modifiers: &[Modifier],
+        action: Action,
+    ) -> Result<Handle, Error> {
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(key, modifiers.to_vec());
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::Register {
+            binding,
+            reply: reply_tx,
+        })?;
+
+        match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
+            Ok(()) => Ok(Handle::new(id, self.commands.clone())),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn shutdown_inner(&self) -> Result<(), Error> {
+        let mut runtime = self.runtime.lock().map_err(|_| Error::EngineError)?;
+        if let Some(runtime) = runtime.take() {
+            return runtime.shutdown();
+        }
+
+        Ok(())
+    }
+
+    // TODO: register_sequence() — multi-step hotkey
+    // TODO: register_tap_hold() — dual-function key
+    // TODO: define_layer() — register a Layer
+    // TODO: push_layer() / pop_layer() — layer stack control
+    // TODO: is_key_pressed() / active_modifiers() — state queries
+}
+
+impl Drop for HotkeyManager {
+    fn drop(&mut self) {
+        let _ = self.shutdown_inner();
+    }
+}
+
+fn resolve_backend(selection: BackendSelection) -> Result<Backend, Error> {
+    match selection {
+        BackendSelection::Auto => auto_backend(),
+        BackendSelection::Explicit(backend) => validate_explicit_backend(backend),
+    }
+}
+
+// With `--all-features` (evdev on), this always returns Ok. But under
+// portal-only or no-backend builds it genuinely fails, so the Result is needed.
+#[allow(clippy::unnecessary_wraps)]
+fn auto_backend() -> Result<Backend, Error> {
+    #[cfg(feature = "evdev")]
+    {
+        Ok(Backend::Evdev)
+    }
+    #[cfg(not(feature = "evdev"))]
+    {
+        Err(Error::BackendUnavailable)
+    }
+}
+
+fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
+    match backend {
+        #[cfg(feature = "evdev")]
+        Backend::Evdev => Ok(Backend::Evdev),
+        #[cfg(feature = "portal")]
+        Backend::Portal => Err(Error::BackendUnavailable),
+    }
+}
+
+fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Result<(), Error> {
+    let _ = backend;
+
+    if matches!(grab, GrabConfiguration::Enabled) {
+        #[cfg(feature = "portal")]
+        if matches!(backend, Backend::Portal) {
+            return Err(Error::UnsupportedFeature);
+        }
+    }
+
+    Ok(())
+}

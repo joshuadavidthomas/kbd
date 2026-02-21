@@ -20,11 +20,11 @@ pub(crate) mod evdev;
 #[cfg(feature = "portal")]
 pub(crate) mod portal;
 
-// TODO: Backend enum (Evdev, Portal) for explicit selection
 // TODO: Backend capability detection (supports grab, supports sequences, etc.)
 // TODO: Auto-detection logic (portal probe → evdev fallback)
 
 /// Backend selection for explicit configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     /// Direct evdev device access. Requires `input` group membership.
     #[cfg(feature = "evdev")]
