@@ -18,7 +18,7 @@
 //! # Reference
 //!
 //! Prior art: `archive/v0/src/tap_hold.rs` (TapAction/HoldAction),
-//! `archive/v0/src/mode/controller.rs` (ModeController push/pop).
+//! `archive/v0/src/mode/controller.rs` (`ModeController` push/pop).
 //! These are the ad-hoc mechanisms this type unifies.
 
 // TODO: Action enum with variants listed above

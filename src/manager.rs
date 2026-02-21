@@ -7,7 +7,7 @@
 //!
 //! The manager holds a command channel sender and a wake mechanism.
 //! Every public method translates to a `Command` sent to the engine.
-//! Operations that can fail (register, define_layer) use a reply
+//! Operations that can fail (register, `define_layer`) use a reply
 //! channel to return `Result` synchronously to the caller.
 //!
 //! ```text

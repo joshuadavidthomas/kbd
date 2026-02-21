@@ -2,7 +2,7 @@
 //!
 //! Two backends:
 //! - **evdev** — direct `/dev/input/event*` access (universal Linux)
-//! - **portal** — XDG GlobalShortcuts D-Bus portal (no root needed)
+//! - **portal** — XDG `GlobalShortcuts` D-Bus portal (no root needed)
 //!
 //! Auto-detection: try portal first (when compiled in), fall back to evdev.
 //! Explicit selection via `HotkeyManager::builder().backend(Backend::Evdev)`.
@@ -29,7 +29,7 @@ pub enum Backend {
     /// Direct evdev device access. Requires `input` group membership.
     #[cfg(feature = "evdev")]
     Evdev,
-    /// XDG GlobalShortcuts portal. No special permissions needed.
+    /// XDG `GlobalShortcuts` portal. No special permissions needed.
     #[cfg(feature = "portal")]
     Portal,
 }

@@ -35,15 +35,15 @@ in later phases.
 
 Implement `Key`, `Modifier`, `Hotkey`, `HotkeySequence`.
 
-- [ ] `Key` enum with full key set (letters, numbers, F-keys, arrows, navigation, punctuation, numpad, modifiers).
-- [ ] `Modifier` enum (Ctrl, Shift, Alt, Super) with left/right canonicalization.
-- [ ] Shared logic between `Key` and `Modifier` — no duplicated `as_str()`, `Display`, or conversion implementations.
-- [ ] `From<evdev::KeyCode>` and `Into<evdev::KeyCode>` on `Key` (standard traits, not ad-hoc methods).
-- [ ] `Modifier` derivable from `Key` — `Modifier::Ctrl` maps to `Key::LeftCtrl`/`Key::RightCtrl`.
-- [ ] `Hotkey` struct (trigger `Key` + `Vec<Modifier>` or small set type). `FromStr` parses `"Ctrl+Shift+A"`, `Display` round-trips.
-- [ ] `HotkeySequence` struct (`Vec<Hotkey>`). `FromStr` parses `"Ctrl+K, Ctrl+C"`, `Display` round-trips.
-- [ ] Case-insensitive parsing with aliases (Super/Meta/Win, Ctrl/Control, Return/Enter).
-- [ ] Tests: parsing, display, round-trip, evdev conversion, modifier canonicalization.
+- [x] `Key` enum with full key set (letters, numbers, F-keys, arrows, navigation, punctuation, numpad, modifiers).
+- [x] `Modifier` enum (Ctrl, Shift, Alt, Super) with left/right canonicalization.
+- [x] Shared logic between `Key` and `Modifier` — no duplicated `as_str()`, `Display`, or conversion implementations.
+- [x] `From<evdev::KeyCode>` and `Into<evdev::KeyCode>` on `Key` (standard traits, not ad-hoc methods).
+- [x] `Modifier` derivable from `Key` — `Modifier::Ctrl` maps to `Key::LeftCtrl`/`Key::RightCtrl`.
+- [x] `Hotkey` struct (trigger `Key` + `Vec<Modifier>` or small set type). `FromStr` parses `"Ctrl+Shift+A"`, `Display` round-trips.
+- [x] `HotkeySequence` struct (`Vec<Hotkey>`). `FromStr` parses `"Ctrl+K, Ctrl+C"`, `Display` round-trips.
+- [x] Case-insensitive parsing with aliases (Super/Meta/Win, Ctrl/Control, Return/Enter).
+- [x] Tests: parsing, display, round-trip, evdev conversion, modifier canonicalization.
 
 Reference: `archive/v0/src/key.rs`, `archive/v0/src/hotkey.rs`
 
@@ -118,7 +118,7 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 
 | Section | Items |
 |---------|-------|
-| 1.1 Key types | 0/9 |
+| 1.1 Key types | 9/9 |
 | 1.2 Action and binding | 0/6 |
 | 1.3 Error type | 0/4 |
 | 1.4 Engine skeleton | 0/7 |

@@ -6,7 +6,7 @@
 //! # Reference
 //!
 //! Prior art: `archive/v0/src/error.rs`, `archive/v0/src/hotkey.rs`
-//! (ParseHotkeyError). Consolidate into one hierarchy.
+//! (`ParseHotkeyError`). Consolidate into one hierarchy.
 
 // TODO: Error enum with thiserror derives
 // TODO: Variants for: parse errors, registration conflicts, backend errors,

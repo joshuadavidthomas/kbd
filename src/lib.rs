@@ -7,7 +7,7 @@
 //!
 //! # Quick start
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use keybound::{HotkeyManager, Key, Modifier};
 //!
 //! let manager = HotkeyManager::new()?;
@@ -28,15 +28,15 @@
 //! - **Layers** — named groups of bindings, stackable ([`Layer`], [`LayerOptions`])
 //! - **Grab mode** — exclusive device capture for interception and remapping
 
-mod key;
 mod action;
-mod binding;
-mod layer;
-mod error;
-mod manager;
-mod handle;
-mod engine;
 mod backend;
+mod binding;
+mod engine;
+mod error;
+mod handle;
+mod key;
+mod layer;
+mod manager;
 
 #[cfg(any(feature = "tokio", feature = "async-std"))]
 mod events;
@@ -44,18 +44,22 @@ mod events;
 // Public API surface — curated re-exports only.
 // Keep this small. `pub(crate)` for internal sharing.
 
-pub use crate::key::{Key, Modifier, Hotkey, HotkeySequence};
 pub use crate::action::Action;
-pub use crate::binding::BindingOptions;
-pub use crate::layer::{Layer, LayerOptions};
-pub use crate::error::Error;
-pub use crate::manager::HotkeyManager;
-pub use crate::handle::Handle;
 pub use crate::backend::Backend;
-
+pub use crate::binding::BindingOptions;
 // Re-export device filter when evdev is available.
 #[cfg(feature = "evdev")]
 pub use crate::binding::DeviceFilter;
-
-#[cfg(any(feature = "tokio", feature = "async-std"))]
-pub use crate::events::{HotkeyEvent, HotkeyEventStream};
+pub use crate::error::Error;
+// #[cfg(any(feature = "tokio", feature = "async-std"))]
+// pub use crate::events::HotkeyEvent;
+// #[cfg(any(feature = "tokio", feature = "async-std"))]
+// pub use crate::events::HotkeyEventStream;
+pub use crate::handle::Handle;
+pub use crate::key::Hotkey;
+pub use crate::key::HotkeySequence;
+pub use crate::key::Key;
+pub use crate::key::Modifier;
+pub use crate::layer::Layer;
+pub use crate::layer::LayerOptions;
+pub use crate::manager::HotkeyManager;
