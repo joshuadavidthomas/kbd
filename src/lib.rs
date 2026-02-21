@@ -63,6 +63,7 @@ pub use crate::key::Hotkey;
 pub use crate::key::HotkeySequence;
 pub use crate::key::Key;
 pub use crate::key::Modifier;
+pub use crate::key::ParseHotkeyError;
 pub use crate::layer::Layer;
 pub use crate::layer::LayerOptions;
 pub use crate::manager::HotkeyManager;
