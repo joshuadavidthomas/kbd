@@ -18,7 +18,7 @@ Global hotkey library for Linux — works on Wayland, X11, and TTY.
 - **Debouncing / rate limiting**: Per-hotkey timing controls
 - **Key state queries**: Thread-safe access to currently pressed keys and active modifiers
 - **Device hotplug**: Automatic detection of connected/disconnected keyboards
-- **Simple API**: Type-safe with `evdev::KeyCode`
+- **Simple API**: Type-safe `Key` and `Modifier` enums
 - **Lightweight**: Minimal dependencies, feature-gated extras
 
 ## Requirements
@@ -37,7 +37,6 @@ The portal backend (XDG GlobalShortcuts) does not require special permissions.
 ```toml
 [dependencies]
 keybound = "0.1"
-evdev = "0.13"
 ```
 
 ## Usage
@@ -45,22 +44,21 @@ evdev = "0.13"
 ### Basic Example
 
 ```rust
-use evdev::KeyCode;
-use keybound::HotkeyManager;
+use keybound::{HotkeyManager, Key, Modifier};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = HotkeyManager::new()?;
 
-    manager.register(
-        KeyCode::KEY_C,
-        &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
+    let _handle = manager.register(
+        Key::C,
+        &[Modifier::Ctrl, Modifier::Shift],
         || {
             println!("Hotkey triggered!");
-        }
+        },
     )?;
 
     // Keep program running
-    std::thread::sleep(std::time::Duration::from_secs(60));
+    std::thread::park();
 
     Ok(())
 }
@@ -69,24 +67,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Multiple Hotkeys
 
 ```rust
-use evdev::KeyCode;
+use keybound::{HotkeyManager, Key, Modifier};
 
 let manager = HotkeyManager::new()?;
 
 let _handle1 = manager.register(
-    KeyCode::KEY_A,
-    &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-    || {
-        println!("Action A!");
-    }
+    Key::A,
+    &[Modifier::Ctrl, Modifier::Shift],
+    || println!("Action A!"),
 )?;
 
 let _handle2 = manager.register(
-    KeyCode::KEY_B,
-    &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-    || {
-        println!("Action B!");
-    }
+    Key::B,
+    &[Modifier::Ctrl, Modifier::Shift],
+    || println!("Action B!"),
 )?;
 ```
 
@@ -94,11 +88,9 @@ let _handle2 = manager.register(
 
 ```rust
 let handle = manager.register(
-    KeyCode::KEY_C,
-    &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-    || {
-        println!("Triggered!");
-    }
+    Key::C,
+    &[Modifier::Ctrl, Modifier::Shift],
+    || println!("Triggered!"),
 )?;
 
 // Later
@@ -108,29 +100,26 @@ handle.unregister()?;
 ### Press / Release and Hold Options
 
 ```rust
-use evdev::KeyCode;
-use keybound::{HotkeyManager, HotkeyOptions};
 use std::time::Duration;
+use keybound::{HotkeyManager, HotkeyOptions, Key, Modifier};
 
 let manager = HotkeyManager::new()?;
 
 let _handle = manager.register_with_options(
-    KeyCode::KEY_F1,
-    &[KeyCode::KEY_LEFTCTRL],
+    Key::F1,
+    &[Modifier::Ctrl],
     HotkeyOptions::new()
         .on_release_callback(|| println!("Released"))
         .min_hold(Duration::from_millis(500))
         .debounce(Duration::from_millis(100))
         .max_rate(Duration::from_millis(300)),
-    || {
-        println!("Pressed (only after min hold)");
-    },
+    || println!("Pressed (only after min hold)"),
 )?;
 ```
 
-`register(...)` still triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, debounce/rate limiting, repeat behavior control, or passthrough behavior in grab mode. Use `.on_release()` if you want release to reuse the same callback as press.
+`register(...)` triggers on key press immediately. Use `register_with_options(...)` when you need release callbacks, hold thresholds, debounce/rate limiting, repeat behavior control, or passthrough behavior in grab mode. Use `.on_release()` if you want release to reuse the same callback as press.
 
-### Event grabbing / interception (feature-gated)
+### Event Grabbing / Interception (feature-gated)
 
 Enable exclusive capture with the `grab` feature when you need daemon-style interception:
 
@@ -140,29 +129,51 @@ keybound = { version = "0.1", features = ["grab"] }
 ```
 
 ```rust
-use evdev::KeyCode;
-use keybound::{Backend, HotkeyManager, HotkeyOptions};
+use keybound::{HotkeyManager, HotkeyOptions, Key, Modifier};
 
 let manager = HotkeyManager::builder()
-    .backend(Backend::Evdev)
     .grab()
     .build()?;
 
 // Consumed by default while grab is active.
-let _consumed = manager.register(KeyCode::KEY_L, &[KeyCode::KEY_LEFTMETA], || {
+let _consumed = manager.register(Key::L, &[Modifier::Super], || {
     println!("Lock screen");
 })?;
 
 // Passthrough hotkeys still fire callbacks but are re-emitted.
 let _passthrough = manager.register_with_options(
-    KeyCode::KEY_A,
-    &[KeyCode::KEY_LEFTCTRL],
+    Key::A,
+    &[Modifier::Ctrl],
     HotkeyOptions::new().passthrough(),
     || println!("Observed Ctrl+A"),
 )?;
 ```
 
 Grab mode is only supported on the evdev backend. Requesting grab on portal (or without compiling the `grab` feature) returns a clear `UnsupportedFeature` error.
+
+### Tap-Hold / Dual-Function Keys (feature-gated)
+
+A key can perform different actions based on tap vs. hold. Requires event grabbing:
+
+```toml
+[dependencies]
+keybound = { version = "0.1", features = ["grab"] }
+```
+
+```rust
+use std::time::Duration;
+use keybound::{HoldAction, HotkeyManager, Key, Modifier, TapAction, TapHoldOptions};
+
+let manager = HotkeyManager::builder().grab().build()?;
+
+// CapsLock: tap = Escape, hold = Ctrl
+let _caps = manager.register_tap_hold(
+    Key::CapsLock,
+    TapAction::emit(Key::Escape),
+    HoldAction::modifier(Modifier::Ctrl),
+    TapHoldOptions::new().threshold(Duration::from_millis(200)),
+)?;
+```
 
 ### Parse Hotkeys from Strings
 
@@ -176,7 +187,9 @@ assert_eq!(hotkey.to_string(), "Ctrl+Shift+A");
 assert_eq!(sequence.to_string(), "Ctrl+K, Ctrl+C");
 ```
 
-### Config serialization (feature-gated)
+Modifier aliases: `Control`, `Meta`, `Win`, `Windows` are also accepted. Key aliases include `Esc`/`Escape`, `Del`/`Delete`, `PgUp`/`PageUp`, etc.
+
+### Config Serialization (feature-gated)
 
 Enable serde support when loading bindings from config files:
 
@@ -193,55 +206,74 @@ use keybound::{ActionId, ActionMap, HotkeyConfig, HotkeyManager};
 let manager = HotkeyManager::new()?;
 
 let config: HotkeyConfig = toml::from_str(r#"
-hotkeys = [
-  { hotkey = "Ctrl+Shift+A", action = "launch-terminal" }
-]
+[[hotkeys]]
+hotkey = "Ctrl+Shift+A"
+action = "launch-terminal"
 "#)?;
 
 let mut actions = ActionMap::new();
-actions.insert(ActionId::new("launch-terminal")?, || {
+actions.insert("launch-terminal".parse::<ActionId>()?, || {
     println!("Launching terminal");
 })?;
 
 let _registered = config.register(&manager, &actions)?;
 ```
 
-### Using Modifier Keys
+Config files can also define key sequences and modes:
 
-The crate uses `evdev::KeyCode` for both the target key and modifiers:
+```toml
+[[hotkeys]]
+hotkey = "Ctrl+Shift+N"
+action = "new_window"
+
+[[sequences]]
+sequence = "Ctrl+K, Ctrl+S"
+action = "save_all"
+
+[modes.resize]
+bindings = [
+    { hotkey = "H", action = "shrink_left" },
+    { hotkey = "Escape", action = "exit_mode" },
+]
+```
+
+### Using Keys and Modifiers
+
+The crate provides its own `Key` and `Modifier` types, abstracting over platform-specific key codes:
 
 **Modifier keys:**
-- `KeyCode::KEY_LEFTCTRL`, `KeyCode::KEY_RIGHTCTRL` - Control
-- `KeyCode::KEY_LEFTSHIFT`, `KeyCode::KEY_RIGHTSHIFT` - Shift
-- `KeyCode::KEY_LEFTALT`, `KeyCode::KEY_RIGHTALT` - Alt
-- `KeyCode::KEY_LEFTMETA`, `KeyCode::KEY_RIGHTMETA` - Super/Meta/Windows
+- `Modifier::Ctrl` — Control (matches both left and right physical keys)
+- `Modifier::Shift` — Shift
+- `Modifier::Alt` — Alt
+- `Modifier::Super` — Super/Meta/Windows
 
 **Target keys:**
-- Letters: `KeyCode::KEY_A` through `KeyCode::KEY_Z`
-- Numbers: `KeyCode::KEY_0` through `KeyCode::KEY_9`
-- Special: `KeyCode::KEY_SPACE`, `KeyCode::KEY_ENTER`, `KeyCode::KEY_ESC`
-
-**Note**: The modifier matching accepts either left or right variant. For example, if you register with `KeyCode::KEY_LEFTCTRL`, both left and right Ctrl will satisfy the modifier requirement.
+- Letters: `Key::A` through `Key::Z`
+- Numbers: `Key::Num0` through `Key::Num9`
+- Function keys: `Key::F1` through `Key::F24`
+- Special: `Key::Space`, `Key::Enter`, `Key::Escape`, `Key::Tab`, `Key::CapsLock`
+- Navigation: `Key::Home`, `Key::End`, `Key::PageUp`, `Key::PageDown`, `Key::Up`, `Key::Down`, `Key::Left`, `Key::Right`
+- Numpad: `Key::Numpad0` through `Key::Numpad9`, `Key::NumpadEnter`, etc.
 
 ### Same Key, Different Modifiers
 
 You can register the same target key with different modifier combinations:
 
 ```rust
+use keybound::{HotkeyManager, Key, Modifier};
+
+let manager = HotkeyManager::new()?;
+
 let _handle1 = manager.register(
-    KeyCode::KEY_C,
-    &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-    || {
-        println!("Ctrl+Shift+C triggered!");
-    }
+    Key::C,
+    &[Modifier::Ctrl, Modifier::Shift],
+    || println!("Ctrl+Shift+C triggered!"),
 )?;
 
 let _handle2 = manager.register(
-    KeyCode::KEY_C,
-    &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTALT],
-    || {
-        println!("Ctrl+Alt+C triggered!");
-    }
+    Key::C,
+    &[Modifier::Ctrl, Modifier::Alt],
+    || println!("Ctrl+Alt+C triggered!"),
 )?;
 ```
 
