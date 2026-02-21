@@ -7,6 +7,10 @@
 //!
 //! Prior art: `archive/v0/src/events.rs`
 
-// TODO: HotkeyEvent enum (Pressed, Released, LayerChanged, SequenceStep)
-// TODO: HotkeyEventStream — async Stream impl
-// TODO: Integration with engine (engine emits events, stream consumes)
+// TODO: Expand event variants and stream internals as phases progress.
+
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub enum HotkeyEvent {}
+
+// #[derive(Debug, Clone, Default)]
+// pub struct HotkeyEventStream;

@@ -12,5 +12,6 @@ Create a feature branch and build it using red/green TDD. You **MUST** run the t
 Stop when the section is complete. You must complete the section.
 
 After completing the work, please start a review loop with the review_loop tool with fresh context and default iterations. Instruct each looping agent to commit after completing its review. It's important for the review loop to spend time thinking before acting.
+Do not stop the review loop manually after one iteration. Let it run until the tool reports completion (for example, no issues found or max iterations reached).
 
 After the review loop is complete, update @PLAN.md to check off the items that were completed in this section. Run `just clippy` and `just fmt`. Then create a PR. Do not reference the phase or section number in the commit or PR title, just describe what the changes accomplish.

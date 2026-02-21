@@ -1,5 +1,5 @@
-//! XDG GlobalShortcuts portal backend.
+//! XDG `GlobalShortcuts` portal backend.
 //!
 //! # Reference
 //!
-//! Prior art: `archive/v0/src/backend.rs` (PortalBackend portions)
+//! Prior art: `archive/v0/src/backend.rs` (`PortalBackend` portions)

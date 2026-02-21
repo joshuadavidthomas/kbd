@@ -35,15 +35,15 @@
 //!
 //! # Reference
 //!
-//! Prior art: `archive/v0/src/listener.rs` (357-line listener_loop),
+//! Prior art: `archive/v0/src/listener.rs` (357-line `listener_loop`),
 //! `archive/v0/src/listener/` (dispatch, io, sequence, hotplug, forwarding, state).
 //! The engine replaces all of this.
 
+pub(crate) mod devices;
 pub(crate) mod key_state;
 pub(crate) mod matcher;
 pub(crate) mod sequence;
 pub(crate) mod tap_hold;
-pub(crate) mod devices;
 
 #[cfg(feature = "grab")]
 pub(crate) mod forwarder;

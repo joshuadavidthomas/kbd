@@ -8,7 +8,7 @@
 //! | `HotkeyRegistration`         | Binding with Hotkey pattern   |
 //! | `SequenceRegistration`       | Binding with Sequence pattern |
 //! | `DeviceHotkeyRegistration`   | Binding with device filter    |
-//! | `TapHoldRegistration`        | Binding with TapHold pattern  |
+//! | `TapHoldRegistration`        | Binding with `TapHold` pattern  |
 //!
 //! One storage structure. One dispatch path. One handle type.
 //!

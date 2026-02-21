@@ -2,5 +2,5 @@
 //!
 //! # Reference
 //!
-//! Prior art: `archive/v0/src/backend.rs` (EvdevBackend portions),
+//! Prior art: `archive/v0/src/backend.rs` (`EvdevBackend` portions),
 //! `archive/v0/src/listener/io.rs`
