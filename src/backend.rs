@@ -35,7 +35,18 @@ pub enum Backend {
     Portal,
 }
 
+/// Interface implemented by each input backend (evdev, portal, etc.).
+///
+/// The [`HotkeyManager`](crate::HotkeyManager) owns a `dyn HotkeyBackend`
+/// and delegates listener startup, registration notifications, and capability
+/// queries to it.
 pub trait HotkeyBackend: Send + Sync {
+    /// Spawn a background thread that monitors keyboard input and dispatches
+    /// hotkey callbacks.
+    ///
+    /// `state` contains shared registration maps, a stop flag, key-state
+    /// tracker, and mode registry — everything the listener needs to match
+    /// incoming events against registered hotkeys.
     fn start_listener(&self, state: ListenerState) -> Result<JoinHandle<()>, Error>;
 
     /// Whether this backend supports multi-step key sequences.
