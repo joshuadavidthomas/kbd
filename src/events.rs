@@ -1,10 +1,21 @@
 use crate::hotkey::Hotkey;
 
+/// Events emitted by the hotkey system.
+///
+/// Subscribe via [`HotkeyEventStream`] (requires the `tokio` or `async-std`
+/// feature).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HotkeyEvent {
+    /// A registered hotkey was pressed.
     Pressed(Hotkey),
+    /// A registered hotkey was released.
     Released(Hotkey),
+    /// A step in a key sequence was completed.
+    ///
+    /// `step` is 1-indexed and increments toward `total`. When
+    /// `step == total`, the sequence callback has been invoked.
     SequenceStep { id: u64, step: usize, total: usize },
+    /// The active mode changed. `None` means no mode is active.
     ModeChanged(Option<String>),
 }
 
@@ -80,6 +91,13 @@ impl EventHub {
     }
 }
 
+/// Async stream of [`HotkeyEvent`]s.
+///
+/// Obtain one from [`HotkeyManager::event_stream`](crate::HotkeyManager::event_stream).
+/// Each stream is an independent subscriber — multiple streams each receive
+/// every event.
+///
+/// Requires the `tokio` or `async-std` feature.
 #[cfg(any(feature = "tokio", feature = "async-std"))]
 pub struct HotkeyEventStream {
     receiver: async_channel::Receiver<HotkeyEvent>,
@@ -87,10 +105,12 @@ pub struct HotkeyEventStream {
 
 #[cfg(any(feature = "tokio", feature = "async-std"))]
 impl HotkeyEventStream {
+    /// Wait for the next event. Returns `None` when the manager is stopped.
     pub async fn next(&mut self) -> Option<HotkeyEvent> {
         self.receiver.recv().await.ok()
     }
 
+    /// Non-blocking poll. Returns `None` if no event is available.
     pub fn try_next(&mut self) -> Option<HotkeyEvent> {
         self.receiver.try_recv().ok()
     }

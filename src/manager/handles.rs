@@ -14,7 +14,11 @@ pub(crate) enum RegistrationLocation {
     Device(DeviceRegistrationId),
 }
 
-/// Handle for unregistering a specific hotkey
+/// Handle for a registered hotkey.
+///
+/// The hotkey remains active as long as the handle (or any clone) exists.
+/// Call [`Handle::unregister`] to explicitly remove it, or simply drop the
+/// handle if you want the binding to live for the lifetime of the manager.
 #[derive(Clone)]
 pub struct Handle {
     pub(super) location: RegistrationLocation,
@@ -38,6 +42,8 @@ impl std::fmt::Debug for Handle {
 }
 
 impl Handle {
+    /// Remove this hotkey registration. Future key presses will no longer
+    /// trigger the callback.
     pub fn unregister(self) -> Result<(), Error> {
         match &self.location {
             RegistrationLocation::Global(key) => {
@@ -52,6 +58,9 @@ impl Handle {
     }
 }
 
+/// Handle for a registered key sequence.
+///
+/// See [`Handle`] for lifetime semantics.
 #[derive(Clone)]
 pub struct SequenceHandle {
     pub(super) id: SequenceId,
@@ -67,13 +76,16 @@ impl std::fmt::Debug for SequenceHandle {
 }
 
 impl SequenceHandle {
+    /// Remove this sequence registration.
     pub fn unregister(self) -> Result<(), Error> {
         self.manager.remove_sequence(self.id);
         Ok(())
     }
 }
 
-/// Handle for unregistering a tap-hold key binding.
+/// Handle for a registered tap-hold key binding.
+///
+/// See [`Handle`] for lifetime semantics.
 #[derive(Clone)]
 pub struct TapHoldHandle {
     pub(super) key: Key,
@@ -90,6 +102,7 @@ impl std::fmt::Debug for TapHoldHandle {
 }
 
 impl TapHoldHandle {
+    /// Remove this tap-hold registration.
     pub fn unregister(self) -> Result<(), Error> {
         self.manager
             .remove_tap_hold(self.key, &self.registration_marker);

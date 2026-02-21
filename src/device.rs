@@ -6,6 +6,21 @@ use evdev::KeyCode;
 use crate::error::Error;
 
 /// Filter for restricting hotkeys to specific input devices.
+///
+/// Pass to [`HotkeyOptions::device`](crate::HotkeyOptions::device) to bind a
+/// hotkey to a particular keyboard. Only supported on the evdev backend.
+///
+/// # Examples
+///
+/// ```
+/// use keybound::DeviceFilter;
+///
+/// // Match by device name substring
+/// let by_name = DeviceFilter::name_contains("StreamDeck");
+///
+/// // Match by USB vendor/product ID
+/// let by_id = DeviceFilter::usb(0x0fd9, 0x006c);
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeviceFilter {
     /// Match devices whose name contains the given substring.
