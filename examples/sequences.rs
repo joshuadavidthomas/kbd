@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use keybound::HotkeyManager;
 use keybound::Key;
+use keybound::Modifier;
 use keybound::SequenceOptions;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,15 +57,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Alt+A, Alt+B    → Tab aborts instead of Escape");
 
     // Sequence with timeout fallback: on timeout after the first step,
-    // dispatch the partial match as a regular hotkey instead of dropping it
-    let seq = "Ctrl+K, Ctrl+D".parse()?;
-    let fallback_hotkey = "Ctrl+K".parse()?;
+    // dispatch a registered hotkey instead of dropping the input.
+    // Here, Ctrl+G starts the sequence but isn't registered standalone.
+    // If the user doesn't complete the sequence, Ctrl+Shift+G fires.
+    let _fallback_target = manager.register(Key::G, &[Modifier::Ctrl, Modifier::Shift], || {
+        println!("[Seq 5 fallback] Ctrl+G timed out → Ctrl+Shift+G fired");
+    })?;
+    let seq = "Ctrl+G, Ctrl+L".parse()?;
     let _seq5 = manager.register_sequence(
         &seq,
-        SequenceOptions::new().timeout_fallback(fallback_hotkey),
-        || println!("[Seq 5] Ctrl+K → Ctrl+D completed!"),
+        SequenceOptions::new().timeout_fallback("Ctrl+Shift+G".parse()?),
+        || println!("[Seq 5] Ctrl+G → Ctrl+L completed!"),
     )?;
-    println!("  Ctrl+K, Ctrl+D  → Ctrl+K dispatched on timeout");
+    println!("  Ctrl+G, Ctrl+L  → on timeout, Ctrl+Shift+G fires as fallback");
 
     println!();
     println!("Try pressing the sequences above. Escape aborts a pending sequence.");
