@@ -411,9 +411,9 @@ mod tests {
     use super::Command;
     use super::EngineRuntime;
     use super::RegisteredBinding;
-    use crate::Action;
     use crate::binding::BindingId;
     use crate::key::Hotkey;
+    use crate::Action;
     use crate::Error;
     use crate::Key;
     use crate::Modifier;

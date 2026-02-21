@@ -122,7 +122,12 @@ impl HotkeyManager {
     }
 
     /// Register a simple hotkey callback.
-    pub fn register<F>(&self, key: Key, modifiers: &[Modifier], callback: F) -> Result<Handle, Error>
+    pub fn register<F>(
+        &self,
+        key: Key,
+        modifiers: &[Modifier],
+        callback: F,
+    ) -> Result<Handle, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
