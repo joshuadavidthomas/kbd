@@ -377,7 +377,7 @@ fn display_key(key: KeyCode) -> &'static str {
         KeyCode::KEY_UP => "Up",
         KeyCode::KEY_DOWN => "Down",
         KeyCode::KEY_MINUS => "Minus",
-        KeyCode::KEY_EQUAL => "Plus",
+        KeyCode::KEY_EQUAL => "Equal",
         KeyCode::KEY_LEFTBRACE => "LeftBracket",
         KeyCode::KEY_RIGHTBRACE => "RightBracket",
         KeyCode::KEY_BACKSLASH => "Backslash",
