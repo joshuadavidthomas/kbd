@@ -13,6 +13,8 @@ use crate::manager::SequenceId;
 use crate::manager::SequenceRegistration;
 use crate::mode::ModeRegistry;
 
+// SMELL: awful thin module? hard to see why and what's going on here
+
 pub(crate) struct ListenerState {
     pub(crate) registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     pub(crate) sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,

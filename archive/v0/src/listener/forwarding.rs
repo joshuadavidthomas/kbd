@@ -1,3 +1,5 @@
+// SMELL: this module should be gated one level up instead of littering it all here
+
 use evdev::KeyCode;
 
 #[cfg(feature = "grab")]
@@ -6,6 +8,7 @@ use super::state::MAX_FORWARDABLE_KEY_CODE;
 use super::state::VIRTUAL_FORWARDER_DEVICE_NAME;
 use crate::error::Error;
 
+// SMELL: trait for one impl? is this future proofing or YAGNI
 pub(crate) trait KeyEventForwarder: Send {
     fn forward_key_event(&mut self, key: KeyCode, value: i32) -> Result<(), Error>;
 }

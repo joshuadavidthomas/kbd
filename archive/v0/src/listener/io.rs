@@ -66,6 +66,7 @@ pub(crate) fn open_devices(
     Ok(devices)
 }
 
+// SMELL: why?
 pub(crate) fn should_ignore_device(info: &DeviceInfo, grab: bool) -> bool {
     grab && info.name == VIRTUAL_FORWARDER_DEVICE_NAME
 }
@@ -104,6 +105,8 @@ pub(crate) fn open_device(path: &Path, grab: bool) -> Result<DeviceState, String
         }
     }
 
+    // SMELL: what's going on here, is this mutating state? why the bare call?
+    // not just here -- but other places
     set_nonblocking(device.as_raw_fd(), path)?;
 
     Ok(DeviceState {

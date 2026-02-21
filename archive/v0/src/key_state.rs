@@ -6,6 +6,7 @@ use std::sync::Arc;
 use evdev::KeyCode;
 
 const TRACKED_KEY_CODES: usize = 768;
+// SMELL: why this? why here? what's this doing that shouldn't be handled by key.rs?
 const MODIFIER_KEYS: [KeyCode; 8] = [
     KeyCode::KEY_LEFTCTRL,
     KeyCode::KEY_RIGHTCTRL,

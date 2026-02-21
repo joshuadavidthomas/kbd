@@ -1,0 +1,14 @@
+//! Sequence state machine — tracks progress through multi-step patterns.
+//!
+//! When the first step of a sequence matches, enters pending state with a
+//! timeout. Subsequent key events either advance the sequence, complete it,
+//! or reset it.
+//!
+//! # Reference
+//!
+//! Prior art: `archive/v0/src/listener/sequence.rs`
+
+// TODO: SequenceState — tracks all active/pending sequences
+// TODO: on_key_event() — advance, complete, or reset pending sequences
+// TODO: check_timeouts() — fire standalone hotkeys or reset on timeout
+// TODO: Handle overlapping prefixes (key is both standalone and sequence start)

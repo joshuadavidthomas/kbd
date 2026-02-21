@@ -24,6 +24,8 @@ use crate::error::Error;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeviceFilter {
     /// Match devices whose name contains the given substring.
+    // SMELL: Stringly typed here.. is this the same thing as the string down in DeviceInfo?
+    // if it is, see that's confusing, we need a NewType.. if not.. well it's still confusing!
     NameContains(String),
     /// Match devices by USB vendor and product ID.
     UsbId { vendor: u16, product: u16 },
@@ -127,6 +129,7 @@ pub(crate) fn find_keyboard_devices() -> Result<Vec<PathBuf>, Error> {
     Ok(keyboards)
 }
 
+// SMELL: why does this function exist? it's unnecessary.
 fn permission_error_message() -> String {
     let username = std::env::var("USER").unwrap_or_else(|_| "<username>".into());
 

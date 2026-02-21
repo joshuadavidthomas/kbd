@@ -15,6 +15,7 @@ pub use options::ModeOptions;
 pub(crate) use registry::ModeRegistry;
 pub(crate) use stack::pop_timed_out_modes;
 
+// SMELL: what's this doing here?
 #[cfg(test)]
 pub(crate) mod tests {
     use std::sync::atomic::AtomicUsize;

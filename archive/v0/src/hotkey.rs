@@ -1,6 +1,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+// SMELL: excessive feature gates?
+// is this necessary? couldn't we gate it by an in file mod?
 #[cfg(feature = "serde")]
 use serde::de::Error as _;
 #[cfg(feature = "serde")]
@@ -240,8 +242,10 @@ impl fmt::Display for ParseHotkeyError {
     }
 }
 
+// SMELL: thiserror?
 impl std::error::Error for ParseHotkeyError {}
 
+// SMELL: doesn't this overlap with or belong in key.rs?
 fn parse_modifier(token: &str) -> Option<Modifier> {
     match token.to_ascii_lowercase().as_str() {
         "ctrl" | "control" => Some(Modifier::Ctrl),
@@ -252,6 +256,7 @@ fn parse_modifier(token: &str) -> Option<Modifier> {
     }
 }
 
+// SMELL: doesn't this overlap with or belong in key.rs?
 #[allow(clippy::too_many_lines)]
 fn parse_key(token: &str) -> Option<Key> {
     let upper = token.to_ascii_uppercase();
@@ -376,3 +381,5 @@ fn parse_key(token: &str) -> Option<Key> {
         _ => None,
     }
 }
+
+// SMELL: no tests?

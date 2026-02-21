@@ -1,761 +1,409 @@
-# keybound: Roadmap
+# keybound: Implementation Plan
 
-## Vision
+Ground-up rebuild based on [DESIGN.md](DESIGN.md).
 
-The universal global hotkey library for Linux. Works everywhere — Wayland,
-X11, TTY, sandboxed apps — by auto-negotiating the best available backend.
-Provides power-user features (key sequences, modes, event grabbing) that no
-other Rust crate offers.
-
-### Why this crate should exist
-
-The Linux hotkey ecosystem has a gap:
-
-- `global-hotkey` (1.5M downloads) — X11 only, no Wayland
-- `evdev-shortcut` — requires root/input group, no portal fallback
-- `hotkey-listener` — only 15 supported keys, no Meta/Super
-- XDG GlobalShortcuts portal — doesn't work on Sway/wlroots, no TTY
-
-No crate bridges these approaches. `keybound` will be the first library
-that "just works" across all Linux environments, and the only Rust crate with
-key sequences, modal layers, and event interception.
-
----
+Prior implementation archived in `archive/v0/` and tagged `v0-archive` in git.
+Reference implementation (keyd) in `reference/keyd/`.
 
 ## How to use this plan
 
-**Phases are strictly sequential.** Each phase has a completion gate (a summary
-table at the end of the phase). A phase is complete only when every `- [x]`
-checklist item in every section of that phase is checked. Do not begin work on
-Phase N+1 until Phase N's gate is satisfied.
+**Read [DESIGN.md](DESIGN.md) first.** It defines the domain model,
+architecture, and design decisions. This plan is the task breakdown.
 
-**Within a phase, work on the earliest incomplete section first.** Scan from
-the top (e.g., 1.1 → 1.2 → … → 1.6) and pick the first section that still has
-unchecked `- [ ]` items. Complete all of that section's checklist items before
-moving to the next section.
+**Phases are sequential.** Each phase produces a working, testable library.
+The output of one phase is the input for the next. Do not skip ahead.
 
-**When you finish a checklist item**, change its `- [ ]` to `- [x]` in this
-file and update the completion-gate summary table counts. This makes progress
-visible and prevents re-work.
+**Each phase is self-contained for a fresh agent.** An agent picking up
+Phase N needs: this file, DESIGN.md, the scaffolded `src/` files (with
+their doc comments and TODO items), and optionally `archive/v0/` for
+reference on how specific problems were solved before.
 
----
-
-## Phase 1: Foundation (make it worth publishing)
-
-These items make the crate a credible alternative to existing options.
-
-### 1.1 Unified backend: XDG portal + evdev with automatic fallback
-
-**Status: Complete** · **Priority: Critical — this is the moat**
-
-Try the XDG GlobalShortcuts portal first (no root needed where available).
-Fall back to evdev when the portal is unavailable or unsupported (common on
-Sway/wlroots, TTY, headless, and some compositor/portal combinations).
-
-| Environment          | Preferred backend | Notes |
-|----------------------|-------------------|-------|
-| KDE Plasma (Wayland) | Portal            | Use portal when GlobalShortcuts is implemented by the session. |
-| GNOME (Wayland)      | Portal            | Must gracefully fall back if the interface is missing/disabled. |
-| Hyprland             | Portal            | Depends on portal backend support; fall back automatically otherwise. |
-| Sway / wlroots       | evdev             | Usually no GlobalShortcuts support today. |
-| X11                  | evdev             | Portal often unavailable for this use case. |
-| TTY / headless       | evdev             | No desktop portal expected. |
-| Flatpak / sandboxed  | Portal            | Primary path when host exposes the portal. |
-
-Architecture:
-
-```
-pub trait HotkeyBackend: Send + Sync {
-    fn register(&self, hotkey: Hotkey, callback: Callback) -> Result<Id>;
-    fn unregister(&self, id: Id) -> Result<()>;
-    fn supports_grab(&self) -> bool;
-    fn supports_sequences(&self) -> bool;
-    // ...
-}
-
-struct PortalBackend { /* ashpd / zbus */ }
-struct EvdevBackend  { /* current implementation */ }
-```
-
-The public `HotkeyManager::new()` probes for the portal via D-Bus (when the
-`portal` feature is enabled). If the compositor responds and supports
-GlobalShortcuts, use `PortalBackend`. Otherwise, fall back to `EvdevBackend`.
-The caller never needs to know which backend is active.
-
-Important initialization rule: **backend probing must happen before evdev
-permission checks**. If portal is selected, manager creation must not fail due
-to missing `input` group membership.
-
-Permission checks should validate actual device access capability (or attempt to
-open candidate event devices) rather than relying only on group-name heuristics
-so environments with ACLs/capabilities behave correctly.
-
-Users who need a specific backend can opt in:
-
-```rust
-HotkeyManager::with_backend(Backend::Evdev)?;
-HotkeyManager::with_backend(Backend::Portal)?;
-```
-
-Dependencies: `ashpd` (XDG portal bindings), `zbus` (D-Bus). These should be
-behind a `portal` feature flag so pure-evdev users don't pay the cost.
-
-Backend selection must respect compile-time availability:
-- if both `portal` and `evdev` are compiled, use runtime probing/fallback
-- if only one backend is compiled, use it directly
-- if requested backend is not compiled in, return a clear feature-disabled error
-- do not silently fall back when the caller explicitly requests a backend;
-  return the backend-specific initialization error instead
-
-Success criteria checklist (Phase 1.1 is complete only when all are checked):
-- [x] The portal backend is a real implementation (not a stub) that can register and unregister hotkeys through XDG GlobalShortcuts.
-- [x] Default initialization prefers portal when available and functional, otherwise falls back to evdev automatically.
-- [x] Portal probing occurs before any evdev permission/device checks, so portal-capable environments do not fail due to `/dev/input` access constraints.
-- [x] Explicitly requesting a specific backend never silently falls back to the other; it returns the backend-specific error.
-- [x] Compile-time feature gating is verified for all combinations (`evdev` only, `portal` only, both).
-- [x] Integration tests cover runtime selection/fallback paths and feature-gated error cases.
-
-Progress update (implemented so far):
-- Added backend abstraction with `Backend` selection and explicit `with_backend(...)` API.
-- Added clear `BackendUnavailable(...)` errors for non-compiled backend requests.
-- Improved evdev listener reliability with deterministic modifier canonicalization,
-  startup failure surfacing, and callback panic containment.
-- Added focused regression tests for backend resolution, modifier normalization,
-  and listener callback panic handling.
-- Added compile-time backend feature gating (`evdev`, `portal`) and strict backend
-  request behavior (`BackendUnavailable` when portal is not compiled in).
-- Added backend-specific initialization errors (`BackendInit(...)`) so explicit portal
-  requests fail clearly when portal initialization fails.
-- Added D-Bus portal probing logic and regression tests to verify portal owner/interface
-  checks before backend selection.
-- Added `HotkeyManager::new()` fallback behavior so automatic backend selection falls back
-  to evdev if portal initialization fails, while explicit backend requests remain strict.
-- Implemented portal registration synchronization using XDG GlobalShortcuts via `ashpd`.
-- Added integration tests for backend detection fallback and feature-gated backend request errors.
-
-### 1.2 Release / hold events
-
-**Status: Complete** · **Priority: High — low effort, high value**
-
-The evdev layer already delivers key release (value=0) and repeat (value=2)
-events. The current code ignores them. Expose them to enable:
-
-- **Press + release callbacks**: push-to-talk, hold-to-activate
-- **Hold duration**: fire only after key held for N ms
-- **Repeat awareness**: optionally fire on autorepeat, or suppress it
-
-API sketch:
-
-```rust
-manager.register(
-    KeyCode::KEY_F1,
-    &[Mod::Ctrl],
-    HotkeyOptions::new()
-        .on_press(|| println!("pressed"))
-        .on_release(|| println!("released"))
-        .min_hold(Duration::from_millis(500)),  // only fire after 500ms hold
-)?;
-```
-
-Success criteria checklist:
-- [x] Separate callbacks can be registered for key press and key release events.
-- [x] A hotkey can require a minimum hold duration before the press callback fires.
-- [x] Autorepeat events can be optionally forwarded to or suppressed from callbacks.
-- [x] Tests cover press, release, hold duration, and repeat scenarios without hardware.
-
-### 1.3 String parsing for hotkey definitions
-
-**Status: Complete** · **Priority: High — table stakes**
-
-Both competitors have this. Users need it for config files, CLI tools, and
-anywhere hotkeys are defined by end users rather than hardcoded.
-
-```rust
-let hotkey = "Ctrl+Shift+A".parse::<Hotkey>()?;
-let hotkey = "Super+Return".parse::<Hotkey>()?;
-let sequence = "Ctrl+K, Ctrl+C".parse::<HotkeySequence>()?;
-```
-
-Case-insensitive, supports common aliases (`Super`/`Meta`/`Win`,
-`Ctrl`/`Control`, `Return`/`Enter`). Round-trips via `Display`.
-
-Success criteria checklist:
-- [x] Hotkeys can be parsed from human-readable strings (e.g., `"Ctrl+Shift+A"`).
-- [x] Parsing is case-insensitive and supports common aliases (Super/Meta/Win, Ctrl/Control, Return/Enter).
-- [x] Parsed hotkeys round-trip through display (parse → format → parse produces the same result).
-- [x] Multi-step sequences can be parsed from comma-separated strings (e.g., `"Ctrl+K, Ctrl+C"`).
-- [x] Parser covers the full range of typical keys: F-keys (F1–F24), arrow keys, Delete, Backspace, Insert, Home/End/PageUp/PageDown, numpad, and common punctuation/symbols.
-
-### 1.4 Conflict detection
-
-**Status: Complete** · **Priority: High — correctness**
-
-The current code silently overwrites duplicate registrations. This is a bug
-magnet. Instead:
-
-```rust
-manager.register(...)  // Ok(Handle)
-manager.register(...)  // Err(Error::AlreadyRegistered { key, modifiers })
-```
-
-Add `Error::AlreadyRegistered` variant. Provide `manager.is_registered()` for
-checking before registering. Provide `manager.replace()` for intentional
-overwrites.
-
-Conflict checks must use the same modifier-normalization rules as runtime
-matching. In particular, left/right variants (Ctrl/Alt/Shift/Meta) should be
-canonicalized so semantically equivalent registrations cannot coexist and cause
-non-deterministic callback selection.
-
-Success criteria checklist:
-- [x] Registering a hotkey that is already bound returns an error (not a silent overwrite).
-- [x] Callers can query whether a given key+modifier combo is already registered.
-- [x] An intentional replacement path exists for callers who want to overwrite an existing binding.
-- [x] Conflict detection uses the same modifier canonicalization as runtime matching (left/right variants are equivalent).
-- [x] Tests cover: duplicate registration error, query, intentional replacement, and left/right modifier equivalence.
-
-### 1.5 Device hotplug
-
-**Status: Complete** · **Priority: High — reliability**
-
-Keyboards get unplugged, Bluetooth devices reconnect. The listener should
-handle this without restarting.
-
-Use `inotify` to watch `/dev/input` for new `event*` files. When a new device
-appears, probe it for keyboard capabilities and add it to the listener. When a
-device disappears (fd returns errors), remove it from the poll set.
-
-Hotplug handling must also repair key/modifier state on disconnect. If a
-device vanishes while keys are held, synthesize release/state cleanup so
-modifiers do not get stuck active.
-
-Success criteria checklist:
-- [x] Keyboards connected after the listener starts are automatically detected and begin delivering hotkey events.
-- [x] Keyboards disconnected at runtime are removed gracefully without crashing the listener.
-- [x] Modifier state is cleaned up on device disconnect (no stuck modifiers from a vanished keyboard).
-- [x] Tests cover: device addition, device removal, and modifier-state cleanup on disconnect.
-
-### 1.6 Event loop architecture (latency + CPU correctness)
-
-**Status: Complete** · **Priority: High — production behavior**
-
-> Current state: Basic sleep-based polling loop (5ms interval) with non-blocking
-> reads. Needs migration to poll/epoll-driven model.
-
-The current polling-style listener design is simple but can waste CPU and add
-latency jitter under load. Move to a poll/epoll-driven wait model for device
-FDs and hotplug notifications so callbacks fire promptly without busy waiting.
-
-Requirements:
-- No fixed sleep-based busy loop in steady state
-- Bounded shutdown latency when stop is requested
-- Deterministic behavior when many events arrive in bursts
-
-Success criteria checklist:
-- [x] The listener blocks efficiently waiting for input — no busy-loop or fixed-interval sleep in steady state.
-- [x] Shutdown completes within a bounded, small time after being requested (not dependent on accumulated sleep cycles).
-- [x] Burst events (many keys in rapid succession) are delivered to callbacks without added latency.
-- [x] CPU usage at idle is near zero.
-- [x] Tests verify prompt event delivery and clean shutdown timing.
-
-### Phase 1 completion gate
-
-**Phase 1 is complete only when every checklist item in sections 1.1–1.6 is
-checked.** Do not begin any Phase 2 work until this gate is satisfied. When
-picking up work, find the earliest section (1.1–1.6) with unchecked items and
-complete those first.
-
-| Section | Status |
-|---------|--------|
-| 1.1 Backend trait + portal/evdev fallback | Complete (6/6 checked) |
-| 1.2 Release / hold events | Complete (4/4 checked) |
-| 1.3 String parsing | Complete (5/5 checked) |
-| 1.4 Conflict detection | Complete (5/5 checked) |
-| 1.5 Device hotplug | Complete (4/4 checked) |
-| 1.6 Event loop architecture | Complete (5/5 checked) |
+**When you finish a checklist item**, change its `- [ ]` to `- [x]`.
 
 ---
 
-## Phase 2: Power features (make it the obvious choice)
+## Phase 1: Core types and the tracer bullet
 
-These features differentiate from every existing Rust crate.
+**Goal**: `manager.register(Key::C, &[Modifier::Ctrl], || println!("fired"))`
+works end-to-end. A key is physically pressed, a callback fires.
 
-### 2.1 Key sequences / chords
+This phase builds the minimum vertical slice through the entire architecture:
+types → manager → engine → evdev → callback. Everything else is layered on
+in later phases.
 
-**Status: Complete** · **Priority: Critical — no Rust crate has this**
+### 1.1 Key types (`src/key.rs`)
 
-Multi-step hotkey combos with configurable timeout:
+Implement `Key`, `Modifier`, `Hotkey`, `HotkeySequence`.
 
-```rust
-// Emacs-style: Ctrl+X followed by Ctrl+S within 1 second
-manager.register_sequence(
-    &["Ctrl+X", "Ctrl+S"],
-    SequenceOptions::new().timeout(Duration::from_secs(1)),
-    || save_file(),
-)?;
+- [ ] `Key` enum with full key set (letters, numbers, F-keys, arrows, navigation, punctuation, numpad, modifiers).
+- [ ] `Modifier` enum (Ctrl, Shift, Alt, Super) with left/right canonicalization.
+- [ ] Shared logic between `Key` and `Modifier` — no duplicated `as_str()`, `Display`, or conversion implementations.
+- [ ] `From<evdev::KeyCode>` and `Into<evdev::KeyCode>` on `Key` (standard traits, not ad-hoc methods).
+- [ ] `Modifier` derivable from `Key` — `Modifier::Ctrl` maps to `Key::LeftCtrl`/`Key::RightCtrl`.
+- [ ] `Hotkey` struct (trigger `Key` + `Vec<Modifier>` or small set type). `FromStr` parses `"Ctrl+Shift+A"`, `Display` round-trips.
+- [ ] `HotkeySequence` struct (`Vec<Hotkey>`). `FromStr` parses `"Ctrl+K, Ctrl+C"`, `Display` round-trips.
+- [ ] Case-insensitive parsing with aliases (Super/Meta/Win, Ctrl/Control, Return/Enter).
+- [ ] Tests: parsing, display, round-trip, evdev conversion, modifier canonicalization.
 
-// Leader key pattern: press Super, then 'f', then 'b' for "firefox browser"
-manager.register_sequence(
-    &["Super", "F", "B"],
-    SequenceOptions::default(),
-    || launch_firefox(),
-)?;
-```
+Reference: `archive/v0/src/key.rs`, `archive/v0/src/hotkey.rs`
 
-Note: this requires explicit support for modifier-only sequence steps. If that
-support is deferred, the leader-key example should use a non-modifier key.
+### 1.2 Action and binding types (`src/action.rs`, `src/binding.rs`)
 
-Implementation: a state machine per registered sequence. On partial match,
-start a timer. If the next step matches before timeout, advance. If timeout
-expires or wrong key, reset. The `timeout_key` option (from xremap) lets you
-specify what to emit when a partial sequence times out.
+- [ ] `Action` enum with `Callback(Box<dyn Fn() + Send + Sync>)` variant. Other variants (`EmitKey`, `PushLayer`, etc.) defined but not yet functional — they exist in the type so the API is forward-compatible.
+- [ ] `impl<F: Fn() + Send + Sync + 'static> From<F> for Action` — closures auto-convert.
+- [ ] `BindingId` newtype (u64 or similar) for unique identification.
+- [ ] `BindingOptions` struct with `passthrough` field (as enum, not bool). Other option fields can be added in later phases.
+- [ ] `DeviceFilter` enum (name pattern, USB vendor/product) — type defined, filtering implemented in Phase 4.
+- [ ] Tests: Action from closure, BindingId uniqueness.
 
-If `timeout_key` is supported, document backend behavior explicitly: evdev can
-emit via uinput, while portal-only sessions should either reject this option or
-degrade predictably with a clear error.
+### 1.3 Error type (`src/error.rs`)
 
-Edge cases to handle:
-- Overlapping prefixes (`Ctrl+K` is both a standalone hotkey and the first
-  step of `Ctrl+K, Ctrl+C`) — standalone fires on timeout if no second step
-  (and provide an option for immediate standalone firing for low-latency binds)
-- Multiple active sequences — track independently
-- Sequence cancelled by pressing Escape (configurable abort key)
+- [ ] `Error` enum using `thiserror`.
+- [ ] Variants: `Parse`, `AlreadyRegistered`, `BackendInit`, `BackendUnavailable`, `PermissionDenied`, `DeviceError`, `UnsupportedFeature`, `ManagerStopped`, `EngineError`.
+- [ ] Absorb `ParseHotkeyError` — either as `Error::Parse` variant or as a separate type convertible via `From`.
+- [ ] Tests: error display messages are useful.
 
-Success criteria checklist:
-- [x] Multi-step hotkey sequences can be registered with a configurable timeout between steps.
-- [x] Completing all steps of a sequence within the timeout fires the callback.
-- [x] Partial sequences reset when the timeout expires (no stale state lingers).
-- [x] Pressing the wrong key mid-sequence resets that sequence.
-- [x] When a hotkey is both a standalone binding and the first step of a sequence, the standalone fires on timeout if no second step arrives.
-- [x] A configurable abort key (default: Escape) cancels any active sequence.
-- [x] Multiple in-progress sequences are tracked independently (one doesn't interfere with another).
-- [x] On sequence timeout, an optional fallback key can be emitted (evdev only; portal returns a clear error since it cannot emit synthetic events).
-- [x] Tests cover: complete sequence, timeout, wrong key, overlapping prefixes, abort key, and concurrent sequences.
+### 1.4 Engine skeleton (`src/engine/`)
 
-### 2.2 Event grabbing / interception
+The message-passing architecture.
 
-**Status: Complete** · **Priority: High — essential for real hotkey daemons**
+- [ ] `Command` enum: `Register`, `Unregister`, `Shutdown`. (Layer commands added in Phase 3.)
+- [ ] Reply mechanism: `Register` carries a oneshot sender for `Result<(), Error>`.
+- [ ] `Engine` struct that owns: bindings (`Vec` or `HashMap`), devices, key state.
+- [ ] `engine::run()` — event loop: `poll()` on device fds + wake fd, drain commands, process events.
+- [ ] Wake mechanism: eventfd (or pipe) so command sends wake the poll.
+- [ ] Shutdown: `Command::Shutdown` breaks the event loop, thread exits.
+- [ ] Tests: engine starts, accepts commands, shuts down cleanly.
 
-Use `EVIOCGRAB` (evdev's `device.grab()`) to exclusively capture keyboard
-input. When grabbed, events don't reach other applications. Re-emit
-non-hotkey events through a virtual `uinput` device.
+Reference: `archive/v0/src/listener.rs` (event loop structure),
+`archive/v0/src/listener/io.rs` (poll mechanics)
 
-```rust
-let manager = HotkeyManager::builder()
-    .grab(true)  // exclusive capture
-    .build()?;
+### 1.5 Device reading (`src/engine/devices.rs`)
 
-// This hotkey is consumed — the compositor never sees Super+L
-manager.register(KeyCode::KEY_L, &[Mod::Super], || lock_screen())?;
+- [ ] Discover keyboard devices in `/dev/input/`.
+- [ ] Read key events from evdev devices (press, release, repeat).
+- [ ] Convert raw `KeyCode` to `Key`.
+- [ ] Device hotplug via inotify (add/remove devices at runtime).
+- [ ] Clean up key state on device disconnect.
+- [ ] Ignore non-keyboard devices.
+- [ ] Tests: device discovery, hotplug event parsing.
 
-// Passthrough: trigger callback AND let the key reach applications
-manager.register_with_options(
-    KeyCode::KEY_A, &[Mod::Ctrl],
-    HotkeyOptions::new().passthrough(true),
-    || log_shortcut(),
-)?;
-```
+Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 
-This is what makes keyd and xremap powerful. The evdev crate already exposes
-`device.grab()`. The hard part is the uinput re-emission of non-matched
-events — the `evdev` crate's `UinputDevice` or the `uinput` crate can handle
-this.
+### 1.6 Manager and handle (`src/manager.rs`, `src/handle.rs`)
 
-Only available with the evdev backend. The portal backend should return a
-clear `UnsupportedFeature`-style error when grab/interception is requested.
+- [ ] `HotkeyManager::new()` — spawn engine thread, return manager.
+- [ ] `HotkeyManager::builder()` — builder for explicit backend/grab configuration.
+- [ ] `manager.register(key, modifiers, callback)` — sends `Command::Register`, waits for reply, returns `Handle`.
+- [ ] `Handle` holds `BindingId` + command sender. `Drop` sends `Command::Unregister`.
+- [ ] Conflict detection: registering a duplicate hotkey returns `Error::AlreadyRegistered`.
+- [ ] `manager.is_registered(key, modifiers)` — query via command/reply.
+- [ ] Tests: register, unregister via drop, conflict detection, shutdown.
 
-Success criteria checklist:
-- [x] Exclusive keyboard capture prevents matched hotkey events from reaching other applications (compositor, other programs).
-- [x] Non-hotkey events are re-emitted through a virtual device so normal typing is unaffected.
-- [x] Individual hotkeys can be marked as passthrough: callback fires AND the event still reaches applications.
-- [x] The portal backend returns a clear unsupported-feature error when grab is requested.
-- [x] Grab is behind a feature flag; requesting it when the feature is not compiled in returns a clear error.
-- [x] Tests cover: grabbed hotkey consumed, passthrough forwarding, portal rejection, and feature-disabled error.
+### 1.7 Basic hotkey matching (`src/engine/matcher.rs`)
 
-### 2.3 Modes / layers
+- [ ] Given a key event + current modifier state, find the matching binding.
+- [ ] Modifier state derived from key state (what modifier keys are currently pressed).
+- [ ] Match fires callback via `Action::Callback`.
+- [ ] Unmatched events ignored (no grab mode yet).
+- [ ] Tests: single hotkey match, modifier combinations, no match.
 
-**Status: Complete** · **Priority: High — no Rust crate has this**
+### 1.8 Integration and public API (`src/lib.rs`)
 
-Named groups of hotkeys that can be pushed/popped like a stack. Inspired by
-swhkd's mode system and QMK firmware layers.
+- [ ] Public re-exports are correct and minimal.
+- [ ] The example from DESIGN.md compiles and works: `manager.register(Key::C, &[Modifier::Ctrl, Modifier::Shift], || ...)`.
+- [ ] `cargo test` passes, `cargo clippy` clean, `cargo doc` builds.
 
-```rust
-// Normal mode (always active at the bottom of the stack)
-manager.register(KeyCode::KEY_R, &[Mod::Super], Mode::push("resize"))?;
-manager.register(KeyCode::KEY_N, &[Mod::Super], Mode::push("launch"))?;
+### Phase 1 gate
 
-// Resize mode — h/j/k/l without modifiers control window size
-manager.mode("resize", |m| {
-    m.register(KeyCode::KEY_H, &[], || shrink_left())?;
-    m.register(KeyCode::KEY_J, &[], || grow_down())?;
-    m.register(KeyCode::KEY_K, &[], || shrink_up())?;
-    m.register(KeyCode::KEY_L, &[], || grow_right())?;
-    m.register(KeyCode::KEY_ESC, &[], Mode::pop())?;  // return to normal
-    Ok(())
-})?;
-
-// Launch mode — oneshot (auto-pops after one keypress)
-manager.mode_with_options("launch", ModeOptions::oneshot(), |m| {
-    m.register(KeyCode::KEY_F, &[], || launch("firefox"))?;
-    m.register(KeyCode::KEY_T, &[], || launch("terminal"))?;
-    m.register(KeyCode::KEY_E, &[], || launch("editor"))?;
-    Ok(())
-})?;
-```
-
-Mode options (from swhkd):
-- `oneshot` — auto-pop after one keypress fires
-- `swallow` — suppress all non-matching events while in this mode
-- `timeout` — auto-pop after N seconds of inactivity
-
-Implementation: maintain a stack of layers. Each layer stores exact hotkey
-bindings, and lookup checks from top to bottom. This avoids `HashMap` key
-collisions and supports same key combos in different modes by design. Mode
-transitions are push/pop operations on that stack.
-
-Success criteria checklist:
-- [x] Named groups of hotkeys (modes) can be defined and activated/deactivated at runtime.
-- [x] Modes behave as a stack: the most recently activated mode's bindings take priority.
-- [x] The same key combo can exist in different modes without conflict.
-- [x] A oneshot option auto-deactivates the mode after one hotkey fires.
-- [x] A swallow option suppresses all non-matching key events while the mode is active.
-- [x] A timeout option auto-deactivates the mode after a period of inactivity.
-- [x] Tests cover: activation/deactivation, oneshot, swallow, timeout, stack ordering, and same-key-different-mode.
-
-### 2.4 Device-specific hotkeys
-
-**Status: Complete** · **Priority: Medium — natural fit for evdev**
-
-Different hotkeys for different keyboards. The evdev backend already has
-per-device file descriptors — just need to associate registrations with device
-filters.
-
-```rust
-// Only trigger on a specific device (e.g., a macro pad)
-manager.register_with_options(
-    KeyCode::KEY_1, &[],
-    HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
-    || scene_1(),
-)?;
-
-// Filter by vendor/product ID
-manager.register_with_options(
-    KeyCode::KEY_F1, &[],
-    HotkeyOptions::new().device(DeviceFilter::usb(0x1234, 0x5678)),
-    || custom_action(),
-)?;
-```
-
-Use cases: macro pads, secondary keyboards, foot pedals. The listener loop
-already iterates per-device — just need to tag events with their source device
-and filter registrations accordingly.
-
-Device-scoped matching also requires device-scoped key state. Modifier tracking
-must be maintained per device (with a safe aggregate view for global binds) so
-a modifier held on keyboard A does not accidentally satisfy a hotkey bound to
-keyboard B.
-
-Success criteria checklist:
-- [x] Hotkeys can be restricted to specific input devices (by name pattern, vendor/product ID, or similar filter).
-- [x] A hotkey bound to device A does not fire from events on device B.
-- [x] Modifier state is tracked per device: a modifier held on one keyboard does not satisfy a device-specific hotkey bound to a different keyboard.
-- [x] Global (unfiltered) hotkeys still use aggregate modifier state across all devices.
-- [x] Tests cover: device-specific match, device-specific miss, per-device modifier isolation, and global aggregate behavior.
-
-### 2.5 Tap vs. hold (dual-function keys)
-
-**Status: Complete** · **Priority: Medium — popular in keyboard community**
-
-A key does one thing when tapped, another when held. This is keyd's
-`overload()` and QMK's `LT()`/`MT()`.
-
-```rust
-manager.register_tap_hold(
-    KeyCode::KEY_CAPSLOCK,
-    TapAction::emit(KeyCode::KEY_ESC),          // tap: Escape
-    HoldAction::modifier(KeyCode::KEY_LEFTCTRL), // hold: Ctrl
-    TapHoldOptions::new().threshold(Duration::from_millis(200)),
-)?;
-```
-
-Requires event grabbing (Phase 2.2) since we need to intercept the key and
-decide whether to re-emit it as the tap action or apply it as a modifier.
-This feature depends on synthetic event emission in the evdev backend (via
-uinput) and should return a clear unsupported-feature error on backends that
-cannot safely emulate tap/hold behavior. The timing heuristic follows keyd's
-model: resolve as "hold" if another key is pressed while the key is down, or
-if held past the threshold duration.
-
-Success criteria checklist:
-- [x] A key can be configured to perform one action on tap and a different action when held.
-- [x] Tap resolves when the key is released before the threshold duration.
-- [x] Hold resolves when the key is held past the threshold duration.
-- [x] Hold resolves early if another key is pressed while the dual-function key is down (keyd model).
-- [x] Tap/hold requires event grabbing; requesting it without grab support returns a clear error.
-- [x] The tap action produces the expected key event visible to other applications (synthetic emission).
-- [x] Tests cover: tap, hold by duration, hold by interrupting keypress, and missing-grab error.
-
-### Phase 2 completion gate
-
-**Phase 2 is complete only when every checklist item in sections 2.1–2.5 is
-checked.** Do not begin any Phase 3 work until this gate is satisfied. When
-picking up work, find the earliest section (2.1–2.5) with unchecked items and
-complete those first.
-
-| Section | Status |
-|---------|--------|
-| 2.1 Key sequences / chords | Complete (9/9 checked) |
-| 2.2 Event grabbing | Complete (6/6 checked) |
-| 2.3 Modes / layers | Complete (7/7 checked) |
-| 2.4 Device-specific hotkeys | Complete (5/5 checked) |
-| 2.5 Tap vs. hold | Complete (7/7 checked) |
+| Section | Items |
+|---------|-------|
+| 1.1 Key types | 0/9 |
+| 1.2 Action and binding | 0/6 |
+| 1.3 Error type | 0/4 |
+| 1.4 Engine skeleton | 0/7 |
+| 1.5 Device reading | 0/7 |
+| 1.6 Manager and handle | 0/7 |
+| 1.7 Basic matching | 0/5 |
+| 1.8 Integration | 0/3 |
 
 ---
 
-## Phase 3: Polish (make it production-ready)
+## Phase 2: Grab mode, key state, and event forwarding
 
-### 3.1 Async API
+**Goal**: Grab mode works. Matched hotkeys are consumed, unmatched events
+are forwarded through uinput. Key state is queryable.
 
-**Status: Complete**
+### 2.1 Grab mode (`src/engine/devices.rs`, `src/engine/forwarder.rs`)
 
-Provide an `async` interface alongside the callback API. Feature-gated behind
-`tokio` and `async-std` features.
+- [ ] `EVIOCGRAB` on devices when grab mode is enabled.
+- [ ] Virtual uinput device creation for event forwarding.
+- [ ] Unmatched key events forwarded through virtual device.
+- [ ] Matched events consumed (not forwarded) by default.
+- [ ] Passthrough option: matched events forwarded AND action executed.
+- [ ] Self-detection: ignore our own virtual device in device discovery.
+- [ ] Portal backend returns clear `UnsupportedFeature` error for grab.
+- [ ] Tests: event consumption, forwarding, passthrough, self-detection.
 
-```rust
-let mut stream = manager.event_stream();
-while let Some(event) = stream.next().await {
-    match event {
-        HotkeyEvent::Pressed(id) => { /* ... */ }
-        HotkeyEvent::Released(id) => { /* ... */ }
-        HotkeyEvent::SequenceStep { id, step, total } => { /* ... */ }
-        HotkeyEvent::ModeChanged(name) => { /* ... */ }
-    }
-}
-```
+Reference: `archive/v0/src/listener/forwarding.rs`,
+`archive/v0/src/listener/io.rs` (EVIOCGRAB, self-detection)
 
-Success criteria checklist:
-- [x] An async stream-based interface is available as an alternative to callbacks for receiving hotkey events.
-- [x] The stream delivers press, release, sequence-step, and mode-change events.
-- [x] The async interface is behind a feature flag so non-async users pay no dependency cost.
-- [x] The async and callback interfaces can coexist (enabling one does not disable the other).
-- [x] The stream completes cleanly when the manager shuts down.
-- [x] Tests cover: event delivery, clean completion on shutdown, and feature-gated compilation.
+### 2.2 Key state queries
 
-### 3.2 Debouncing / rate limiting
+- [ ] `manager.is_key_pressed(key)` — queries engine via command/reply.
+- [ ] `manager.active_modifiers()` — returns set of held modifiers, derived from key state.
+- [ ] Per-device key state tracking (for device-specific bindings in Phase 4).
+- [ ] Modifier state cleaned up on device disconnect.
+- [ ] Tests: key state during press/release, modifier derivation, disconnect cleanup.
 
-**Status: Complete**
+### Phase 2 gate
 
-Prevent rapid-fire callback invocations:
-
-```rust
-HotkeyOptions::new()
-    .debounce(Duration::from_millis(100))   // ignore triggers within 100ms
-    .max_rate(Duration::from_millis(500))   // at most once per 500ms
-```
-
-Success criteria checklist:
-- [x] A per-hotkey debounce option suppresses repeated triggers within a configurable time window.
-- [x] A per-hotkey rate-limit option caps callback invocations to at most once per configurable interval.
-- [x] Debounce and rate-limit can be combined on the same hotkey.
-- [x] Tests cover: debounce suppression, rate limiting, and combined behavior.
-
-### 3.3 Key state query API
-
-**Status: Complete**
-
-> Current state: Modifier state is tracked internally in the listener thread
-> (`active_modifiers: HashSet<KeyCode>`), but not exposed via any public API.
-
-Expose the internal modifier tracking as a public API:
-
-```rust
-manager.is_key_pressed(KeyCode::KEY_LEFTCTRL)  // -> bool
-manager.active_modifiers()                       // -> HashSet<KeyCode>
-```
-
-Success criteria checklist:
-- [x] Callers can query whether a specific key is currently pressed.
-- [x] Callers can retrieve the set of currently active modifiers.
-- [x] Queried state is consistent with the listener's internal tracking.
-- [x] Queries are thread-safe and do not block the listener.
-- [x] Tests cover: query while key is held, query after release, and concurrent access from multiple threads.
-
-### 3.4 Configuration serialization
-
-**Status: Complete**
-
-Support loading hotkey definitions from structured data (serde):
-
-```rust
-#[derive(Deserialize)]
-struct HotkeyConfig {
-    hotkeys: Vec<HotkeyDef>,
-    modes: HashMap<String, Vec<HotkeyDef>>,
-    sequences: Vec<SequenceDef>,
-}
-```
-
-This lets applications load hotkey configs from TOML/JSON/YAML files without
-writing parsing code.
-
-Success criteria checklist:
-- [x] Hotkey definitions (single hotkeys, sequences, and mode bindings) can be deserialized from structured data (TOML, JSON, YAML, etc.).
-- [x] Deserialized definitions can be registered directly without manual conversion.
-- [x] Serialization is behind a feature flag so non-config users pay no dependency cost.
-- [x] Invalid configuration data produces clear, actionable error messages.
-- [x] Tests cover: deserialization, round-trip serialization, and invalid config errors.
-
-### Phase 3 completion gate
-
-**Phase 3 is complete only when every checklist item in sections 3.1–3.4 is
-checked.** When picking up work, find the earliest section (3.1–3.4) with
-unchecked items and complete those first.
-
-| Section | Status |
-|---------|--------|
-| 3.1 Async API | Complete (6/6 checked) |
-| 3.2 Debouncing / rate limiting | Complete (4/4 checked) |
-| 3.3 Key state query | Complete (5/5 checked) |
-| 3.4 Configuration serialization | Complete (5/5 checked) |
+| Section | Items |
+|---------|-------|
+| 2.1 Grab mode | 0/8 |
+| 2.2 Key state queries | 0/5 |
 
 ---
 
-## Cross-cutting architecture constraints
+## Phase 3: Layers
 
-These constraints apply across phases and should guide all implementations:
+**Goal**: Named groups of bindings that stack. `Layer::new("nav").bind(...)`
+works. Push/pop/toggle from callbacks and manager.
 
-- **Deterministic fallback policy**: backend selection should be predictable and
-  inspectable (`manager.active_backend()` or equivalent), so debugging
-  environment-specific behavior is straightforward.
-- **Feature-gated behavior must be explicit**: when `portal` or `grab` features
-  are disabled at compile time, API errors/messages should explain that the
-  capability is not compiled in (not just "unavailable").
-- **Modifier state correctness across devices**: track modifier state in a way
-  that tolerates multiple keyboards and disconnects without producing sticky
-  modifiers or phantom releases.
+### 3.1 Layer definition and registration (`src/layer.rs`)
 
----
+- [ ] `Layer` builder: `Layer::new("name").bind(key, mods, action).swallow().build()`.
+- [ ] `LayerOptions`: oneshot (auto-pop after N keys), swallow (suppress unmatched), timeout (auto-pop after duration).
+- [ ] `manager.define_layer(layer)` — sends layer definition to engine.
+- [ ] Engine stores layers by name.
+- [ ] Tests: layer construction, option configuration.
 
-## Feature flags
+### 3.2 Layer stack operations
 
-```toml
-[features]
-default = ["evdev"]
-evdev = ["dep:evdev", "dep:libc"]
-portal = ["dep:ashpd", "dep:zbus"]
-grab = ["evdev", "dep:uinput"]
-tokio = ["dep:tokio"]
-async-std = ["dep:async-std"]
-serde = ["dep:serde"]
-```
+- [ ] `manager.push_layer("name")` / `manager.pop_layer()`.
+- [ ] `Action::PushLayer` / `Action::PopLayer` / `Action::ToggleLayer` — layer control from within callbacks/bindings.
+- [ ] Engine maintains layer stack. Matching walks stack top-down then global.
+- [ ] Oneshot: layer auto-pops after N keypresses.
+- [ ] Swallow: unmatched keys in the active layer are consumed, not passed to lower layers.
+- [ ] Timeout: layer auto-pops after inactivity period.
+- [ ] Tests: push/pop, stack priority, oneshot, swallow, timeout, same key in different layers.
 
-Pure evdev users get a minimal dependency tree. Portal users opt in.
-Grab mode pulls in uinput. Async is optional.
+### 3.3 Press cache (`src/engine/`)
 
-Define expected behavior for feature combinations in docs/tests (e.g.
-`--no-default-features --features portal`, `--features evdev,portal`, and
-invalid requests like grab without evdev) so compile-time/runtime behavior is
-unambiguous.
+- [ ] On key press, cache the action that was executed for that key.
+- [ ] On key release, use cached action (not current matching result).
+- [ ] Cache entries cleared after release processing.
+- [ ] Correct release behavior across layer transitions (press in layer A, release after layer A is popped).
+- [ ] Tests: layer pop during keypress, cache cleanup.
 
-Decide and document a release policy for default features (`evdev`-minimal vs
-`full`) so README examples and user expectations align with what is enabled
-out-of-the-box.
+Reference: `reference/keyd/src/keyboard.c` (cache_entry system)
 
----
+### Phase 3 gate
 
-## Non-goals (for now)
-
-Things this crate will NOT do in Phases 1–3:
-
-- **Key remapping**: This is a hotkey library, not a remapper. Use keyd or
-  xremap for full remapping.
-- **Text expansion / hotstrings**: Out of scope. Different problem domain.
-- **General-purpose input simulation / macro playback**: Out of scope.
-  Synthetic events are allowed only when required for explicit hotkey features
-  (e.g., grab passthrough, timeout-key fallback, tap-hold resolution).
-- **GUI / system tray**: This is a library, not a daemon.
-
-### Cross-platform: door is open
-
-The initial focus is Linux — that's where the gap is and where the backend
-trait architecture (Phase 1.1) gets battle-tested. But that same trait design
-means platform backends can be added without touching existing code:
-
-| Platform | Potential backend          | Feature flag |
-|----------|---------------------------|--------------|
-| macOS    | CGEventTap / IOKit        | `macos`      |
-| Windows  | Low-level keyboard hooks  | `windows`    |
-
-If/when this happens, new platform backends plug into the existing
-`HotkeyBackend` trait without touching Linux code. The crate was renamed
-from `evdev-hotkey` to `keybound` in Phase 4.3 to reflect this
-platform-neutral aspiration.
-
-macOS and Windows backends are **not committed scope** — they are
-architectural options that the backend trait preserves for free. Ship
-Linux-first, prove the API, expand later.
+| Section | Items |
+|---------|-------|
+| 3.1 Layer definition | 0/5 |
+| 3.2 Layer stack | 0/7 |
+| 3.3 Press cache | 0/5 |
 
 ---
 
-## Implementation order
+## Phase 4: Sequences, tap-hold, device filtering, and polish
 
-| Item | Description | Status | Checklist |
-|------|-------------|--------|-----------|
-| **Phase 1** | **Foundation** | **✅ Complete** | |
-| 1.1 | Backend trait + evdev backend (refactor current code) | Complete | 6/6 ✓ |
-| 1.2 | Release/hold events | Complete | 4/4 ✓ |
-| 1.3 | String parsing | Complete | 5/5 ✓ |
-| 1.4 | Conflict detection | Complete | 5/5 ✓ |
-| 1.5 | Device hotplug | Complete | 4/4 ✓ |
-| 1.6 | Event loop architecture (poll/epoll + clean shutdown path) | Complete | 5/5 ✓ |
-| 1.1b | Portal backend (behind feature flag) | Complete | (part of 1.1) |
-| **Phase 2** | **Power features** | **✅ Complete** | |
-| 2.1 | Key sequences / chords | Complete | 9/9 ✓ |
-| 2.2 | Event grabbing (EVIOCGRAB + uinput) | Complete | 6/6 ✓ |
-| 2.3 | Modes / layers | Complete | 7/7 ✓ |
-| 2.4 | Device-specific hotkeys | Complete | 5/5 ✓ |
-| 2.5 | Tap vs. hold | Complete | 7/7 ✓ |
-| **Phase 3** | **Polish** | **✅ Complete** | |
-| 3.1 | Async API | Complete | 6/6 ✓ |
-| 3.2 | Debouncing / rate limiting | Complete | 4/4 ✓ |
-| 3.3 | Key state query | Complete | 5/5 |
-| 3.4 | Configuration serialization | Complete | 5/5 ✓ |
-| **Phase 4** | **Expansion (not committed)** | **Not Started** | |
-| 4.1 | macOS backend (CGEventTap / IOKit) | Not Started | — |
-| 4.2 | Windows backend (low-level keyboard hooks) | Not Started | — |
-| 4.3 | Rename crate to something platform-neutral | Complete | ✓ |
+**Goal**: All power features from v0 are reimplemented on the new
+architecture. Library is feature-complete relative to v0.
 
-Phase 1 makes the crate publishable. Phase 2 makes it the obvious choice.
-Phase 3 makes it production-ready for demanding applications.
-Phase 4 is an option, not a promise — pursue it if the API proves itself.
+### 4.1 Key sequences (`src/engine/sequence.rs`)
+
+- [ ] Multi-step hotkey sequences with configurable timeout.
+- [ ] Sequence completes → callback fires.
+- [ ] Timeout → reset (fire standalone binding if one exists).
+- [ ] Wrong key → reset.
+- [ ] Abort key (configurable, default Escape).
+- [ ] Overlapping prefixes handled (standalone fires on timeout if no next step).
+- [ ] Multiple active sequences tracked independently.
+- [ ] Tests: complete, timeout, wrong key, abort, overlapping prefixes, concurrent.
+
+Reference: `archive/v0/src/listener/sequence.rs`
+
+### 4.2 Tap-hold (`src/engine/tap_hold.rs`)
+
+- [ ] Tap resolves on release before threshold.
+- [ ] Hold resolves on threshold expiry.
+- [ ] Hold resolves on interrupting keypress (keyd model).
+- [ ] Tap-hold requires grab mode; clear error without it.
+- [ ] Tap action produces visible key event (synthetic emission via forwarder).
+- [ ] Tests: tap, hold by duration, hold by interrupt, missing-grab error.
+
+Reference: `archive/v0/src/tap_hold.rs`
+
+### 4.3 Device-specific bindings
+
+- [ ] `BindingOptions::device(DeviceFilter::Name("..."))` restricts binding to specific devices.
+- [ ] Device filter matching in the engine's matcher (per-binding check).
+- [ ] Per-device modifier isolation (modifier on device A doesn't satisfy binding on device B).
+- [ ] Global bindings use aggregate modifier state.
+- [ ] Tests: device match, device miss, modifier isolation, global aggregate.
+
+Reference: `archive/v0/src/listener/dispatch.rs` (device-specific dispatch)
+
+### 4.4 Debounce and rate limiting
+
+- [ ] Per-binding debounce (suppress triggers within time window).
+- [ ] Per-binding rate limit (cap invocations per interval).
+- [ ] Tests: debounce suppression, rate limiting.
+
+### 4.5 Portal backend (`src/backend/portal.rs`)
+
+- [ ] XDG GlobalShortcuts portal implementation.
+- [ ] Auto-detection: try portal, fall back to evdev.
+- [ ] Explicit backend selection via builder.
+- [ ] Clear errors when portal unavailable or feature not compiled.
+- [ ] Tests: backend selection, fallback, feature-gated errors.
+
+Reference: `archive/v0/src/backend.rs` (portal implementation)
+
+### 4.6 Async event stream (`src/events.rs`)
+
+- [ ] `HotkeyEvent` enum: `Pressed`, `Released`, `LayerChanged`, `SequenceStep`.
+- [ ] `HotkeyEventStream` for async consumers (feature-gated: `tokio`, `async-std`).
+- [ ] Engine emits events; stream consumes them.
+- [ ] Stream completes on manager shutdown.
+- [ ] Tests: event delivery, shutdown completion.
+
+### 4.7 Serde support
+
+- [ ] `Serialize`/`Deserialize` on `Key`, `Modifier`, `Hotkey`, `HotkeySequence`, `Action` (data variants only), `Layer`, `LayerOptions`, `BindingOptions`.
+- [ ] Behind `serde` feature flag.
+- [ ] No `ActionMap`/`HotkeyConfig` — users compose types into their own configs.
+- [ ] Tests: round-trip serialization.
+
+### Phase 4 gate
+
+| Section | Items |
+|---------|-------|
+| 4.1 Sequences | 0/8 |
+| 4.2 Tap-hold | 0/6 |
+| 4.3 Device filtering | 0/5 |
+| 4.4 Debounce/rate limit | 0/3 |
+| 4.5 Portal backend | 0/5 |
+| 4.6 Async events | 0/5 |
+| 4.7 Serde | 0/4 |
 
 ---
 
-## Definition of done (quality gates)
+## Phase 5: Key remapping and event transformation
 
-Because this is not an MVP, each major item must meet explicit acceptance
-criteria before it is considered complete:
+**Goal**: The library can emit different keys than what was pressed.
+`Action::EmitKey` works. This is the phase that makes keybound a
+transformation engine, not just a detection library.
 
-1. **Behavioral tests**
-   - Unit tests for parser/state-machine logic and edge cases.
-   - Integration tests for register/unregister semantics and conflict errors.
-   - Feature-gated tests for portal/grab behavior where supported.
-   - CI coverage across key feature matrices to catch compile-time gating
-     regressions.
-2. **Failure-mode coverage**
-   - Explicit error variants for backend selection failures, unsupported
-     features, permission denial, and device disconnects.
-   - No silent downgrade that changes security behavior (e.g., grab requested
-     but unavailable).
-3. **Docs parity**
-   - README and rustdoc examples must match current API and feature flags.
-   - Default-feature behavior and opt-in requirements are documented
-     unambiguously (especially portal availability expectations).
-   - Backend-specific caveats documented (portal availability varies by
-     compositor/session).
-4. **Threading/runtime guarantees**
-   - No callback invocation while holding registry locks.
-   - Callback panics must not silently kill hotkey processing; define panic
-     policy (contain/log/disable callback) and test it.
-   - Clean shutdown semantics for listener/backends and deterministic resource
-     cleanup.
+### 5.1 Key emission
+
+- [ ] `Action::EmitKey(Key, Vec<Modifier>)` emits a key event through the uinput forwarder.
+- [ ] `Action::EmitSequence` emits a series of key events with configurable inter-key delay.
+- [ ] `Action::Command(String)` executes a shell command asynchronously.
+- [ ] Emission requires grab mode; clear error without it.
+- [ ] Tests: emit key visible to virtual device, emit sequence timing, command execution.
+
+### 5.2 Key remapping
+
+- [ ] `manager.remap(from_key, from_mods, to_key, to_mods)` — convenience for common case.
+- [ ] Remap uses press cache for correct releases (press emits remapped key, release emits remapped release).
+- [ ] Remaps coexist with callback bindings.
+- [ ] Tests: simple remap, modifier-changing remap, release correctness, coexistence.
+
+### 5.3 Oneshot layers
+
+- [ ] Oneshot layer applies transformation to *any* next keypress, not just registered bindings.
+- [ ] Default action for unbound keys in a layer (e.g., apply Shift modifier).
+- [ ] Configurable depth (deactivate after N keypresses).
+- [ ] Modifier-only keys don't consume the oneshot.
+- [ ] Tests: basic oneshot, sticky modifier, depth, modifier passthrough.
+
+### 5.4 Overload variants
+
+- [ ] `OverloadStrategy::Basic` (current behavior — hold on threshold or interrupt).
+- [ ] `OverloadStrategy::Timeout` (ignore interrupts, resolve purely on duration).
+- [ ] `OverloadStrategy::TimeoutTap` (tap only within window, else hold).
+- [ ] `OverloadStrategy::IdleTimeout` (use idle time before keypress for disambiguation).
+- [ ] Tests: each strategy, fast-typing scenarios.
+
+### Phase 5 gate
+
+| Section | Items |
+|---------|-------|
+| 5.1 Key emission | 0/5 |
+| 5.2 Key remapping | 0/4 |
+| 5.3 Oneshot layers | 0/5 |
+| 5.4 Overload variants | 0/5 |
+
+---
+
+## Phase 6: Stretch goals (build if demand exists)
+
+Not required for the library to be compelling. Build when a downstream
+project or user request demonstrates real need.
+
+### 6.1 Chord support
+
+- [ ] Simultaneous non-modifier keys recognized as a chord within a time window.
+- [ ] Timeout flushes buffered keys as normal keypresses.
+- [ ] Prefix disambiguation (j+k doesn't block j+k+l).
+- [ ] Per-layer chord definitions.
+- [ ] Requires grab mode.
+- [ ] Tests: successful chord, timeout, disambiguation, per-layer, missing-grab.
+
+Reference: `reference/keyd/src/keyboard.c` (chord state machine)
+
+### 6.2 Non-key event support
+
+- [ ] Mouse button events trigger bindings.
+- [ ] Scroll wheel events trigger bindings or are remappable.
+- [ ] Actions can emit mouse/scroll events via separate virtual pointer device.
+- [ ] Tests: mouse button binding, scroll remap, dual virtual device.
+
+### 6.3 Full layer keymaps
+
+- [ ] Layer defines complete keymap (remap for every key position).
+- [ ] Keymaps compose via layer stack.
+- [ ] Integrates with press cache for correct releases.
+- [ ] Tests: keymap layer, composition, layout switching.
+
+---
+
+## Phase 7: Cross-platform expansion (not committed)
+
+- [ ] macOS backend (CGEventTap / IOKit).
+- [ ] Windows backend (low-level keyboard hooks).
+- [ ] Platform-neutral crate rename if not already done.
+
+---
+
+## Implementation order summary
+
+| Phase | Delivers | Items |
+|-------|----------|-------|
+| **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
+| **2** | Grab mode + key state | 13 |
+| **3** | Layers | 17 |
+| **4** | Sequences, tap-hold, device filtering, portal, async, serde | 36 |
+| **5** | Key remapping and transformation | 19 |
+| **6** | Stretch: chords, mouse, full keymaps | 11+ |
+| **7** | Cross-platform | 3 |
+
+Phase 1 makes it work. Phase 2 makes it intercept. Phase 3 makes it modal.
+Phase 4 makes it feature-complete. Phase 5 makes it a transformation engine.
+
+---
+
+## Quality gates (all phases)
+
+1. **All tests pass.** No skipped, no ignored.
+2. **`cargo clippy` clean** with pedantic lints.
+3. **`cargo doc` builds** with no warnings.
+4. **No `// SMELL:` comments** — if something smells, fix it or file an issue.
+5. **No `Arc<Mutex<>>`** in the engine — it owns its state exclusively.
+6. **No bool fields** in public or internal types — use enums.
+7. **No duplicated logic** between `Key` and `Modifier`.
+8. **Callbacks panic-isolated** — a panicking callback never kills the engine.

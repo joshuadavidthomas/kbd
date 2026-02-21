@@ -38,6 +38,7 @@ impl Drop for RawFdGuard {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct HotplugFsEvent {
     pub(crate) mask: u32,
+    // SMELL: stringly typed
     pub(crate) device_name: String,
 }
 

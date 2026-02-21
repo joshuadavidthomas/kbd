@@ -18,10 +18,13 @@ use crate::manager::RepeatBehavior;
 use crate::mode::find_callbacks_for_active_press;
 use crate::mode::ModeDefinition;
 
+// SMELL: why is this here?
 pub(crate) fn active_modifier_signature(active: &HashSet<Modifier>) -> Vec<Modifier> {
     normalize_modifiers(&active.iter().copied().collect::<Vec<_>>())
 }
 
+// SMELL: what is this, why is this here? why panic catch_unwind, why is it used in the listener.rs
+// and here and that's it?
 pub(crate) fn invoke_callback(callback: &Callback) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         callback();
@@ -86,6 +89,7 @@ pub(crate) fn collect_due_hold_callbacks(
 
 pub(crate) struct DeviceSpecificDispatch {
     pub(crate) callbacks: Vec<Callback>,
+    // SMELL: bool fields
     pub(crate) matched: bool,
     pub(crate) passthrough: bool,
 }
@@ -191,6 +195,7 @@ pub(crate) fn collect_device_specific_dispatch(
 
 pub(crate) struct NonModifierDispatch {
     pub(crate) callbacks: Vec<Callback>,
+    // SMELL: bool fields, also duplcation with above?
     pub(crate) matched_hotkey: bool,
     pub(crate) passthrough: bool,
 }
@@ -327,6 +332,7 @@ pub(crate) fn collect_non_modifier_dispatch(
     }
 }
 
+// SMELL: wtf is this
 #[cfg(test)]
 pub(super) fn collect_non_modifier_callbacks(
     key: Key,

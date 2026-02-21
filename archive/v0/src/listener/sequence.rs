@@ -9,6 +9,8 @@ use crate::manager::HotkeyRegistration;
 use crate::manager::SequenceId;
 use crate::manager::SequenceRegistration;
 
+// SMELL: bool fields everywhere
+
 #[derive(Clone)]
 pub(crate) struct ActiveSequence {
     pub(crate) id: SequenceId,

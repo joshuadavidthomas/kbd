@@ -44,6 +44,7 @@ use crate::mode::dispatch_mode_key_event;
 use crate::mode::pop_timed_out_modes;
 use crate::mode::ModeEventDispatch;
 
+// SMELL: woof!
 #[allow(clippy::too_many_lines)]
 fn listener_loop(
     mut devices: Vec<DeviceState>,
