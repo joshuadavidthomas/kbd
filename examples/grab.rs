@@ -7,7 +7,8 @@
 //! Use `passthrough()` on specific hotkeys to observe without consuming —
 //! the callback fires AND the key reaches applications.
 //!
-//! Requires the `grab` feature.
+//! Requires the `grab` feature and write access to `/dev/uinput` — see
+//! the "Grab mode permissions" section in the README.
 //!
 //! ```sh
 //! cargo run --example grab --features grab

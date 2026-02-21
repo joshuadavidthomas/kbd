@@ -14,7 +14,6 @@ use keybound::HotkeyEvent;
 use keybound::HotkeyManager;
 use keybound::HotkeyOptions;
 use keybound::Key;
-use keybound::ModeOptions;
 use keybound::Modifier;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,12 +30,12 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manager = HotkeyManager::new()?;
 
-    // Register hotkeys as usual — callbacks still work
+    // Register a hotkey with a callback — it still fires alongside the stream
     let _press = manager.register(Key::A, &[Modifier::Ctrl], || {
         println!("[callback] Ctrl+A pressed");
     })?;
 
-    // With release events
+    // Register one with release events too
     let _release = manager.register_with_options(
         Key::B,
         &[Modifier::Ctrl],
@@ -44,20 +43,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
         || println!("[callback] Ctrl+B"),
     )?;
 
-    // A mode for demonstrating ModeChanged events
-    manager.define_mode("demo", ModeOptions::new().oneshot(), |mode| {
-        mode.register(Key::X, &[], || println!("[callback] mode: X pressed"))?;
-        Ok(())
-    })?;
-
-    let mode_controller = manager.mode_controller();
-    let _mode_trigger = manager.register(Key::M, &[Modifier::Ctrl], move || {
-        mode_controller.push("demo");
-    })?;
-
-    println!("  Ctrl+A  → press event");
-    println!("  Ctrl+B  → press + release events");
-    println!("  Ctrl+M  → push 'demo' mode (ModeChanged event)");
+    println!("  Ctrl+A  → press only");
+    println!("  Ctrl+B  → press + release");
     println!();
 
     // Subscribe to the event stream
