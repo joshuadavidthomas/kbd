@@ -1,0 +1,33 @@
+# Example keybound configuration file.
+#
+# Each hotkey and sequence maps to a named action. Your application
+# provides the actual callbacks via an ActionMap.
+
+[[hotkeys]]
+hotkey = "Ctrl+Shift+N"
+action = "new_window"
+
+[[hotkeys]]
+hotkey = "Ctrl+Shift+Q"
+action = "quit"
+
+[[hotkeys]]
+hotkey = "Ctrl+Shift+F"
+action = "toggle_fullscreen"
+
+[[sequences]]
+sequence = "Ctrl+K, Ctrl+S"
+action = "save_all"
+
+[[sequences]]
+sequence = "Ctrl+K, Ctrl+O"
+action = "open_recent"
+
+[modes.resize]
+bindings = [
+    { hotkey = "H", action = "shrink_left" },
+    { hotkey = "J", action = "shrink_down" },
+    { hotkey = "K", action = "grow_up" },
+    { hotkey = "L", action = "grow_right" },
+    { hotkey = "Escape", action = "exit_mode" },
+]
