@@ -1,8 +1,8 @@
 //! Conflict detection and replacement.
 //!
 //! keybound prevents duplicate registrations by default and returns a clear
-//! error. Use `replace()` to intentionally swap a callback, or use RAII
-//! handles to manage lifetimes.
+//! error. Use `replace()` to intentionally swap a callback, or call
+//! `handle.unregister()` to explicitly remove a registration.
 //!
 //! ```sh
 //! cargo run --example conflict_detection
