@@ -58,10 +58,10 @@ Reference: `archive/v0/src/key.rs`, `archive/v0/src/hotkey.rs`
 
 ### 1.3 Error type (`src/error.rs`)
 
-- [ ] `Error` enum using `thiserror`.
-- [ ] Variants: `Parse`, `AlreadyRegistered`, `BackendInit`, `BackendUnavailable`, `PermissionDenied`, `DeviceError`, `UnsupportedFeature`, `ManagerStopped`, `EngineError`.
-- [ ] Absorb `ParseHotkeyError` — either as `Error::Parse` variant or as a separate type convertible via `From`.
-- [ ] Tests: error display messages are useful.
+- [x] `Error` enum using `thiserror`.
+- [x] Variants: `Parse`, `AlreadyRegistered`, `BackendInit`, `BackendUnavailable`, `PermissionDenied`, `DeviceError`, `UnsupportedFeature`, `ManagerStopped`, `EngineError`.
+- [x] Absorb `ParseHotkeyError` — either as `Error::Parse` variant or as a separate type convertible via `From`.
+- [x] Tests: error display messages are useful.
 
 ### 1.4 Engine skeleton (`src/engine/`)
 
@@ -120,7 +120,7 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 |---------|-------|
 | 1.1 Key types | 9/9 |
 | 1.2 Action and binding | 6/6 |
-| 1.3 Error type | 0/4 |
+| 1.3 Error type | 4/4 |
 | 1.4 Engine skeleton | 0/7 |
 | 1.5 Device reading | 0/7 |
 | 1.6 Manager and handle | 0/7 |
