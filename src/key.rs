@@ -336,6 +336,7 @@ impl FromStr for Hotkey {
 
         let mut key = None;
         let mut modifiers = Vec::new();
+        let mut modifier_keys = Vec::new();
 
         for segment in trimmed.split('+') {
             let token = segment.trim();
@@ -343,20 +344,29 @@ impl FromStr for Hotkey {
                 return Err(ParseHotkeyError::EmptySegment);
             }
 
-            if let Ok(modifier) = token.parse::<Modifier>() {
-                modifiers.push(modifier);
-                continue;
-            }
-
             let parsed_key = token
                 .parse::<Key>()
                 .map_err(|_| ParseHotkeyError::UnknownToken(token.to_string()))?;
+
+            if let Some(modifier) = Modifier::from_key(parsed_key) {
+                modifiers.push(modifier);
+                modifier_keys.push(parsed_key);
+                continue;
+            }
+
             if key.replace(parsed_key).is_some() {
                 return Err(ParseHotkeyError::MultipleKeys);
             }
         }
 
-        let key = key.ok_or(ParseHotkeyError::MissingKey)?;
+        let key = if let Some(key) = key {
+            key
+        } else {
+            let key = modifier_keys.pop().ok_or(ParseHotkeyError::MissingKey)?;
+            modifiers.pop();
+            key
+        };
+
         Ok(Self::new(key, modifiers))
     }
 }
