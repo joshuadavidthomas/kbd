@@ -125,195 +125,10 @@ pub enum Key {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Modifier {
-    Ctrl,
-    Shift,
-    Alt,
-    Super,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Hotkey {
-    key: Key,
-    modifiers: Vec<Modifier>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct HotkeySequence {
-    steps: Vec<Hotkey>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseHotkeyError {
-    Empty,
-    EmptySegment,
-    UnknownToken(String),
-    MissingKey,
-    MultipleKeys,
-}
-
 impl Key {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         key_name(self)
-    }
-}
-
-impl Modifier {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Ctrl => "Ctrl",
-            Self::Shift => "Shift",
-            Self::Alt => "Alt",
-            Self::Super => "Super",
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn from_key(key: Key) -> Option<Self> {
-        match key {
-            Key::LeftCtrl | Key::RightCtrl => Some(Self::Ctrl),
-            Key::LeftShift | Key::RightShift => Some(Self::Shift),
-            Key::LeftAlt | Key::RightAlt => Some(Self::Alt),
-            Key::LeftSuper | Key::RightSuper => Some(Self::Super),
-            _ => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn keys(self) -> (Key, Key) {
-        match self {
-            Self::Ctrl => (Key::LeftCtrl, Key::RightCtrl),
-            Self::Shift => (Key::LeftShift, Key::RightShift),
-            Self::Alt => (Key::LeftAlt, Key::RightAlt),
-            Self::Super => (Key::LeftSuper, Key::RightSuper),
-        }
-    }
-}
-
-impl Hotkey {
-    #[must_use]
-    pub fn new(key: Key, mut modifiers: Vec<Modifier>) -> Self {
-        modifiers.sort();
-        modifiers.dedup();
-        Self { key, modifiers }
-    }
-
-    #[must_use]
-    pub const fn key(&self) -> Key {
-        self.key
-    }
-
-    #[must_use]
-    pub fn modifiers(&self) -> &[Modifier] {
-        &self.modifiers
-    }
-}
-
-impl HotkeySequence {
-    pub fn new(steps: Vec<Hotkey>) -> Result<Self, ParseHotkeyError> {
-        if steps.is_empty() {
-            return Err(ParseHotkeyError::Empty);
-        }
-
-        Ok(Self { steps })
-    }
-
-    #[must_use]
-    pub fn steps(&self) -> &[Hotkey] {
-        &self.steps
-    }
-}
-
-impl From<Modifier> for Key {
-    fn from(value: Modifier) -> Self {
-        value.keys().0
-    }
-}
-
-impl TryFrom<Key> for Modifier {
-    type Error = Key;
-
-    fn try_from(value: Key) -> Result<Self, Self::Error> {
-        Self::from_key(value).ok_or(value)
-    }
-}
-
-macro_rules! impl_display_via_as_str {
-    ($($ty:ty),+ $(,)?) => {
-        $(
-            impl fmt::Display for $ty {
-                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    f.write_str(self.as_str())
-                }
-            }
-        )+
-    };
-}
-
-impl_display_via_as_str!(Key, Modifier);
-
-impl fmt::Display for Hotkey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for modifier in &self.modifiers {
-            write!(f, "{modifier}+")?;
-        }
-
-        write!(f, "{}", self.key)
-    }
-}
-
-impl fmt::Display for HotkeySequence {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (index, step) in self.steps.iter().enumerate() {
-            if index > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{step}")?;
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for ParseHotkeyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => write!(f, "hotkey string is empty"),
-            Self::EmptySegment => write!(f, "hotkey contains an empty token"),
-            Self::UnknownToken(token) => write!(f, "unknown hotkey token: {token}"),
-            Self::MissingKey => write!(f, "hotkey is missing a non-modifier key"),
-            Self::MultipleKeys => write!(f, "hotkey has multiple non-modifier keys"),
-        }
-    }
-}
-
-impl std::error::Error for ParseHotkeyError {}
-
-impl FromStr for Modifier {
-    type Err = ParseHotkeyError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let token = s.trim();
-        let lower = token.to_ascii_lowercase();
-
-        if let Some(modifier) = match lower.as_str() {
-            "ctrl" | "control" => Some(Self::Ctrl),
-            "shift" => Some(Self::Shift),
-            "alt" => Some(Self::Alt),
-            "super" | "meta" | "win" | "windows" => Some(Self::Super),
-            _ => None,
-        } {
-            return Ok(modifier);
-        }
-
-        token
-            .parse::<Key>()
-            .ok()
-            .and_then(Self::from_key)
-            .ok_or_else(|| ParseHotkeyError::UnknownToken(token.to_string()))
     }
 }
 
@@ -325,62 +140,9 @@ impl FromStr for Key {
     }
 }
 
-impl FromStr for Hotkey {
-    type Err = ParseHotkeyError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let trimmed = s.trim();
-        if trimmed.is_empty() {
-            return Err(ParseHotkeyError::Empty);
-        }
-
-        let mut key = None;
-        let mut modifiers = Vec::new();
-        let mut last_modifier_key = None;
-
-        for segment in trimmed.split('+') {
-            let token = segment.trim();
-            if token.is_empty() {
-                return Err(ParseHotkeyError::EmptySegment);
-            }
-
-            let parsed_key = token
-                .parse::<Key>()
-                .map_err(|_| ParseHotkeyError::UnknownToken(token.to_string()))?;
-
-            if let Some(modifier) = Modifier::from_key(parsed_key) {
-                modifiers.push(modifier);
-                last_modifier_key = Some(parsed_key);
-                continue;
-            }
-
-            if key.replace(parsed_key).is_some() {
-                return Err(ParseHotkeyError::MultipleKeys);
-            }
-        }
-
-        let key = if let Some(key) = key {
-            key
-        } else {
-            let key = last_modifier_key.ok_or(ParseHotkeyError::MissingKey)?;
-            modifiers.pop();
-            key
-        };
-
-        Ok(Self::new(key, modifiers))
-    }
-}
-
-impl FromStr for HotkeySequence {
-    type Err = ParseHotkeyError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut steps = Vec::new();
-        for segment in s.split(',') {
-            steps.push(segment.trim().parse::<Hotkey>()?);
-        }
-
-        Self::new(steps)
+impl From<Modifier> for Key {
+    fn from(value: Modifier) -> Self {
+        value.keys().0
     }
 }
 
@@ -623,6 +385,244 @@ impl From<Key> for KeyCode {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Modifier {
+    Ctrl,
+    Shift,
+    Alt,
+    Super,
+}
+
+impl Modifier {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ctrl => "Ctrl",
+            Self::Shift => "Shift",
+            Self::Alt => "Alt",
+            Self::Super => "Super",
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn from_key(key: Key) -> Option<Self> {
+        match key {
+            Key::LeftCtrl | Key::RightCtrl => Some(Self::Ctrl),
+            Key::LeftShift | Key::RightShift => Some(Self::Shift),
+            Key::LeftAlt | Key::RightAlt => Some(Self::Alt),
+            Key::LeftSuper | Key::RightSuper => Some(Self::Super),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn keys(self) -> (Key, Key) {
+        match self {
+            Self::Ctrl => (Key::LeftCtrl, Key::RightCtrl),
+            Self::Shift => (Key::LeftShift, Key::RightShift),
+            Self::Alt => (Key::LeftAlt, Key::RightAlt),
+            Self::Super => (Key::LeftSuper, Key::RightSuper),
+        }
+    }
+}
+
+impl FromStr for Modifier {
+    type Err = ParseHotkeyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let token = s.trim();
+        let lower = token.to_ascii_lowercase();
+
+        if let Some(modifier) = match lower.as_str() {
+            "ctrl" | "control" => Some(Self::Ctrl),
+            "shift" => Some(Self::Shift),
+            "alt" => Some(Self::Alt),
+            "super" | "meta" | "win" | "windows" => Some(Self::Super),
+            _ => None,
+        } {
+            return Ok(modifier);
+        }
+
+        token
+            .parse::<Key>()
+            .ok()
+            .and_then(Self::from_key)
+            .ok_or_else(|| ParseHotkeyError::UnknownToken(token.to_string()))
+    }
+}
+
+impl TryFrom<Key> for Modifier {
+    type Error = Key;
+
+    fn try_from(value: Key) -> Result<Self, Self::Error> {
+        Self::from_key(value).ok_or(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Hotkey {
+    key: Key,
+    modifiers: Vec<Modifier>,
+}
+
+impl Hotkey {
+    #[must_use]
+    pub fn new(key: Key, mut modifiers: Vec<Modifier>) -> Self {
+        modifiers.sort();
+        modifiers.dedup();
+        Self { key, modifiers }
+    }
+
+    #[must_use]
+    pub const fn key(&self) -> Key {
+        self.key
+    }
+
+    #[must_use]
+    pub fn modifiers(&self) -> &[Modifier] {
+        &self.modifiers
+    }
+}
+
+impl FromStr for Hotkey {
+    type Err = ParseHotkeyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return Err(ParseHotkeyError::Empty);
+        }
+
+        let mut key = None;
+        let mut modifiers = Vec::new();
+        let mut last_modifier_key = None;
+
+        for segment in trimmed.split('+') {
+            let token = segment.trim();
+            if token.is_empty() {
+                return Err(ParseHotkeyError::EmptySegment);
+            }
+
+            let parsed_key = token
+                .parse::<Key>()
+                .map_err(|_| ParseHotkeyError::UnknownToken(token.to_string()))?;
+
+            if let Some(modifier) = Modifier::from_key(parsed_key) {
+                modifiers.push(modifier);
+                last_modifier_key = Some(parsed_key);
+                continue;
+            }
+
+            if key.replace(parsed_key).is_some() {
+                return Err(ParseHotkeyError::MultipleKeys);
+            }
+        }
+
+        let key = if let Some(key) = key {
+            key
+        } else {
+            let key = last_modifier_key.ok_or(ParseHotkeyError::MissingKey)?;
+            modifiers.pop();
+            key
+        };
+
+        Ok(Self::new(key, modifiers))
+    }
+}
+
+impl fmt::Display for Hotkey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for modifier in &self.modifiers {
+            write!(f, "{modifier}+")?;
+        }
+
+        write!(f, "{}", self.key)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HotkeySequence {
+    steps: Vec<Hotkey>,
+}
+
+impl HotkeySequence {
+    pub fn new(steps: Vec<Hotkey>) -> Result<Self, ParseHotkeyError> {
+        if steps.is_empty() {
+            return Err(ParseHotkeyError::Empty);
+        }
+
+        Ok(Self { steps })
+    }
+
+    #[must_use]
+    pub fn steps(&self) -> &[Hotkey] {
+        &self.steps
+    }
+}
+
+impl FromStr for HotkeySequence {
+    type Err = ParseHotkeyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut steps = Vec::new();
+        for segment in s.split(',') {
+            steps.push(segment.trim().parse::<Hotkey>()?);
+        }
+
+        Self::new(steps)
+    }
+}
+
+impl fmt::Display for HotkeySequence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (index, step) in self.steps.iter().enumerate() {
+            if index > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{step}")?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseHotkeyError {
+    Empty,
+    EmptySegment,
+    UnknownToken(String),
+    MissingKey,
+    MultipleKeys,
+}
+
+impl fmt::Display for ParseHotkeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "hotkey string is empty"),
+            Self::EmptySegment => write!(f, "hotkey contains an empty token"),
+            Self::UnknownToken(token) => write!(f, "unknown hotkey token: {token}"),
+            Self::MissingKey => write!(f, "hotkey is missing a non-modifier key"),
+            Self::MultipleKeys => write!(f, "hotkey has multiple non-modifier keys"),
+        }
+    }
+}
+
+impl std::error::Error for ParseHotkeyError {}
+
+macro_rules! impl_display_via_as_str {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl fmt::Display for $ty {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str(self.as_str())
+                }
+            }
+        )+
+    };
+}
+
+impl_display_via_as_str!(Key, Modifier);
 
 #[allow(clippy::too_many_lines)]
 const fn key_name(key: Key) -> &'static str {
