@@ -26,9 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _handle = manager.register(Key::I, &[Modifier::Ctrl], move || {
         println!("[Ctrl+I] Key state snapshot:");
 
-        // Check specific key state
-        let shift_held = mgr.is_key_pressed(Key::LeftBracket)
-            || mgr.active_modifiers().contains(&Modifier::Shift);
+        // Check if a modifier is active
+        let shift_held = mgr.active_modifiers().contains(&Modifier::Shift);
         println!("  Shift held: {shift_held}");
 
         // Get all active modifiers

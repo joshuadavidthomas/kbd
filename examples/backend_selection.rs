@@ -7,9 +7,10 @@
 //! You can also force a specific backend or detect what would be selected.
 //!
 //! ```sh
-//! cargo run --example backend_selection --features evdev
+//! cargo run --example backend_selection
 //! ```
 
+use keybound::Backend;
 use keybound::HotkeyManager;
 use keybound::Key;
 use keybound::Modifier;
@@ -20,6 +21,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match HotkeyManager::detect_backend(None) {
         Ok(backend) => println!("Auto-detected backend: {backend:?}"),
         Err(err) => println!("No backend available: {err}"),
+    }
+
+    // Check if a specific backend is available
+    match HotkeyManager::detect_backend(Some(Backend::Evdev)) {
+        Ok(_) => println!("Evdev backend: available"),
+        Err(err) => println!("Evdev backend: unavailable ({err})"),
     }
 
     // Auto-select: tries Portal first, falls back to Evdev.

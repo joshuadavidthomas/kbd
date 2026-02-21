@@ -72,13 +72,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // replace() also works for new registrations (register-or-replace)
-    let _new = manager.replace(Key::C, &[Modifier::Ctrl], || {
-        println!("Ctrl+C (via replace on new key)");
+    let _new = manager.replace(Key::D, &[Modifier::Ctrl], || {
+        println!("Ctrl+D (via replace on new key)");
     })?;
     println!("  replace() on unregistered key creates it");
 
     println!();
     println!("Press Ctrl+A to test the replaced callback");
+    println!("Press Ctrl+D to test the new registration");
     println!("Press Ctrl+C to exit");
 
     std::thread::park();

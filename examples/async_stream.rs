@@ -45,13 +45,12 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // A mode for demonstrating ModeChanged events
-    let controller = manager.mode_controller();
     manager.define_mode("demo", ModeOptions::new().oneshot(), |mode| {
         mode.register(Key::X, &[], || println!("[callback] mode: X pressed"))?;
         Ok(())
     })?;
 
-    let mode_controller = controller.clone();
+    let mode_controller = manager.mode_controller();
     let _mode_trigger = manager.register(Key::M, &[Modifier::Ctrl], move || {
         mode_controller.push("demo");
     })?;

@@ -28,15 +28,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let controller = manager.mode_controller();
 
     // Define a "resize" mode with h/j/k/l bindings
-    let exit_controller = controller.clone();
     manager.define_mode("resize", ModeOptions::new(), |mode| {
         mode.register(Key::H, &[], || println!("  [resize] ← shrink left"))?;
         mode.register(Key::J, &[], || println!("  [resize] ↓ shrink down"))?;
         mode.register(Key::K, &[], || println!("  [resize] ↑ grow up"))?;
         mode.register(Key::L, &[], || println!("  [resize] → grow right"))?;
 
-        // Escape exits resize mode
-        let ctl = exit_controller.clone();
+        // Escape exits resize mode (mode_controller() gives access from inside define_mode)
+        let ctl = mode.mode_controller();
         mode.register(Key::Escape, &[], move || {
             ctl.pop();
             println!("  [resize] exited");
