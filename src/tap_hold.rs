@@ -51,6 +51,7 @@ impl Default for TapHoldOptions {
 }
 
 impl TapHoldOptions {
+    /// Create default options (200ms threshold).
     #[must_use]
     pub fn new() -> Self {
         Self::default()

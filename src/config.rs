@@ -18,12 +18,25 @@ use crate::ModeOptions;
 use crate::SequenceHandle;
 use crate::SequenceOptions;
 
+/// Thread-safe callback type used internally by [`ActionMap`].
 pub type ActionCallback = Arc<dyn Fn() + Send + Sync + 'static>;
 
+/// A validated, non-empty identifier for a config action.
+///
+/// Parse from a string or construct with [`ActionId::new`]:
+///
+/// ```
+/// use keybound::ActionId;
+///
+/// let id: ActionId = "launch-terminal".parse().unwrap();
+/// assert_eq!(id.as_str(), "launch-terminal");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ActionId(String);
 
 impl ActionId {
+    /// Create an action ID from a string. Returns an error if the string is
+    /// empty or contains only whitespace.
     pub fn new(value: impl Into<String>) -> Result<Self, ActionIdError> {
         let value = value.into();
         let normalized = value.trim();
@@ -34,6 +47,7 @@ impl ActionId {
         Ok(Self(normalized.to_string()))
     }
 
+    /// Returns the action ID as a string slice.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -73,8 +87,10 @@ impl<'de> Deserialize<'de> for ActionId {
     }
 }
 
+/// Errors from [`ActionId`] creation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionIdError {
+    /// The action ID string was empty or whitespace-only.
     Empty,
 }
 
@@ -88,17 +104,23 @@ impl fmt::Display for ActionIdError {
 
 impl std::error::Error for ActionIdError {}
 
+/// Maps [`ActionId`]s to callbacks for use with [`HotkeyConfig::register`].
+///
+/// Each action ID can have exactly one callback. Attempting to insert a
+/// duplicate returns [`ActionMapError::DuplicateAction`].
 #[derive(Default)]
 pub struct ActionMap {
     callbacks: HashMap<ActionId, ActionCallback>,
 }
 
 impl ActionMap {
+    /// Create an empty action map.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Associate a callback with an action ID.
     pub fn insert<F>(&mut self, action: ActionId, callback: F) -> Result<(), ActionMapError>
     where
         F: Fn() + Send + Sync + 'static,
@@ -119,8 +141,10 @@ impl ActionMap {
     }
 }
 
+/// Errors from [`ActionMap`] operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionMapError {
+    /// A callback was already registered for this action ID.
     DuplicateAction(ActionId),
 }
 
@@ -136,6 +160,28 @@ impl fmt::Display for ActionMapError {
 
 impl std::error::Error for ActionMapError {}
 
+/// Declarative hotkey configuration, deserializable from TOML/JSON/YAML.
+///
+/// A config can contain hotkeys, key sequences, and mode definitions. Use
+/// [`HotkeyConfig::register`] to apply the entire config to a manager.
+///
+/// # TOML example
+///
+/// ```toml
+/// [[hotkeys]]
+/// hotkey = "Ctrl+Shift+N"
+/// action = "new_window"
+///
+/// [[sequences]]
+/// sequence = "Ctrl+K, Ctrl+S"
+/// action = "save_all"
+///
+/// [modes.resize]
+/// bindings = [
+///     { hotkey = "H", action = "shrink_left" },
+///     { hotkey = "Escape", action = "exit_mode" },
+/// ]
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct HotkeyConfig {
@@ -148,6 +194,7 @@ pub struct HotkeyConfig {
 }
 
 impl HotkeyConfig {
+    /// Create a config programmatically.
     #[must_use]
     pub fn new(
         hotkeys: Vec<HotkeyBinding>,
@@ -161,21 +208,30 @@ impl HotkeyConfig {
         }
     }
 
+    /// Returns the hotkey bindings in this config.
     #[must_use]
     pub fn hotkeys(&self) -> &[HotkeyBinding] {
         &self.hotkeys
     }
 
+    /// Returns the sequence bindings in this config.
     #[must_use]
     pub fn sequences(&self) -> &[SequenceBinding] {
         &self.sequences
     }
 
+    /// Returns the mode definitions in this config, keyed by mode name.
     #[must_use]
     pub fn modes(&self) -> &HashMap<String, ModeBindings> {
         &self.modes
     }
 
+    /// Register all bindings from this config with the given manager.
+    ///
+    /// Every action referenced in the config must have a corresponding entry
+    /// in the [`ActionMap`]. On success, returns a [`RegisteredConfig`] holding
+    /// all the handles. On failure, already-registered bindings are rolled back.
+    ///
     /// # Panics
     ///
     /// Panics if a validated action cannot be resolved from the action map.
@@ -306,6 +362,7 @@ impl HotkeyConfig {
     }
 }
 
+/// A single hotkey-to-action binding in a [`HotkeyConfig`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HotkeyBinding {
@@ -314,22 +371,26 @@ pub struct HotkeyBinding {
 }
 
 impl HotkeyBinding {
+    /// Create a new binding.
     #[must_use]
     pub fn new(hotkey: Hotkey, action: ActionId) -> Self {
         Self { hotkey, action }
     }
 
+    /// Returns the hotkey for this binding.
     #[must_use]
     pub fn hotkey(&self) -> &Hotkey {
         &self.hotkey
     }
 
+    /// Returns the action ID for this binding.
     #[must_use]
     pub fn action(&self) -> &ActionId {
         &self.action
     }
 }
 
+/// A sequence-to-action binding in a [`HotkeyConfig`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SequenceBinding {
@@ -338,22 +399,26 @@ pub struct SequenceBinding {
 }
 
 impl SequenceBinding {
+    /// Create a new sequence binding.
     #[must_use]
     pub fn new(sequence: HotkeySequence, action: ActionId) -> Self {
         Self { sequence, action }
     }
 
+    /// Returns the key sequence for this binding.
     #[must_use]
     pub fn sequence(&self) -> &HotkeySequence {
         &self.sequence
     }
 
+    /// Returns the action ID for this binding.
     #[must_use]
     pub fn action(&self) -> &ActionId {
         &self.action
     }
 }
 
+/// The bindings for a single mode in a [`HotkeyConfig`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ModeBindings {
@@ -362,17 +427,24 @@ pub struct ModeBindings {
 }
 
 impl ModeBindings {
+    /// Create mode bindings from a list of hotkey bindings.
     #[must_use]
     pub fn new(bindings: Vec<HotkeyBinding>) -> Self {
         Self { bindings }
     }
 
+    /// Returns the hotkey bindings for this mode.
     #[must_use]
     pub fn bindings(&self) -> &[HotkeyBinding] {
         &self.bindings
     }
 }
 
+/// Holds the handles from a successful [`HotkeyConfig::register`] call.
+///
+/// Dropping this struct does **not** unregister the bindings — use the
+/// individual handles or [`HotkeyManager::unregister_all`](crate::HotkeyManager::unregister_all)
+/// for that.
 #[derive(Default)]
 pub struct RegisteredConfig {
     hotkey_handles: Vec<Handle>,
@@ -381,16 +453,19 @@ pub struct RegisteredConfig {
 }
 
 impl RegisteredConfig {
+    /// Returns the handles for registered hotkey bindings.
     #[must_use]
     pub fn hotkey_handles(&self) -> &[Handle] {
         &self.hotkey_handles
     }
 
+    /// Returns the handles for registered sequence bindings.
     #[must_use]
     pub fn sequence_handles(&self) -> &[SequenceHandle] {
         &self.sequence_handles
     }
 
+    /// Returns the names of modes that were defined during registration.
     #[must_use]
     pub fn defined_modes(&self) -> &[String] {
         &self.defined_modes
@@ -446,9 +521,13 @@ impl fmt::Display for BindingLocation {
     }
 }
 
+/// Errors from [`HotkeyConfig::register`].
 #[derive(Debug)]
 pub enum ConfigRegistrationError {
+    /// The config references an action ID that has no callback in the
+    /// [`ActionMap`].
     MissingAction { action: ActionId, location: String },
+    /// A registration call to the manager failed.
     Register(Error),
 }
 

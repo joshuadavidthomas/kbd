@@ -22,9 +22,25 @@ use crate::manager::SequenceRegistration;
 use crate::mode::ModeRegistry;
 use crate::tap_hold::TapHoldRegistration;
 
+/// The input backend used by a [`HotkeyManager`](crate::HotkeyManager).
+///
+/// In most cases the backend is auto-selected (portal if available, then
+/// evdev). Use [`HotkeyManager::with_backend`](crate::HotkeyManager::with_backend)
+/// or [`HotkeyManagerBuilder::backend`](crate::HotkeyManagerBuilder::backend) to
+/// override.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Backend {
+    /// Read directly from `/dev/input/event*` devices.
+    ///
+    /// Works on Wayland, X11, TTY, and headless environments. Requires `input`
+    /// group membership. Supports all features including grab, sequences,
+    /// modes, tap-hold, and device-specific hotkeys.
     Evdev,
+    /// XDG `GlobalShortcuts` portal via D-Bus.
+    ///
+    /// Works without elevated permissions on compositors that implement the
+    /// portal (KDE Plasma, GNOME, Hyprland). Does not support grab mode,
+    /// sequences, modes, tap-hold, or device-specific hotkeys.
     Portal,
 }
 

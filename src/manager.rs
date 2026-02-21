@@ -77,23 +77,49 @@ pub(crate) struct HotkeyManagerInner {
     pub(crate) listener: Mutex<Option<JoinHandle<()>>>,
 }
 
-/// Global hotkey manager for Linux
+/// Global hotkey manager for Linux.
+///
+/// This is the central entry point for registering hotkeys, key sequences,
+/// modes, and tap-hold bindings. Create one with [`HotkeyManager::new`] (auto-detect
+/// backend) or [`HotkeyManager::builder`] (explicit configuration).
+///
+/// The manager spawns a background listener thread on creation that monitors
+/// keyboard input. It is stopped when [`unregister_all`](HotkeyManager::unregister_all)
+/// is called or the manager is dropped.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use keybound::{HotkeyManager, Key, Modifier};
+///
+/// let manager = HotkeyManager::new()?;
+///
+/// let _handle = manager.register(
+///     Key::A,
+///     &[Modifier::Ctrl, Modifier::Shift],
+///     || println!("Ctrl+Shift+A"),
+/// )?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct HotkeyManager {
     inner: Arc<HotkeyManagerInner>,
     active_backend: Backend,
 }
 
 impl HotkeyManager {
-    /// Create a new hotkey manager
+    /// Create a new hotkey manager with auto-detected backend.
+    ///
+    /// Tries the portal backend first (if compiled), then falls back to evdev.
     pub fn new() -> Result<Self, Error> {
         Self::with_backend_internal(None, ManagerRuntimeOptions::default())
     }
 
-    /// Create a manager with an explicit backend.
+    /// Create a manager with an explicit backend (no auto-detection).
     pub fn with_backend(backend: Backend) -> Result<Self, Error> {
         Self::with_backend_internal(Some(backend), ManagerRuntimeOptions::default())
     }
 
+    /// Returns a [`HotkeyManagerBuilder`] for configuring backend, grab mode, etc.
     #[must_use]
     pub fn builder() -> HotkeyManagerBuilder {
         HotkeyManagerBuilder {
@@ -108,11 +134,17 @@ impl HotkeyManager {
         self.active_backend
     }
 
-    /// Resolve which backend would be selected for the current process.
+    /// Resolve which backend would be selected without creating a manager.
+    ///
+    /// Pass `None` for auto-detection or `Some(backend)` to check availability.
     pub fn detect_backend(requested_backend: Option<Backend>) -> Result<Backend, Error> {
         resolve_backend(requested_backend)
     }
 
+    /// Subscribe to an async stream of [`HotkeyEvent`](crate::HotkeyEvent)s.
+    ///
+    /// Each call returns an independent subscriber that receives all events.
+    /// Requires the `tokio` or `async-std` feature.
     #[cfg(any(feature = "tokio", feature = "async-std"))]
     #[must_use]
     pub fn event_stream(&self) -> crate::events::HotkeyEventStream {
@@ -192,7 +224,17 @@ impl HotkeyManager {
         })
     }
 
-    /// Register a hotkey with a callback
+    /// Register a hotkey that fires `callback` on key press.
+    ///
+    /// Returns a [`Handle`] that keeps the registration alive. Use
+    /// [`register_with_options`](Self::register_with_options) for release callbacks,
+    /// hold thresholds, debounce, or device filtering.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`] if the same key + modifier
+    /// combination is already registered, or [`Error::ManagerStopped`] if the
+    /// manager has been shut down.
     pub fn register<F>(
         &self,
         key: Key,
@@ -205,6 +247,11 @@ impl HotkeyManager {
         self.register_with_options(key, modifiers, HotkeyOptions::new(), callback)
     }
 
+    /// Register a hotkey with custom options.
+    ///
+    /// See [`HotkeyOptions`] for available settings (release callbacks,
+    /// min hold duration, debounce, rate limiting, passthrough, device filter).
+    ///
     /// # Panics
     ///
     /// Panics if the internal operation lock is poisoned.
@@ -333,6 +380,11 @@ impl HotkeyManager {
         })
     }
 
+    /// Register a multi-step key sequence.
+    ///
+    /// The `callback` fires when all steps are pressed in order within the
+    /// configured timeout. Requires the evdev backend and at least two steps.
+    ///
     /// # Panics
     ///
     /// Panics if the internal operation lock is poisoned.
@@ -501,6 +553,11 @@ impl HotkeyManager {
         }
     }
 
+    /// Register a hotkey, replacing any existing registration for the same
+    /// key + modifier combination.
+    ///
+    /// Unlike [`register`](Self::register), this does not return
+    /// [`Error::AlreadyRegistered`].
     pub fn replace<F>(&self, key: Key, modifiers: &[Modifier], callback: F) -> Result<Handle, Error>
     where
         F: Fn() + Send + Sync + 'static,
@@ -508,6 +565,10 @@ impl HotkeyManager {
         self.replace_with_options(key, modifiers, HotkeyOptions::new(), callback)
     }
 
+    /// Replace a hotkey registration with custom options.
+    ///
+    /// See [`replace`](Self::replace) and [`HotkeyOptions`].
+    ///
     /// # Panics
     ///
     /// Panics if the internal operation lock is poisoned.
@@ -713,6 +774,9 @@ impl HotkeyManager {
         })
     }
 
+    /// Returns `true` if a global hotkey with this key + modifier combination
+    /// is currently registered.
+    ///
     /// # Panics
     ///
     /// Panics if the internal registrations lock is poisoned.

@@ -10,6 +10,11 @@ use crate::manager::HotkeyKey;
 use crate::manager::HotkeyOptions;
 use crate::manager::HotkeyRegistration;
 
+/// Builder for defining hotkey bindings within a mode.
+///
+/// Passed to the closure in [`HotkeyManager::define_mode`](crate::HotkeyManager::define_mode).
+/// Register hotkeys that are only active when this mode is at the top of the
+/// mode stack.
 pub struct ModeBuilder {
     pub(crate) bindings: HashMap<HotkeyKey, HotkeyRegistration>,
     controller: ModeController,
@@ -23,6 +28,7 @@ impl ModeBuilder {
         }
     }
 
+    /// Register a hotkey within this mode.
     pub fn register<F>(
         &mut self,
         key: Key,
@@ -35,6 +41,7 @@ impl ModeBuilder {
         self.register_with_options(key, modifiers, HotkeyOptions::new(), callback)
     }
 
+    /// Register a hotkey within this mode with custom options.
     pub fn register_with_options<F>(
         &mut self,
         key: Key,
@@ -68,6 +75,7 @@ impl ModeBuilder {
         Ok(())
     }
 
+    /// Get a [`ModeController`] for push/pop operations from within mode callbacks.
     #[must_use]
     pub fn mode_controller(&self) -> ModeController {
         self.controller.clone()

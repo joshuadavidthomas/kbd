@@ -3,19 +3,39 @@ use std::fmt;
 use crate::key::Key;
 use crate::key::Modifier;
 
+/// Errors returned by [`HotkeyManager`](crate::HotkeyManager) operations.
 #[derive(Debug)]
 pub enum Error {
+    /// The user lacks permission to access input devices.
+    ///
+    /// Typically means the user is not in the `input` group. The contained
+    /// string includes instructions for granting access.
     PermissionDenied(String),
+    /// No keyboard devices were found under `/dev/input/`.
     NoKeyboardsFound,
+    /// An individual input device could not be opened or read.
     DeviceAccess(String),
+    /// The listener thread failed to spawn.
     ThreadSpawn(String),
+    /// The requested backend is not compiled in.
+    ///
+    /// Enable the corresponding feature (`evdev` or `portal`) in `Cargo.toml`.
     BackendUnavailable(&'static str),
+    /// Backend initialization failed at runtime (e.g. portal session refused).
     BackendInit(String),
+    /// The [`HotkeyManager`](crate::HotkeyManager) has been stopped via
+    /// [`unregister_all`](crate::HotkeyManager::unregister_all).
     ManagerStopped,
+    /// A hotkey with the same key + modifier combination is already registered.
     AlreadyRegistered { key: Key, modifiers: Vec<Modifier> },
+    /// The operation requires a feature that isn't available with the current
+    /// backend or build configuration (e.g. grab mode on the portal backend).
     UnsupportedFeature(String),
+    /// A key sequence definition is invalid (e.g. fewer than two steps).
     InvalidSequence(String),
+    /// A hotkey string could not be parsed.
     InvalidHotkey(String),
+    /// A mode with this name has already been defined.
     ModeAlreadyDefined(String),
 }
 

@@ -15,27 +15,64 @@ use serde::Serializer;
 use crate::key::Key;
 use crate::key::Modifier;
 
+/// A single key + modifier combination such as `Ctrl+Shift+A`.
+///
+/// Construct via [`Hotkey::new`] or parse from a string:
+///
+/// ```
+/// use keybound::{Hotkey, Key, Modifier};
+///
+/// let hotkey = "Ctrl+Shift+A".parse::<Hotkey>().unwrap();
+/// assert_eq!(hotkey.key(), Key::A);
+/// assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Shift]);
+/// ```
+///
+/// Modifier aliases `Control`, `Meta`, `Win`, and `Windows` are accepted
+/// when parsing. The [`Display`](std::fmt::Display) impl produces a
+/// canonical representation that round-trips through [`FromStr`](std::str::FromStr).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hotkey {
     key: Key,
     modifiers: Vec<Modifier>,
 }
 
+/// An ordered sequence of [`Hotkey`] steps, such as `Ctrl+K, Ctrl+C`.
+///
+/// Sequences must contain at least two steps. Parse from a comma-separated
+/// string or build programmatically:
+///
+/// ```
+/// use keybound::HotkeySequence;
+///
+/// let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse().unwrap();
+/// assert_eq!(seq.steps().len(), 2);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HotkeySequence {
     steps: Vec<Hotkey>,
 }
 
+/// Errors produced when parsing a [`Hotkey`] or [`HotkeySequence`] from a string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseHotkeyError {
+    /// The input string was empty.
     Empty,
+    /// A segment between `+` separators was empty (e.g. `"Ctrl++A"`).
     EmptySegment,
+    /// A token could not be recognized as a key or modifier.
     UnknownToken(String),
+    /// No non-modifier key was found (e.g. `"Ctrl+Shift"`).
     MissingKey,
+    /// More than one non-modifier key was found (e.g. `"A+B"`).
     MultipleKeys,
 }
 
 impl Hotkey {
+    /// Create a hotkey from a target key and a list of modifiers.
+    ///
+    /// Modifiers are deduplicated and sorted into a canonical order so that
+    /// `Hotkey::new(Key::A, vec![Modifier::Shift, Modifier::Ctrl])` equals
+    /// `Hotkey::new(Key::A, vec![Modifier::Ctrl, Modifier::Shift])`.
     #[must_use]
     pub fn new(key: Key, mut modifiers: Vec<Modifier>) -> Self {
         modifiers.sort();
@@ -43,11 +80,13 @@ impl Hotkey {
         Self { key, modifiers }
     }
 
+    /// Returns the target (non-modifier) key.
     #[must_use]
     pub fn key(&self) -> Key {
         self.key
     }
 
+    /// Returns the modifier keys in canonical sorted order.
     #[must_use]
     pub fn modifiers(&self) -> &[Modifier] {
         &self.modifiers
@@ -55,6 +94,11 @@ impl Hotkey {
 }
 
 impl HotkeySequence {
+    /// Create a sequence from a list of [`Hotkey`] steps.
+    ///
+    /// Returns [`ParseHotkeyError::Empty`] if `steps` is empty. Note that
+    /// [`HotkeyManager::register_sequence`](crate::HotkeyManager::register_sequence)
+    /// additionally requires at least two steps.
     pub fn new(steps: Vec<Hotkey>) -> Result<Self, ParseHotkeyError> {
         if steps.is_empty() {
             return Err(ParseHotkeyError::Empty);
@@ -63,6 +107,7 @@ impl HotkeySequence {
         Ok(Self { steps })
     }
 
+    /// Returns the ordered steps of the sequence.
     #[must_use]
     pub fn steps(&self) -> &[Hotkey] {
         &self.steps

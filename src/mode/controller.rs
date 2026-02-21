@@ -3,6 +3,14 @@ use std::time::Instant;
 use super::registry::ModeRegistry;
 use crate::events::HotkeyEvent;
 
+/// Thread-safe controller for pushing and popping modes.
+///
+/// Obtain from [`HotkeyManager::mode_controller`](crate::HotkeyManager::mode_controller)
+/// or [`ModeBuilder::mode_controller`](crate::ModeBuilder::mode_controller).
+/// Cloning is cheap (reference-counted internals), so the controller can be
+/// moved into closures.
+///
+/// Modes form a stack — only the topmost mode's bindings are active at any time.
 #[derive(Clone)]
 pub struct ModeController {
     pub(super) registry: ModeRegistry,
@@ -13,6 +21,12 @@ impl ModeController {
         Self { registry }
     }
 
+    /// Push a named mode onto the stack, making it the active mode.
+    ///
+    /// If the mode name has not been defined via
+    /// [`HotkeyManager::define_mode`](crate::HotkeyManager::define_mode), this
+    /// is a no-op (a warning is logged).
+    ///
     /// # Panics
     ///
     /// Panics if the internal definitions or stack lock is poisoned.
@@ -38,6 +52,9 @@ impl ModeController {
         }
     }
 
+    /// Pop the topmost mode off the stack. Returns the name of the popped mode,
+    /// or `None` if the stack was empty.
+    ///
     /// # Panics
     ///
     /// Panics if the internal stack lock is poisoned.
@@ -59,6 +76,9 @@ impl ModeController {
         popped
     }
 
+    /// Returns the name of the currently active (topmost) mode, or `None` if
+    /// no mode is active.
+    ///
     /// # Panics
     ///
     /// Panics if the internal stack lock is poisoned.
