@@ -31,6 +31,7 @@ pub enum DeviceFilter {
 
 impl DeviceFilter {
     /// Create a filter that matches devices whose name contains the given pattern.
+    #[must_use]
     pub fn name_contains(pattern: impl Into<String>) -> Self {
         DeviceFilter::NameContains(pattern.into())
     }

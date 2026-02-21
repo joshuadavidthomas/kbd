@@ -38,7 +38,9 @@ pub struct Hotkey {
 
 /// An ordered sequence of [`Hotkey`] steps, such as `Ctrl+K, Ctrl+C`.
 ///
-/// Sequences must contain at least two steps. Parse from a comma-separated
+/// Must contain at least one step. Note that
+/// [`HotkeyManager::register_sequence`](crate::HotkeyManager::register_sequence)
+/// additionally requires at least two steps. Parse from a comma-separated
 /// string or build programmatically:
 ///
 /// ```

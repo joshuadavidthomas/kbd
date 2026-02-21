@@ -164,17 +164,11 @@ fn dispatch_mode_repeat(
     definitions: &HashMap<String, ModeDefinition>,
     active_presses: &mut HashMap<Key, ActiveHotkeyPress>,
 ) -> ModeEventDispatch {
-    let is_mode_press = active_presses
-        .get(&key)
-        .is_some_and(|active| matches!(active.origin, PressOrigin::Mode(_)));
-
-    if !is_mode_press {
+    let Some(active) = active_presses.get_mut(&key) else {
         return ModeEventDispatch::PassThrough;
-    }
-
-    let active = active_presses.get_mut(&key).unwrap();
+    };
     let PressOrigin::Mode(ref mode_name) = active.origin else {
-        unreachable!();
+        return ModeEventDispatch::PassThrough;
     };
 
     let Some(registration) = definitions
