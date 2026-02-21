@@ -92,13 +92,13 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 
 ### 1.6 Manager and handle (`src/manager.rs`, `src/handle.rs`)
 
-- [ ] `HotkeyManager::new()` — spawn engine thread, return manager.
-- [ ] `HotkeyManager::builder()` — builder for explicit backend/grab configuration.
-- [ ] `manager.register(key, modifiers, callback)` — sends `Command::Register`, waits for reply, returns `Handle`.
-- [ ] `Handle` holds `BindingId` + command sender. `Drop` sends `Command::Unregister`.
-- [ ] Conflict detection: registering a duplicate hotkey returns `Error::AlreadyRegistered`.
-- [ ] `manager.is_registered(key, modifiers)` — query via command/reply.
-- [ ] Tests: register, unregister via drop, conflict detection, shutdown.
+- [x] `HotkeyManager::new()` — spawn engine thread, return manager.
+- [x] `HotkeyManager::builder()` — builder for explicit backend/grab configuration.
+- [x] `manager.register(key, modifiers, callback)` — sends `Command::Register`, waits for reply, returns `Handle`.
+- [x] `Handle` holds `BindingId` + command sender. `Drop` sends `Command::Unregister`.
+- [x] Conflict detection: registering a duplicate hotkey returns `Error::AlreadyRegistered`.
+- [x] `manager.is_registered(key, modifiers)` — query via command/reply.
+- [x] Tests: register, unregister via drop, conflict detection, shutdown.
 
 ### 1.7 Basic hotkey matching (`src/engine/matcher.rs`)
 
@@ -123,7 +123,7 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 | 1.3 Error type | 4/4 |
 | 1.4 Engine skeleton | 7/7 |
 | 1.5 Device reading | 7/7 |
-| 1.6 Manager and handle | 0/7 |
+| 1.6 Manager and handle | 7/7 |
 | 1.7 Basic matching | 0/5 |
 | 1.8 Integration | 0/3 |
 
