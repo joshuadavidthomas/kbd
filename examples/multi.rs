@@ -1,5 +1,6 @@
-use evdev::KeyCode;
 use keybound::HotkeyManager;
+use keybound::Key;
+use keybound::Modifier;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Multiple hotkeys example");
@@ -12,38 +13,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manager = HotkeyManager::new()?;
 
-    let _handle1 = manager.register(
-        KeyCode::KEY_A,
-        &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-        || {
-            println!("Action A triggered!");
-        },
-    )?;
+    let _handle1 = manager.register(Key::A, &[Modifier::Ctrl, Modifier::Shift], || {
+        println!("Action A triggered!");
+    })?;
 
-    let _handle2 = manager.register(
-        KeyCode::KEY_B,
-        &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-        || {
-            println!("Action B triggered!");
-        },
-    )?;
+    let _handle2 = manager.register(Key::B, &[Modifier::Ctrl, Modifier::Shift], || {
+        println!("Action B triggered!");
+    })?;
 
     // Same key (X) with different modifiers - demonstrates registration key is (key, modifiers)
-    let _handle3 = manager.register(
-        KeyCode::KEY_X,
-        &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTALT],
-        || {
-            println!("Action X1 triggered! (Ctrl+Alt+X)");
-        },
-    )?;
+    let _handle3 = manager.register(Key::X, &[Modifier::Ctrl, Modifier::Alt], || {
+        println!("Action X1 triggered! (Ctrl+Alt+X)");
+    })?;
 
-    let _handle4 = manager.register(
-        KeyCode::KEY_X,
-        &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-        || {
-            println!("Action X2 triggered! (Ctrl+Shift+X)");
-        },
-    )?;
+    let _handle4 = manager.register(Key::X, &[Modifier::Ctrl, Modifier::Shift], || {
+        println!("Action X2 triggered! (Ctrl+Shift+X)");
+    })?;
 
     println!("All hotkeys registered. Waiting for input...");
     println!("Press Ctrl+C to exit");

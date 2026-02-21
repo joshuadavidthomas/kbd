@@ -3,9 +3,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use evdev::KeyCode;
 use keybound::Error;
 use keybound::HotkeyManager;
+use keybound::Key;
+use keybound::Modifier;
 
 fn create_manager_or_skip() -> Option<HotkeyManager> {
     match HotkeyManager::new() {
@@ -49,17 +50,11 @@ fn test_register_hotkey() {
     let triggered_clone = triggered.clone();
 
     let _handle = manager
-        .register(
-            KeyCode::KEY_A,
-            &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-            move || {
-                triggered_clone.store(true, Ordering::SeqCst);
-            },
-        )
+        .register(Key::A, &[Modifier::Ctrl, Modifier::Shift], move || {
+            triggered_clone.store(true, Ordering::SeqCst);
+        })
         .unwrap();
 
-    // Note: Cannot actually test hotkey triggering in automated tests
-    // This just verifies registration doesn't crash
     println!("Hotkey registered successfully");
 }
 
@@ -70,44 +65,27 @@ fn test_register_multiple_hotkeys() {
     };
 
     let _handle1 = manager
-        .register(
-            KeyCode::KEY_A,
-            &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-            || {
-                println!("Action A!");
-            },
-        )
+        .register(Key::A, &[Modifier::Ctrl, Modifier::Shift], || {
+            println!("Action A!");
+        })
         .unwrap();
 
     let _handle2 = manager
-        .register(
-            KeyCode::KEY_B,
-            &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-            || {
-                println!("Action B!");
-            },
-        )
+        .register(Key::B, &[Modifier::Ctrl, Modifier::Shift], || {
+            println!("Action B!");
+        })
         .unwrap();
 
-    // Same key with different modifiers
     let _handle3 = manager
-        .register(
-            KeyCode::KEY_C,
-            &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTALT],
-            || {
-                println!("Action C (Ctrl+Alt)!");
-            },
-        )
+        .register(Key::C, &[Modifier::Ctrl, Modifier::Alt], || {
+            println!("Action C (Ctrl+Alt)!");
+        })
         .unwrap();
 
     let _handle4 = manager
-        .register(
-            KeyCode::KEY_C,
-            &[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT],
-            || {
-                println!("Action C2 (Ctrl+Shift)!");
-            },
-        )
+        .register(Key::C, &[Modifier::Ctrl, Modifier::Shift], || {
+            println!("Action C2 (Ctrl+Shift)!");
+        })
         .unwrap();
 
     println!("Multiple hotkeys registered successfully");
@@ -120,12 +98,11 @@ fn test_unregister_hotkey() {
     };
 
     let handle = manager
-        .register(KeyCode::KEY_A, &[KeyCode::KEY_LEFTCTRL], || {
+        .register(Key::A, &[Modifier::Ctrl], || {
             println!("Triggered!");
         })
         .unwrap();
 
-    // Unregister should not panic
     handle.unregister().unwrap();
     println!("Hotkey unregistered successfully");
 }
@@ -140,18 +117,14 @@ fn test_handle_unregister_cleans_up() {
     let triggered_clone = triggered.clone();
 
     let handle = manager
-        .register(KeyCode::KEY_X, &[KeyCode::KEY_LEFTCTRL], move || {
+        .register(Key::X, &[Modifier::Ctrl], move || {
             triggered_clone.store(true, Ordering::SeqCst);
         })
         .unwrap();
 
-    // Give the listener thread a moment to start
     std::thread::sleep(Duration::from_millis(100));
 
-    // Unregister
     handle.unregister().unwrap();
 
-    // After unregister, the callback should not be in the registry anymore
-    // We can't test actual triggering, but we verify unregister doesn't crash
     println!("Handle cleanup verified");
 }

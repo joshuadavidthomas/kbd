@@ -5,7 +5,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use evdev::KeyCode;
 use keybound::ActionId;
 use keybound::ActionMap;
 use keybound::Backend;
@@ -13,8 +12,10 @@ use keybound::Error;
 use keybound::HotkeyBinding;
 use keybound::HotkeyConfig;
 use keybound::HotkeyManager;
+use keybound::Key;
 use keybound::ModeBindings;
 use keybound::ModeOptions;
+use keybound::Modifier;
 use keybound::SequenceBinding;
 
 fn create_evdev_manager_or_skip() -> Option<HotkeyManager> {
@@ -202,7 +203,7 @@ fn failed_registration_rolls_back_previous_hotkeys() {
     };
 
     let _existing = manager
-        .register(KeyCode::KEY_B, &[KeyCode::KEY_LEFTCTRL], || {})
+        .register(Key::B, &[Modifier::Ctrl], || {})
         .expect("pre-existing registration should succeed");
 
     let config = HotkeyConfig::new(
@@ -230,8 +231,8 @@ fn failed_registration_rolls_back_previous_hotkeys() {
         keybound::ConfigRegistrationError::Register(_)
     ));
 
-    assert!(!manager.is_registered(KeyCode::KEY_A, &[KeyCode::KEY_LEFTCTRL]));
-    assert!(manager.is_registered(KeyCode::KEY_B, &[KeyCode::KEY_LEFTCTRL]));
+    assert!(!manager.is_registered(Key::A, &[Modifier::Ctrl]));
+    assert!(manager.is_registered(Key::B, &[Modifier::Ctrl]));
 }
 
 #[test]

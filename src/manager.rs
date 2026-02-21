@@ -9,8 +9,6 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
 
-use evdev::KeyCode;
-
 use crate::backend::build_backend;
 use crate::backend::resolve_backend;
 use crate::backend::Backend;
@@ -18,9 +16,10 @@ use crate::device::DeviceFilter;
 use crate::error::Error;
 use crate::events::EventHub;
 use crate::events::HotkeyEvent;
-use crate::hotkey::canonical_modifier;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
+use crate::key::Key;
+use crate::key::Modifier;
 use crate::key_state::SharedKeyState;
 use crate::mode::ModeBuilder;
 use crate::mode::ModeController;
@@ -261,14 +260,14 @@ pub(crate) struct SequenceRegistration {
     pub(crate) steps: Vec<HotkeyKey>,
     pub(crate) callback: Callback,
     pub(crate) timeout: Duration,
-    pub(crate) abort_key: KeyCode,
+    pub(crate) abort_key: Key,
     pub(crate) timeout_fallback: Option<HotkeyKey>,
 }
 
 #[derive(Clone)]
 pub struct SequenceOptions {
     timeout: Duration,
-    abort_key: KeyCode,
+    abort_key: Key,
     timeout_fallback: Option<Hotkey>,
 }
 
@@ -276,7 +275,7 @@ impl Default for SequenceOptions {
     fn default() -> Self {
         Self {
             timeout: Duration::from_secs(1),
-            abort_key: KeyCode::KEY_ESC,
+            abort_key: Key::Escape,
             timeout_fallback: None,
         }
     }
@@ -295,7 +294,7 @@ impl SequenceOptions {
     }
 
     #[must_use]
-    pub fn abort_key(mut self, key: KeyCode) -> Self {
+    pub fn abort_key(mut self, key: Key) -> Self {
         self.abort_key = key;
         self
     }
@@ -352,44 +351,10 @@ pub(crate) struct ActiveHotkeyPress {
 }
 
 /// Key used to identify hotkey registrations: (`target_key`, `normalized_modifiers`)
-pub(crate) type HotkeyKey = (KeyCode, Vec<KeyCode>);
+pub(crate) type HotkeyKey = (Key, Vec<Modifier>);
 
-pub(crate) fn is_modifier_key(key: KeyCode) -> bool {
-    matches!(
-        key,
-        KeyCode::KEY_LEFTCTRL
-            | KeyCode::KEY_RIGHTCTRL
-            | KeyCode::KEY_LEFTALT
-            | KeyCode::KEY_RIGHTALT
-            | KeyCode::KEY_LEFTSHIFT
-            | KeyCode::KEY_RIGHTSHIFT
-            | KeyCode::KEY_LEFTMETA
-            | KeyCode::KEY_RIGHTMETA
-    )
-}
-
-pub(crate) fn validate_hotkey_binding(key: KeyCode, modifiers: &[KeyCode]) -> Result<(), Error> {
-    if is_modifier_key(key) {
-        return Err(Error::InvalidHotkey(format!(
-            "modifier keys cannot be used as the primary hotkey key: {key:?}"
-        )));
-    }
-
-    if let Some(invalid_modifier) = modifiers
-        .iter()
-        .copied()
-        .find(|modifier| !is_modifier_key(*modifier))
-    {
-        return Err(Error::InvalidHotkey(format!(
-            "non-modifier keys cannot be used as modifiers: {invalid_modifier:?}"
-        )));
-    }
-
-    Ok(())
-}
-
-pub(crate) fn normalize_modifiers(modifiers: &[KeyCode]) -> Vec<KeyCode> {
-    let mut normalized: Vec<KeyCode> = modifiers.iter().copied().map(canonical_modifier).collect();
+pub(crate) fn normalize_modifiers(modifiers: &[Modifier]) -> Vec<Modifier> {
+    let mut normalized: Vec<Modifier> = modifiers.to_vec();
     normalized.sort();
     normalized.dedup();
     normalized
@@ -554,7 +519,7 @@ impl SequenceHandle {
 /// Handle for unregistering a tap-hold key binding.
 #[derive(Clone)]
 pub struct TapHoldHandle {
-    key: KeyCode,
+    key: Key,
     registration_marker: Arc<()>,
     manager: Arc<HotkeyManagerInner>,
 }
@@ -580,7 +545,7 @@ struct HotkeyManagerInner {
     registrations: Arc<Mutex<HashMap<HotkeyKey, HotkeyRegistration>>>,
     sequence_registrations: Arc<Mutex<HashMap<SequenceId, SequenceRegistration>>>,
     device_registrations: Arc<Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>>,
-    tap_hold_registrations: Arc<Mutex<HashMap<KeyCode, TapHoldRegistration>>>,
+    tap_hold_registrations: Arc<Mutex<HashMap<Key, TapHoldRegistration>>>,
     mode_registry: ModeRegistry,
     next_sequence_id: AtomicU64,
     next_device_reg_id: AtomicU64,
@@ -711,8 +676,8 @@ impl HotkeyManager {
     /// Register a hotkey with a callback
     pub fn register<F>(
         &self,
-        key: KeyCode,
-        modifiers: &[KeyCode],
+        key: Key,
+        modifiers: &[Modifier],
         callback: F,
     ) -> Result<Handle, Error>
     where
@@ -726,8 +691,8 @@ impl HotkeyManager {
     /// Panics if the internal operation lock is poisoned.
     pub fn register_with_options<F>(
         &self,
-        key: KeyCode,
-        modifiers: &[KeyCode],
+        key: Key,
+        modifiers: &[Modifier],
         options: HotkeyOptions,
         callback: F,
     ) -> Result<Handle, Error>
@@ -739,8 +704,6 @@ impl HotkeyManager {
         if self.inner.stop_flag.load(Ordering::SeqCst) {
             return Err(Error::ManagerStopped);
         }
-
-        validate_hotkey_binding(key, modifiers)?;
 
         let device_filter = options.device_filter.clone();
         let hotkey_key = (key, normalize_modifiers(modifiers));
@@ -894,27 +857,18 @@ impl HotkeyManager {
             ));
         }
 
-        for step in steps {
-            validate_hotkey_binding(step.key(), step.modifiers())?;
-        }
+        // Key and Modifier are separate types, so no validation needed
+        // for modifier-vs-key confusion. We just normalize.
 
-        if is_modifier_key(abort_key) {
-            return Err(Error::InvalidSequence(format!(
-                "modifier keys cannot be used as the abort key: {abort_key:?}"
-            )));
-        }
+        let _ = steps; // steps are validated by the type system
 
         let normalized_steps: Vec<HotkeyKey> = steps
             .iter()
             .map(|step| (step.key(), normalize_modifiers(step.modifiers())))
             .collect();
 
-        let timeout_fallback = timeout_fallback
-            .map(|hotkey| {
-                validate_hotkey_binding(hotkey.key(), hotkey.modifiers())?;
-                Ok((hotkey.key(), normalize_modifiers(hotkey.modifiers())))
-            })
-            .transpose()?;
+        let timeout_fallback =
+            timeout_fallback.map(|hotkey| (hotkey.key(), normalize_modifiers(hotkey.modifiers())));
 
         let sequence_id = self.inner.next_sequence_id.fetch_add(1, Ordering::SeqCst);
         let sequence_len = normalized_steps.len();
@@ -1033,12 +987,7 @@ impl HotkeyManager {
         }
     }
 
-    pub fn replace<F>(
-        &self,
-        key: KeyCode,
-        modifiers: &[KeyCode],
-        callback: F,
-    ) -> Result<Handle, Error>
+    pub fn replace<F>(&self, key: Key, modifiers: &[Modifier], callback: F) -> Result<Handle, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -1050,8 +999,8 @@ impl HotkeyManager {
     /// Panics if the internal operation lock is poisoned.
     pub fn replace_with_options<F>(
         &self,
-        key: KeyCode,
-        modifiers: &[KeyCode],
+        key: Key,
+        modifiers: &[Modifier],
         options: HotkeyOptions,
         callback: F,
     ) -> Result<Handle, Error>
@@ -1063,8 +1012,6 @@ impl HotkeyManager {
         if self.inner.stop_flag.load(Ordering::SeqCst) {
             return Err(Error::ManagerStopped);
         }
-
-        validate_hotkey_binding(key, modifiers)?;
 
         let device_filter = options.device_filter.clone();
         let hotkey_key = (key, normalize_modifiers(modifiers));
@@ -1204,7 +1151,7 @@ impl HotkeyManager {
     /// Panics if the internal operation lock is poisoned.
     pub fn register_tap_hold(
         &self,
-        key: KeyCode,
+        key: Key,
         tap_action: TapAction,
         hold_action: HoldAction,
         options: TapHoldOptions,
@@ -1222,11 +1169,7 @@ impl HotkeyManager {
             ));
         }
 
-        if is_modifier_key(key) {
-            return Err(Error::InvalidHotkey(format!(
-                "modifier keys cannot be used as tap-hold keys: {key:?}"
-            )));
-        }
+        // Key type cannot be a modifier, so no validation needed
 
         {
             let tap_hold_regs = self.inner.tap_hold_registrations.lock().unwrap();
@@ -1263,7 +1206,7 @@ impl HotkeyManager {
     ///
     /// Panics if the internal registrations lock is poisoned.
     #[must_use]
-    pub fn is_registered(&self, key: KeyCode, modifiers: &[KeyCode]) -> bool {
+    pub fn is_registered(&self, key: Key, modifiers: &[Modifier]) -> bool {
         let hotkey_key = (key, normalize_modifiers(modifiers));
         self.inner
             .registrations
@@ -1274,14 +1217,19 @@ impl HotkeyManager {
 
     /// Returns whether the given key is currently pressed.
     #[must_use]
-    pub fn is_key_pressed(&self, key: KeyCode) -> bool {
-        self.inner.key_state.is_pressed(key)
+    pub fn is_key_pressed(&self, key: Key) -> bool {
+        self.inner.key_state.is_pressed(key.to_evdev())
     }
 
     /// Returns the set of currently pressed modifier keys.
     #[must_use]
-    pub fn active_modifiers(&self) -> HashSet<KeyCode> {
-        self.inner.key_state.active_modifiers()
+    pub fn active_modifiers(&self) -> HashSet<Modifier> {
+        self.inner
+            .key_state
+            .active_modifiers()
+            .into_iter()
+            .filter_map(Modifier::from_evdev)
+            .collect()
     }
 
     /// Unregister all hotkeys and stop the listener
@@ -1439,7 +1387,7 @@ impl HotkeyManagerInner {
         }
     }
 
-    fn remove_tap_hold(&self, key: KeyCode, registration_marker: &Arc<()>) {
+    fn remove_tap_hold(&self, key: Key, registration_marker: &Arc<()>) {
         let _operation_guard = self.operation_lock.lock().unwrap();
         let mut tap_hold_registrations = self.tap_hold_registrations.lock().unwrap();
 
@@ -1471,16 +1419,9 @@ mod tests {
 
     #[test]
     fn normalizes_left_and_right_variants() {
-        let normalized = normalize_modifiers(&[
-            KeyCode::KEY_RIGHTCTRL,
-            KeyCode::KEY_LEFTCTRL,
-            KeyCode::KEY_RIGHTSHIFT,
-        ]);
+        let normalized = normalize_modifiers(&[Modifier::Ctrl, Modifier::Ctrl, Modifier::Shift]);
 
-        assert_eq!(
-            normalized,
-            vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT]
-        );
+        assert_eq!(normalized, vec![Modifier::Ctrl, Modifier::Shift]);
     }
 
     #[test]
@@ -1616,7 +1557,7 @@ mod tests {
             options.build_callbacks(move || {
                 invocations_clone.fetch_add(1, Ordering::SeqCst);
             }),
-            &(KeyCode::KEY_A, vec![]),
+            &(Key::A, vec![]),
             &crate::events::EventHub::new(),
             press_timing,
         );
@@ -1704,9 +1645,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -1735,9 +1674,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -1769,9 +1706,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -1814,9 +1749,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -1859,9 +1792,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -1894,9 +1825,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -1938,9 +1867,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -1981,9 +1908,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -2019,9 +1944,7 @@ mod tests {
             _device_registrations: Arc<
                 Mutex<HashMap<DeviceRegistrationId, DeviceHotkeyRegistration>>,
             >,
-            _tap_hold_registrations: Arc<
-                Mutex<HashMap<KeyCode, crate::tap_hold::TapHoldRegistration>>,
-            >,
+            _tap_hold_registrations: Arc<Mutex<HashMap<Key, crate::tap_hold::TapHoldRegistration>>>,
             _stop_flag: Arc<AtomicBool>,
             _key_state: SharedKeyState,
         ) -> Result<JoinHandle<()>, Error> {
@@ -2165,8 +2088,8 @@ mod tests {
     fn duplicate_registration_returns_error() {
         let mut registrations = HashMap::new();
         let key = (
-            KeyCode::KEY_A,
-            normalize_modifiers(&[KeyCode::KEY_LEFTCTRL, KeyCode::KEY_RIGHTCTRL]),
+            Key::A,
+            normalize_modifiers(&[Modifier::Ctrl, Modifier::Ctrl]),
         );
 
         insert_new_registration(
@@ -2178,10 +2101,7 @@ mod tests {
 
         let err = insert_new_registration(
             &mut registrations,
-            (
-                KeyCode::KEY_A,
-                normalize_modifiers(&[KeyCode::KEY_LEFTCTRL]),
-            ),
+            (Key::A, normalize_modifiers(&[Modifier::Ctrl])),
             registration_with_counter(Arc::new(AtomicUsize::new(0))),
         )
         .err()
@@ -2194,38 +2114,34 @@ mod tests {
     fn is_registered_tracks_canonicalized_bindings() {
         let manager = manager_with_fake_backend();
 
-        assert!(!manager.is_registered(KeyCode::KEY_D, &[KeyCode::KEY_LEFTCTRL]));
+        assert!(!manager.is_registered(Key::D, &[Modifier::Ctrl]));
 
-        manager
-            .register(KeyCode::KEY_D, &[KeyCode::KEY_RIGHTCTRL], || {})
-            .unwrap();
+        manager.register(Key::D, &[Modifier::Ctrl], || {}).unwrap();
 
-        assert!(manager.is_registered(KeyCode::KEY_D, &[KeyCode::KEY_LEFTCTRL]));
+        assert!(manager.is_registered(Key::D, &[Modifier::Ctrl]));
     }
 
     #[test]
     fn key_state_query_reports_pressed_then_released_key() {
         let manager = manager_with_fake_backend();
 
-        manager.inner.key_state.press(KeyCode::KEY_A);
-        assert!(manager.is_key_pressed(KeyCode::KEY_A));
+        manager.inner.key_state.press(Key::A.to_evdev());
+        assert!(manager.is_key_pressed(Key::A));
 
-        manager.inner.key_state.release(KeyCode::KEY_A);
-        assert!(!manager.is_key_pressed(KeyCode::KEY_A));
+        manager.inner.key_state.release(Key::A.to_evdev());
+        assert!(!manager.is_key_pressed(Key::A));
     }
 
     #[test]
     fn key_state_query_returns_active_modifiers_only() {
         let manager = manager_with_fake_backend();
 
-        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
-        manager.inner.key_state.press(KeyCode::KEY_RIGHTSHIFT);
-        manager.inner.key_state.press(KeyCode::KEY_A);
+        manager.inner.key_state.press(Modifier::Ctrl.to_evdev());
+        manager.inner.key_state.press(Modifier::Shift.to_evdev());
+        manager.inner.key_state.press(Key::A.to_evdev());
 
         let active_modifiers = manager.active_modifiers();
-        let expected: HashSet<KeyCode> = [KeyCode::KEY_LEFTCTRL, KeyCode::KEY_RIGHTSHIFT]
-            .into_iter()
-            .collect();
+        let expected: HashSet<Modifier> = [Modifier::Ctrl, Modifier::Shift].into_iter().collect();
 
         assert_eq!(active_modifiers, expected);
     }
@@ -2233,7 +2149,8 @@ mod tests {
     #[test]
     fn key_state_queries_are_thread_safe_for_concurrent_reads() {
         let manager = Arc::new(manager_with_fake_backend());
-        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
+        manager.inner.key_state.press(Modifier::Ctrl.to_evdev());
+        manager.inner.key_state.press(Key::A.to_evdev());
 
         let start = Arc::new(Barrier::new(5));
         let mut threads = Vec::new();
@@ -2244,10 +2161,8 @@ mod tests {
             threads.push(std::thread::spawn(move || {
                 start_clone.wait();
                 for _ in 0..1_000 {
-                    assert!(manager_clone.is_key_pressed(KeyCode::KEY_LEFTCTRL));
-                    assert!(manager_clone
-                        .active_modifiers()
-                        .contains(&KeyCode::KEY_LEFTCTRL));
+                    assert!(manager_clone.is_key_pressed(Key::A));
+                    assert!(manager_clone.active_modifiers().contains(&Modifier::Ctrl));
                 }
             }));
         }
@@ -2260,33 +2175,9 @@ mod tests {
     }
 
     #[test]
-    fn register_rejects_modifier_primary_key() {
-        let manager = manager_with_fake_backend();
-
-        let err = manager
-            .register(KeyCode::KEY_LEFTCTRL, &[KeyCode::KEY_LEFTSHIFT], || {})
-            .err()
-            .unwrap();
-
-        assert!(matches!(err, Error::InvalidHotkey(_)));
-    }
-
-    #[test]
-    fn register_rejects_non_modifier_modifier_keys() {
-        let manager = manager_with_fake_backend();
-
-        let err = manager
-            .register(KeyCode::KEY_F, &[KeyCode::KEY_A], || {})
-            .err()
-            .unwrap();
-
-        assert!(matches!(err, Error::InvalidHotkey(_)));
-    }
-
-    #[test]
     fn replacement_path_overwrites_existing_registration() {
         let mut registrations = HashMap::new();
-        let key = (KeyCode::KEY_B, normalize_modifiers(&[KeyCode::KEY_LEFTALT]));
+        let key = (Key::B, normalize_modifiers(&[Modifier::Alt]));
 
         let first = Arc::new(AtomicUsize::new(0));
         let second = Arc::new(AtomicUsize::new(0));
@@ -2313,21 +2204,16 @@ mod tests {
         let manager = manager_with_fake_backend();
         let calls = Arc::new(AtomicUsize::new(0));
 
-        manager
-            .register(KeyCode::KEY_E, &[KeyCode::KEY_LEFTSHIFT], || {})
-            .unwrap();
+        manager.register(Key::E, &[Modifier::Shift], || {}).unwrap();
 
         let calls_clone = calls.clone();
         manager
-            .replace(KeyCode::KEY_E, &[KeyCode::KEY_RIGHTSHIFT], move || {
+            .replace(Key::E, &[Modifier::Shift], move || {
                 calls_clone.fetch_add(1, Ordering::SeqCst);
             })
             .unwrap();
 
-        let key = (
-            KeyCode::KEY_E,
-            normalize_modifiers(&[KeyCode::KEY_LEFTSHIFT]),
-        );
+        let key = (Key::E, normalize_modifiers(&[Modifier::Shift]));
         let registrations = manager.inner.registrations.lock().unwrap();
         let registration = registrations.get(&key).unwrap();
         (registration.callbacks.on_press)();
@@ -2342,13 +2228,9 @@ mod tests {
             register_calls: register_calls.clone(),
         }));
 
-        manager
-            .register(KeyCode::KEY_T, &[KeyCode::KEY_LEFTALT], || {})
-            .unwrap();
+        manager.register(Key::T, &[Modifier::Alt], || {}).unwrap();
 
-        manager
-            .replace(KeyCode::KEY_T, &[KeyCode::KEY_RIGHTALT], || {})
-            .unwrap();
+        manager.replace(Key::T, &[Modifier::Alt], || {}).unwrap();
 
         assert_eq!(register_calls.load(Ordering::SeqCst), 1);
     }
@@ -2358,17 +2240,15 @@ mod tests {
         let register_calls = Arc::new(AtomicUsize::new(0));
         let manager = manager_with_backend(Arc::new(FailsSecondRegisterBackend { register_calls }));
 
-        manager
-            .register(KeyCode::KEY_U, &[KeyCode::KEY_LEFTALT], || {})
-            .unwrap();
+        manager.register(Key::U, &[Modifier::Alt], || {}).unwrap();
 
         let err = manager
-            .register(KeyCode::KEY_I, &[KeyCode::KEY_LEFTALT], || {})
+            .register(Key::I, &[Modifier::Alt], || {})
             .err()
             .unwrap();
 
         assert!(matches!(err, Error::BackendInit(_)));
-        assert!(!manager.is_registered(KeyCode::KEY_I, &[KeyCode::KEY_RIGHTALT]));
+        assert!(!manager.is_registered(Key::I, &[Modifier::Alt]));
     }
 
     #[test]
@@ -2384,9 +2264,8 @@ mod tests {
         )));
 
         let manager_register = manager.clone();
-        let register_thread = std::thread::spawn(move || {
-            manager_register.register(KeyCode::KEY_O, &[KeyCode::KEY_LEFTCTRL], || {})
-        });
+        let register_thread =
+            std::thread::spawn(move || manager_register.register(Key::O, &[Modifier::Ctrl], || {}));
 
         wait_until(
             || entered_register.load(Ordering::SeqCst),
@@ -2398,7 +2277,7 @@ mod tests {
 
         let err = register_thread.join().unwrap().err().unwrap();
         assert!(matches!(err, Error::ManagerStopped));
-        assert!(!manager.is_registered(KeyCode::KEY_O, &[KeyCode::KEY_RIGHTCTRL]));
+        assert!(!manager.is_registered(Key::O, &[Modifier::Ctrl]));
     }
 
     #[test]
@@ -2414,9 +2293,8 @@ mod tests {
         )));
 
         let manager_replace = manager.clone();
-        let replace_thread = std::thread::spawn(move || {
-            manager_replace.replace(KeyCode::KEY_P, &[KeyCode::KEY_LEFTCTRL], || {})
-        });
+        let replace_thread =
+            std::thread::spawn(move || manager_replace.replace(Key::P, &[Modifier::Ctrl], || {}));
 
         wait_until(
             || entered_register.load(Ordering::SeqCst),
@@ -2428,7 +2306,7 @@ mod tests {
 
         let err = replace_thread.join().unwrap().err().unwrap();
         assert!(matches!(err, Error::ManagerStopped));
-        assert!(!manager.is_registered(KeyCode::KEY_P, &[KeyCode::KEY_RIGHTCTRL]));
+        assert!(!manager.is_registered(Key::P, &[Modifier::Ctrl]));
     }
 
     #[test]
@@ -2444,9 +2322,8 @@ mod tests {
         )));
 
         let manager_register = manager.clone();
-        let register_thread = std::thread::spawn(move || {
-            manager_register.register(KeyCode::KEY_G, &[KeyCode::KEY_LEFTCTRL], || {})
-        });
+        let register_thread =
+            std::thread::spawn(move || manager_register.register(Key::G, &[Modifier::Ctrl], || {}));
 
         wait_until(
             || entered_register.load(Ordering::SeqCst),
@@ -2458,7 +2335,7 @@ mod tests {
 
         let err = register_thread.join().unwrap().err().unwrap();
         assert!(matches!(err, Error::BackendInit(_)));
-        assert!(!manager.is_registered(KeyCode::KEY_G, &[KeyCode::KEY_RIGHTCTRL]));
+        assert!(!manager.is_registered(Key::G, &[Modifier::Ctrl]));
     }
 
     #[test]
@@ -2474,9 +2351,8 @@ mod tests {
         )));
 
         let manager_replace = manager.clone();
-        let replace_thread = std::thread::spawn(move || {
-            manager_replace.replace(KeyCode::KEY_H, &[KeyCode::KEY_LEFTCTRL], || {})
-        });
+        let replace_thread =
+            std::thread::spawn(move || manager_replace.replace(Key::H, &[Modifier::Ctrl], || {}));
 
         wait_until(
             || entered_register.load(Ordering::SeqCst),
@@ -2488,7 +2364,7 @@ mod tests {
 
         let err = replace_thread.join().unwrap().err().unwrap();
         assert!(matches!(err, Error::BackendInit(_)));
-        assert!(!manager.is_registered(KeyCode::KEY_H, &[KeyCode::KEY_RIGHTCTRL]));
+        assert!(!manager.is_registered(Key::H, &[Modifier::Ctrl]));
     }
 
     #[test]
@@ -2496,20 +2372,18 @@ mod tests {
         let manager = manager_with_fake_backend();
         let calls = Arc::new(AtomicUsize::new(0));
 
-        let stale_handle = manager
-            .register(KeyCode::KEY_T, &[KeyCode::KEY_LEFTALT], || {})
-            .unwrap();
+        let stale_handle = manager.register(Key::T, &[Modifier::Alt], || {}).unwrap();
 
         let calls_clone = calls.clone();
         manager
-            .replace(KeyCode::KEY_T, &[KeyCode::KEY_RIGHTALT], move || {
+            .replace(Key::T, &[Modifier::Alt], move || {
                 calls_clone.fetch_add(1, Ordering::SeqCst);
             })
             .unwrap();
 
         stale_handle.unregister().unwrap();
 
-        let key = (KeyCode::KEY_T, normalize_modifiers(&[KeyCode::KEY_LEFTALT]));
+        let key = (Key::T, normalize_modifiers(&[Modifier::Alt]));
         let registrations = manager.inner.registrations.lock().unwrap();
         let registration = registrations.get(&key).unwrap();
         (registration.callbacks.on_press)();
@@ -2525,7 +2399,7 @@ mod tests {
 
         let stale_handle = manager
             .register_with_options(
-                KeyCode::KEY_4,
+                Key::Num4,
                 &[],
                 HotkeyOptions::new().device(filter.clone()),
                 || {},
@@ -2535,7 +2409,7 @@ mod tests {
         let calls_clone = calls.clone();
         manager
             .replace_with_options(
-                KeyCode::KEY_4,
+                Key::Num4,
                 &[],
                 HotkeyOptions::new().device(filter),
                 move || {
@@ -2558,13 +2432,11 @@ mod tests {
     fn unregister_preserves_registration_on_backend_failure() {
         let manager = manager_with_backend(Arc::new(UnregisterFailBackend));
 
-        let handle = manager
-            .register(KeyCode::KEY_Q, &[KeyCode::KEY_LEFTCTRL], || {})
-            .unwrap();
+        let handle = manager.register(Key::Q, &[Modifier::Ctrl], || {}).unwrap();
 
         let err = handle.unregister().err().unwrap();
         assert!(matches!(err, Error::BackendInit(_)));
-        assert!(manager.is_registered(KeyCode::KEY_Q, &[KeyCode::KEY_RIGHTCTRL]));
+        assert!(manager.is_registered(Key::Q, &[Modifier::Ctrl]));
     }
 
     #[test]
@@ -2584,7 +2456,7 @@ mod tests {
 
         let old_calls_clone = old_calls.clone();
         let handle = manager
-            .register(KeyCode::KEY_W, &[KeyCode::KEY_LEFTCTRL], move || {
+            .register(Key::W, &[Modifier::Ctrl], move || {
                 old_calls_clone.fetch_add(1, Ordering::SeqCst);
             })
             .unwrap();
@@ -2599,7 +2471,7 @@ mod tests {
         let manager_replace = manager.clone();
         let new_calls_clone = new_calls.clone();
         let replace_thread = std::thread::spawn(move || {
-            manager_replace.replace(KeyCode::KEY_W, &[KeyCode::KEY_RIGHTCTRL], move || {
+            manager_replace.replace(Key::W, &[Modifier::Ctrl], move || {
                 new_calls_clone.fetch_add(1, Ordering::SeqCst);
             })
         });
@@ -2610,10 +2482,7 @@ mod tests {
         assert!(matches!(err, Error::BackendInit(_)));
         replace_thread.join().unwrap().unwrap();
 
-        let key = (
-            KeyCode::KEY_W,
-            normalize_modifiers(&[KeyCode::KEY_LEFTCTRL]),
-        );
+        let key = (Key::W, normalize_modifiers(&[Modifier::Ctrl]));
         let registrations = manager.inner.registrations.lock().unwrap();
         let registration = registrations.get(&key).unwrap();
         (registration.callbacks.on_press)();
@@ -2636,9 +2505,7 @@ mod tests {
             },
         )));
 
-        let handle = manager
-            .register(KeyCode::KEY_Y, &[KeyCode::KEY_LEFTCTRL], || {})
-            .unwrap();
+        let handle = manager.register(Key::Y, &[Modifier::Ctrl], || {}).unwrap();
 
         let unregister_thread = std::thread::spawn(move || handle.unregister());
 
@@ -2648,9 +2515,8 @@ mod tests {
         );
 
         let manager_replace = manager.clone();
-        let replace_thread = std::thread::spawn(move || {
-            manager_replace.replace(KeyCode::KEY_Y, &[KeyCode::KEY_RIGHTCTRL], || {})
-        });
+        let replace_thread =
+            std::thread::spawn(move || manager_replace.replace(Key::Y, &[Modifier::Ctrl], || {}));
 
         allow_unregister_finish.store(true, Ordering::SeqCst);
 
@@ -2658,7 +2524,7 @@ mod tests {
         replace_thread.join().unwrap().unwrap();
 
         assert!(backend_registered.load(Ordering::SeqCst));
-        assert!(manager.is_registered(KeyCode::KEY_Y, &[KeyCode::KEY_LEFTCTRL]));
+        assert!(manager.is_registered(Key::Y, &[Modifier::Ctrl]));
     }
 
     #[test]
@@ -2671,14 +2537,12 @@ mod tests {
         })));
 
         let manager_a = manager.clone();
-        let first = std::thread::spawn(move || {
-            manager_a.register(KeyCode::KEY_W, &[KeyCode::KEY_LEFTCTRL], || {})
-        });
+        let first =
+            std::thread::spawn(move || manager_a.register(Key::W, &[Modifier::Ctrl], || {}));
 
         let manager_b = manager.clone();
-        let second = std::thread::spawn(move || {
-            manager_b.register(KeyCode::KEY_W, &[KeyCode::KEY_RIGHTCTRL], || {})
-        });
+        let second =
+            std::thread::spawn(move || manager_b.register(Key::W, &[Modifier::Ctrl], || {}));
 
         wait_until(
             || register_calls.load(Ordering::SeqCst) > 0,
@@ -2697,7 +2561,7 @@ mod tests {
                 || matches!(second_result, Err(Error::AlreadyRegistered { .. }))
         );
         assert_eq!(register_calls.load(Ordering::SeqCst), 1);
-        assert!(manager.is_registered(KeyCode::KEY_W, &[KeyCode::KEY_LEFTCTRL]));
+        assert!(manager.is_registered(Key::W, &[Modifier::Ctrl]));
     }
 
     #[test]
@@ -2708,17 +2572,17 @@ mod tests {
         }));
 
         manager
-            .register(KeyCode::KEY_1, &[KeyCode::KEY_LEFTCTRL], || {})
+            .register(Key::Num1, &[Modifier::Ctrl], || {})
             .unwrap();
         manager
-            .register(KeyCode::KEY_2, &[KeyCode::KEY_LEFTCTRL], || {})
+            .register(Key::Num2, &[Modifier::Ctrl], || {})
             .unwrap();
 
         manager.unregister_all().unwrap();
 
         assert_eq!(unregister_calls.load(Ordering::SeqCst), 2);
-        assert!(!manager.is_registered(KeyCode::KEY_1, &[KeyCode::KEY_LEFTCTRL]));
-        assert!(!manager.is_registered(KeyCode::KEY_2, &[KeyCode::KEY_LEFTCTRL]));
+        assert!(!manager.is_registered(Key::Num1, &[Modifier::Ctrl]));
+        assert!(!manager.is_registered(Key::Num2, &[Modifier::Ctrl]));
     }
 
     #[test]
@@ -2752,7 +2616,7 @@ mod tests {
         manager.unregister_all().unwrap();
 
         let err = manager
-            .register(KeyCode::KEY_Z, &[KeyCode::KEY_LEFTCTRL], || {})
+            .register(Key::Z, &[Modifier::Ctrl], || {})
             .err()
             .unwrap();
         assert!(matches!(err, Error::ManagerStopped));
@@ -2764,7 +2628,7 @@ mod tests {
         manager.unregister_all().unwrap();
 
         let err = manager
-            .replace(KeyCode::KEY_Z, &[KeyCode::KEY_LEFTCTRL], || {})
+            .replace(Key::Z, &[Modifier::Ctrl], || {})
             .err()
             .unwrap();
         assert!(matches!(err, Error::ManagerStopped));
@@ -2773,7 +2637,7 @@ mod tests {
     #[test]
     fn sequence_registration_requires_at_least_two_steps() {
         let manager = manager_with_fake_backend();
-        let sequence = HotkeySequence::new(vec![Hotkey::new(KeyCode::KEY_K, vec![])]).unwrap();
+        let sequence = HotkeySequence::new(vec![Hotkey::new(Key::K, vec![])]).unwrap();
 
         let err = manager
             .register_sequence(&sequence, SequenceOptions::new(), || {})
@@ -2787,8 +2651,8 @@ mod tests {
     fn sequence_registration_rejects_zero_timeout() {
         let manager = manager_with_fake_backend();
         let sequence = HotkeySequence::new(vec![
-            Hotkey::new(KeyCode::KEY_K, vec![]),
-            Hotkey::new(KeyCode::KEY_C, vec![]),
+            Hotkey::new(Key::K, vec![]),
+            Hotkey::new(Key::C, vec![]),
         ])
         .unwrap();
 
@@ -2805,28 +2669,11 @@ mod tests {
     }
 
     #[test]
-    fn sequence_registration_rejects_invalid_step_bindings() {
-        let manager = manager_with_fake_backend();
-        let sequence = HotkeySequence::new(vec![
-            Hotkey::new(KeyCode::KEY_LEFTCTRL, vec![]),
-            Hotkey::new(KeyCode::KEY_C, vec![]),
-        ])
-        .unwrap();
-
-        let err = manager
-            .register_sequence(&sequence, SequenceOptions::new(), || {})
-            .err()
-            .unwrap();
-
-        assert!(matches!(err, Error::InvalidHotkey(_)));
-    }
-
-    #[test]
     fn sequence_handle_unregisters_registered_sequence() {
         let manager = manager_with_fake_backend();
         let sequence = HotkeySequence::new(vec![
-            Hotkey::new(KeyCode::KEY_K, vec![]),
-            Hotkey::new(KeyCode::KEY_C, vec![]),
+            Hotkey::new(Key::K, vec![]),
+            Hotkey::new(Key::C, vec![]),
         ])
         .unwrap();
 
@@ -2854,8 +2701,8 @@ mod tests {
         let manager = portal_manager_with_fake_backend();
 
         let sequence = HotkeySequence::new(vec![
-            Hotkey::new(KeyCode::KEY_K, vec![]),
-            Hotkey::new(KeyCode::KEY_C, vec![]),
+            Hotkey::new(Key::K, vec![]),
+            Hotkey::new(Key::C, vec![]),
         ])
         .unwrap();
 
@@ -2868,38 +2715,11 @@ mod tests {
     }
 
     #[test]
-    fn sequence_registration_rejects_modifier_as_abort_key() {
-        let manager = manager_with_fake_backend();
-        let sequence = HotkeySequence::new(vec![
-            Hotkey::new(KeyCode::KEY_K, vec![]),
-            Hotkey::new(KeyCode::KEY_C, vec![]),
-        ])
-        .unwrap();
-
-        let err = manager
-            .register_sequence(
-                &sequence,
-                SequenceOptions::new().abort_key(KeyCode::KEY_LEFTCTRL),
-                || {},
-            )
-            .err()
-            .unwrap();
-
-        assert!(matches!(err, Error::InvalidSequence(_)));
-    }
-
-    #[test]
     fn left_and_right_modifiers_conflict_after_normalization() {
         let mut registrations = HashMap::new();
 
-        let key_left = (
-            KeyCode::KEY_C,
-            normalize_modifiers(&[KeyCode::KEY_LEFTSHIFT]),
-        );
-        let key_right = (
-            KeyCode::KEY_C,
-            normalize_modifiers(&[KeyCode::KEY_RIGHTSHIFT]),
-        );
+        let key_left = (Key::C, normalize_modifiers(&[Modifier::Shift]));
+        let key_right = (Key::C, normalize_modifiers(&[Modifier::Shift]));
 
         insert_new_registration(
             &mut registrations,
@@ -2925,8 +2745,8 @@ mod tests {
 
         manager
             .define_mode("resize", ModeOptions::new(), |m| {
-                m.register(KeyCode::KEY_H, &[], || {})?;
-                m.register(KeyCode::KEY_J, &[], || {})?;
+                m.register(Key::H, &[], || {})?;
+                m.register(Key::J, &[], || {})?;
                 Ok(())
             })
             .unwrap();
@@ -2950,21 +2770,6 @@ mod tests {
             .unwrap();
 
         assert!(matches!(err, Error::ModeAlreadyDefined(_)));
-    }
-
-    #[test]
-    fn define_mode_validates_bindings() {
-        let manager = manager_with_fake_backend();
-
-        let err = manager
-            .define_mode("bad", ModeOptions::new(), |m| {
-                m.register(KeyCode::KEY_LEFTCTRL, &[], || {})?;
-                Ok(())
-            })
-            .err()
-            .unwrap();
-
-        assert!(matches!(err, Error::InvalidHotkey(_)));
     }
 
     #[test]
@@ -3009,14 +2814,14 @@ mod tests {
 
         manager
             .define_mode("mode_a", ModeOptions::new(), |m| {
-                m.register(KeyCode::KEY_F, &[], || {})?;
+                m.register(Key::F, &[], || {})?;
                 Ok(())
             })
             .unwrap();
 
         manager
             .define_mode("mode_b", ModeOptions::new(), |m| {
-                m.register(KeyCode::KEY_F, &[], || {})?;
+                m.register(Key::F, &[], || {})?;
                 Ok(())
             })
             .unwrap();
@@ -3027,12 +2832,12 @@ mod tests {
             .get("mode_a")
             .unwrap()
             .bindings
-            .contains_key(&(KeyCode::KEY_F, vec![])));
+            .contains_key(&(Key::F, vec![])));
         assert!(definitions
             .get("mode_b")
             .unwrap()
             .bindings
-            .contains_key(&(KeyCode::KEY_F, vec![])));
+            .contains_key(&(Key::F, vec![])));
     }
 
     #[test]
@@ -3086,7 +2891,7 @@ mod tests {
 
         let handle = manager
             .register_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
                 || {},
@@ -3094,7 +2899,7 @@ mod tests {
             .unwrap();
 
         // Should NOT be in global registrations
-        assert!(!manager.is_registered(KeyCode::KEY_1, &[]));
+        assert!(!manager.is_registered(Key::Num1, &[]));
 
         // Should be in device registrations
         assert_eq!(manager.inner.device_registrations.lock().unwrap().len(), 1);
@@ -3115,7 +2920,7 @@ mod tests {
 
         manager
             .register_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(filter.clone()),
                 || {},
@@ -3123,12 +2928,7 @@ mod tests {
             .unwrap();
 
         let err = manager
-            .register_with_options(
-                KeyCode::KEY_1,
-                &[],
-                HotkeyOptions::new().device(filter),
-                || {},
-            )
+            .register_with_options(Key::Num1, &[], HotkeyOptions::new().device(filter), || {})
             .err()
             .unwrap();
 
@@ -3141,7 +2941,7 @@ mod tests {
 
         manager
             .register_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
                 || {},
@@ -3150,7 +2950,7 @@ mod tests {
 
         manager
             .register_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(DeviceFilter::usb(0x1234, 0x5678)),
                 || {},
@@ -3165,19 +2965,19 @@ mod tests {
         let manager = manager_with_fake_backend();
 
         // Global registration
-        manager.register(KeyCode::KEY_1, &[], || {}).unwrap();
+        manager.register(Key::Num1, &[], || {}).unwrap();
 
         // Device-specific registration with same key
         manager
             .register_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
                 || {},
             )
             .unwrap();
 
-        assert!(manager.is_registered(KeyCode::KEY_1, &[]));
+        assert!(manager.is_registered(Key::Num1, &[]));
         assert_eq!(manager.inner.device_registrations.lock().unwrap().len(), 1);
     }
 
@@ -3189,7 +2989,7 @@ mod tests {
 
         manager
             .register_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(filter.clone()),
                 || {},
@@ -3199,7 +2999,7 @@ mod tests {
         let count_clone = count.clone();
         manager
             .replace_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(filter),
                 move || {
@@ -3222,7 +3022,7 @@ mod tests {
 
         let err = manager
             .register_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
                 || {},
@@ -3239,7 +3039,7 @@ mod tests {
 
         manager
             .register_with_options(
-                KeyCode::KEY_1,
+                Key::Num1,
                 &[],
                 HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
                 || {},
@@ -3259,12 +3059,12 @@ mod tests {
     #[test]
     fn unregister_all_clears_key_state_queries() {
         let manager = manager_with_fake_backend();
-        manager.inner.key_state.press(KeyCode::KEY_A);
-        manager.inner.key_state.press(KeyCode::KEY_LEFTCTRL);
+        manager.inner.key_state.press(Key::A.to_evdev());
+        manager.inner.key_state.press(Modifier::Ctrl.to_evdev());
 
         manager.unregister_all().unwrap();
 
-        assert!(!manager.is_key_pressed(KeyCode::KEY_A));
+        assert!(!manager.is_key_pressed(Key::A));
         assert!(manager.active_modifiers().is_empty());
     }
 
@@ -3274,9 +3074,9 @@ mod tests {
 
         let err = manager
             .register_tap_hold(
-                KeyCode::KEY_CAPSLOCK,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Key::CapsLock,
+                crate::tap_hold::TapAction::emit(Key::Escape),
+                crate::tap_hold::HoldAction::modifier(Modifier::Ctrl),
                 crate::tap_hold::TapHoldOptions::new(),
             )
             .err()
@@ -3291,9 +3091,9 @@ mod tests {
 
         let handle = manager
             .register_tap_hold(
-                KeyCode::KEY_CAPSLOCK,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Key::CapsLock,
+                crate::tap_hold::TapAction::emit(Key::Escape),
+                crate::tap_hold::HoldAction::modifier(Modifier::Ctrl),
                 crate::tap_hold::TapHoldOptions::new(),
             )
             .unwrap();
@@ -3303,7 +3103,7 @@ mod tests {
             .tap_hold_registrations
             .lock()
             .unwrap()
-            .contains_key(&KeyCode::KEY_CAPSLOCK));
+            .contains_key(&Key::CapsLock));
 
         handle.unregister().unwrap();
 
@@ -3312,24 +3112,7 @@ mod tests {
             .tap_hold_registrations
             .lock()
             .unwrap()
-            .contains_key(&KeyCode::KEY_CAPSLOCK));
-    }
-
-    #[test]
-    fn tap_hold_rejects_modifier_keys() {
-        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
-
-        let err = manager
-            .register_tap_hold(
-                KeyCode::KEY_LEFTCTRL,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
-                crate::tap_hold::TapHoldOptions::new(),
-            )
-            .err()
-            .unwrap();
-
-        assert!(matches!(err, Error::InvalidHotkey(_)));
+            .contains_key(&Key::CapsLock));
     }
 
     #[test]
@@ -3338,18 +3121,18 @@ mod tests {
 
         manager
             .register_tap_hold(
-                KeyCode::KEY_CAPSLOCK,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Key::CapsLock,
+                crate::tap_hold::TapAction::emit(Key::Escape),
+                crate::tap_hold::HoldAction::modifier(Modifier::Ctrl),
                 crate::tap_hold::TapHoldOptions::new(),
             )
             .unwrap();
 
         let err = manager
             .register_tap_hold(
-                KeyCode::KEY_CAPSLOCK,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_TAB),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                Key::CapsLock,
+                crate::tap_hold::TapAction::emit(Key::Tab),
+                crate::tap_hold::HoldAction::modifier(Modifier::Alt),
                 crate::tap_hold::TapHoldOptions::new(),
             )
             .err()
@@ -3364,9 +3147,9 @@ mod tests {
 
         let stale_handle = manager
             .register_tap_hold(
-                KeyCode::KEY_CAPSLOCK,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Key::CapsLock,
+                crate::tap_hold::TapAction::emit(Key::Escape),
+                crate::tap_hold::HoldAction::modifier(Modifier::Ctrl),
                 crate::tap_hold::TapHoldOptions::new(),
             )
             .unwrap();
@@ -3376,9 +3159,9 @@ mod tests {
 
         manager
             .register_tap_hold(
-                KeyCode::KEY_CAPSLOCK,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_TAB),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTALT),
+                Key::CapsLock,
+                crate::tap_hold::TapAction::emit(Key::Tab),
+                crate::tap_hold::HoldAction::modifier(Modifier::Alt),
                 crate::tap_hold::TapHoldOptions::new(),
             )
             .unwrap();
@@ -3390,7 +3173,7 @@ mod tests {
             .tap_hold_registrations
             .lock()
             .unwrap()
-            .contains_key(&KeyCode::KEY_CAPSLOCK));
+            .contains_key(&Key::CapsLock));
     }
 
     #[test]
@@ -3400,9 +3183,9 @@ mod tests {
 
         let err = manager
             .register_tap_hold(
-                KeyCode::KEY_CAPSLOCK,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Key::CapsLock,
+                crate::tap_hold::TapAction::emit(Key::Escape),
+                crate::tap_hold::HoldAction::modifier(Modifier::Ctrl),
                 crate::tap_hold::TapHoldOptions::new(),
             )
             .err()
@@ -3417,9 +3200,9 @@ mod tests {
 
         manager
             .register_tap_hold(
-                KeyCode::KEY_CAPSLOCK,
-                crate::tap_hold::TapAction::emit(KeyCode::KEY_ESC),
-                crate::tap_hold::HoldAction::modifier(KeyCode::KEY_LEFTCTRL),
+                Key::CapsLock,
+                crate::tap_hold::TapAction::emit(Key::Escape),
+                crate::tap_hold::HoldAction::modifier(Modifier::Ctrl),
                 crate::tap_hold::TapHoldOptions::new(),
             )
             .unwrap();
@@ -3445,8 +3228,8 @@ mod tests {
 
         manager
             .register_with_options(
-                KeyCode::KEY_A,
-                &[KeyCode::KEY_LEFTCTRL],
+                Key::A,
+                &[Modifier::Ctrl],
                 HotkeyOptions::new().on_release(),
                 move || {
                     callback_count_clone.fetch_add(1, Ordering::SeqCst);
@@ -3454,10 +3237,7 @@ mod tests {
             )
             .unwrap();
 
-        let hotkey_key = (
-            KeyCode::KEY_A,
-            normalize_modifiers(&[KeyCode::KEY_LEFTCTRL]),
-        );
+        let hotkey_key = (Key::A, normalize_modifiers(&[Modifier::Ctrl]));
 
         let registration = manager
             .inner
@@ -3472,8 +3252,8 @@ mod tests {
         registration.callbacks.on_release.unwrap()();
 
         let sequence = HotkeySequence::new(vec![
-            Hotkey::new(KeyCode::KEY_K, vec![KeyCode::KEY_LEFTCTRL]),
-            Hotkey::new(KeyCode::KEY_C, vec![KeyCode::KEY_LEFTCTRL]),
+            Hotkey::new(Key::K, vec![Modifier::Ctrl]),
+            Hotkey::new(Key::C, vec![Modifier::Ctrl]),
         ])
         .unwrap();
 
@@ -3505,15 +3285,15 @@ mod tests {
         assert_eq!(
             stream.try_next(),
             Some(HotkeyEvent::Pressed(Hotkey::new(
-                KeyCode::KEY_A,
-                vec![KeyCode::KEY_LEFTCTRL],
+                Key::A,
+                vec![Modifier::Ctrl],
             ))),
         );
         assert_eq!(
             stream.try_next(),
             Some(HotkeyEvent::Released(Hotkey::new(
-                KeyCode::KEY_A,
-                vec![KeyCode::KEY_LEFTCTRL],
+                Key::A,
+                vec![Modifier::Ctrl],
             ))),
         );
         assert_eq!(
@@ -3541,15 +3321,12 @@ mod tests {
 
         let callback_count_clone = callback_count.clone();
         manager
-            .register(KeyCode::KEY_B, &[KeyCode::KEY_LEFTCTRL], move || {
+            .register(Key::B, &[Modifier::Ctrl], move || {
                 callback_count_clone.fetch_add(1, Ordering::SeqCst);
             })
             .unwrap();
 
-        let hotkey_key = (
-            KeyCode::KEY_B,
-            normalize_modifiers(&[KeyCode::KEY_LEFTCTRL]),
-        );
+        let hotkey_key = (Key::B, normalize_modifiers(&[Modifier::Ctrl]));
 
         let registration = manager
             .inner
@@ -3567,15 +3344,15 @@ mod tests {
         assert_eq!(
             stream.try_next(),
             Some(HotkeyEvent::Pressed(Hotkey::new(
-                KeyCode::KEY_B,
-                vec![KeyCode::KEY_LEFTCTRL],
+                Key::B,
+                vec![Modifier::Ctrl],
             ))),
         );
         assert_eq!(
             stream.try_next(),
             Some(HotkeyEvent::Released(Hotkey::new(
-                KeyCode::KEY_B,
-                vec![KeyCode::KEY_LEFTCTRL],
+                Key::B,
+                vec![Modifier::Ctrl],
             ))),
         );
         assert_eq!(stream.try_next(), None);
