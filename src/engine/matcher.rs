@@ -143,12 +143,11 @@ mod tests {
         );
 
         let result = bindings.match_event(Key::C, KeyTransition::Press, &[Modifier::Ctrl]);
-        assert!(matches!(result, MatchResult::Matched(_)));
-
-        if let MatchResult::Matched(Action::Callback(cb)) = result {
-            cb();
-            assert_eq!(counter.load(Ordering::Relaxed), 1);
-        }
+        let MatchResult::Matched(Action::Callback(cb)) = result else {
+            panic!("expected Matched(Callback), got {result:?}");
+        };
+        cb();
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 
     #[test]
