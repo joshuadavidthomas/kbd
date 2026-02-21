@@ -6,7 +6,8 @@
 //!
 //! Classic use case: `CapsLock` = tap for Escape, hold for Ctrl.
 //!
-//! Requires **event grabbing** (the `grab` feature and builder config).
+//! Requires the `grab` feature and write access to `/dev/uinput` — see
+//! the "Grab mode permissions" section in the README.
 //!
 //! ```sh
 //! cargo run --example tap_hold --features grab
