@@ -108,7 +108,7 @@ impl CommandSender {
 
 pub(crate) struct EngineRuntime {
     commands: CommandSender,
-    join_handle: thread::JoinHandle<()>,
+    join_handle: thread::JoinHandle<Result<(), Error>>,
 }
 
 impl EngineRuntime {
@@ -135,12 +135,17 @@ impl EngineRuntime {
     }
 
     pub(crate) fn shutdown(self) -> Result<(), Error> {
-        self.commands.send(Command::Shutdown)?;
-        self.join()
+        let send_result = self.commands.send(Command::Shutdown);
+        let join_result = self.join();
+
+        match (send_result, join_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(error), Ok(())) | (_, Err(error)) => Err(error),
+        }
     }
 
     pub(crate) fn join(self) -> Result<(), Error> {
-        self.join_handle.join().map_err(|_| Error::EngineError)
+        self.join_handle.join().map_err(|_| Error::EngineError)?
     }
 }
 
@@ -241,15 +246,16 @@ impl Engine {
     }
 
     fn process_polled_events(&mut self, poll_fds: &[libc::pollfd]) {
-        self.devices
-            .process_polled_events(&poll_fds[1..], &mut self.key_state);
+        devices::DeviceManager::process_polled_events(&poll_fds[1..], &mut self.key_state);
     }
 }
 
-pub(crate) fn run(mut engine: Engine) {
-    while let Ok(poll_fds) = engine.poll_sources() {
+pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
+    loop {
+        let poll_fds = engine.poll_sources()?;
+
         if matches!(engine.drain_commands(), LoopControl::Shutdown) {
-            break;
+            return Ok(());
         }
 
         engine.process_polled_events(&poll_fds);
@@ -343,7 +349,17 @@ impl WakeFd {
                 return Err(error);
             }
 
-            return Ok(());
+            if result == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "wake eventfd closed while clearing",
+                ));
+            }
+
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "short read from wake eventfd",
+            ));
         }
     }
 
@@ -361,6 +377,7 @@ mod tests {
     use super::EngineRuntime;
     use super::RegisteredBinding;
     use crate::binding::BindingId;
+    use crate::Error;
 
     #[test]
     fn engine_processes_register_and_unregister_commands() {
@@ -387,6 +404,43 @@ mod tests {
             .commands()
             .send(Command::Unregister { id })
             .expect("unregister command should send");
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn engine_rejects_duplicate_binding_ids() {
+        let runtime = EngineRuntime::spawn().expect("engine should spawn");
+
+        let id = BindingId::new();
+        let (first_reply_tx, first_reply_rx) = mpsc::channel();
+
+        runtime
+            .commands()
+            .send(Command::Register {
+                binding: RegisteredBinding::new(id),
+                reply: first_reply_tx,
+            })
+            .expect("first register command should send");
+
+        let first_result = first_reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("first register command should receive reply");
+        assert!(first_result.is_ok());
+
+        let (second_reply_tx, second_reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::Register {
+                binding: RegisteredBinding::new(id),
+                reply: second_reply_tx,
+            })
+            .expect("second register command should send");
+
+        let second_result = second_reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("second register command should receive reply");
+        assert!(matches!(second_result, Err(Error::AlreadyRegistered)));
 
         runtime.shutdown().expect("engine should shutdown cleanly");
     }

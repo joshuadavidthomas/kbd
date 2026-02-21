@@ -26,10 +26,8 @@ impl DeviceManager {
     }
 
     pub(crate) fn process_polled_events(
-        &mut self,
         _polled_device_fds: &[libc::pollfd],
         _key_state: &mut KeyState,
     ) {
-        let _device_count = self.device_fds.len();
     }
 }
