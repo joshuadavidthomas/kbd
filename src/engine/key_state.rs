@@ -3,7 +3,7 @@
 //! Modifier state is derived from key state, not tracked separately.
 //! "Is Ctrl held?" = "is `KEY_LEFTCTRL` or `KEY_RIGHTCTRL` in the pressed set?"
 //!
-//! Replaces v0's separate `ModifierTracker` (per-device `HashSet`<Modifier>)
+//! Replaces v0's separate `ModifierTracker` (per-device `HashSet<Modifier>`)
 //! and `SharedKeyState` (atomic counters). The engine owns this exclusively —
 //! no Arc, no atomics, no shared access.
 //!

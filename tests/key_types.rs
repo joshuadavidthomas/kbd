@@ -26,13 +26,14 @@ fn unknown_evdev_keycode_maps_to_unknown_key() {
 }
 
 #[test]
-fn modifier_is_derivable_from_left_and_right_key_variants() {
-    assert_eq!(Modifier::from_key(Key::LeftCtrl), Some(Modifier::Ctrl));
-    assert_eq!(Modifier::from_key(Key::RightCtrl), Some(Modifier::Ctrl));
-    assert_eq!(Modifier::from_key(Key::LeftShift), Some(Modifier::Shift));
-    assert_eq!(Modifier::from_key(Key::RightShift), Some(Modifier::Shift));
-    assert_eq!(Modifier::from_key(Key::LeftAlt), Some(Modifier::Alt));
-    assert_eq!(Modifier::from_key(Key::RightAlt), Some(Modifier::Alt));
-    assert_eq!(Modifier::from_key(Key::LeftSuper), Some(Modifier::Super));
-    assert_eq!(Modifier::from_key(Key::RightSuper), Some(Modifier::Super));
+fn modifier_try_from_key_canonicalizes_left_and_right_variants() {
+    assert_eq!(Modifier::try_from(Key::LeftCtrl), Ok(Modifier::Ctrl));
+    assert_eq!(Modifier::try_from(Key::RightCtrl), Ok(Modifier::Ctrl));
+    assert_eq!(Modifier::try_from(Key::LeftShift), Ok(Modifier::Shift));
+    assert_eq!(Modifier::try_from(Key::RightShift), Ok(Modifier::Shift));
+    assert_eq!(Modifier::try_from(Key::LeftAlt), Ok(Modifier::Alt));
+    assert_eq!(Modifier::try_from(Key::RightAlt), Ok(Modifier::Alt));
+    assert_eq!(Modifier::try_from(Key::LeftSuper), Ok(Modifier::Super));
+    assert_eq!(Modifier::try_from(Key::RightSuper), Ok(Modifier::Super));
+    assert_eq!(Modifier::try_from(Key::A), Err(Key::A));
 }

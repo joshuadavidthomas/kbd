@@ -21,9 +21,84 @@
 //! `archive/v0/src/mode/controller.rs` (`ModeController` push/pop).
 //! These are the ad-hoc mechanisms this type unifies.
 
-// TODO: Action enum with variants listed above
-// TODO: From<F: Fn() + Send + Sync + 'static> for Action (closure convenience)
-// TODO: serde support for data variants behind feature flag
+use std::fmt;
 
-/// Placeholder — see module docs.
-pub enum Action {}
+use crate::key::HotkeySequence;
+use crate::key::Key;
+use crate::key::Modifier;
+
+/// Layer identifier used by layer-control actions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LayerName(Box<str>);
+
+impl LayerName {
+    #[must_use]
+    pub fn new(value: impl Into<Box<str>>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for LayerName {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for LayerName {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+/// Action executed when a binding matches.
+pub enum Action {
+    /// Execute user callback code.
+    Callback(Box<dyn Fn() + Send + Sync + 'static>),
+    /// Emit a single key with optional modifiers.
+    EmitKey(Key, Vec<Modifier>),
+    /// Emit a sequence of hotkeys.
+    EmitSequence(HotkeySequence),
+    /// Push a named layer onto the stack.
+    PushLayer(LayerName),
+    /// Pop the active layer.
+    PopLayer,
+    /// Toggle a named layer on/off.
+    ToggleLayer(LayerName),
+    /// Consume the triggering event without further action.
+    Swallow,
+}
+
+impl<F> From<F> for Action
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    fn from(value: F) -> Self {
+        Self::Callback(Box::new(value))
+    }
+}
+
+impl fmt::Debug for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Callback(_) => f.write_str("Action::Callback(..)"),
+            Self::EmitKey(key, modifiers) => f
+                .debug_tuple("Action::EmitKey")
+                .field(key)
+                .field(modifiers)
+                .finish(),
+            Self::EmitSequence(sequence) => f
+                .debug_tuple("Action::EmitSequence")
+                .field(sequence)
+                .finish(),
+            Self::PushLayer(layer) => f.debug_tuple("Action::PushLayer").field(layer).finish(),
+            Self::PopLayer => f.write_str("Action::PopLayer"),
+            Self::ToggleLayer(layer) => f.debug_tuple("Action::ToggleLayer").field(layer).finish(),
+            Self::Swallow => f.write_str("Action::Swallow"),
+        }
+    }
+}
