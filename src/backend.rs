@@ -231,7 +231,7 @@ fn shortcut_id(hotkey: &HotkeyKey) -> String {
     let mut components = Vec::with_capacity(hotkey.1.len() + 1);
     components.extend(hotkey.1.iter().copied().map(key_component));
     components.push(key_component(hotkey.0));
-    format!("evdev-hotkey-{}", components.join("-"))
+    format!("keybound-{}", components.join("-"))
 }
 
 #[cfg(feature = "portal")]

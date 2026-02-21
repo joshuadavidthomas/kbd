@@ -6,16 +6,16 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use evdev::KeyCode;
-use evdev_hotkey::ActionId;
-use evdev_hotkey::ActionMap;
-use evdev_hotkey::Backend;
-use evdev_hotkey::Error;
-use evdev_hotkey::HotkeyBinding;
-use evdev_hotkey::HotkeyConfig;
-use evdev_hotkey::HotkeyManager;
-use evdev_hotkey::ModeBindings;
-use evdev_hotkey::ModeOptions;
-use evdev_hotkey::SequenceBinding;
+use keybound::ActionId;
+use keybound::ActionMap;
+use keybound::Backend;
+use keybound::Error;
+use keybound::HotkeyBinding;
+use keybound::HotkeyConfig;
+use keybound::HotkeyManager;
+use keybound::ModeBindings;
+use keybound::ModeOptions;
+use keybound::SequenceBinding;
 
 fn create_evdev_manager_or_skip() -> Option<HotkeyManager> {
     match HotkeyManager::with_backend(Backend::Evdev) {
@@ -227,7 +227,7 @@ fn failed_registration_rolls_back_previous_hotkeys() {
     };
     assert!(matches!(
         error,
-        evdev_hotkey::ConfigRegistrationError::Register(_)
+        keybound::ConfigRegistrationError::Register(_)
     ));
 
     assert!(!manager.is_registered(KeyCode::KEY_A, &[KeyCode::KEY_LEFTCTRL]));

@@ -1,8 +1,8 @@
 use evdev::KeyCode;
-use evdev_hotkey::HotkeyManager;
+use keybound::HotkeyManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting evdev-hotkey example");
+    println!("Starting keybound example");
     println!("Press Ctrl+Shift+C to trigger hotkey");
 
     let manager = HotkeyManager::new()?;

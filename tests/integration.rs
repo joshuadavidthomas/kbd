@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use evdev::KeyCode;
-use evdev_hotkey::Error;
-use evdev_hotkey::HotkeyManager;
+use keybound::Error;
+use keybound::HotkeyManager;
 
 fn create_manager_or_skip() -> Option<HotkeyManager> {
     match HotkeyManager::new() {

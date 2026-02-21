@@ -67,7 +67,7 @@ pub(crate) struct ListenerState {
 
 const POLL_TIMEOUT_MS: i32 = 25;
 const INOTIFY_BUFFER_SIZE: usize = 4096;
-const VIRTUAL_FORWARDER_DEVICE_NAME: &str = "evdev-hotkey-virtual-keyboard";
+const VIRTUAL_FORWARDER_DEVICE_NAME: &str = "keybound-virtual-keyboard";
 #[cfg(feature = "grab")]
 const MAX_FORWARDABLE_KEY_CODE: u16 = 767;
 
@@ -491,7 +491,7 @@ pub(crate) fn spawn_listener_thread(
     let key_event_forwarder = create_key_event_forwarder(config.grab)?;
 
     thread::Builder::new()
-        .name("evdev-hotkey-listener".into())
+        .name("keybound-listener".into())
         .spawn(move || {
             listener_loop(devices, &inotify_fd, shared, config, key_event_forwarder);
         })

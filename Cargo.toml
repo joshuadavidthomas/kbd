@@ -1,12 +1,12 @@
 [package]
-name = "evdev-hotkey"
+name = "keybound"
 version = "0.1.0"
 edition = "2021"
 authors = ["Josh Thomas <josh@joshthomas.dev>"]
-description = "Global hotkey listener for Linux using evdev (X11 + Wayland)"
+description = "Global hotkey library for Linux — works on Wayland, X11, and TTY"
 license = "MIT"
-repository = "https://github.com/joshuadavidthomas/evdev-hotkey"
-keywords = ["hotkey", "global-shortcut", "evdev", "linux", "input"]
+repository = "https://github.com/joshuadavidthomas/keybound"
+keywords = ["hotkey", "global-shortcut", "keybinding", "wayland", "input"]
 categories = ["os::linux-apis", "api-bindings"]
 readme = "README.md"
 
