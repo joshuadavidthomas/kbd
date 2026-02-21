@@ -69,13 +69,18 @@ impl KeyState {
 
     /// Returns the set of modifiers currently held, derived from pressed keys.
     ///
-    /// Left/right variants are canonicalized: if either LeftCtrl or RightCtrl
+    /// Left/right variants are canonicalized: if either `LeftCtrl` or `RightCtrl`
     /// is held, `Modifier::Ctrl` is in the returned set.
     #[must_use]
     pub(crate) fn active_modifiers(&self) -> Vec<Modifier> {
         let mut modifiers = Vec::new();
 
-        for &modifier in &[Modifier::Ctrl, Modifier::Shift, Modifier::Alt, Modifier::Super] {
+        for &modifier in &[
+            Modifier::Ctrl,
+            Modifier::Shift,
+            Modifier::Alt,
+            Modifier::Super,
+        ] {
             let (left, right) = modifier.keys();
             if self.is_pressed(left) || self.is_pressed(right) {
                 modifiers.push(modifier);

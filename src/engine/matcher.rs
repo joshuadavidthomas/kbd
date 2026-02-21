@@ -77,15 +77,18 @@ pub(crate) fn match_key_event<'a>(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
     use std::sync::Arc;
 
-    use super::{match_key_event, MatchResult};
+    use super::match_key_event;
+    use super::MatchResult;
     use crate::action::Action;
     use crate::binding::BindingId;
     use crate::engine::key_state::KeyTransition;
     use crate::engine::RegisteredBinding;
-    use crate::key::{Hotkey, Modifier};
+    use crate::key::Hotkey;
+    use crate::key::Modifier;
     use crate::Key;
 
     struct TestBindings {
@@ -131,9 +134,13 @@ mod tests {
         let mut bindings = TestBindings::new();
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = Arc::clone(&counter);
-        bindings.add(Key::C, &[Modifier::Ctrl], Action::from(move || {
-            counter_clone.fetch_add(1, Ordering::Relaxed);
-        }));
+        bindings.add(
+            Key::C,
+            &[Modifier::Ctrl],
+            Action::from(move || {
+                counter_clone.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
 
         let result = bindings.match_event(Key::C, KeyTransition::Press, &[Modifier::Ctrl]);
         assert!(matches!(result, MatchResult::Matched(_)));
@@ -187,11 +194,7 @@ mod tests {
     #[test]
     fn matches_multi_modifier_combination() {
         let mut bindings = TestBindings::new();
-        bindings.add(
-            Key::A,
-            &[Modifier::Ctrl, Modifier::Shift],
-            Action::Swallow,
-        );
+        bindings.add(Key::A, &[Modifier::Ctrl, Modifier::Shift], Action::Swallow);
 
         let result = bindings.match_event(
             Key::A,
@@ -205,11 +208,7 @@ mod tests {
     fn modifier_order_does_not_affect_matching() {
         let mut bindings = TestBindings::new();
         // Register with Shift, Ctrl order
-        bindings.add(
-            Key::A,
-            &[Modifier::Shift, Modifier::Ctrl],
-            Action::Swallow,
-        );
+        bindings.add(Key::A, &[Modifier::Shift, Modifier::Ctrl], Action::Swallow);
 
         // Match with Ctrl, Shift order
         let result = bindings.match_event(
