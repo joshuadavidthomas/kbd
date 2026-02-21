@@ -67,13 +67,13 @@ Reference: `archive/v0/src/key.rs`, `archive/v0/src/hotkey.rs`
 
 The message-passing architecture.
 
-- [ ] `Command` enum: `Register`, `Unregister`, `Shutdown`. (Layer commands added in Phase 3.)
-- [ ] Reply mechanism: `Register` carries a oneshot sender for `Result<(), Error>`.
-- [ ] `Engine` struct that owns: bindings (`Vec` or `HashMap`), devices, key state.
-- [ ] `engine::run()` — event loop: `poll()` on device fds + wake fd, drain commands, process events.
-- [ ] Wake mechanism: eventfd (or pipe) so command sends wake the poll.
-- [ ] Shutdown: `Command::Shutdown` breaks the event loop, thread exits.
-- [ ] Tests: engine starts, accepts commands, shuts down cleanly.
+- [x] `Command` enum: `Register`, `Unregister`, `Shutdown`. (Layer commands added in Phase 3.)
+- [x] Reply mechanism: `Register` carries a oneshot sender for `Result<(), Error>`.
+- [x] `Engine` struct that owns: bindings (`Vec` or `HashMap`), devices, key state.
+- [x] `engine::run()` — event loop: `poll()` on device fds + wake fd, drain commands, process events.
+- [x] Wake mechanism: eventfd (or pipe) so command sends wake the poll.
+- [x] Shutdown: `Command::Shutdown` breaks the event loop, thread exits.
+- [x] Tests: engine starts, accepts commands, shuts down cleanly.
 
 Reference: `archive/v0/src/listener.rs` (event loop structure),
 `archive/v0/src/listener/io.rs` (poll mechanics)
@@ -121,7 +121,7 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 | 1.1 Key types | 9/9 |
 | 1.2 Action and binding | 6/6 |
 | 1.3 Error type | 4/4 |
-| 1.4 Engine skeleton | 0/7 |
+| 1.4 Engine skeleton | 7/7 |
 | 1.5 Device reading | 0/7 |
 | 1.6 Manager and handle | 0/7 |
 | 1.7 Basic matching | 0/5 |
