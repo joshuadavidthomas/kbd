@@ -10,6 +10,8 @@
 //!
 //! Prior art: `archive/v0/src/manager/handles.rs`
 
+use std::fmt;
+
 use crate::binding::BindingId;
 use crate::engine::Command;
 use crate::engine::CommandSender;
@@ -26,6 +28,15 @@ pub struct Handle {
     id: BindingId,
     commands: CommandSender,
     state: HandleState,
+}
+
+impl fmt::Debug for Handle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Handle")
+            .field("id", &self.id)
+            .field("state", &self.state)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Handle {

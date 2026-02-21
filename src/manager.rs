@@ -23,6 +23,7 @@
 //! shared-state management). This file should stay small — if it grows
 //! past a few hundred lines, something is wrong.
 
+use std::fmt;
 use std::sync::mpsc;
 use std::sync::Mutex;
 
@@ -52,6 +53,7 @@ enum GrabConfiguration {
 }
 
 /// Builder for explicit backend and runtime options.
+#[derive(Debug)]
 pub struct HotkeyManagerBuilder {
     backend: BackendSelection,
     grab: GrabConfiguration,
@@ -102,6 +104,21 @@ pub struct HotkeyManager {
     backend: Backend,
     commands: CommandSender,
     runtime: Mutex<Option<EngineRuntime>>,
+}
+
+impl fmt::Debug for HotkeyManager {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let running = self
+            .runtime
+            .lock()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false);
+
+        f.debug_struct("HotkeyManager")
+            .field("backend", &self.backend)
+            .field("running", &running)
+            .finish_non_exhaustive()
+    }
 }
 
 impl HotkeyManager {
