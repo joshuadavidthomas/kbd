@@ -323,11 +323,11 @@ impl HotkeyManager {
             };
         }
 
-        Ok(Handle {
-            location: RegistrationLocation::Global(hotkey_key),
+        Ok(Handle::new(
+            RegistrationLocation::Global(hotkey_key),
             registration_marker,
-            manager: self.inner.clone(),
-        })
+            self.inner.clone(),
+        ))
     }
 
     fn register_device_hotkey<F>(
@@ -373,11 +373,11 @@ impl HotkeyManager {
             .unwrap()
             .insert(id, registration);
 
-        Ok(Handle {
-            location: RegistrationLocation::Device(id),
+        Ok(Handle::new(
+            RegistrationLocation::Device(id),
             registration_marker,
-            manager: self.inner.clone(),
-        })
+            self.inner.clone(),
+        ))
     }
 
     /// Register a multi-step key sequence.
@@ -463,10 +463,7 @@ impl HotkeyManager {
             .unwrap()
             .insert(sequence_id, registration);
 
-        Ok(SequenceHandle {
-            id: sequence_id,
-            manager: self.inner.clone(),
-        })
+        Ok(SequenceHandle::new(sequence_id, self.inner.clone()))
     }
 
     /// Define a named mode with its bindings and options.
@@ -652,11 +649,11 @@ impl HotkeyManager {
             return Err(Error::ManagerStopped);
         }
 
-        Ok(Handle {
-            location: RegistrationLocation::Global(hotkey_key),
+        Ok(Handle::new(
+            RegistrationLocation::Global(hotkey_key),
             registration_marker,
-            manager: self.inner.clone(),
-        })
+            self.inner.clone(),
+        ))
     }
 
     fn replace_device_hotkey<F>(
@@ -708,11 +705,11 @@ impl HotkeyManager {
             id
         };
 
-        Handle {
-            location: RegistrationLocation::Device(id),
+        Handle::new(
+            RegistrationLocation::Device(id),
             registration_marker,
-            manager: self.inner.clone(),
-        }
+            self.inner.clone(),
+        )
     }
 
     /// Register a dual-function tap-hold key.
@@ -767,11 +764,11 @@ impl HotkeyManager {
             .unwrap()
             .insert(key, registration);
 
-        Ok(TapHoldHandle {
+        Ok(TapHoldHandle::new(
             key,
             registration_marker,
-            manager: self.inner.clone(),
-        })
+            self.inner.clone(),
+        ))
     }
 
     /// Returns `true` if a global hotkey with this key + modifier combination
@@ -1695,7 +1692,7 @@ mod tests {
 
         assert!(!manager.is_registered(Key::D, &[Modifier::Ctrl]));
 
-        manager.register(Key::D, &[Modifier::Ctrl], || {}).unwrap();
+        let _handle = manager.register(Key::D, &[Modifier::Ctrl], || {}).unwrap();
 
         assert!(manager.is_registered(Key::D, &[Modifier::Ctrl]));
     }
@@ -1783,10 +1780,10 @@ mod tests {
         let manager = manager_with_fake_backend();
         let calls = Arc::new(AtomicUsize::new(0));
 
-        manager.register(Key::E, &[Modifier::Shift], || {}).unwrap();
+        let _handle = manager.register(Key::E, &[Modifier::Shift], || {}).unwrap();
 
         let calls_clone = calls.clone();
-        manager
+        let _handle = manager
             .replace(Key::E, &[Modifier::Shift], move || {
                 calls_clone.fetch_add(1, Ordering::SeqCst);
             })
@@ -1807,9 +1804,9 @@ mod tests {
             register_calls: register_calls.clone(),
         }));
 
-        manager.register(Key::T, &[Modifier::Alt], || {}).unwrap();
+        let _handle = manager.register(Key::T, &[Modifier::Alt], || {}).unwrap();
 
-        manager.replace(Key::T, &[Modifier::Alt], || {}).unwrap();
+        let _handle = manager.replace(Key::T, &[Modifier::Alt], || {}).unwrap();
 
         assert_eq!(register_calls.load(Ordering::SeqCst), 1);
     }
@@ -1819,7 +1816,7 @@ mod tests {
         let register_calls = Arc::new(AtomicUsize::new(0));
         let manager = manager_with_backend(Arc::new(FailsSecondRegisterBackend { register_calls }));
 
-        manager.register(Key::U, &[Modifier::Alt], || {}).unwrap();
+        let _handle = manager.register(Key::U, &[Modifier::Alt], || {}).unwrap();
 
         let err = manager
             .register(Key::I, &[Modifier::Alt], || {})
@@ -1954,7 +1951,7 @@ mod tests {
         let stale_handle = manager.register(Key::T, &[Modifier::Alt], || {}).unwrap();
 
         let calls_clone = calls.clone();
-        manager
+        let _new_handle = manager
             .replace(Key::T, &[Modifier::Alt], move || {
                 calls_clone.fetch_add(1, Ordering::SeqCst);
             })
@@ -1986,7 +1983,7 @@ mod tests {
             .unwrap();
 
         let calls_clone = calls.clone();
-        manager
+        let _new_handle = manager
             .replace_with_options(
                 Key::Num4,
                 &[],
@@ -2100,7 +2097,7 @@ mod tests {
         allow_unregister_finish.store(true, Ordering::SeqCst);
 
         unregister_thread.join().unwrap().unwrap();
-        replace_thread.join().unwrap().unwrap();
+        let _handle = replace_thread.join().unwrap().unwrap();
 
         assert!(backend_registered.load(Ordering::SeqCst));
         assert!(manager.is_registered(Key::Y, &[Modifier::Ctrl]));
@@ -2273,6 +2270,126 @@ mod tests {
             .lock()
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn handle_drop_unregisters_hotkey() {
+        let manager = manager_with_fake_backend();
+
+        {
+            let _handle = manager.register(Key::A, &[Modifier::Ctrl], || {}).unwrap();
+            assert!(manager.is_registered(Key::A, &[Modifier::Ctrl]));
+        }
+
+        assert!(!manager.is_registered(Key::A, &[Modifier::Ctrl]));
+    }
+
+    #[test]
+    fn handle_clone_keeps_hotkey_alive_until_last_drop() {
+        let manager = manager_with_fake_backend();
+
+        let handle = manager.register(Key::B, &[Modifier::Ctrl], || {}).unwrap();
+        let clone = handle.clone();
+
+        drop(handle);
+        assert!(manager.is_registered(Key::B, &[Modifier::Ctrl]));
+
+        drop(clone);
+        assert!(!manager.is_registered(Key::B, &[Modifier::Ctrl]));
+    }
+
+    #[test]
+    fn explicit_unregister_removes_even_with_clones() {
+        let manager = manager_with_fake_backend();
+
+        let handle = manager.register(Key::C, &[Modifier::Ctrl], || {}).unwrap();
+        let _clone = handle.clone();
+
+        handle.unregister().unwrap();
+        assert!(!manager.is_registered(Key::C, &[Modifier::Ctrl]));
+    }
+
+    #[test]
+    fn sequence_handle_drop_unregisters() {
+        let manager = manager_with_fake_backend();
+
+        {
+            let _handle = manager
+                .register_sequence(
+                    &HotkeySequence::new(vec![
+                        Hotkey::new(Key::K, vec![Modifier::Ctrl]),
+                        Hotkey::new(Key::C, vec![Modifier::Ctrl]),
+                    ])
+                    .unwrap(),
+                    SequenceOptions::new(),
+                    || {},
+                )
+                .unwrap();
+
+            assert!(!manager
+                .inner
+                .sequence_registrations
+                .lock()
+                .unwrap()
+                .is_empty());
+        }
+
+        assert!(manager
+            .inner
+            .sequence_registrations
+            .lock()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn tap_hold_handle_drop_unregisters() {
+        let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
+
+        {
+            let _handle = manager
+                .register_tap_hold(
+                    Key::CapsLock,
+                    crate::tap_hold::TapAction::emit(Key::Escape),
+                    crate::tap_hold::HoldAction::modifier(Modifier::Ctrl),
+                    crate::tap_hold::TapHoldOptions::new(),
+                )
+                .unwrap();
+
+            assert!(manager
+                .inner
+                .tap_hold_registrations
+                .lock()
+                .unwrap()
+                .contains_key(&Key::CapsLock));
+        }
+
+        assert!(!manager
+            .inner
+            .tap_hold_registrations
+            .lock()
+            .unwrap()
+            .contains_key(&Key::CapsLock));
+    }
+
+    #[test]
+    fn device_handle_drop_unregisters() {
+        let manager = manager_with_fake_backend();
+
+        {
+            let _handle = manager
+                .register_with_options(
+                    Key::Num1,
+                    &[],
+                    HotkeyOptions::new().device(DeviceFilter::name_contains("StreamDeck")),
+                    || {},
+                )
+                .unwrap();
+
+            assert_eq!(manager.inner.device_registrations.lock().unwrap().len(), 1);
+        }
+
+        assert_eq!(manager.inner.device_registrations.lock().unwrap().len(), 0);
     }
 
     #[test]
@@ -2492,7 +2609,7 @@ mod tests {
         let manager = manager_with_fake_backend();
         let filter = DeviceFilter::name_contains("StreamDeck");
 
-        manager
+        let _handle = manager
             .register_with_options(
                 Key::Num1,
                 &[],
@@ -2513,7 +2630,7 @@ mod tests {
     fn device_specific_different_filter_no_conflict() {
         let manager = manager_with_fake_backend();
 
-        manager
+        let _handle1 = manager
             .register_with_options(
                 Key::Num1,
                 &[],
@@ -2522,7 +2639,7 @@ mod tests {
             )
             .unwrap();
 
-        manager
+        let _handle2 = manager
             .register_with_options(
                 Key::Num1,
                 &[],
@@ -2538,9 +2655,9 @@ mod tests {
     fn device_specific_and_global_same_key_no_conflict() {
         let manager = manager_with_fake_backend();
 
-        manager.register(Key::Num1, &[], || {}).unwrap();
+        let _handle1 = manager.register(Key::Num1, &[], || {}).unwrap();
 
-        manager
+        let _handle2 = manager
             .register_with_options(
                 Key::Num1,
                 &[],
@@ -2559,7 +2676,7 @@ mod tests {
         let filter = DeviceFilter::name_contains("StreamDeck");
         let count = Arc::new(AtomicUsize::new(0));
 
-        manager
+        let _handle = manager
             .register_with_options(
                 Key::Num1,
                 &[],
@@ -2569,7 +2686,7 @@ mod tests {
             .unwrap();
 
         let count_clone = count.clone();
-        manager
+        let _handle = manager
             .replace_with_options(
                 Key::Num1,
                 &[],
@@ -2690,7 +2807,7 @@ mod tests {
     fn tap_hold_rejects_duplicate_key() {
         let manager = manager_with_backend_and_grab(Arc::new(FakeBackend), true);
 
-        manager
+        let _handle = manager
             .register_tap_hold(
                 Key::CapsLock,
                 crate::tap_hold::TapAction::emit(Key::Escape),
@@ -2728,7 +2845,7 @@ mod tests {
         let stale_clone = stale_handle.clone();
         stale_handle.unregister().unwrap();
 
-        manager
+        let _new_handle = manager
             .register_tap_hold(
                 Key::CapsLock,
                 crate::tap_hold::TapAction::emit(Key::Tab),
@@ -2837,7 +2954,7 @@ mod tests {
             .sequence_registrations
             .lock()
             .unwrap()
-            .get(&sequence_handle.id)
+            .get(&sequence_handle.id())
             .unwrap()
             .callback
             .clone();
@@ -2870,7 +2987,7 @@ mod tests {
         assert_eq!(
             stream.try_next(),
             Some(HotkeyEvent::SequenceStep {
-                id: sequence_handle.id,
+                id: sequence_handle.id(),
                 step: 2,
                 total: 2,
             }),
