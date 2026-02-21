@@ -80,13 +80,13 @@ Reference: `archive/v0/src/listener.rs` (event loop structure),
 
 ### 1.5 Device reading (`src/engine/devices.rs`)
 
-- [ ] Discover keyboard devices in `/dev/input/`.
-- [ ] Read key events from evdev devices (press, release, repeat).
-- [ ] Convert raw `KeyCode` to `Key`.
-- [ ] Device hotplug via inotify (add/remove devices at runtime).
-- [ ] Clean up key state on device disconnect.
-- [ ] Ignore non-keyboard devices.
-- [ ] Tests: device discovery, hotplug event parsing.
+- [x] Discover keyboard devices in `/dev/input/`.
+- [x] Read key events from evdev devices (press, release, repeat).
+- [x] Convert raw `KeyCode` to `Key`.
+- [x] Device hotplug via inotify (add/remove devices at runtime).
+- [x] Clean up key state on device disconnect.
+- [x] Ignore non-keyboard devices.
+- [x] Tests: device discovery, hotplug event parsing.
 
 Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 
@@ -122,7 +122,7 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 | 1.2 Action and binding | 6/6 |
 | 1.3 Error type | 4/4 |
 | 1.4 Engine skeleton | 7/7 |
-| 1.5 Device reading | 0/7 |
+| 1.5 Device reading | 7/7 |
 | 1.6 Manager and handle | 0/7 |
 | 1.7 Basic matching | 0/5 |
 | 1.8 Integration | 0/3 |

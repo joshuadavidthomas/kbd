@@ -162,7 +162,7 @@ impl Engine {
         Self {
             bindings: HashMap::new(),
             devices: devices::DeviceManager::default(),
-            key_state: key_state::KeyState,
+            key_state: key_state::KeyState::default(),
             command_rx,
             wake_fd,
         }
@@ -246,7 +246,8 @@ impl Engine {
     }
 
     fn process_polled_events(&mut self, poll_fds: &[libc::pollfd]) {
-        devices::DeviceManager::process_polled_events(&poll_fds[1..], &mut self.key_state);
+        self.devices
+            .process_polled_events(&poll_fds[1..], &mut self.key_state);
     }
 }
 
