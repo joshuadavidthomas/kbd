@@ -50,25 +50,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     println!("  Replaced Ctrl+A callback");
 
-    // RAII: dropping a handle unregisters the hotkey
-    {
-        let handle = manager.register(Key::B, &[Modifier::Ctrl], || {
-            println!("Ctrl+B in scope");
-        })?;
-        println!("  Registered Ctrl+B (in scope)");
-        println!(
-            "  is_registered(Ctrl+B): {}",
-            manager.is_registered(Key::B, &[Modifier::Ctrl])
-        );
+    // Explicit unregister via the handle
+    let handle = manager.register(Key::B, &[Modifier::Ctrl], || {
+        println!("Ctrl+B callback");
+    })?;
+    println!("  Registered Ctrl+B");
+    println!(
+        "  is_registered(Ctrl+B): {}",
+        manager.is_registered(Key::B, &[Modifier::Ctrl])
+    );
 
-        // Explicit unregister is also available
-        handle.unregister()?;
-        println!("  Unregistered Ctrl+B");
-        println!(
-            "  is_registered(Ctrl+B): {}",
-            manager.is_registered(Key::B, &[Modifier::Ctrl])
-        );
-    }
+    handle.unregister()?;
+    println!("  Unregistered Ctrl+B via handle");
+    println!(
+        "  is_registered(Ctrl+B): {}",
+        manager.is_registered(Key::B, &[Modifier::Ctrl])
+    );
     println!();
 
     // replace() also works for new registrations (register-or-replace)

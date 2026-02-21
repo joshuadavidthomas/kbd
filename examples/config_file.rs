@@ -1,8 +1,8 @@
 //! Configuration file — load hotkeys from TOML.
 //!
-//! keybound supports loading hotkey configurations from serialized formats
-//! (TOML, JSON, YAML). The config maps hotkey combos to named action IDs,
-//! and your application provides the callbacks via an `ActionMap`.
+//! keybound supports loading hotkey configurations from any serde-compatible
+//! format (TOML, JSON, etc.). The config maps hotkey combos to named action
+//! IDs, and your application provides the callbacks via an `ActionMap`.
 //!
 //! Requires the `serde` feature.
 //!

@@ -73,20 +73,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Swallow mode: suppresses non-matching keypresses
-    manager.define_mode("passthrough_block", ModeOptions::new().swallow(), |mode| {
+    manager.define_mode("confirm", ModeOptions::new().swallow(), |mode| {
         let ctl = mode.mode_controller();
         mode.register(Key::Escape, &[], move || {
             ctl.pop();
-            println!("  [block] exited");
+            println!("  [confirm] cancelled");
         })?;
-        mode.register(Key::Y, &[], || println!("  [block] confirmed: YES"))?;
-        mode.register(Key::N, &[], || println!("  [block] confirmed: NO"))?;
+        mode.register(Key::Y, &[], || println!("  [confirm] confirmed: YES"))?;
+        mode.register(Key::N, &[], || println!("  [confirm] confirmed: NO"))?;
         Ok(())
     })?;
 
-    let block_controller = controller.clone();
-    let _enter_block = manager.register(Key::D, &[Modifier::Super], move || {
-        block_controller.push("passthrough_block");
+    let confirm_controller = controller.clone();
+    let _enter_confirm = manager.register(Key::D, &[Modifier::Super], move || {
+        confirm_controller.push("confirm");
         println!("Confirm mode! Only y/n/Escape work (all other keys swallowed)");
     })?;
     println!("  Super+D  → swallow mode (only y/n/Escape work)");
