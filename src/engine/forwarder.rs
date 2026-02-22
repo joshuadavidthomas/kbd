@@ -95,7 +95,12 @@ pub(super) mod testing {
         /// Create a new recording forwarder and return the shared event buffer.
         pub(in crate::engine) fn new() -> (Self, ForwardedEvents) {
             let events = Arc::new(Mutex::new(Vec::new()));
-            (Self { events: Arc::clone(&events) }, events)
+            (
+                Self {
+                    events: Arc::clone(&events),
+                },
+                events,
+            )
         }
     }
 

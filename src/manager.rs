@@ -264,8 +264,7 @@ fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, Error> {
         GrabConfiguration::Enabled => {
             #[cfg(feature = "grab")]
             {
-                let forwarder =
-                    Box::new(crate::engine::forwarder::UinputForwarder::new()?);
+                let forwarder = Box::new(crate::engine::forwarder::UinputForwarder::new()?);
                 Ok(GrabState::Enabled { forwarder })
             }
             #[cfg(not(feature = "grab"))]
