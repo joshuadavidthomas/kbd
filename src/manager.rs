@@ -33,6 +33,7 @@ use crate::binding::BindingId;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
+use crate::engine::GrabState;
 use crate::engine::RegisteredBinding;
 use crate::handle::Handle;
 use crate::key::Hotkey;
@@ -88,7 +89,8 @@ impl HotkeyManagerBuilder {
         let backend = resolve_backend(self.backend)?;
         validate_grab_configuration(backend, self.grab)?;
 
-        let runtime = EngineRuntime::spawn()?;
+        let grab_state = create_grab_state(self.grab)?;
+        let runtime = EngineRuntime::spawn(grab_state)?;
         let commands = runtime.commands();
 
         Ok(HotkeyManager {
@@ -254,4 +256,21 @@ fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Res
     }
 
     Ok(())
+}
+
+fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, Error> {
+    match grab {
+        GrabConfiguration::Disabled => Ok(GrabState::Disabled),
+        GrabConfiguration::Enabled => {
+            #[cfg(feature = "grab")]
+            {
+                let forwarder = Box::new(crate::engine::forwarder::UinputForwarder::new()?);
+                Ok(GrabState::Enabled { forwarder })
+            }
+            #[cfg(not(feature = "grab"))]
+            {
+                Err(Error::UnsupportedFeature)
+            }
+        }
+    }
 }

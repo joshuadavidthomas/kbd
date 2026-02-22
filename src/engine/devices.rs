@@ -33,8 +33,17 @@ use crate::engine::key_state::KeyState;
 use crate::engine::key_state::KeyTransition;
 use crate::Key;
 
-const INPUT_DIRECTORY: &str = "/dev/input";
+pub(crate) const INPUT_DIRECTORY: &str = "/dev/input";
 const HOTPLUG_BUFFER_SIZE: usize = 4096;
+
+/// Whether devices should be grabbed for exclusive access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeviceGrabMode {
+    /// Normal mode — listen passively, events reach other applications.
+    Shared,
+    /// Grab mode — exclusive access, events only reach us.
+    Exclusive,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HotplugFsEvent {
@@ -84,6 +93,7 @@ impl DeviceInfo {
 #[derive(Debug)]
 pub(crate) struct DeviceManager {
     input_dir: PathBuf,
+    grab_mode: DeviceGrabMode,
     inotify_fd: Option<OwnedFd>,
     devices: HashMap<RawFd, ManagedDevice>,
     poll_fds: Vec<RawFd>,
@@ -91,14 +101,15 @@ pub(crate) struct DeviceManager {
 
 impl Default for DeviceManager {
     fn default() -> Self {
-        Self::from_input_dir(Path::new(INPUT_DIRECTORY))
+        Self::new(Path::new(INPUT_DIRECTORY), DeviceGrabMode::Shared)
     }
 }
 
 impl DeviceManager {
-    fn from_input_dir(input_dir: &Path) -> Self {
+    pub(crate) fn new(input_dir: &Path, grab_mode: DeviceGrabMode) -> Self {
         let mut manager = Self {
             input_dir: input_dir.to_path_buf(),
+            grab_mode,
             inotify_fd: initialize_inotify(input_dir).ok(),
             devices: HashMap::new(),
             poll_fds: Vec::new(),
@@ -110,7 +121,8 @@ impl DeviceManager {
     }
 
     fn discover_existing_devices(&mut self) {
-        let discover_result = discover_devices_in_dir_with(&self.input_dir, probe_keyboard_device);
+        let discover_result =
+            discover_devices_in_dir_with(&self.input_dir, DiscoveryOutcome::probe);
 
         if let Ok(paths) = discover_result {
             for path in paths {
@@ -124,7 +136,7 @@ impl DeviceManager {
             return;
         }
 
-        let open_result = open_keyboard_device(path);
+        let open_result = ManagedDevice::open(path, self.grab_mode);
         let Some(device) = open_result.ok().flatten() else {
             return;
         };
@@ -205,7 +217,7 @@ impl DeviceManager {
 
             let bytes_read = usize::try_from(read_result).unwrap_or(0);
             for event in parse_hotplug_events(&buffer, bytes_read) {
-                match classify_hotplug_change(&event, &mut known_paths, &self.input_dir) {
+                match event.classify_change(&mut known_paths, &self.input_dir) {
                     HotplugPathChange::Added(path) => {
                         self.add_device_path(&path);
                     }
@@ -238,7 +250,7 @@ impl DeviceManager {
             return;
         };
 
-        match read_key_events(&mut device.device) {
+        match device.device.read_key_events() {
             Ok(events) => {
                 tracing::trace!(
                     device_name = %device.info.name,
@@ -335,44 +347,89 @@ fn initialize_inotify(input_dir: &Path) -> io::Result<OwnedFd> {
     Ok(fd)
 }
 
-fn probe_keyboard_device(path: &Path) -> DiscoveryOutcome {
-    let Ok(device) = Device::open(path) else {
-        return DiscoveryOutcome::Skip;
-    };
+impl DiscoveryOutcome {
+    fn probe(path: &Path) -> Self {
+        let Ok(device) = Device::open(path) else {
+            return Self::Skip;
+        };
 
-    if is_keyboard_device(&device) {
-        DiscoveryOutcome::Keyboard
-    } else {
-        DiscoveryOutcome::NotKeyboard
+        if device.is_virtual_forwarder() {
+            return Self::Skip;
+        }
+
+        if device.is_keyboard() {
+            Self::Keyboard
+        } else {
+            Self::NotKeyboard
+        }
     }
 }
 
-fn open_keyboard_device(path: &Path) -> io::Result<Option<ManagedDevice>> {
-    let device = Device::open(path)?;
+impl ManagedDevice {
+    fn open(path: &Path, grab_mode: DeviceGrabMode) -> io::Result<Option<Self>> {
+        let mut device = Device::open(path)?;
 
-    if !is_keyboard_device(&device) {
-        return Ok(None);
+        if !device.is_keyboard() {
+            return Ok(None);
+        }
+
+        if device.is_virtual_forwarder() {
+            return Ok(None);
+        }
+
+        if matches!(grab_mode, DeviceGrabMode::Exclusive) {
+            device.grab()?;
+        }
+
+        device.set_nonblocking(true)?;
+
+        Ok(Some(Self {
+            path: path.to_path_buf(),
+            info: DeviceInfo::from_device(&device),
+            device,
+        }))
+    }
+}
+
+trait DeviceExt {
+    /// Returns `true` if this device is our own virtual forwarder.
+    ///
+    /// Used to prevent feedback loops: the forwarder creates a virtual keyboard
+    /// device, and without this check we'd discover and grab our own output device.
+    fn is_virtual_forwarder(&self) -> bool;
+
+    /// Returns `true` if this device looks like a keyboard (supports A-Z + Enter).
+    fn is_keyboard(&self) -> bool;
+
+    /// Reads pending events and converts them to domain key events.
+    fn read_key_events(&mut self) -> io::Result<Vec<ObservedKeyEvent>>;
+}
+
+impl DeviceExt for Device {
+    fn is_virtual_forwarder(&self) -> bool {
+        self.name()
+            .is_some_and(|name| name == crate::engine::forwarder::VIRTUAL_DEVICE_NAME)
     }
 
-    device.set_nonblocking(true)?;
+    fn is_keyboard(&self) -> bool {
+        self.supported_keys().is_some_and(|supported_keys| {
+            supported_keys.contains(KeyCode::KEY_A)
+                && supported_keys.contains(KeyCode::KEY_Z)
+                && supported_keys.contains(KeyCode::KEY_ENTER)
+        })
+    }
 
-    Ok(Some(ManagedDevice {
-        path: path.to_path_buf(),
-        info: DeviceInfo::from_device(&device),
-        device,
-    }))
-}
+    fn read_key_events(&mut self) -> io::Result<Vec<ObservedKeyEvent>> {
+        let mut events = Vec::new();
 
-fn is_keyboard_device(device: &Device) -> bool {
-    supports_keyboard_keys(device.supported_keys())
-}
+        for event in self.fetch_events()? {
+            if let Some(observed) = ObservedKeyEvent::from_input_event(event) {
+                events.push(observed);
+            }
+        }
 
-fn supports_keyboard_keys(keys: Option<&evdev::AttributeSetRef<KeyCode>>) -> bool {
-    keys.is_some_and(|supported_keys| {
-        supported_keys.contains(KeyCode::KEY_A)
-            && supported_keys.contains(KeyCode::KEY_Z)
-            && supported_keys.contains(KeyCode::KEY_ENTER)
-    })
+        Ok(events)
+    }
 }
 
 fn discover_devices_in_dir_with<F>(input_dir: &Path, mut classify: F) -> io::Result<Vec<PathBuf>>
@@ -417,29 +474,19 @@ struct ObservedKeyEvent {
     transition: KeyTransition,
 }
 
-fn read_key_events(device: &mut Device) -> io::Result<Vec<ObservedKeyEvent>> {
-    let mut events = Vec::new();
-
-    for event in device.fetch_events()? {
-        if let Some(observed) = convert_input_event(event) {
-            events.push(observed);
-        }
-    }
-
-    Ok(events)
-}
-
-fn convert_input_event(event: InputEvent) -> Option<ObservedKeyEvent> {
-    match event.destructure() {
-        EventSummary::Key(_, key_code, value) => {
-            let transition = key_transition(value)?;
-            let key = Key::from(key_code);
-            if key == Key::Unknown {
-                return None;
+impl ObservedKeyEvent {
+    fn from_input_event(event: InputEvent) -> Option<Self> {
+        match event.destructure() {
+            EventSummary::Key(_, key_code, value) => {
+                let transition = key_transition(value)?;
+                let key = Key::from(key_code);
+                if key == Key::Unknown {
+                    return None;
+                }
+                Some(Self { key, transition })
             }
-            Some(ObservedKeyEvent { key, transition })
+            _ => None,
         }
-        _ => None,
     }
 }
 
@@ -458,30 +505,34 @@ fn should_drop_device(error: &io::Error) -> bool {
         || error.kind() == io::ErrorKind::UnexpectedEof
 }
 
-pub(crate) fn classify_hotplug_change(
-    event: &HotplugFsEvent,
-    known_paths: &mut HashSet<PathBuf>,
-    input_dir: &Path,
-) -> HotplugPathChange {
-    if !event.device_name.starts_with("event") {
-        return HotplugPathChange::Unchanged;
+impl HotplugFsEvent {
+    pub(crate) fn classify_change(
+        &self,
+        known_paths: &mut HashSet<PathBuf>,
+        input_dir: &Path,
+    ) -> HotplugPathChange {
+        if !self.device_name.starts_with("event") {
+            return HotplugPathChange::Unchanged;
+        }
+
+        let path = input_dir.join(&self.device_name);
+
+        if self.mask & (libc::IN_CREATE | libc::IN_MOVED_TO) != 0
+            && known_paths.insert(path.clone())
+        {
+            return HotplugPathChange::Added(path);
+        }
+
+        if self.mask
+            & (libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF)
+            != 0
+        {
+            known_paths.remove(&path);
+            return HotplugPathChange::Removed(path);
+        }
+
+        HotplugPathChange::Unchanged
     }
-
-    let path = input_dir.join(&event.device_name);
-
-    if event.mask & (libc::IN_CREATE | libc::IN_MOVED_TO) != 0 && known_paths.insert(path.clone()) {
-        return HotplugPathChange::Added(path);
-    }
-
-    if event.mask
-        & (libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF)
-        != 0
-    {
-        known_paths.remove(&path);
-        return HotplugPathChange::Removed(path);
-    }
-
-    HotplugPathChange::Unchanged
 }
 
 pub(crate) fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<HotplugFsEvent> {
@@ -553,8 +604,6 @@ mod tests {
     use evdev::InputEvent;
     use evdev::KeyCode;
 
-    use super::classify_hotplug_change;
-    use super::convert_input_event;
     use super::discover_devices_in_dir_with;
     use super::parse_hotplug_events;
     use super::DiscoveryOutcome;
@@ -622,33 +671,46 @@ mod tests {
             mask: libc::IN_CREATE,
             device_name: "event7".into(),
         };
-        let added = classify_hotplug_change(&add_event, &mut known_paths, input_dir);
+        let added = add_event.classify_change(&mut known_paths, input_dir);
         assert_eq!(added, HotplugPathChange::Added(input_dir.join("event7")));
 
         let remove_event = HotplugFsEvent {
             mask: libc::IN_DELETE,
             device_name: "event7".into(),
         };
-        let removed = classify_hotplug_change(&remove_event, &mut known_paths, input_dir);
+        let removed = remove_event.classify_change(&mut known_paths, input_dir);
         assert_eq!(
             removed,
             HotplugPathChange::Removed(input_dir.join("event7"))
         );
 
-        let ignored = classify_hotplug_change(
-            &HotplugFsEvent {
-                mask: libc::IN_CREATE,
-                device_name: "js0".into(),
-            },
-            &mut known_paths,
-            input_dir,
-        );
+        let ignored = HotplugFsEvent {
+            mask: libc::IN_CREATE,
+            device_name: "js0".into(),
+        }
+        .classify_change(&mut known_paths, input_dir);
         assert_eq!(ignored, HotplugPathChange::Unchanged);
     }
 
     #[test]
+    fn virtual_forwarder_name_is_detected() {
+        use crate::engine::forwarder::VIRTUAL_DEVICE_NAME;
+
+        let is_forwarder = |name: &str| name == VIRTUAL_DEVICE_NAME;
+
+        assert!(is_forwarder(VIRTUAL_DEVICE_NAME));
+        assert!(!is_forwarder("AT Translated Set 2 keyboard"));
+        assert!(!is_forwarder("Logitech USB Keyboard"));
+        assert!(!is_forwarder(""));
+    }
+
+    #[test]
     fn key_input_events_are_converted_to_domain_keys() {
-        let press = convert_input_event(InputEvent::new(EventType::KEY.0, KeyCode::KEY_C.0, 1));
+        let press = ObservedKeyEvent::from_input_event(InputEvent::new(
+            EventType::KEY.0,
+            KeyCode::KEY_C.0,
+            1,
+        ));
         assert_eq!(
             press,
             Some(ObservedKeyEvent {
@@ -657,7 +719,11 @@ mod tests {
             })
         );
 
-        let release = convert_input_event(InputEvent::new(EventType::KEY.0, KeyCode::KEY_C.0, 0));
+        let release = ObservedKeyEvent::from_input_event(InputEvent::new(
+            EventType::KEY.0,
+            KeyCode::KEY_C.0,
+            0,
+        ));
         assert_eq!(
             release,
             Some(ObservedKeyEvent {
@@ -666,7 +732,11 @@ mod tests {
             })
         );
 
-        let repeat = convert_input_event(InputEvent::new(EventType::KEY.0, KeyCode::KEY_C.0, 2));
+        let repeat = ObservedKeyEvent::from_input_event(InputEvent::new(
+            EventType::KEY.0,
+            KeyCode::KEY_C.0,
+            2,
+        ));
         assert_eq!(
             repeat,
             Some(ObservedKeyEvent {
@@ -675,8 +745,11 @@ mod tests {
             })
         );
 
-        let ignored =
-            convert_input_event(InputEvent::new(EventType::KEY.0, KeyCode::new(1023).0, 1));
+        let ignored = ObservedKeyEvent::from_input_event(InputEvent::new(
+            EventType::KEY.0,
+            KeyCode::new(1023).0,
+            1,
+        ));
         assert_eq!(ignored, None);
     }
 
