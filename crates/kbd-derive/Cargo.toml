@@ -1,0 +1,19 @@
+[package]
+name = "kbd-derive"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Derive macros for keybound — #[derive(Bindings)] for declarative hotkey registration."
+keywords = ["keyboard", "hotkey", "derive", "macro"]
+categories = ["development-tools::procedural-macro-helpers"]
+
+[lib]
+proc-macro = true
+
+# Dependencies (syn, quote, proc-macro2) will be added when implementation begins.
+# This crate is a placeholder. See PLAN.md "Future idea: derive macro" section.
+
+[lints]
+workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "kbd-xkb"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Keyboard layout awareness for keybound — xkbcommon integration for keycode-to-keysym resolution and layout change detection."
+keywords = ["xkb", "keyboard", "layout", "keysym"]
+categories = ["os::linux-apis"]
+
+# No dependencies yet. xkbcommon integration planned for Phase 4.9.
+# Dependencies will include: xkbcommon, kbd-core
+
+[lints]
+workspace = true

@@ -1,55 +1,36 @@
-[package]
-name = "keybound"
-version = "0.1.0"
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
 edition = "2021"
 authors = ["Josh Thomas <josh@joshthomas.dev>"]
-description = "Global hotkey library for Linux — works on Wayland, X11, and TTY"
 license = "MIT"
 repository = "https://github.com/joshuadavidthomas/keybound"
-keywords = ["hotkey", "global-shortcut", "keybinding", "wayland", "input"]
-categories = ["os::linux-apis", "api-bindings"]
-readme = "README.md"
 
-[features]
-async-std = ["dep:async-std", "dep:async-channel"]
-default = ["evdev"]
-evdev = []
-grab = ["evdev"]
-portal = ["dep:ashpd", "dep:async-std"]
-serde = ["dep:serde"]
-tokio = ["dep:tokio", "dep:async-channel"]
+[workspace.dependencies]
+# Internal crates
+kbd-core = { path = "crates/kbd-core" }
+kbd-evdev = { path = "crates/kbd-evdev" }
+kbd-portal = { path = "crates/kbd-portal" }
+kbd-xkb = { path = "crates/kbd-xkb" }
+kbd-derive = { path = "crates/kbd-derive" }
 
-[dependencies]
-ashpd = { version = "0.13", optional = true, default-features = false, features = ["async-io"] }
-async-channel = { version = "2.3", optional = true }
-async-std = { version = "1.13", optional = true }
+# External dependencies
+ashpd = { version = "0.13", default-features = false, features = ["async-io"] }
+async-channel = { version = "2.3" }
+async-std = { version = "1.13" }
 evdev = "0.13"
 libc = "0.2"
-serde = { version = "1.0", optional = true, features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
-tokio = { version = "1.44", optional = true, default-features = false, features = ["rt"] }
+tokio = { version = "1.44", default-features = false, features = ["rt"] }
 tracing = "0.1"
 
-[dev-dependencies]
+# Dev dependencies
 serde_json = "1.0"
 toml = "1.0"
 
-# [[example]]
-# name = "async_stream"
-# required-features = ["tokio"]
-
-# [[example]]
-# name = "config_file"
-# required-features = ["serde"]
-
-# [[example]]
-# name = "grab"
-# required-features = ["grab"]
-
-# [[example]]
-# name = "tap_hold"
-# required-features = ["grab"]
-
-[lints.clippy]
+[workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 missing_errors_doc = "allow"
