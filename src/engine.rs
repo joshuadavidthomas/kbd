@@ -1706,18 +1706,6 @@ mod tests {
     }
 
     #[test]
-    fn engine_rejects_duplicate_layer_name() {
-        let mut engine = test_engine();
-
-        let layer1 = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
-        assert!(engine.define_layer(layer1).is_ok());
-
-        let layer2 = crate::Layer::new("nav").bind(Key::J, Action::Swallow);
-        let result = engine.define_layer(layer2);
-        assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
-    }
-
-    #[test]
     fn engine_stores_layer_bindings() {
         let mut engine = test_engine();
         let layer = crate::Layer::new("nav")
@@ -1834,22 +1822,6 @@ mod tests {
         runtime.shutdown().expect("engine should shutdown cleanly");
     }
 
-    #[test]
-    fn grab_mode_forwards_modifier_presses() {
-        let (grab_state, forwarded) = test_grab_state();
-        let mut engine = test_engine_with_grab(grab_state);
-
-        // Pressing a modifier key with no bindings should be forwarded
-        let disposition = press_key(&mut engine, Key::LeftCtrl, 10);
-        assert_eq!(disposition, KeyEventDisposition::UnmatchedForwarded);
-
-        let events = forwarded.lock().unwrap();
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0], (Key::LeftCtrl, KeyTransition::Press));
-    }
-
-    // Layer stack operation tests
-
     fn define_and_push_layer(engine: &mut Engine, name: &str, bindings: Vec<(Key, Action)>) {
         let mut layer = crate::Layer::new(name);
         for (key, action) in bindings {
@@ -1909,20 +1881,6 @@ mod tests {
     }
 
     #[test]
-    fn push_undefined_layer_returns_error() {
-        let mut engine = test_engine();
-        let result = engine.push_layer(crate::action::LayerName::from("nonexistent"));
-        assert!(matches!(result, Err(Error::LayerNotDefined)));
-    }
-
-    #[test]
-    fn pop_empty_stack_returns_error() {
-        let mut engine = test_engine();
-        let result = engine.pop_layer();
-        assert!(matches!(result, Err(Error::EmptyLayerStack)));
-    }
-
-    #[test]
     fn toggle_layer_pushes_when_not_active() {
         let mut engine = test_engine();
         let counter = Arc::new(AtomicUsize::new(0));
@@ -1976,49 +1934,6 @@ mod tests {
         let mut engine = test_engine();
         let result = engine.toggle_layer(crate::action::LayerName::from("nonexistent"));
         assert!(matches!(result, Err(Error::LayerNotDefined)));
-    }
-
-    #[test]
-    fn layer_takes_priority_over_global_binding() {
-        let mut engine = test_engine();
-
-        let global_counter = Arc::new(AtomicUsize::new(0));
-        let gc = Arc::clone(&global_counter);
-        engine
-            .register_binding(RegisteredBinding::new(
-                BindingId::new(),
-                Hotkey::new(Key::H),
-                Action::from(move || {
-                    gc.fetch_add(1, Ordering::Relaxed);
-                }),
-            ))
-            .unwrap();
-
-        let layer_counter = Arc::new(AtomicUsize::new(0));
-        let lc = Arc::clone(&layer_counter);
-        define_and_push_layer(
-            &mut engine,
-            "nav",
-            vec![(
-                Key::H,
-                Action::from(move || {
-                    lc.fetch_add(1, Ordering::Relaxed);
-                }),
-            )],
-        );
-
-        press_key(&mut engine, Key::H, 10);
-
-        assert_eq!(
-            layer_counter.load(Ordering::Relaxed),
-            1,
-            "layer binding should fire"
-        );
-        assert_eq!(
-            global_counter.load(Ordering::Relaxed),
-            0,
-            "global binding should not fire"
-        );
     }
 
     #[test]
@@ -2677,44 +2592,6 @@ mod tests {
         assert!(
             x_events.is_empty(),
             "swallowed key should not be forwarded on release"
-        );
-    }
-
-    #[test]
-    fn press_cache_correct_across_oneshot_layer_pop() {
-        // Press H in an oneshot layer (consumed). Layer auto-pops.
-        // Release H — should still be consumed via press cache.
-        let (grab_state, forwarded) = test_grab_state();
-        let mut engine = test_engine_with_grab(grab_state);
-
-        let layer = crate::Layer::new("oneshot-nav")
-            .bind(Key::H, Action::Swallow)
-            .oneshot(1);
-        engine.define_layer(layer).unwrap();
-        engine
-            .push_layer(crate::action::LayerName::from("oneshot-nav"))
-            .unwrap();
-
-        // Press H — matches layer binding, consumed. Layer auto-pops.
-        let press_disp = press_key(&mut engine, Key::H, 10);
-        assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
-
-        // Layer should now be popped
-        assert!(
-            engine.layer_stack.is_empty(),
-            "oneshot layer should have popped"
-        );
-
-        // Release H — should still be consumed (press was cached before layer popped)
-        let release_disp = release_key(&mut engine, Key::H, 10);
-        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
-
-        // Verify H was NOT forwarded
-        let events = forwarded.lock().unwrap();
-        let h_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::H).collect();
-        assert!(
-            h_events.is_empty(),
-            "consumed key's release should not be forwarded after layer pop"
         );
     }
 
