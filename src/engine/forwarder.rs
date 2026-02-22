@@ -76,7 +76,10 @@ impl ForwardSink for UinputForwarder {
         };
 
         let event = evdev::InputEvent::new(evdev::EventType::KEY.0, key_code.code(), value);
-        self.device.emit(&[event]).map_err(|_| Error::DeviceError)
+        self.device.emit(&[event]).map_err(|error| {
+            tracing::warn!(%error, ?key, ?transition, "failed to emit key event via uinput");
+            Error::DeviceError
+        })
     }
 }
 
