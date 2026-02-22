@@ -1316,32 +1316,34 @@ mod tests {
     fn define_duplicate_layer_via_runtime_returns_error() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
-        let layer1 = crate::Layer::new("nav").bind(Key::H, &[], Action::Swallow);
-        let (reply_tx1, reply_rx1) = mpsc::channel();
+        // Define first layer — should succeed
+        let first_layer = crate::Layer::new("nav").bind(Key::H, &[], Action::Swallow);
+        let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
             .send(Command::DefineLayer {
-                layer: layer1,
-                reply: reply_tx1,
+                layer: first_layer,
+                reply: reply_tx,
             })
             .expect("first define layer should send");
-        assert!(reply_rx1
+        assert!(reply_rx
             .recv_timeout(Duration::from_secs(1))
             .unwrap()
             .is_ok());
 
-        let layer2 = crate::Layer::new("nav").bind(Key::J, &[], Action::Swallow);
-        let (reply_tx2, reply_rx2) = mpsc::channel();
+        // Define second layer with same name — should fail
+        let duplicate_layer = crate::Layer::new("nav").bind(Key::J, &[], Action::Swallow);
+        let (dup_reply_tx, dup_reply_rx) = mpsc::channel();
         runtime
             .commands()
             .send(Command::DefineLayer {
-                layer: layer2,
-                reply: reply_tx2,
+                layer: duplicate_layer,
+                reply: dup_reply_tx,
             })
-            .expect("second define layer should send");
-        let result = reply_rx2
+            .expect("duplicate define layer should send");
+        let result = dup_reply_rx
             .recv_timeout(Duration::from_secs(1))
-            .expect("second define layer should receive reply");
+            .expect("duplicate define layer should receive reply");
         assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
 
         runtime.shutdown().expect("engine should shutdown cleanly");

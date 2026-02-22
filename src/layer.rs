@@ -49,7 +49,11 @@ pub struct LayerOptions {
 }
 
 /// A single binding within a layer.
+///
+/// Fields are populated during layer construction and consumed by the
+/// engine's matcher when the layer is active (Phase 3.2).
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct LayerBinding {
     pub(crate) hotkey: Hotkey,
     pub(crate) action: Action,
