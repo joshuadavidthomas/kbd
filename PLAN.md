@@ -172,11 +172,11 @@ works. Push/pop/toggle from callbacks and manager.
 
 ### 3.1 Layer definition and registration (`src/layer.rs`)
 
-- [ ] `Layer` builder: `Layer::new("name").bind(key, mods, action).swallow().build()`.
-- [ ] `LayerOptions`: oneshot (auto-pop after N keys), swallow (suppress unmatched), timeout (auto-pop after duration).
-- [ ] `manager.define_layer(layer)` — sends layer definition to engine.
-- [ ] Engine stores layers by name.
-- [ ] Tests: layer construction, option configuration.
+- [x] `Layer` builder: `Layer::new("name").bind(key, mods, action).swallow().build()`.
+- [x] `LayerOptions`: oneshot (auto-pop after N keys), swallow (suppress unmatched), timeout (auto-pop after duration).
+- [x] `manager.define_layer(layer)` — sends layer definition to engine.
+- [x] Engine stores layers by name.
+- [x] Tests: layer construction, option configuration.
 
 ### 3.2 Layer stack operations
 

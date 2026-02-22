@@ -1217,7 +1217,9 @@ mod tests {
 
         let result = engine.define_layer(layer);
         assert!(result.is_ok());
-        assert!(engine.layers.contains_key(&crate::action::LayerName::from("nav")));
+        assert!(engine
+            .layers
+            .contains_key(&crate::action::LayerName::from("nav")));
     }
 
     #[test]

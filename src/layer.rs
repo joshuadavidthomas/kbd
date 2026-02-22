@@ -248,10 +248,7 @@ mod tests {
         assert_eq!(layer.binding_count(), 2);
         assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
         assert_eq!(layer.options().oneshot, Some(1));
-        assert_eq!(
-            layer.options().timeout,
-            Some(Duration::from_millis(500))
-        );
+        assert_eq!(layer.options().timeout, Some(Duration::from_millis(500)));
     }
 
     #[test]
