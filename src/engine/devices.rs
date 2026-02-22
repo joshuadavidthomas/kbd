@@ -351,11 +351,11 @@ fn probe_keyboard_device(path: &Path) -> DiscoveryOutcome {
         return DiscoveryOutcome::Skip;
     };
 
-    if is_virtual_forwarder(&device) {
+    if device.is_virtual_forwarder() {
         return DiscoveryOutcome::Skip;
     }
 
-    if is_keyboard_device(&device) {
+    if device.is_keyboard() {
         DiscoveryOutcome::Keyboard
     } else {
         DiscoveryOutcome::NotKeyboard
@@ -368,11 +368,11 @@ fn open_keyboard_device(
 ) -> io::Result<Option<ManagedDevice>> {
     let mut device = Device::open(path)?;
 
-    if !is_keyboard_device(&device) {
+    if !device.is_keyboard() {
         return Ok(None);
     }
 
-    if is_virtual_forwarder(&device) {
+    if device.is_virtual_forwarder() {
         return Ok(None);
     }
 
@@ -389,29 +389,30 @@ fn open_keyboard_device(
     }))
 }
 
-/// Returns `true` if this device is our own virtual forwarder.
-///
-/// Used to prevent feedback loops: the forwarder creates a virtual keyboard
-/// device, and without this check we'd discover and grab our own output device.
-fn is_virtual_forwarder(device: &Device) -> bool {
-    device.name().is_some_and(is_virtual_forwarder_name)
+trait DeviceExt {
+    /// Returns `true` if this device is our own virtual forwarder.
+    ///
+    /// Used to prevent feedback loops: the forwarder creates a virtual keyboard
+    /// device, and without this check we'd discover and grab our own output device.
+    fn is_virtual_forwarder(&self) -> bool;
+
+    /// Returns `true` if this device looks like a keyboard (supports A-Z + Enter).
+    fn is_keyboard(&self) -> bool;
 }
 
-/// Returns `true` if this device name matches our virtual forwarder name.
-fn is_virtual_forwarder_name(name: &str) -> bool {
-    name == crate::engine::forwarder::VIRTUAL_DEVICE_NAME
-}
+impl DeviceExt for Device {
+    fn is_virtual_forwarder(&self) -> bool {
+        self.name()
+            .is_some_and(|name| name == crate::engine::forwarder::VIRTUAL_DEVICE_NAME)
+    }
 
-fn is_keyboard_device(device: &Device) -> bool {
-    supports_keyboard_keys(device.supported_keys())
-}
-
-fn supports_keyboard_keys(keys: Option<&evdev::AttributeSetRef<KeyCode>>) -> bool {
-    keys.is_some_and(|supported_keys| {
-        supported_keys.contains(KeyCode::KEY_A)
-            && supported_keys.contains(KeyCode::KEY_Z)
-            && supported_keys.contains(KeyCode::KEY_ENTER)
-    })
+    fn is_keyboard(&self) -> bool {
+        self.supported_keys().is_some_and(|supported_keys| {
+            supported_keys.contains(KeyCode::KEY_A)
+                && supported_keys.contains(KeyCode::KEY_Z)
+                && supported_keys.contains(KeyCode::KEY_ENTER)
+        })
+    }
 }
 
 fn discover_devices_in_dir_with<F>(input_dir: &Path, mut classify: F) -> io::Result<Vec<PathBuf>>
@@ -687,13 +688,14 @@ mod tests {
 
     #[test]
     fn virtual_forwarder_name_is_detected() {
-        use super::is_virtual_forwarder_name;
         use crate::engine::forwarder::VIRTUAL_DEVICE_NAME;
 
-        assert!(is_virtual_forwarder_name(VIRTUAL_DEVICE_NAME));
-        assert!(!is_virtual_forwarder_name("AT Translated Set 2 keyboard"));
-        assert!(!is_virtual_forwarder_name("Logitech USB Keyboard"));
-        assert!(!is_virtual_forwarder_name(""));
+        let is_forwarder = |name: &str| name == VIRTUAL_DEVICE_NAME;
+
+        assert!(is_forwarder(VIRTUAL_DEVICE_NAME));
+        assert!(!is_forwarder("AT Translated Set 2 keyboard"));
+        assert!(!is_forwarder("Logitech USB Keyboard"));
+        assert!(!is_forwarder(""));
     }
 
     #[test]
