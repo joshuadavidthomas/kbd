@@ -49,6 +49,12 @@ impl From<String> for LayerName {
     }
 }
 
+impl std::fmt::Display for LayerName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Action executed when a binding matches.
 pub enum Action {
     /// Execute user callback code.

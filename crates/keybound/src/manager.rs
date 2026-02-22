@@ -27,14 +27,13 @@ use std::fmt;
 use std::sync::Mutex;
 use std::sync::mpsc;
 
-use kbd_core::binding::RegisteredBinding;
-
 use crate::Error;
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::backend::Backend;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
+use crate::binding::RegisteredBinding;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;

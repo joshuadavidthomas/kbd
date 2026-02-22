@@ -33,7 +33,6 @@
 //! - [`devices`] — device discovery, hotplug, capability detection
 //! - [`forwarder`] — uinput virtual device for event forwarding/emission
 //! - [`types`] — shared engine types (grab state, dispositions, layer stack entries)
-//! - [`binding`] — registered binding storage
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
 //! - [`wake`] — eventfd-based wake mechanism and loop control
@@ -51,15 +50,13 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Instant;
 
-use kbd_core::binding::RegisteredBinding;
-use kbd_core::key_state::KeyState;
-use kbd_core::key_state::KeyTransition;
-use kbd_core::layer::StoredLayer;
 use kbd_core::matcher::LayerStackEntry;
 use kbd_core::matcher::LayerTimeout;
 use kbd_core::matcher::MatchResult;
 use kbd_core::matcher::match_key_event;
 
+use self::key_state::KeyState;
+use self::key_state::KeyTransition;
 use crate::Error;
 use crate::Key;
 use crate::Modifier;
@@ -67,6 +64,7 @@ use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::BindingId;
 use crate::binding::Passthrough;
+use crate::binding::RegisteredBinding;
 use crate::engine::devices::DeviceKeyEvent;
 use crate::introspection::ActiveLayerInfo;
 use crate::introspection::BindingInfo;
@@ -75,8 +73,8 @@ use crate::introspection::ConflictInfo;
 use crate::introspection::ShadowedStatus;
 use crate::key::Hotkey;
 use crate::layer::Layer;
+use crate::layer::StoredLayer;
 
-pub(crate) mod binding;
 pub(crate) mod command;
 pub(crate) mod devices;
 pub(crate) mod forwarder;
@@ -737,15 +735,13 @@ mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
-    use kbd_core::binding::RegisteredBinding;
-    use kbd_core::key_state::KeyTransition;
-
     use super::Command;
     use super::Engine;
     use super::EngineRuntime;
     use super::GrabState;
     use super::KeyEventDisposition;
     use super::devices::DeviceKeyEvent;
+    use super::key_state::KeyTransition;
     use super::wake::WakeFd;
     use crate::Action;
     use crate::Error;
@@ -753,6 +749,7 @@ mod tests {
     use crate::Modifier;
     use crate::binding::BindingId;
     use crate::binding::Passthrough;
+    use crate::binding::RegisteredBinding;
     use crate::key::Hotkey;
 
     #[test]
