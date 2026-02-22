@@ -7,7 +7,7 @@
 //!
 //! # Quick start
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use keybound::{HotkeyManager, Key, Modifier};
 //!
 //! let manager = HotkeyManager::new()?;
