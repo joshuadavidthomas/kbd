@@ -135,7 +135,7 @@ impl DeviceManager {
             return;
         }
 
-        let open_result = open_keyboard_device(path, self.grab_mode);
+        let open_result = ManagedDevice::open(path, self.grab_mode);
         let Some(device) = open_result.ok().flatten() else {
             return;
         };
@@ -362,31 +362,30 @@ fn probe_keyboard_device(path: &Path) -> DiscoveryOutcome {
     }
 }
 
-fn open_keyboard_device(
-    path: &Path,
-    grab_mode: DeviceGrabMode,
-) -> io::Result<Option<ManagedDevice>> {
-    let mut device = Device::open(path)?;
+impl ManagedDevice {
+    fn open(path: &Path, grab_mode: DeviceGrabMode) -> io::Result<Option<Self>> {
+        let mut device = Device::open(path)?;
 
-    if !device.is_keyboard() {
-        return Ok(None);
+        if !device.is_keyboard() {
+            return Ok(None);
+        }
+
+        if device.is_virtual_forwarder() {
+            return Ok(None);
+        }
+
+        if matches!(grab_mode, DeviceGrabMode::Exclusive) {
+            device.grab()?;
+        }
+
+        device.set_nonblocking(true)?;
+
+        Ok(Some(Self {
+            path: path.to_path_buf(),
+            info: DeviceInfo::from_device(&device),
+            device,
+        }))
     }
-
-    if device.is_virtual_forwarder() {
-        return Ok(None);
-    }
-
-    if matches!(grab_mode, DeviceGrabMode::Exclusive) {
-        device.grab()?;
-    }
-
-    device.set_nonblocking(true)?;
-
-    Ok(Some(ManagedDevice {
-        path: path.to_path_buf(),
-        info: DeviceInfo::from_device(&device),
-        device,
-    }))
 }
 
 trait DeviceExt {
