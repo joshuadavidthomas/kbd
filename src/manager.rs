@@ -192,6 +192,24 @@ impl HotkeyManager {
         reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }
 
+    /// Define a named layer.
+    ///
+    /// Sends the layer definition to the engine for storage. The layer
+    /// is not active until explicitly pushed via `push_layer()`.
+    ///
+    /// Returns `Error::LayerAlreadyDefined` if a layer with the same
+    /// name has already been defined.
+    pub fn define_layer(&self, layer: Layer) -> Result<(), Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::DefineLayer {
+            layer,
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+    }
+
     /// Stop the manager and join the engine thread.
     pub fn shutdown(self) -> Result<(), Error> {
         self.shutdown_inner()
@@ -226,24 +244,6 @@ impl HotkeyManager {
         }
 
         Ok(())
-    }
-
-    /// Define a named layer.
-    ///
-    /// Sends the layer definition to the engine for storage. The layer
-    /// is not active until explicitly pushed via `push_layer()`.
-    ///
-    /// Returns `Error::LayerAlreadyDefined` if a layer with the same
-    /// name has already been defined.
-    pub fn define_layer(&self, layer: Layer) -> Result<(), Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::DefineLayer {
-            layer,
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
     }
 
     // TODO: register_sequence() — multi-step hotkey
