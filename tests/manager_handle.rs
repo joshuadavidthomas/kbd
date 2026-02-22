@@ -7,7 +7,7 @@ use keybound::Modifier;
 #[test]
 fn register_and_drop_handle_unregisters_hotkey() {
     let manager = HotkeyManager::new().expect("manager should initialize");
-    let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+    let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
 
     let handle = manager
         .register(hotkey.clone(), || {})
@@ -27,7 +27,7 @@ fn register_and_drop_handle_unregisters_hotkey() {
 #[test]
 fn duplicate_hotkey_registration_returns_conflict_error() {
     let manager = HotkeyManager::new().expect("manager should initialize");
-    let hotkey = Hotkey::new(Key::A, vec![Modifier::Ctrl]);
+    let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
 
     let _first = manager
         .register(hotkey.clone(), || {})
@@ -59,7 +59,7 @@ fn shutdown_stops_handle_unregistration_commands() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 
     let handle = manager
-        .register(Hotkey::new(Key::B, vec![Modifier::Alt]), || {})
+        .register(Hotkey::new(Key::B).modifier(Modifier::Alt), || {})
         .expect("register should succeed");
 
     manager.shutdown().expect("shutdown should succeed");

@@ -73,7 +73,10 @@ fn define_layer_with_all_options() {
 #[test]
 fn layer_builder_produces_correct_state() {
     let layer = Layer::new("test")
-        .bind(Hotkey::new(Key::A, vec![Modifier::Ctrl]), Action::Swallow)
+        .bind(
+            Hotkey::new(Key::A).modifier(Modifier::Ctrl),
+            Action::Swallow,
+        )
         .bind(Key::B, || println!("fired"))
         .swallow()
         .oneshot(2)

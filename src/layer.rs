@@ -68,7 +68,7 @@ pub(crate) struct LayerBinding {
 /// let nav = Layer::new("nav")
 ///     .bind(Key::H, Action::Swallow)
 ///     .bind(Key::J, Action::Swallow)
-///     .bind(Hotkey::new(Key::K, vec![Modifier::Ctrl]), Action::Swallow)
+///     .bind(Hotkey::new(Key::K).modifier(Modifier::Ctrl), Action::Swallow)
 ///     .bind(Key::L, Action::Swallow)
 ///     .swallow();
 /// ```
@@ -200,8 +200,10 @@ mod tests {
 
     #[test]
     fn layer_bind_preserves_hotkey() {
-        let layer =
-            Layer::new("nav").bind(Hotkey::new(Key::H, vec![Modifier::Ctrl]), Action::Swallow);
+        let layer = Layer::new("nav").bind(
+            Hotkey::new(Key::H).modifier(Modifier::Ctrl),
+            Action::Swallow,
+        );
         let (_, bindings, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].hotkey.key(), Key::H);

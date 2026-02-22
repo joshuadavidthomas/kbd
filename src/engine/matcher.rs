@@ -65,7 +65,7 @@ pub(crate) fn match_key_event<'a>(
     }
 
     // Build candidate hotkey from the pressed key + active modifiers
-    let candidate = Hotkey::new(key, active_modifiers.to_vec());
+    let candidate = Hotkey::with_modifiers(key, active_modifiers.to_vec());
 
     if let Some(&id) = binding_ids_by_hotkey.get(&candidate) {
         if let Some(binding) = bindings_by_id.get(&id) {
@@ -115,7 +115,7 @@ mod tests {
 
         fn add(&mut self, key: Key, modifiers: &[Modifier], action: Action) -> BindingId {
             let id = BindingId::new();
-            let hotkey = Hotkey::new(key, modifiers.to_vec());
+            let hotkey = Hotkey::with_modifiers(key, modifiers.to_vec());
             self.binding_ids_by_hotkey.insert(hotkey.clone(), id);
             self.bindings_by_id
                 .insert(id, RegisteredBinding::new(id, hotkey, action));

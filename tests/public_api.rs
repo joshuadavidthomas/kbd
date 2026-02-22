@@ -18,7 +18,9 @@ fn design_md_simple_example() {
     let manager = HotkeyManager::new().expect("manager should start");
     let _handle: Handle = manager
         .register(
-            Hotkey::new(Key::C, vec![Modifier::Ctrl, Modifier::Shift]),
+            Hotkey::new(Key::C)
+                .modifier(Modifier::Ctrl)
+                .modifier(Modifier::Shift),
             || {
                 println!("fired");
             },

@@ -623,7 +623,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         let id = BindingId::new();
-        let binding = test_binding(id, Key::A, &[Modifier::Ctrl]);
+        let binding = test_binding(id, Hotkey::new(Key::A).modifier(Modifier::Ctrl));
         let (reply_tx, reply_rx) = mpsc::channel();
 
         runtime
@@ -656,7 +656,10 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: test_binding(BindingId::new(), Key::B, &[Modifier::Alt]),
+                binding: test_binding(
+                    BindingId::new(),
+                    Hotkey::new(Key::B).modifier(Modifier::Alt),
+                ),
                 reply: first_reply_tx,
             })
             .expect("first register command should send");
@@ -670,7 +673,10 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: test_binding(BindingId::new(), Key::B, &[Modifier::Alt]),
+                binding: test_binding(
+                    BindingId::new(),
+                    Hotkey::new(Key::B).modifier(Modifier::Alt),
+                ),
                 reply: second_reply_tx,
             })
             .expect("second register command should send");
@@ -686,7 +692,7 @@ mod tests {
     #[test]
     fn engine_reports_registration_queries() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Shift]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Shift);
 
         let (register_reply_tx, register_reply_rx) = mpsc::channel();
         runtime
@@ -747,8 +753,7 @@ mod tests {
         assert!(matches!(send_result, Err(Error::ManagerStopped)));
     }
 
-    fn test_binding(id: BindingId, key: Key, modifiers: &[Modifier]) -> RegisteredBinding {
-        let hotkey = Hotkey::new(key, modifiers.to_vec());
+    fn test_binding(id: BindingId, hotkey: Hotkey) -> RegisteredBinding {
         RegisteredBinding::new(id, hotkey, Action::Swallow)
     }
 
@@ -797,7 +802,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -818,7 +823,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -839,7 +844,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -861,7 +866,9 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::A, vec![Modifier::Ctrl, Modifier::Shift]);
+        let hotkey = Hotkey::new(Key::A)
+            .modifier(Modifier::Ctrl)
+            .modifier(Modifier::Shift);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -882,7 +889,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::Escape, vec![]);
+        let hotkey = Hotkey::new(Key::Escape);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -901,7 +908,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -926,7 +933,7 @@ mod tests {
 
         // Register a binding that panics
         let id1 = BindingId::new();
-        let hotkey1 = Hotkey::new(Key::P, vec![Modifier::Ctrl]);
+        let hotkey1 = Hotkey::new(Key::P).modifier(Modifier::Ctrl);
         let action1 = Action::from(move || {
             panic!("intentional test panic");
         });
@@ -936,7 +943,7 @@ mod tests {
 
         // Register a second binding that increments a counter
         let id2 = BindingId::new();
-        let hotkey2 = Hotkey::new(Key::Q, vec![Modifier::Ctrl]);
+        let hotkey2 = Hotkey::new(Key::Q).modifier(Modifier::Ctrl);
         let action2 = Action::from(move || {
             post_panic_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -963,7 +970,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -985,7 +992,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         engine
             .register_binding(RegisteredBinding::new(id, hotkey, Action::Swallow))
             .unwrap();
@@ -1008,7 +1015,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -1037,7 +1044,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -1078,7 +1085,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
