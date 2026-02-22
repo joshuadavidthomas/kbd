@@ -365,13 +365,14 @@ impl Engine {
                 passthrough,
             } => {
                 execute_action(action);
-                let grab_enabled = matches!(self.grab_state, GrabState::Enabled { .. });
-                match (passthrough, grab_enabled) {
-                    (Passthrough::Enabled, true) => {
+                match passthrough {
+                    Passthrough::Enabled
+                        if matches!(self.grab_state, GrabState::Enabled { .. }) =>
+                    {
                         self.forward_event(event.key, event.transition);
                         KeyEventDisposition::MatchedForwarded
                     }
-                    (Passthrough::Enabled, false) | (Passthrough::Consume, _) => {
+                    Passthrough::Enabled | Passthrough::Consume => {
                         KeyEventDisposition::MatchedConsumed
                     }
                 }
