@@ -28,6 +28,7 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 
 use crate::action::Action;
+use crate::action::LayerName;
 use crate::backend::Backend;
 use crate::binding::BindingId;
 use crate::engine::Command;
@@ -235,9 +236,55 @@ impl HotkeyManager {
         Ok(())
     }
 
+    /// Push a named layer onto the layer stack.
+    ///
+    /// The layer must have been previously defined via [`define_layer`](Self::define_layer).
+    /// The pushed layer becomes the highest-priority layer for matching.
+    ///
+    /// Returns `Error::LayerNotDefined` if no layer with the given name exists.
+    pub fn push_layer(&self, name: impl Into<LayerName>) -> Result<(), Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::PushLayer {
+            name: name.into(),
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+    }
+
+    /// Pop the topmost layer from the layer stack.
+    ///
+    /// Returns the name of the popped layer, or `Error::EmptyLayerStack`
+    /// if no layers are active.
+    pub fn pop_layer(&self) -> Result<LayerName, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands
+            .send(Command::PopLayer { reply: reply_tx })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+    }
+
+    /// Toggle a named layer on or off.
+    ///
+    /// If the layer is currently in the stack, it is removed.
+    /// If the layer is not in the stack, it is pushed.
+    ///
+    /// Returns `Error::LayerNotDefined` if no layer with the given name exists.
+    pub fn toggle_layer(&self, name: impl Into<LayerName>) -> Result<(), Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::ToggleLayer {
+            name: name.into(),
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+    }
+
     // TODO: register_sequence() — multi-step hotkey
     // TODO: register_tap_hold() — dual-function key
-    // TODO: push_layer() / pop_layer() — layer stack control
 }
 
 impl Drop for HotkeyManager {

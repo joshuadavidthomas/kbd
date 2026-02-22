@@ -25,4 +25,8 @@ pub enum Error {
     EngineError,
     #[error("a layer with this name is already defined")]
     LayerAlreadyDefined,
+    #[error("no layer with this name has been defined")]
+    LayerNotDefined,
+    #[error("no active layer to pop")]
+    EmptyLayerStack,
 }
