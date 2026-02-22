@@ -12,25 +12,30 @@ inspiration-only (GPL).
 
 Two layers:
 
-**Core** (`keybound-core`): A pure-logic keyboard shortcut engine.
+**Core** (`kbd-core`): A pure-logic keyboard shortcut engine.
 Key types, modifier tracking, binding matching, layer stacks, sequence
 resolution — the parts that every Rust project rebuilds from scratch.
 No platform dependencies. Embeddable in any event loop.
 
-**Global** (`keybound`): A Linux global hotkey library built on the
-core engine. Adds evdev, XDG portal, grab mode, device hotplug, virtual
-devices — the platform complexity so users just describe patterns and
-actions.
+**Backends** (`kbd-evdev`, `kbd-portal`, `kbd-xkb`): Platform-specific
+crates, each isolated behind its own dependency boundary. evdev for
+Linux input devices. Portal for Wayland's XDG GlobalShortcuts. XKB for
+keyboard layout awareness.
+
+**Facade** (`keybound`): A Linux global hotkey library built on the
+core engine and backends. Adds the threaded manager, backend selection,
+grab mode, device hotplug — the platform complexity so users just
+describe patterns and actions.
 
 One sentence for the core: **Given a key event and some state, which
 binding matches?**
 
-One sentence for the global layer: **When a specific pattern of keys
-happens on a Linux input device, do something.**
+One sentence for the facade: **When a specific pattern of keys happens
+on a Linux input device, do something.**
 
 The core exists because Zed, COSMIC, Niri, and every Rust compositor
-and editor independently build the same matching engine. The global
-layer exists because no Rust crate handles Linux hotkeys properly —
+and editor independently build the same matching engine. The facade
+exists because no Rust crate handles Linux hotkeys properly —
 especially on Wayland.
 
 ## What concepts does a user need?
@@ -49,9 +54,10 @@ That's the mental model. Everything the library does should trace back to
 one of these four ideas. If a type or module can't explain which concept it
 serves, it probably shouldn't exist.
 
-In-app consumers use concepts 1–3 through the `Matcher` directly. Global
-consumers get all four through `HotkeyManager`, which drives a `Matcher`
-on an engine thread with evdev/portal plumbing.
+In-app consumers use concepts 1–3 through the `Matcher` in `kbd-core`
+directly. Global consumers get all four through `HotkeyManager` in the
+`keybound` facade, which drives a `Matcher` on an engine thread with
+`kbd-evdev`/`kbd-portal` plumbing.
 
 ## The domain model
 

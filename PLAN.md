@@ -243,11 +243,11 @@ only matters once a layer stack exists.
 
 ---
 
-## Phase 3.5: Core crate extraction
+## Phase 3.5: Workspace split and core extraction
 
-**Goal**: `keybound-core` is a standalone, pure-logic crate with zero
-platform dependencies. `keybound` depends on it for global hotkey
-functionality. In-app consumers use `keybound-core` directly.
+**Goal**: Split keybound into a multi-crate workspace. Each crate
+boundary is a dependency boundary — consumers pull in only what they
+need.
 
 Every project we studied — Zed, COSMIC, Niri, every tiling WM — builds
 the same inner engine: key types, modifier tracking, layer/context
@@ -257,27 +257,141 @@ means. This phase recognizes that keybound already has that engine and
 makes it independently usable.
 
 This happens before Phase 4 because Phase 4 adds many features
-(sequences, tap-hold, portal, serde). Each one is easier to build when
-the core/global boundary is already clean. The portal backend (4.5) is
-a second event source — having a clean core makes "multiple backends
-feed one matcher" natural.
+(sequences, tap-hold, portal, serde, XKB). Each one lands in a
+specific crate with clear ownership. The portal backend (4.5) and XKB
+support (4.9) each become their own crate rather than feature flags
+pulling heavy deps into a monolith.
 
-### 3.6 Workspace split
+### Crate layout
 
-- [ ] Cargo workspace with two crates: `keybound-core` (pure logic) and `keybound` (Linux global hotkey, depends on core).
-- [ ] `keybound-core` exposes: `Key`, `Modifier`, `Hotkey`, `HotkeySequence`, `Action` (data variants), `Binding`, `BindingOptions`, `Layer`, `LayerOptions`, `Matcher`, `KeyState`, error types.
-- [ ] `keybound` re-exports all core types — existing public API unchanged.
-- [ ] `keybound-core` has zero platform dependencies. The `evdev` feature and conversions stay in `keybound`.
-- [ ] Tests: `keybound-core` has its own test suite for pure matching logic. `keybound` integration tests unchanged.
+```
+keybound/                         workspace root
+├── crates/
+│   ├── kbd-core/                 Pure types + matcher + layers
+│   ├── kbd-evdev/                evdev backend
+│   ├── kbd-portal/               XDG GlobalShortcuts portal backend
+│   ├── kbd-xkb/                  Keyboard layout awareness
+│   ├── kbd-derive/               #[derive(Bindings)] proc macro
+│   └── keybound/                 Facade — HotkeyManager, ties it all together
+```
 
-### 3.7 Public synchronous `Matcher`
+### What goes where
+
+**`kbd-core`** — zero platform deps, the thing everyone can use.
+
+- `Key`, `Modifier`, `Hotkey`, `HotkeySequence` (types + parsing)
+- `Action`, `Binding`, `BindingOptions`, `BindingId`
+- `Layer`, `LayerOptions`, `LayerName`
+- `Matcher`, `MatchResult`, `KeyState` (the synchronous engine)
+- Core error types (parse, conflict, layer)
+- Only external dep: `thiserror`
+- Optional feature flags: `serde` (derives), `winit` (key conversions)
+
+**`kbd-evdev`** — Linux input device layer.
+
+- Device discovery, hotplug (inotify), `EVIOCGRAB`
+- `Forwarder` (uinput virtual device)
+- `From<evdev::KeyCode> for Key` and reverse — the evdev↔core bridge
+- Device filtering, self-detection
+- Deps: `evdev`, `kbd-core`
+
+**`kbd-portal`** — Wayland-friendly, no root needed.
+
+- XDG GlobalShortcuts portal implementation (DBus via `ashpd`)
+- Session management, shortcut binding/activation signals
+- Deps: `ashpd`, `kbd-core`
+- Pulls in async — isolated here so it doesn't infect the rest
+
+**`kbd-xkb`** — keyboard layout awareness.
+
+- xkbcommon integration: keycode → keysym resolution
+- `KeyReference` enum (`ByCode` / `BySymbol`)
+- Layout change detection
+- Deps: `xkbcommon`, `kbd-core`
+
+**`kbd-derive`** — proc macro (Phase 4+ timeframe, crate created now).
+
+- `#[derive(Bindings)]`, `#[hotkey(...)]`, `#[flatten]`
+- Compile-time hotkey string validation
+- Deps: `syn`, `quote`, `proc-macro2`, `kbd-core`
+- Starts as an empty crate with a doc comment explaining intent
+
+**`keybound`** — the facade, what most global-hotkey users depend on.
+
+- `HotkeyManager`, `Handle` — threaded engine + message passing
+- `ConsumePreference`, backend selection logic
+- Re-exports everything from `kbd-core`
+- Lock/inhibitor awareness, context hooks
+- Deps: `kbd-core`, optional `kbd-evdev`, `kbd-portal`, `kbd-xkb`,
+  `kbd-derive`
+
+### Why this split
+
+Each boundary is a **dependency boundary**:
+
+| Crate | Key external dep | Why separate |
+|-------|-----------------|--------------|
+| `kbd-core` | none | The whole point — zero deps, anyone can use it |
+| `kbd-evdev` | `evdev` | Linux C library, needs `/dev/input` access |
+| `kbd-portal` | `ashpd` (async DBus) | Pulls in async runtime, different paradigm |
+| `kbd-xkb` | `xkbcommon` | Optional C library, not everyone needs layouts |
+| `kbd-derive` | `syn`/`quote` | Proc macros must be separate crates (Rust req) |
+| `keybound` | all of the above | Glue + the threaded manager |
+
+Things that stay as feature flags, not crates:
+
+- **Serde** — just derives on `kbd-core` types, not a dep boundary
+- **Winit conversions** — small `From` impls in `kbd-core`, feature-gated
+- **Async event streams** — thin wrappers in `keybound`, feature-gated
+  on `tokio` / `async-std`
+
+### Consumer matrix
+
+| Consumer | Depends on |
+|----------|-----------|
+| Iced/Dioxus app with own shortcuts | `kbd-core` |
+| Iced app + layout awareness | `kbd-core` + `kbd-xkb` |
+| Tauri-style app needing global hotkeys | `keybound` |
+| Compositor (Niri-like) | `kbd-core` + `kbd-evdev` (direct, no manager) |
+| Flatpak sandboxed app | `keybound` with `kbd-portal` |
+| Declarative bindings | `keybound` + `kbd-derive` |
+
+### 3.6 Workspace scaffolding
+
+- [ ] Create `crates/` directory with all six crate dirs and `Cargo.toml` for each.
+- [ ] Root `Cargo.toml` becomes workspace manifest with `members = ["crates/*"]`.
+- [ ] `kbd-core/Cargo.toml`: only `thiserror`, optional `serde` feature.
+- [ ] `kbd-evdev/Cargo.toml`: `evdev`, `kbd-core`.
+- [ ] `kbd-portal/Cargo.toml`: `ashpd`, `kbd-core`. Starts as stub with `unimplemented!()` entry points and a doc comment.
+- [ ] `kbd-xkb/Cargo.toml`: placeholder, no deps yet. Doc comment explains Phase 4.9.
+- [ ] `kbd-derive/Cargo.toml`: placeholder `proc-macro` crate. Doc comment explains future intent.
+- [ ] `keybound/Cargo.toml`: depends on `kbd-core`, optional deps on `kbd-evdev`, `kbd-portal`, `kbd-xkb`, `kbd-derive`.
+- [ ] All crates compile. `cargo build --workspace` succeeds.
+
+### 3.7 Move types into `kbd-core`
+
+- [ ] Move `key.rs`, `action.rs`, `binding.rs`, `layer.rs` into `kbd-core/src/`.
+- [ ] Move `engine/matcher.rs`, `engine/key_state.rs` into `kbd-core/src/` (these are pure logic).
+- [ ] Move core error variants into `kbd-core/src/error.rs`.
+- [ ] `evdev::KeyCode` conversions move from `key.rs` to `kbd-evdev` — `kbd-core` Key has no evdev dependency.
+- [ ] `kbd-core` builds and tests pass independently: `cargo test -p kbd-core`.
+
+### 3.8 Move evdev code into `kbd-evdev`
+
+- [ ] Move `engine/devices.rs` into `kbd-evdev/src/`.
+- [ ] Move `engine/forwarder.rs` into `kbd-evdev/src/`.
+- [ ] Move `From<evdev::KeyCode>` / `Into<evdev::KeyCode>` impls into `kbd-evdev`.
+- [ ] `kbd-evdev` exposes a backend trait or struct that `keybound` consumes.
+- [ ] `kbd-evdev` builds and tests pass: `cargo test -p kbd-evdev`.
+
+### 3.9 Public synchronous `Matcher` in `kbd-core`
 
 The `Matcher` is the embeddable engine. No threads, no channels, no
 evdev. Consumers drive it from their own event loop — winit, GPUI,
 Smithay, a game loop, whatever.
 
 ```rust
-use keybound_core::{Matcher, Key, Modifier, Hotkey, Layer, Action};
+use kbd_core::{Matcher, Key, Modifier, Hotkey, Layer, Action};
 
 let mut matcher = Matcher::new();
 matcher.register(Hotkey::parse("Ctrl+S")?, Action::from(|| save()));
@@ -296,23 +410,34 @@ match matcher.process(hotkey, transition) {
 - [ ] `MatchResult::Pending` variant for mid-sequence state — consumers need this for UI feedback ("waiting for next key…").
 - [ ] `Matcher` exposes layer operations directly: `push_layer()`, `pop_layer()`, `toggle_layer()`, `define_layer()`.
 - [ ] `Matcher` exposes introspection: `list_bindings()`, `bindings_for_key()`, `active_layers()`, `conflicts()`.
-- [ ] `HotkeyManager` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
+- [ ] `HotkeyManager` in `keybound` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
 - [ ] Tests: `Matcher` used standalone without any `HotkeyManager` or engine thread.
 
-### 3.8 Windowing library conversions
+### 3.10 Rewire `keybound` facade
 
-- [ ] Feature-gated `From<winit::keyboard::KeyCode> for Key` behind `winit` feature flag.
+- [ ] `keybound` re-exports all `kbd-core` public types — existing public API unchanged.
+- [ ] `HotkeyManager` uses `kbd-evdev` for device management (behind `evdev` feature).
+- [ ] `HotkeyManager` uses `kbd-portal` for portal backend (behind `portal` feature).
+- [ ] Existing integration tests pass against the `keybound` crate: `cargo test -p keybound`.
+- [ ] `cargo test --workspace` passes.
+
+### 3.11 Windowing library conversions
+
+- [ ] Feature-gated `From<winit::keyboard::KeyCode> for Key` in `kbd-core` behind `winit` feature flag.
 - [ ] Conversion coverage: all keys that have equivalents in both enums, others map to `Key::Unknown`.
-- [ ] Other frameworks (iced, Smithay keysyms) added on demand via additional feature flags.
+- [ ] Other frameworks (Smithay keysyms, etc.) added on demand via additional feature flags.
 - [ ] Tests: round-trip conversion for common keys.
 
 ### Phase 3.5 gate
 
 | Section | Items |
 |---------|-------|
-| 3.6 Workspace split | 0/5 |
-| 3.7 Public Matcher | 0/6 |
-| 3.8 Windowing conversions | 0/4 |
+| 3.6 Workspace scaffolding | 0/9 |
+| 3.7 Move types to kbd-core | 0/5 |
+| 3.8 Move evdev to kbd-evdev | 0/5 |
+| 3.9 Public Matcher | 0/6 |
+| 3.10 Rewire keybound facade | 0/5 |
+| 3.11 Windowing conversions | 0/4 |
 
 ---
 
@@ -366,13 +491,13 @@ Reference: `archive/v0/src/listener/dispatch.rs` (device-specific dispatch)
 - [ ] Engine filters evdev repeat events per-binding based on policy. Distinct from debounce: repeat is the OS auto-repeating a held key, debounce suppresses rapid re-presses.
 - [ ] Tests: debounce suppression, rate limiting, repeat suppression, custom repeat rate, interaction between debounce and repeat.
 
-### 4.5 Portal backend and consume preference (`src/backend/portal.rs`)
+### 4.5 Portal backend and consume preference (`kbd-portal`)
 
-- [ ] XDG GlobalShortcuts portal implementation.
-- [ ] Auto-detection: try portal, fall back to evdev.
-- [ ] Explicit backend selection via builder.
-- [ ] Clear errors when portal unavailable or feature not compiled.
-- [ ] `ConsumePreference` enum: `NoPreference`, `PreferConsume`, `PreferNoConsume`, `MustConsume`, `MustNotConsume` (proven model from livesplit-hotkey — real users have different permission levels and sandbox constraints).
+- [ ] XDG GlobalShortcuts portal implementation in `kbd-portal` crate.
+- [ ] Auto-detection in `keybound`: try portal, fall back to evdev.
+- [ ] Explicit backend selection via `HotkeyManager::builder()`.
+- [ ] Clear errors when portal unavailable or `kbd-portal` not compiled.
+- [ ] `ConsumePreference` enum in `kbd-core`: `NoPreference`, `PreferConsume`, `PreferNoConsume`, `MustConsume`, `MustNotConsume` (proven model from livesplit-hotkey — real users have different permission levels and sandbox constraints).
 - [ ] Builder-level: `HotkeyManager::builder().consume_preference(ConsumePreference::PreferConsume)`.
 - [ ] Preference guides backend selection: `MustConsume` → needs grab or portal, fails on plain evdev. `MustNotConsume` → plain evdev only. `PreferConsume` → tries grab/portal first, falls back to observe.
 - [ ] Tests: backend selection, fallback, feature-gated errors, preference-guided selection, failure on impossible preference.
@@ -403,11 +528,11 @@ parsing hotkeys.
 
 - [ ] `manager.define_modifier_alias("Mod", Modifier::Super)` — abstract modifier that resolves at runtime.
 - [ ] `Hotkey::parse("Mod+T")` accepts aliases. Alias resolution happens in the matcher, not in parsing — bindings are portable across alias configurations.
-- [ ] Aliases configurable on `Matcher` directly (for `keybound-core` consumers) and via command/reply on `HotkeyManager`.
+- [ ] Aliases configurable on `Matcher` directly (for `kbd-core` consumers) and via command/reply on `HotkeyManager`.
 - [ ] Alias reassignment: changing "Mod" from Super to Alt updates resolution for all existing bindings using that alias.
 - [ ] Tests: alias definition, resolution during matching, reassignment, unknown alias errors.
 
-### 4.9 Keyboard layout awareness (XKB)
+### 4.9 Keyboard layout awareness (`kbd-xkb`)
 
 keybound works at the evdev keycode level, which is position-based. On a
 Dvorak layout, `Key::S` is still physical position S (which types "O").
@@ -415,12 +540,12 @@ COSMIC and Niri both solved this with xkbcommon because real users
 switch layouts. This is the difference between "works for QWERTY
 Americans" and "works for everyone."
 
-- [ ] Feature-gated behind `xkb` feature flag. Optional xkbcommon dependency.
-- [ ] `KeyReference` enum: `ByCode(Key)` (position-based, current behavior) | `BySymbol(Keysym)` (character-based, layout-aware).
+- [ ] `KeyReference` enum in `kbd-core`: `ByCode(Key)` (position-based, current behavior) | `BySymbol(Keysym)` (character-based, layout-aware). Core type, no xkb dep.
+- [ ] xkbcommon integration in `kbd-xkb`: resolve keycodes → keysyms based on active XKB layout.
 - [ ] Hotkey parsing disambiguation: `"Ctrl+a"` (character) vs `"Ctrl+KeyA"` (position), or equivalent scheme.
-- [ ] xkbcommon integration: resolve evdev keycodes → keysyms based on active XKB layout.
-- [ ] Layout change detection: subscribe to xkb layout change events, re-resolve symbol-based bindings.
-- [ ] Core types (`KeyReference`) live in `keybound-core`. The evdev↔xkb hookup lives in `keybound`.
+- [ ] Layout change detection in `kbd-xkb`: subscribe to xkb layout change events, re-resolve symbol-based bindings.
+- [ ] `keybound` facade integrates `kbd-xkb` when the `xkb` feature is enabled.
+- [ ] `kbd-core` `Matcher` handles `KeyReference` natively — symbol resolution provided by `kbd-xkb`, but matching logic is in core.
 - [ ] Tests: QWERTY vs Dvorak binding resolution, layout switch mid-session, mixed code/symbol bindings.
 
 ### 4.10 Binding provenance
@@ -711,15 +836,16 @@ proc-macro2).
 | **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
 | **2** | Grab mode + key state | 13 |
 | **3** | Layers + metadata + introspection | 27 |
-| **3.5** | Core crate extraction (`keybound-core`) | 15 |
+| **3.5** | Workspace split (`kbd-core`, `kbd-evdev`, `kbd-portal`, `kbd-xkb`, `kbd-derive`, `keybound`) | 34 |
 | **4** | Sequences, tap-hold, device filtering, portal, async, serde, aliases, XKB, provenance | 61 |
 | **5** | Key remapping, transformation, lock/inhibitor, context hooks | 30 |
 | **6** | Stretch: chords, mouse, full keymaps | 11+ |
 | **7** | Cross-platform | 3 |
 
 Phase 1 makes it work. Phase 2 makes it intercept. Phase 3 makes it
-modal and introspectable. Phase 3.5 makes it embeddable — any Rust app
-can use the core engine without evdev. Phase 4 makes it feature-complete
+modal and introspectable. Phase 3.5 splits the workspace — `kbd-core`
+becomes an embeddable engine any Rust app can use, backends get their
+own crates, deps stay isolated. Phase 4 makes it feature-complete
 and layout-aware. Phase 5 makes it a transformation engine that's
 context-aware.
 
