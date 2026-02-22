@@ -90,9 +90,8 @@ pub(crate) fn match_key_event<'a>(
             }
 
             // No match in this layer — check swallow behavior
-            match stored_layer.options.unmatched {
-                UnmatchedKeyBehavior::Swallow => return MatchResult::Swallowed,
-                UnmatchedKeyBehavior::Fallthrough => continue,
+            if matches!(stored_layer.options.unmatched, UnmatchedKeyBehavior::Swallow) {
+                return MatchResult::Swallowed;
             }
         }
     }
@@ -385,10 +384,8 @@ mod tests {
         bindings.push_layer("nav");
 
         let result = bindings.match_event(Key::H, KeyTransition::Press, &[]);
-        if let MatchResult::Matched { action, .. } = result {
-            if let Action::Callback(cb) = action {
-                cb();
-            }
+        if let MatchResult::Matched { action: Action::Callback(cb), .. } = result {
+            cb();
         }
 
         assert_eq!(layer_counter.load(Ordering::Relaxed), 1, "layer binding should fire");
