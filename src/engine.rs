@@ -113,8 +113,8 @@ enum LayerEffect {
     Toggle(LayerName),
 }
 
-impl LayerEffect {
-    fn from_action(action: &Action) -> Self {
+impl From<&Action> for LayerEffect {
+    fn from(action: &Action) -> Self {
         match action {
             Action::PushLayer(name) => Self::Push(name.clone()),
             Action::PopLayer => Self::Pop,
@@ -575,7 +575,7 @@ impl Engine {
                     // Execute non-mutating parts (callbacks) while borrow is held
                     execute_action(action);
                     // Extract layer effect for Phase 2
-                    let layer_effect = LayerEffect::from_action(action);
+                    let layer_effect = LayerEffect::from(action);
                     MatchOutcome::Matched {
                         layer_effect,
                         passthrough,
