@@ -374,13 +374,13 @@ impl Engine {
     fn define_layer(&mut self, layer: Layer) -> Result<(), Error> {
         let (name, bindings, options) = layer.into_parts();
 
-        if self.layers.contains_key(&name) {
-            return Err(Error::LayerAlreadyDefined);
+        match self.layers.entry(name) {
+            std::collections::hash_map::Entry::Occupied(_) => Err(Error::LayerAlreadyDefined),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(StoredLayer { bindings, options });
+                Ok(())
+            }
         }
-
-        self.layers
-            .insert(name, StoredLayer { bindings, options });
-        Ok(())
     }
 
     fn unregister_binding(&mut self, id: BindingId) {
