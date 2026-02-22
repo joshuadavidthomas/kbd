@@ -224,12 +224,12 @@ action. Without introspection, every consumer rebuilds this from scratch.
 Layers make introspection interesting — "what's active, what's shadowed"
 only matters once a layer stack exists.
 
-- [ ] `manager.list_bindings()` → returns active bindings with key, description, layer, and shadowed status.
-- [ ] `manager.bindings_for_key(key, mods)` → what would fire if this key were pressed now (considering layer stack).
-- [ ] `manager.active_layers()` → current layer stack with names and options.
-- [ ] `manager.conflicts()` → bindings shadowed by higher-priority layers.
-- [ ] All queries via command/reply through existing message-passing channel.
-- [ ] Tests: introspect after register, introspect with layers, shadowed binding detection.
+- [x] `manager.list_bindings()` → returns active bindings with key, description, layer, and shadowed status.
+- [x] `manager.bindings_for_key(key, mods)` → what would fire if this key were pressed now (considering layer stack).
+- [x] `manager.active_layers()` → current layer stack with names and options.
+- [x] `manager.conflicts()` → bindings shadowed by higher-priority layers.
+- [x] All queries via command/reply through existing message-passing channel.
+- [x] Tests: introspect after register, introspect with layers, shadowed binding detection.
 
 ### Phase 3 gate
 
@@ -239,7 +239,7 @@ only matters once a layer stack exists.
 | 3.2 Layer stack | 7/7 |
 | 3.3 Press cache | 5/5 |
 | 3.4 Binding metadata | 4/4 |
-| 3.5 Introspection | 0/6 |
+| 3.5 Introspection | 6/6 |
 
 ---
 
