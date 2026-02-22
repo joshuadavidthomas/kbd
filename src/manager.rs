@@ -38,6 +38,9 @@ use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
 use crate::engine::RegisteredBinding;
 use crate::handle::Handle;
+use crate::introspection::ActiveLayerInfo;
+use crate::introspection::BindingInfo;
+use crate::introspection::ConflictInfo;
 use crate::key::Hotkey;
 use crate::key::Key;
 use crate::key::Modifier;
@@ -295,6 +298,60 @@ impl HotkeyManager {
         })?;
 
         reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+    }
+
+    /// List all registered bindings with current shadowed status.
+    ///
+    /// Returns global bindings and all layer bindings (active or not).
+    /// Each entry includes whether the binding is currently reachable
+    /// or shadowed by a higher-priority layer.
+    pub fn list_bindings(&self) -> Result<Vec<BindingInfo>, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands
+            .send(Command::ListBindings { reply: reply_tx })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
+    /// Query what would fire if the given hotkey were pressed now.
+    ///
+    /// Considers the current layer stack. Returns `None` if no binding
+    /// matches the hotkey.
+    pub fn bindings_for_key(&self, hotkey: impl Into<Hotkey>) -> Result<Option<BindingInfo>, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::BindingsForKey {
+            hotkey: hotkey.into(),
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
+    /// Query the current layer stack.
+    ///
+    /// Returns layers in stack order (bottom to top).
+    pub fn active_layers(&self) -> Result<Vec<ActiveLayerInfo>, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands
+            .send(Command::ActiveLayers { reply: reply_tx })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
+    /// Find bindings that are shadowed by higher-priority layers.
+    ///
+    /// Returns conflict pairs: each entry shows the shadowed binding
+    /// and the binding that shadows it.
+    pub fn conflicts(&self) -> Result<Vec<ConflictInfo>, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands
+            .send(Command::Conflicts { reply: reply_tx })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }
 
     // TODO: register_sequence() — multi-step hotkey

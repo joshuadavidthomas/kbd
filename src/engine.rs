@@ -59,6 +59,9 @@ use crate::binding::BindingId;
 use crate::binding::BindingOptions;
 use crate::binding::Passthrough;
 use crate::engine::devices::DeviceKeyEvent;
+use crate::introspection::ActiveLayerInfo;
+use crate::introspection::BindingInfo;
+use crate::introspection::ConflictInfo;
 use crate::key::Hotkey;
 use crate::layer::Layer;
 use crate::layer::LayerBinding;
@@ -243,6 +246,19 @@ pub(crate) enum Command {
     },
     ActiveModifiers {
         reply: mpsc::Sender<Vec<Modifier>>,
+    },
+    ListBindings {
+        reply: mpsc::Sender<Vec<BindingInfo>>,
+    },
+    BindingsForKey {
+        hotkey: Hotkey,
+        reply: mpsc::Sender<Option<BindingInfo>>,
+    },
+    ActiveLayers {
+        reply: mpsc::Sender<Vec<ActiveLayerInfo>>,
+    },
+    Conflicts {
+        reply: mpsc::Sender<Vec<ConflictInfo>>,
     },
     Shutdown,
 }
@@ -483,6 +499,22 @@ impl Engine {
                 let _ = reply.send(self.key_state.active_modifiers());
                 LoopControl::Continue
             }
+            Command::ListBindings { reply } => {
+                let _ = reply.send(self.list_bindings());
+                LoopControl::Continue
+            }
+            Command::BindingsForKey { hotkey, reply } => {
+                let _ = reply.send(self.binding_for_key(&hotkey));
+                LoopControl::Continue
+            }
+            Command::ActiveLayers { reply } => {
+                let _ = reply.send(self.active_layers());
+                LoopControl::Continue
+            }
+            Command::Conflicts { reply } => {
+                let _ = reply.send(self.conflicts());
+                LoopControl::Continue
+            }
             Command::Shutdown => LoopControl::Shutdown,
         }
     }
@@ -550,6 +582,145 @@ impl Engine {
             self.push_layer(name)?;
         }
         Ok(())
+    }
+
+    fn list_bindings(&self) -> Vec<BindingInfo> {
+        use crate::introspection::{BindingLocation, ShadowedStatus};
+
+        // Build a map of hotkey → claiming layer name for active layers.
+        // Walk top-down so the topmost layer claiming a hotkey "wins".
+        let mut claimed_by: HashMap<&Hotkey, &LayerName> = HashMap::new();
+        for entry in self.layer_stack.iter().rev() {
+            if let Some(stored) = self.layers.get(&entry.name) {
+                for binding in &stored.bindings {
+                    claimed_by.entry(&binding.hotkey).or_insert(&entry.name);
+                }
+            }
+        }
+
+        let mut results = Vec::new();
+
+        // Global bindings
+        for binding in self.bindings_by_id.values() {
+            let shadowed = if let Some(&layer_name) = claimed_by.get(binding.hotkey()) {
+                ShadowedStatus::ShadowedBy(layer_name.clone())
+            } else {
+                ShadowedStatus::Active
+            };
+
+            results.push(BindingInfo {
+                hotkey: binding.hotkey().clone(),
+                description: binding.options().description().map(Box::from),
+                location: BindingLocation::Global,
+                shadowed,
+                overlay_visibility: binding.options().overlay_visibility(),
+            });
+        }
+
+        // Layer bindings (all defined layers, active or not)
+        for (layer_name, stored) in &self.layers {
+            let is_active = self.layer_stack.iter().any(|e| &e.name == layer_name);
+
+            for binding in &stored.bindings {
+                let shadowed = if !is_active {
+                    ShadowedStatus::Inactive
+                } else if let Some(&claiming_layer) = claimed_by.get(&binding.hotkey) {
+                    if claiming_layer == layer_name {
+                        ShadowedStatus::Active
+                    } else {
+                        ShadowedStatus::ShadowedBy(claiming_layer.clone())
+                    }
+                } else {
+                    ShadowedStatus::Active
+                };
+
+                results.push(BindingInfo {
+                    hotkey: binding.hotkey.clone(),
+                    description: None,
+                    location: BindingLocation::Layer(layer_name.clone()),
+                    shadowed,
+                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                });
+            }
+        }
+
+        results
+    }
+
+    fn binding_for_key(&self, hotkey: &Hotkey) -> Option<BindingInfo> {
+        use crate::introspection::{BindingLocation, ShadowedStatus};
+
+        // Walk layer stack top-down, same as the matcher
+        for entry in self.layer_stack.iter().rev() {
+            if let Some(stored) = self.layers.get(&entry.name) {
+                for binding in &stored.bindings {
+                    if binding.hotkey == *hotkey {
+                        return Some(BindingInfo {
+                            hotkey: binding.hotkey.clone(),
+                            description: None,
+                            location: BindingLocation::Layer(entry.name.clone()),
+                            shadowed: ShadowedStatus::Active,
+                            overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Fall through to global bindings
+        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey) {
+            if let Some(binding) = self.bindings_by_id.get(&id) {
+                return Some(BindingInfo {
+                    hotkey: binding.hotkey().clone(),
+                    description: binding.options().description().map(Box::from),
+                    location: BindingLocation::Global,
+                    shadowed: ShadowedStatus::Active,
+                    overlay_visibility: binding.options().overlay_visibility(),
+                });
+            }
+        }
+
+        None
+    }
+
+    fn active_layers(&self) -> Vec<ActiveLayerInfo> {
+        self.layer_stack
+            .iter()
+            .filter_map(|entry| {
+                self.layers.get(&entry.name).map(|stored| ActiveLayerInfo {
+                    name: entry.name.clone(),
+                    description: stored.options.description.clone(),
+                    binding_count: stored.bindings.len(),
+                })
+            })
+            .collect()
+    }
+
+    fn conflicts(&self) -> Vec<ConflictInfo> {
+        use crate::introspection::{BindingLocation, ShadowedStatus};
+
+        let all_bindings = self.list_bindings();
+        let mut conflicts = Vec::new();
+
+        // Find all shadowed bindings and pair with their shadowing binding
+        for shadowed in &all_bindings {
+            if let ShadowedStatus::ShadowedBy(ref shadowing_layer) = shadowed.shadowed {
+                // Find the binding that's doing the shadowing
+                if let Some(shadowing) = all_bindings.iter().find(|b| {
+                    b.hotkey == shadowed.hotkey
+                        && b.location == BindingLocation::Layer(shadowing_layer.clone())
+                        && matches!(b.shadowed, ShadowedStatus::Active)
+                }) {
+                    conflicts.push(ConflictInfo {
+                        hotkey: shadowed.hotkey.clone(),
+                        shadowed_binding: shadowed.clone(),
+                        shadowing_binding: shadowing.clone(),
+                    });
+                }
+            }
+        }
+
+        conflicts
     }
 
     fn unregister_binding(&mut self, id: BindingId) {
@@ -2602,6 +2773,508 @@ mod tests {
         assert!(
             h_events.is_empty(),
             "press cache should prevent release forwarding after layer pop"
+        );
+    }
+
+    // Introspection tests (Section 3.5)
+
+    #[test]
+    fn list_bindings_returns_global_binding() {
+        let mut engine = test_engine();
+
+        engine
+            .register_binding(
+                RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::C).modifier(Modifier::Ctrl), Action::Swallow)
+                    .with_options(
+                        crate::binding::BindingOptions::default()
+                            .with_description("Copy"),
+                    ),
+            )
+            .unwrap();
+
+        let bindings = engine.list_bindings();
+        assert_eq!(bindings.len(), 1);
+
+        let info = &bindings[0];
+        assert_eq!(info.hotkey, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
+        assert_eq!(info.description.as_deref(), Some("Copy"));
+        assert_eq!(
+            info.location,
+            crate::introspection::BindingLocation::Global
+        );
+        assert_eq!(
+            info.shadowed,
+            crate::introspection::ShadowedStatus::Active
+        );
+    }
+
+    #[test]
+    fn list_bindings_includes_layer_bindings() {
+        let mut engine = test_engine();
+
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, Action::Swallow)
+            .bind(Key::J, Action::Swallow);
+        engine.define_layer(layer).unwrap();
+
+        let bindings = engine.list_bindings();
+        let layer_bindings: Vec<_> = bindings
+            .iter()
+            .filter(|b| {
+                matches!(
+                    b.location,
+                    crate::introspection::BindingLocation::Layer(_)
+                )
+            })
+            .collect();
+        assert_eq!(layer_bindings.len(), 2);
+    }
+
+    #[test]
+    fn list_bindings_inactive_layer_binding_marked_inactive() {
+        let mut engine = test_engine();
+
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, Action::Swallow);
+        engine.define_layer(layer).unwrap();
+        // Don't push the layer
+
+        let bindings = engine.list_bindings();
+        let nav_binding = bindings
+            .iter()
+            .find(|b| b.hotkey == Hotkey::new(Key::H))
+            .expect("should find H binding");
+        assert_eq!(
+            nav_binding.shadowed,
+            crate::introspection::ShadowedStatus::Inactive
+        );
+    }
+
+    #[test]
+    fn list_bindings_detects_shadowed_global_binding() {
+        let mut engine = test_engine();
+
+        // Global binding for H
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::H),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        // Layer binding for H
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, Action::Swallow);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
+
+        let bindings = engine.list_bindings();
+
+        // Global H should be shadowed by nav layer
+        let global_h = bindings
+            .iter()
+            .find(|b| {
+                b.hotkey == Hotkey::new(Key::H)
+                    && matches!(b.location, crate::introspection::BindingLocation::Global)
+            })
+            .expect("should find global H");
+        assert_eq!(
+            global_h.shadowed,
+            crate::introspection::ShadowedStatus::ShadowedBy(
+                crate::action::LayerName::from("nav")
+            )
+        );
+
+        // Layer H should be active
+        let layer_h = bindings
+            .iter()
+            .find(|b| {
+                b.hotkey == Hotkey::new(Key::H)
+                    && matches!(b.location, crate::introspection::BindingLocation::Layer(_))
+            })
+            .expect("should find layer H");
+        assert_eq!(
+            layer_h.shadowed,
+            crate::introspection::ShadowedStatus::Active
+        );
+    }
+
+    #[test]
+    fn list_bindings_higher_layer_shadows_lower_layer() {
+        let mut engine = test_engine();
+
+        let layer1 = crate::Layer::new("layer1")
+            .bind(Key::H, Action::Swallow);
+        engine.define_layer(layer1).unwrap();
+
+        let layer2 = crate::Layer::new("layer2")
+            .bind(Key::H, Action::Swallow);
+        engine.define_layer(layer2).unwrap();
+
+        engine
+            .push_layer(crate::action::LayerName::from("layer1"))
+            .unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("layer2"))
+            .unwrap();
+
+        let bindings = engine.list_bindings();
+
+        let layer1_h = bindings
+            .iter()
+            .find(|b| {
+                b.hotkey == Hotkey::new(Key::H)
+                    && b.location
+                        == crate::introspection::BindingLocation::Layer(
+                            crate::action::LayerName::from("layer1"),
+                        )
+            })
+            .expect("should find layer1 H");
+        assert_eq!(
+            layer1_h.shadowed,
+            crate::introspection::ShadowedStatus::ShadowedBy(
+                crate::action::LayerName::from("layer2")
+            )
+        );
+
+        let layer2_h = bindings
+            .iter()
+            .find(|b| {
+                b.hotkey == Hotkey::new(Key::H)
+                    && b.location
+                        == crate::introspection::BindingLocation::Layer(
+                            crate::action::LayerName::from("layer2"),
+                        )
+            })
+            .expect("should find layer2 H");
+        assert_eq!(
+            layer2_h.shadowed,
+            crate::introspection::ShadowedStatus::Active
+        );
+    }
+
+    #[test]
+    fn binding_for_key_returns_matching_global_binding() {
+        let mut engine = test_engine();
+
+        engine
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Swallow,
+                )
+                .with_options(
+                    crate::binding::BindingOptions::default()
+                        .with_description("Copy"),
+                ),
+            )
+            .unwrap();
+
+        let result = engine.binding_for_key(&Hotkey::new(Key::C).modifier(Modifier::Ctrl));
+        assert!(result.is_some());
+
+        let info = result.unwrap();
+        assert_eq!(info.hotkey, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
+        assert_eq!(info.description.as_deref(), Some("Copy"));
+        assert_eq!(
+            info.location,
+            crate::introspection::BindingLocation::Global
+        );
+    }
+
+    #[test]
+    fn binding_for_key_returns_none_when_no_match() {
+        let mut engine = test_engine();
+
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        let result = engine.binding_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn binding_for_key_respects_layer_stack() {
+        let mut engine = test_engine();
+
+        // Global binding for H
+        engine
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::H),
+                    Action::Swallow,
+                )
+                .with_options(
+                    crate::binding::BindingOptions::default()
+                        .with_description("Global H"),
+                ),
+            )
+            .unwrap();
+
+        // Layer binding for H
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, Action::Swallow);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
+
+        let result = engine.binding_for_key(&Hotkey::new(Key::H));
+        assert!(result.is_some());
+
+        let info = result.unwrap();
+        assert_eq!(
+            info.location,
+            crate::introspection::BindingLocation::Layer(
+                crate::action::LayerName::from("nav")
+            )
+        );
+    }
+
+    #[test]
+    fn active_layers_returns_empty_when_no_layers_pushed() {
+        let engine = test_engine();
+        let layers = engine.active_layers();
+        assert!(layers.is_empty());
+    }
+
+    #[test]
+    fn active_layers_returns_stack_in_order() {
+        let mut engine = test_engine();
+
+        let layer1 = crate::Layer::new("layer1")
+            .bind(Key::H, Action::Swallow)
+            .description("First layer");
+        engine.define_layer(layer1).unwrap();
+
+        let layer2 = crate::Layer::new("layer2")
+            .bind(Key::J, Action::Swallow)
+            .bind(Key::K, Action::Swallow)
+            .description("Second layer");
+        engine.define_layer(layer2).unwrap();
+
+        engine
+            .push_layer(crate::action::LayerName::from("layer1"))
+            .unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("layer2"))
+            .unwrap();
+
+        let layers = engine.active_layers();
+        assert_eq!(layers.len(), 2);
+
+        // Bottom to top order
+        assert_eq!(layers[0].name.as_str(), "layer1");
+        assert_eq!(layers[0].description.as_deref(), Some("First layer"));
+        assert_eq!(layers[0].binding_count, 1);
+
+        assert_eq!(layers[1].name.as_str(), "layer2");
+        assert_eq!(layers[1].description.as_deref(), Some("Second layer"));
+        assert_eq!(layers[1].binding_count, 2);
+    }
+
+    #[test]
+    fn conflicts_returns_empty_when_no_conflicts() {
+        let mut engine = test_engine();
+
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        let conflicts = engine.conflicts();
+        assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn conflicts_detects_layer_shadowing_global() {
+        let mut engine = test_engine();
+
+        // Global binding for H
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::H),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        // Layer binding for H
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, Action::Swallow);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
+
+        let conflicts = engine.conflicts();
+        assert_eq!(conflicts.len(), 1);
+
+        let conflict = &conflicts[0];
+        assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
+        assert_eq!(
+            conflict.shadowed_binding.location,
+            crate::introspection::BindingLocation::Global
+        );
+        assert_eq!(
+            conflict.shadowing_binding.location,
+            crate::introspection::BindingLocation::Layer(
+                crate::action::LayerName::from("nav")
+            )
+        );
+    }
+
+    #[test]
+    fn conflicts_detects_layer_shadowing_lower_layer() {
+        let mut engine = test_engine();
+
+        let layer1 = crate::Layer::new("layer1")
+            .bind(Key::H, Action::Swallow);
+        engine.define_layer(layer1).unwrap();
+
+        let layer2 = crate::Layer::new("layer2")
+            .bind(Key::H, Action::Swallow);
+        engine.define_layer(layer2).unwrap();
+
+        engine
+            .push_layer(crate::action::LayerName::from("layer1"))
+            .unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("layer2"))
+            .unwrap();
+
+        let conflicts = engine.conflicts();
+        assert_eq!(conflicts.len(), 1);
+
+        let conflict = &conflicts[0];
+        assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
+        assert_eq!(
+            conflict.shadowed_binding.location,
+            crate::introspection::BindingLocation::Layer(
+                crate::action::LayerName::from("layer1")
+            )
+        );
+        assert_eq!(
+            conflict.shadowing_binding.location,
+            crate::introspection::BindingLocation::Layer(
+                crate::action::LayerName::from("layer2")
+            )
+        );
+    }
+
+    #[test]
+    fn introspection_via_runtime_commands() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        // Register a global binding
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::Register {
+                binding: RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Swallow,
+                )
+                .with_options(
+                    crate::binding::BindingOptions::default()
+                        .with_description("Copy"),
+                ),
+                reply: reply_tx,
+            })
+            .unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+
+        // list_bindings
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::ListBindings { reply: reply_tx })
+            .unwrap();
+        let bindings = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("should receive reply");
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].description.as_deref(), Some("Copy"));
+
+        // bindings_for_key
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::BindingsForKey {
+                hotkey: Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                reply: reply_tx,
+            })
+            .unwrap();
+        let result = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("should receive reply");
+        assert!(result.is_some());
+
+        // active_layers (empty)
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::ActiveLayers { reply: reply_tx })
+            .unwrap();
+        let layers = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("should receive reply");
+        assert!(layers.is_empty());
+
+        // conflicts (empty)
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::Conflicts { reply: reply_tx })
+            .unwrap();
+        let conflicts = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("should receive reply");
+        assert!(conflicts.is_empty());
+
+        runtime.shutdown().unwrap();
+    }
+
+    #[test]
+    fn list_bindings_overlay_visibility_preserved() {
+        let mut engine = test_engine();
+
+        engine
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Swallow,
+                )
+                .with_options(
+                    crate::binding::BindingOptions::default()
+                        .with_overlay_visibility(crate::binding::OverlayVisibility::Hidden),
+                ),
+            )
+            .unwrap();
+
+        let bindings = engine.list_bindings();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(
+            bindings[0].overlay_visibility,
+            crate::binding::OverlayVisibility::Hidden
         );
     }
 }
