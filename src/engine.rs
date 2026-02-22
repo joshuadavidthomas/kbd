@@ -50,6 +50,8 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
+use std::time::Instant;
 
 use crate::action::Action;
 use crate::action::LayerName;
@@ -98,6 +100,57 @@ pub(crate) enum KeyEventDisposition {
     UnmatchedForwarded,
     /// Event was not processed (grab mode disabled, or modifier/repeat).
     Ignored,
+}
+
+/// Layer stack mutation extracted from a matched action.
+///
+/// Used to defer layer modifications until after the matcher's borrow
+/// on engine state is released.
+enum LayerEffect {
+    None,
+    Push(LayerName),
+    Pop,
+    Toggle(LayerName),
+}
+
+impl From<&Action> for LayerEffect {
+    fn from(action: &Action) -> Self {
+        match action {
+            Action::PushLayer(name) => Self::Push(name.clone()),
+            Action::PopLayer => Self::Pop,
+            Action::ToggleLayer(name) => Self::Toggle(name.clone()),
+            Action::Callback(_)
+            | Action::EmitKey(..)
+            | Action::EmitSequence(..)
+            | Action::Swallow => Self::None,
+        }
+    }
+}
+
+/// Intermediate result from Phase 1 (matching) used in Phase 2 (execution).
+enum MatchOutcome {
+    Matched {
+        layer_effect: LayerEffect,
+        passthrough: Passthrough,
+    },
+    Swallowed,
+    NoMatch,
+    Ignored,
+}
+
+/// An entry in the layer stack, pairing the layer name with runtime state.
+pub(crate) struct LayerStackEntry {
+    name: LayerName,
+    /// Remaining keypress count for oneshot layers. `None` means not oneshot.
+    oneshot_remaining: Option<usize>,
+    /// Timeout configuration and last activity timestamp.
+    /// If set, the layer auto-pops when `Instant::now() - last_activity > timeout`.
+    timeout: Option<LayerTimeout>,
+}
+
+struct LayerTimeout {
+    duration: Duration,
+    last_activity: Instant,
 }
 
 pub(crate) struct RegisteredBinding {
@@ -155,6 +208,17 @@ pub(crate) enum Command {
     },
     DefineLayer {
         layer: Layer,
+        reply: mpsc::Sender<Result<(), Error>>,
+    },
+    PushLayer {
+        name: LayerName,
+        reply: mpsc::Sender<Result<(), Error>>,
+    },
+    PopLayer {
+        reply: mpsc::Sender<Result<LayerName, Error>>,
+    },
+    ToggleLayer {
+        name: LayerName,
         reply: mpsc::Sender<Result<(), Error>>,
     },
     IsRegistered {
@@ -240,6 +304,7 @@ pub(crate) struct Engine {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
+    layer_stack: Vec<LayerStackEntry>,
     devices: devices::DeviceManager,
     key_state: key_state::KeyState,
     grab_state: GrabState,
@@ -261,6 +326,7 @@ impl Engine {
             bindings_by_id: HashMap::new(),
             binding_ids_by_hotkey: HashMap::new(),
             layers: HashMap::new(),
+            layer_stack: Vec::new(),
             devices: devices::DeviceManager::new(
                 Path::new(devices::INPUT_DIRECTORY),
                 device_grab_mode,
@@ -291,9 +357,10 @@ impl Engine {
         }
 
         let poll_len = libc::nfds_t::try_from(poll_fds.len()).map_err(|_| Error::EngineError)?;
+        let poll_timeout_ms = self.next_timer_deadline_ms();
         // SAFETY: `poll_fds` is a valid mutable buffer of `pollfd` values and
         // `poll_len` matches its length.
-        let result = unsafe { libc::poll(poll_fds.as_mut_ptr(), poll_len, -1) };
+        let result = unsafe { libc::poll(poll_fds.as_mut_ptr(), poll_len, poll_timeout_ms) };
 
         if result < 0 {
             let error = io::Error::last_os_error();
@@ -308,6 +375,33 @@ impl Engine {
         }
 
         Ok(poll_fds)
+    }
+
+    /// Returns the poll timeout in milliseconds based on the nearest layer timeout.
+    /// Returns -1 (infinite) if no timeouts are pending.
+    fn next_timer_deadline_ms(&self) -> i32 {
+        let now = Instant::now();
+        let mut min_remaining = None;
+
+        for entry in &self.layer_stack {
+            if let Some(timeout) = &entry.timeout {
+                let elapsed = now.duration_since(timeout.last_activity);
+                let remaining = timeout.duration.saturating_sub(elapsed);
+                min_remaining = Some(match min_remaining {
+                    Some(current) => std::cmp::min(current, remaining),
+                    None => remaining,
+                });
+            }
+        }
+
+        match min_remaining {
+            Some(remaining) => {
+                let ms = remaining.as_millis();
+                // Clamp to i32::MAX, add 1ms to ensure we wake after expiry
+                i32::try_from(ms.saturating_add(1)).unwrap_or(i32::MAX)
+            }
+            None => -1,
+        }
     }
 
     fn drain_commands(&mut self) -> LoopControl {
@@ -337,6 +431,21 @@ impl Engine {
             }
             Command::DefineLayer { layer, reply } => {
                 let result = self.define_layer(layer);
+                let _ = reply.send(result);
+                LoopControl::Continue
+            }
+            Command::PushLayer { name, reply } => {
+                let result = self.push_layer(name);
+                let _ = reply.send(result);
+                LoopControl::Continue
+            }
+            Command::PopLayer { reply } => {
+                let result = self.pop_layer();
+                let _ = reply.send(result);
+                LoopControl::Continue
+            }
+            Command::ToggleLayer { name, reply } => {
+                let result = self.toggle_layer(name);
                 let _ = reply.send(result);
                 LoopControl::Continue
             }
@@ -383,6 +492,45 @@ impl Engine {
         }
     }
 
+    fn push_layer(&mut self, name: LayerName) -> Result<(), Error> {
+        let stored = self.layers.get(&name).ok_or(Error::LayerNotDefined)?;
+        let oneshot_remaining = stored.options.oneshot;
+        let timeout = stored.options.timeout.map(|duration| LayerTimeout {
+            duration,
+            last_activity: Instant::now(),
+        });
+        self.layer_stack.push(LayerStackEntry {
+            name,
+            oneshot_remaining,
+            timeout,
+        });
+        Ok(())
+    }
+
+    fn pop_layer(&mut self) -> Result<LayerName, Error> {
+        self.layer_stack
+            .pop()
+            .map(|entry| entry.name)
+            .ok_or(Error::EmptyLayerStack)
+    }
+
+    fn toggle_layer(&mut self, name: LayerName) -> Result<(), Error> {
+        if !self.layers.contains_key(&name) {
+            return Err(Error::LayerNotDefined);
+        }
+        // Remove the topmost (most recently pushed) occurrence, not the bottommost.
+        if let Some(pos) = self
+            .layer_stack
+            .iter()
+            .rposition(|entry| entry.name == name)
+        {
+            self.layer_stack.remove(pos);
+        } else {
+            self.push_layer(name)?;
+        }
+        Ok(())
+    }
+
     fn unregister_binding(&mut self, id: BindingId) {
         if let Some(binding) = self.bindings_by_id.remove(&id) {
             self.binding_ids_by_hotkey.remove(binding.hotkey());
@@ -404,20 +552,51 @@ impl Engine {
             .apply_device_event(event.device_fd, event.key, event.transition);
 
         let active_modifiers = self.key_state.active_modifiers();
-        let result = matcher::match_key_event(
-            event.key,
-            event.transition,
-            &active_modifiers,
-            &self.binding_ids_by_hotkey,
-            &self.bindings_by_id,
-        );
+        let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
 
-        match result {
-            matcher::MatchResult::Matched {
-                action,
+        // Phase 1: Match against layer stack + global bindings.
+        // The MatchResult borrows self.layers and self.bindings_by_id,
+        // so we extract what we need and drop the borrow before Phase 2.
+        let outcome = {
+            let result = matcher::match_key_event(
+                event.transition,
+                &candidate,
+                &self.layer_stack,
+                &self.layers,
+                &self.binding_ids_by_hotkey,
+                &self.bindings_by_id,
+            );
+
+            match result {
+                matcher::MatchResult::Matched {
+                    action,
+                    passthrough,
+                } => {
+                    // Execute non-mutating parts (callbacks) while borrow is held
+                    execute_action(action);
+                    // Extract layer effect for Phase 2
+                    let layer_effect = LayerEffect::from(action);
+                    MatchOutcome::Matched {
+                        layer_effect,
+                        passthrough,
+                    }
+                }
+                matcher::MatchResult::Swallowed => MatchOutcome::Swallowed,
+                matcher::MatchResult::NoMatch => MatchOutcome::NoMatch,
+                matcher::MatchResult::Ignored => MatchOutcome::Ignored,
+            }
+        };
+        // result dropped — self.layers borrow released
+
+        let was_actionable = !matches!(outcome, MatchOutcome::Ignored);
+
+        // Phase 2: Apply layer mutations and determine event disposition
+        let disposition = match outcome {
+            MatchOutcome::Matched {
+                layer_effect,
                 passthrough,
             } => {
-                execute_action(action);
+                self.apply_layer_effect(layer_effect);
                 match passthrough {
                     Passthrough::Enabled
                         if matches!(self.grab_state, GrabState::Enabled { .. }) =>
@@ -430,12 +609,85 @@ impl Engine {
                     }
                 }
             }
-            matcher::MatchResult::NoMatch | matcher::MatchResult::Ignored => {
+            MatchOutcome::Swallowed => KeyEventDisposition::MatchedConsumed,
+            MatchOutcome::NoMatch | MatchOutcome::Ignored => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
                     self.forward_event(event.key, event.transition);
                     KeyEventDisposition::UnmatchedForwarded
                 } else {
                     KeyEventDisposition::Ignored
+                }
+            }
+        };
+
+        // Phase 3: Tick oneshot counters and reset timeout clocks for non-modifier key presses
+        if matches!(event.transition, key_state::KeyTransition::Press)
+            && Modifier::from_key(event.key).is_none()
+            && was_actionable
+        {
+            self.reset_layer_timeouts();
+            self.tick_oneshot_layers();
+        }
+
+        disposition
+    }
+
+    /// Reset timeout clocks on all active timeout layers (activity occurred).
+    fn reset_layer_timeouts(&mut self) {
+        let now = Instant::now();
+        for entry in &mut self.layer_stack {
+            if let Some(timeout) = &mut entry.timeout {
+                timeout.last_activity = now;
+            }
+        }
+    }
+
+    /// Check all active timeout layers and pop any that have expired.
+    fn check_layer_timeouts(&mut self) {
+        let now = Instant::now();
+        self.layer_stack.retain(|entry| {
+            if let Some(timeout) = &entry.timeout {
+                now.duration_since(timeout.last_activity) < timeout.duration
+            } else {
+                true
+            }
+        });
+    }
+
+    /// Decrement oneshot counters on the layer stack and pop expired layers.
+    fn tick_oneshot_layers(&mut self) {
+        // Walk top-down, decrement the first oneshot layer found, pop if exhausted
+        let mut pop_index = None;
+        for (i, entry) in self.layer_stack.iter_mut().enumerate().rev() {
+            if let Some(remaining) = &mut entry.oneshot_remaining {
+                *remaining = remaining.saturating_sub(1);
+                if *remaining == 0 {
+                    pop_index = Some(i);
+                }
+                break;
+            }
+        }
+        if let Some(index) = pop_index {
+            self.layer_stack.remove(index);
+        }
+    }
+
+    fn apply_layer_effect(&mut self, effect: LayerEffect) {
+        match effect {
+            LayerEffect::None => {}
+            LayerEffect::Push(name) => {
+                if let Err(error) = self.push_layer(name) {
+                    tracing::error!(%error, "failed to push layer from action");
+                }
+            }
+            LayerEffect::Pop => {
+                if let Err(error) = self.pop_layer() {
+                    tracing::error!(%error, "failed to pop layer from action");
+                }
+            }
+            LayerEffect::Toggle(name) => {
+                if let Err(error) = self.toggle_layer(name) {
+                    tracing::error!(%error, "failed to toggle layer from action");
                 }
             }
         }
@@ -450,27 +702,20 @@ impl Engine {
     }
 }
 
-/// Execute an action with panic isolation — a panicking callback never
-/// kills the engine thread.
+/// Execute a callback action with panic isolation — a panicking callback
+/// never kills the engine thread.
+///
+/// Only handles `Action::Callback`. Layer-control actions are handled by
+/// `Engine::apply_layer_effect` which has access to engine state.
 fn execute_action(action: &Action) {
-    match action {
-        Action::Callback(callback) => {
-            if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                callback();
-            })) {
-                tracing::error!(
-                    panic_info = format!("{panic:?}"),
-                    "user callback panicked — panic caught, engine continues"
-                );
-            }
-        }
-        Action::EmitKey(..)
-        | Action::EmitSequence(..)
-        | Action::PushLayer(..)
-        | Action::PopLayer
-        | Action::ToggleLayer(..)
-        | Action::Swallow => {
-            // These action types are handled in later phases.
+    if let Action::Callback(callback) = action {
+        if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            callback();
+        })) {
+            tracing::error!(
+                panic_info = format!("{panic:?}"),
+                "user callback panicked — panic caught, engine continues"
+            );
         }
     }
 }
@@ -484,6 +729,7 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
         }
 
         engine.process_polled_events(&poll_fds);
+        engine.check_layer_timeouts();
     }
 }
 
@@ -1370,5 +1616,734 @@ mod tests {
         let events = forwarded.lock().unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], (Key::LeftCtrl, KeyTransition::Press));
+    }
+
+    // Layer stack operation tests
+
+    fn define_and_push_layer(engine: &mut Engine, name: &str, bindings: Vec<(Key, Action)>) {
+        let mut layer = crate::Layer::new(name);
+        for (key, action) in bindings {
+            layer = layer.bind(key, action);
+        }
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from(name))
+            .unwrap();
+    }
+
+    #[test]
+    fn push_layer_activates_layer_bindings() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        define_and_push_layer(
+            &mut engine,
+            "nav",
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
+        );
+
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn pop_layer_deactivates_layer_bindings() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        define_and_push_layer(
+            &mut engine,
+            "nav",
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
+        );
+
+        // Pop the layer
+        let popped = engine.pop_layer().unwrap();
+        assert_eq!(popped.as_str(), "nav");
+
+        // H should no longer match
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn push_undefined_layer_returns_error() {
+        let mut engine = test_engine();
+        let result = engine.push_layer(crate::action::LayerName::from("nonexistent"));
+        assert!(matches!(result, Err(Error::LayerNotDefined)));
+    }
+
+    #[test]
+    fn pop_empty_stack_returns_error() {
+        let mut engine = test_engine();
+        let result = engine.pop_layer();
+        assert!(matches!(result, Err(Error::EmptyLayerStack)));
+    }
+
+    #[test]
+    fn toggle_layer_pushes_when_not_active() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let layer = crate::Layer::new("nav").bind(
+            Key::H,
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
+        engine.define_layer(layer).unwrap();
+
+        engine
+            .toggle_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
+
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn toggle_layer_removes_when_active() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        define_and_push_layer(
+            &mut engine,
+            "nav",
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
+        );
+
+        // Toggle off
+        engine
+            .toggle_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
+
+        // H should no longer match
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn toggle_undefined_layer_returns_error() {
+        let mut engine = test_engine();
+        let result = engine.toggle_layer(crate::action::LayerName::from("nonexistent"));
+        assert!(matches!(result, Err(Error::LayerNotDefined)));
+    }
+
+    #[test]
+    fn layer_takes_priority_over_global_binding() {
+        let mut engine = test_engine();
+
+        let global_counter = Arc::new(AtomicUsize::new(0));
+        let gc = Arc::clone(&global_counter);
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::H),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
+            ))
+            .unwrap();
+
+        let layer_counter = Arc::new(AtomicUsize::new(0));
+        let lc = Arc::clone(&layer_counter);
+        define_and_push_layer(
+            &mut engine,
+            "nav",
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    lc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
+        );
+
+        press_key(&mut engine, Key::H, 10);
+
+        assert_eq!(
+            layer_counter.load(Ordering::Relaxed),
+            1,
+            "layer binding should fire"
+        );
+        assert_eq!(
+            global_counter.load(Ordering::Relaxed),
+            0,
+            "global binding should not fire"
+        );
+    }
+
+    #[test]
+    fn layer_stack_priority_topmost_wins() {
+        let mut engine = test_engine();
+
+        let layer1_counter = Arc::new(AtomicUsize::new(0));
+        let l1c = Arc::clone(&layer1_counter);
+        define_and_push_layer(
+            &mut engine,
+            "layer1",
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    l1c.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
+        );
+
+        let layer2_counter = Arc::new(AtomicUsize::new(0));
+        let l2c = Arc::clone(&layer2_counter);
+        define_and_push_layer(
+            &mut engine,
+            "layer2",
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    l2c.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
+        );
+
+        press_key(&mut engine, Key::H, 10);
+
+        assert_eq!(
+            layer2_counter.load(Ordering::Relaxed),
+            1,
+            "topmost layer should fire"
+        );
+        assert_eq!(
+            layer1_counter.load(Ordering::Relaxed),
+            0,
+            "lower layer should not fire"
+        );
+    }
+
+    #[test]
+    fn unmatched_key_falls_through_layers_to_global() {
+        let mut engine = test_engine();
+
+        let global_counter = Arc::new(AtomicUsize::new(0));
+        let gc = Arc::clone(&global_counter);
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::X),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
+            ))
+            .unwrap();
+
+        define_and_push_layer(&mut engine, "nav", vec![(Key::H, Action::Swallow)]);
+
+        // X not in layer, falls through to global
+        press_key(&mut engine, Key::X, 10);
+        assert_eq!(global_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn swallow_layer_consumes_unmatched_keys() {
+        let mut engine = test_engine();
+
+        let global_counter = Arc::new(AtomicUsize::new(0));
+        let gc = Arc::clone(&global_counter);
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::X),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
+            ))
+            .unwrap();
+
+        let layer = crate::Layer::new("modal")
+            .bind(Key::H, Action::Swallow)
+            .swallow();
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("modal"))
+            .unwrap();
+
+        // X not in swallow layer — consumed, global should NOT fire
+        let disposition = press_key(&mut engine, Key::X, 10);
+        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(global_counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn action_push_layer_activates_layer() {
+        let mut engine = test_engine();
+
+        let layer_counter = Arc::new(AtomicUsize::new(0));
+        let lc = Arc::clone(&layer_counter);
+        let layer = crate::Layer::new("nav").bind(
+            Key::H,
+            Action::from(move || {
+                lc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
+        engine.define_layer(layer).unwrap();
+
+        // Register a global binding that pushes the layer
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::F1),
+                Action::PushLayer(crate::action::LayerName::from("nav")),
+            ))
+            .unwrap();
+
+        // Press F1 to activate nav layer
+        press_key(&mut engine, Key::F1, 10);
+
+        // Now H should fire layer binding
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(layer_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn action_pop_layer_deactivates_layer() {
+        let mut engine = test_engine();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+        let layer = crate::Layer::new("nav")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .bind(Key::Escape, Action::PopLayer);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
+
+        // H fires in nav layer
+        press_key(&mut engine, Key::H, 10);
+        release_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Escape pops the layer
+        press_key(&mut engine, Key::Escape, 10);
+        release_key(&mut engine, Key::Escape, 10);
+
+        // H should no longer match
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1); // unchanged
+    }
+
+    #[test]
+    fn action_toggle_layer_toggles() {
+        let mut engine = test_engine();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+        let layer = crate::Layer::new("nav").bind(
+            Key::H,
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
+        engine.define_layer(layer).unwrap();
+
+        // Register toggle binding
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::F2),
+                Action::ToggleLayer(crate::action::LayerName::from("nav")),
+            ))
+            .unwrap();
+
+        // Toggle on
+        press_key(&mut engine, Key::F2, 10);
+        release_key(&mut engine, Key::F2, 10);
+
+        press_key(&mut engine, Key::H, 10);
+        release_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Toggle off
+        press_key(&mut engine, Key::F2, 10);
+        release_key(&mut engine, Key::F2, 10);
+
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1); // unchanged
+    }
+
+    #[test]
+    fn same_key_different_action_per_layer() {
+        let mut engine = test_engine();
+
+        let global_counter = Arc::new(AtomicUsize::new(0));
+        let gc = Arc::clone(&global_counter);
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::H),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
+            ))
+            .unwrap();
+
+        let layer_counter = Arc::new(AtomicUsize::new(0));
+        let lc = Arc::clone(&layer_counter);
+        define_and_push_layer(
+            &mut engine,
+            "nav",
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    lc.fetch_add(100, Ordering::Relaxed);
+                }),
+            )],
+        );
+
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(global_counter.load(Ordering::Relaxed), 0);
+        assert_eq!(layer_counter.load(Ordering::Relaxed), 100);
+
+        // Pop layer, now global should fire
+        engine.pop_layer().unwrap();
+        release_key(&mut engine, Key::H, 10);
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(global_counter.load(Ordering::Relaxed), 1);
+        assert_eq!(layer_counter.load(Ordering::Relaxed), 100);
+    }
+
+    #[test]
+    fn oneshot_layer_auto_pops_after_n_keypresses() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let layer = crate::Layer::new("oneshot")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .oneshot(1);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("oneshot"))
+            .unwrap();
+
+        // First keypress — should match and auto-pop
+        press_key(&mut engine, Key::H, 10);
+        release_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Second keypress — layer should be gone
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1); // unchanged
+    }
+
+    #[test]
+    fn oneshot_layer_counts_unmatched_keys() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let layer = crate::Layer::new("oneshot")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .oneshot(1);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("oneshot"))
+            .unwrap();
+
+        // Press an unmatched key — should count toward oneshot depth and pop
+        press_key(&mut engine, Key::X, 10);
+        release_key(&mut engine, Key::X, 10);
+
+        // Layer should be gone — H shouldn't match
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn oneshot_layer_with_depth_two() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let layer = crate::Layer::new("oneshot2")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .oneshot(2);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("oneshot2"))
+            .unwrap();
+
+        // First keypress — layer still active
+        press_key(&mut engine, Key::H, 10);
+        release_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Second keypress — should match, then auto-pop
+        press_key(&mut engine, Key::H, 10);
+        release_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+
+        // Third keypress — layer gone
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn push_layer_via_runtime_command() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        // Define layer
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer,
+                reply: reply_tx,
+            })
+            .unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+
+        // Push layer
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::PushLayer {
+                name: crate::action::LayerName::from("nav"),
+                reply: reply_tx,
+            })
+            .unwrap();
+        let result = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(result.is_ok());
+
+        runtime.shutdown().unwrap();
+    }
+
+    #[test]
+    fn push_undefined_layer_via_runtime_returns_error() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::PushLayer {
+                name: crate::action::LayerName::from("nonexistent"),
+                reply: reply_tx,
+            })
+            .unwrap();
+        let result = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(matches!(result, Err(Error::LayerNotDefined)));
+
+        runtime.shutdown().unwrap();
+    }
+
+    #[test]
+    fn pop_layer_via_runtime_command() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        // Define and push layer
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer,
+                reply: reply_tx,
+            })
+            .unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::PushLayer {
+                name: crate::action::LayerName::from("nav"),
+                reply: reply_tx,
+            })
+            .unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+
+        // Pop layer
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::PopLayer { reply: reply_tx })
+            .unwrap();
+        let result = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().as_str(), "nav");
+
+        runtime.shutdown().unwrap();
+    }
+
+    #[test]
+    fn pop_empty_stack_via_runtime_returns_error() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::PopLayer { reply: reply_tx })
+            .unwrap();
+        let result = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(matches!(result, Err(Error::EmptyLayerStack)));
+
+        runtime.shutdown().unwrap();
+    }
+
+    #[test]
+    fn timeout_layer_auto_pops_after_inactivity() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let layer = crate::Layer::new("timed")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .timeout(Duration::from_millis(50));
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("timed"))
+            .unwrap();
+
+        // H fires while layer is active
+        press_key(&mut engine, Key::H, 10);
+        release_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Wait for timeout to expire
+        std::thread::sleep(Duration::from_millis(80));
+
+        // Check timeouts (simulating the engine loop check)
+        engine.check_layer_timeouts();
+
+        // Layer should be gone — H no longer matches
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn timeout_layer_resets_on_activity() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let layer = crate::Layer::new("timed")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .timeout(Duration::from_millis(100));
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("timed"))
+            .unwrap();
+
+        // Activity within the timeout window
+        std::thread::sleep(Duration::from_millis(50));
+        press_key(&mut engine, Key::H, 10);
+        release_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Wait a bit more but not enough from last activity
+        std::thread::sleep(Duration::from_millis(50));
+        engine.check_layer_timeouts();
+
+        // Layer should still be active
+        press_key(&mut engine, Key::H, 10);
+        release_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+
+        // Now wait for full timeout from last activity
+        std::thread::sleep(Duration::from_millis(120));
+        engine.check_layer_timeouts();
+
+        // Layer should be gone
+        press_key(&mut engine, Key::H, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn toggle_layer_via_runtime_command() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        // Define layer
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer,
+                reply: reply_tx,
+            })
+            .unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+
+        // Toggle on
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::ToggleLayer {
+                name: crate::action::LayerName::from("nav"),
+                reply: reply_tx,
+            })
+            .unwrap();
+        let result = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(result.is_ok());
+
+        runtime.shutdown().unwrap();
     }
 }
