@@ -8,12 +8,12 @@
 //! # Quick start
 //!
 //! ```rust,no_run
-//! use keybound::{HotkeyManager, Key, Modifier};
+//! use keybound::{Hotkey, HotkeyManager, Key, Modifier};
 //!
 //! let manager = HotkeyManager::new()?;
 //!
 //! let _handle = manager.register(
-//!     Key::C, &[Modifier::Ctrl, Modifier::Shift],
+//!     Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
 //!     || println!("fired"),
 //! )?;
 //! # Ok::<(), keybound::Error>(())
@@ -67,5 +67,6 @@ pub use crate::key::Modifier;
 pub use crate::key::ParseHotkeyError;
 pub use crate::layer::Layer;
 pub use crate::layer::LayerOptions;
+pub use crate::layer::UnmatchedKeyBehavior;
 pub use crate::manager::HotkeyManager;
 pub use crate::manager::HotkeyManagerBuilder;

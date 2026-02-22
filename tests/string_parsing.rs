@@ -70,7 +70,9 @@ fn parses_extended_key_ranges() {
 
 #[test]
 fn new_produces_sorted_modifiers() {
-    let hotkey = Hotkey::new(Key::X, vec![Modifier::Alt, Modifier::Ctrl]);
+    let hotkey = Hotkey::new(Key::X)
+        .modifier(Modifier::Alt)
+        .modifier(Modifier::Ctrl);
 
     assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Alt]);
 

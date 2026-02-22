@@ -39,6 +39,7 @@ use crate::handle::Handle;
 use crate::key::Hotkey;
 use crate::key::Key;
 use crate::key::Modifier;
+use crate::layer::Layer;
 use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,21 +142,16 @@ impl HotkeyManager {
     }
 
     /// Register a simple hotkey callback.
-    pub fn register<F>(
-        &self,
-        key: Key,
-        modifiers: &[Modifier],
-        callback: F,
-    ) -> Result<Handle, Error>
+    pub fn register<F>(&self, hotkey: impl Into<Hotkey>, callback: F) -> Result<Handle, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
-        self.register_action(key, modifiers, Action::from(callback))
+        self.register_action(hotkey.into(), Action::from(callback))
     }
 
     /// Query whether a hotkey is currently registered.
-    pub fn is_registered(&self, key: Key, modifiers: &[Modifier]) -> Result<bool, Error> {
-        let hotkey = Hotkey::new(key, modifiers.to_vec());
+    pub fn is_registered(&self, hotkey: impl Into<Hotkey>) -> Result<bool, Error> {
+        let hotkey = hotkey.into();
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::IsRegistered {
@@ -191,19 +187,31 @@ impl HotkeyManager {
         reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }
 
+    /// Define a named layer.
+    ///
+    /// Sends the layer definition to the engine for storage. The layer
+    /// is not active until explicitly pushed via `push_layer()`.
+    ///
+    /// Returns `Error::LayerAlreadyDefined` if a layer with the same
+    /// name has already been defined.
+    pub fn define_layer(&self, layer: Layer) -> Result<(), Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::DefineLayer {
+            layer,
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+    }
+
     /// Stop the manager and join the engine thread.
     pub fn shutdown(self) -> Result<(), Error> {
         self.shutdown_inner()
     }
 
-    fn register_action(
-        &self,
-        key: Key,
-        modifiers: &[Modifier],
-        action: Action,
-    ) -> Result<Handle, Error> {
+    fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<Handle, Error> {
         let id = BindingId::new();
-        let hotkey = Hotkey::new(key, modifiers.to_vec());
         let binding = RegisteredBinding::new(id, hotkey, action);
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -229,7 +237,6 @@ impl HotkeyManager {
 
     // TODO: register_sequence() — multi-step hotkey
     // TODO: register_tap_hold() — dual-function key
-    // TODO: define_layer() — register a Layer
     // TODO: push_layer() / pop_layer() — layer stack control
 }
 

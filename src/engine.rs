@@ -52,10 +52,14 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::action::Action;
+use crate::action::LayerName;
 use crate::binding::BindingId;
 use crate::binding::Passthrough;
 use crate::engine::devices::DeviceKeyEvent;
 use crate::key::Hotkey;
+use crate::layer::Layer;
+use crate::layer::LayerBinding;
+use crate::layer::LayerOptions;
 use crate::Error;
 use crate::Key;
 use crate::Modifier;
@@ -149,6 +153,10 @@ pub(crate) enum Command {
     Unregister {
         id: BindingId,
     },
+    DefineLayer {
+        layer: Layer,
+        reply: mpsc::Sender<Result<(), Error>>,
+    },
     IsRegistered {
         hotkey: Hotkey,
         reply: mpsc::Sender<bool>,
@@ -222,9 +230,16 @@ impl EngineRuntime {
     }
 }
 
+/// Engine-internal representation of a stored layer definition.
+pub(crate) struct StoredLayer {
+    pub(crate) bindings: Vec<LayerBinding>,
+    pub(crate) options: LayerOptions,
+}
+
 pub(crate) struct Engine {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
+    layers: HashMap<LayerName, StoredLayer>,
     devices: devices::DeviceManager,
     key_state: key_state::KeyState,
     grab_state: GrabState,
@@ -245,6 +260,7 @@ impl Engine {
         Self {
             bindings_by_id: HashMap::new(),
             binding_ids_by_hotkey: HashMap::new(),
+            layers: HashMap::new(),
             devices: devices::DeviceManager::new(
                 Path::new(devices::INPUT_DIRECTORY),
                 device_grab_mode,
@@ -319,6 +335,11 @@ impl Engine {
                 self.unregister_binding(id);
                 LoopControl::Continue
             }
+            Command::DefineLayer { layer, reply } => {
+                let result = self.define_layer(layer);
+                let _ = reply.send(result);
+                LoopControl::Continue
+            }
             Command::IsRegistered { hotkey, reply } => {
                 let is_registered = self.binding_ids_by_hotkey.contains_key(&hotkey);
                 let _ = reply.send(is_registered);
@@ -348,6 +369,18 @@ impl Engine {
         self.binding_ids_by_hotkey.insert(hotkey, id);
         self.bindings_by_id.insert(id, binding);
         Ok(())
+    }
+
+    fn define_layer(&mut self, layer: Layer) -> Result<(), Error> {
+        let (name, bindings, options) = layer.into_parts();
+
+        match self.layers.entry(name) {
+            std::collections::hash_map::Entry::Occupied(_) => Err(Error::LayerAlreadyDefined),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(StoredLayer { bindings, options });
+                Ok(())
+            }
+        }
     }
 
     fn unregister_binding(&mut self, id: BindingId) {
@@ -590,7 +623,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         let id = BindingId::new();
-        let binding = test_binding(id, Key::A, &[Modifier::Ctrl]);
+        let binding = test_binding(id, Hotkey::new(Key::A).modifier(Modifier::Ctrl));
         let (reply_tx, reply_rx) = mpsc::channel();
 
         runtime
@@ -623,7 +656,10 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: test_binding(BindingId::new(), Key::B, &[Modifier::Alt]),
+                binding: test_binding(
+                    BindingId::new(),
+                    Hotkey::new(Key::B).modifier(Modifier::Alt),
+                ),
                 reply: first_reply_tx,
             })
             .expect("first register command should send");
@@ -637,7 +673,10 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: test_binding(BindingId::new(), Key::B, &[Modifier::Alt]),
+                binding: test_binding(
+                    BindingId::new(),
+                    Hotkey::new(Key::B).modifier(Modifier::Alt),
+                ),
                 reply: second_reply_tx,
             })
             .expect("second register command should send");
@@ -653,7 +692,7 @@ mod tests {
     #[test]
     fn engine_reports_registration_queries() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Shift]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Shift);
 
         let (register_reply_tx, register_reply_rx) = mpsc::channel();
         runtime
@@ -714,8 +753,7 @@ mod tests {
         assert!(matches!(send_result, Err(Error::ManagerStopped)));
     }
 
-    fn test_binding(id: BindingId, key: Key, modifiers: &[Modifier]) -> RegisteredBinding {
-        let hotkey = Hotkey::new(key, modifiers.to_vec());
+    fn test_binding(id: BindingId, hotkey: Hotkey) -> RegisteredBinding {
         RegisteredBinding::new(id, hotkey, Action::Swallow)
     }
 
@@ -764,7 +802,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -785,7 +823,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -806,7 +844,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -828,7 +866,9 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::A, vec![Modifier::Ctrl, Modifier::Shift]);
+        let hotkey = Hotkey::new(Key::A)
+            .modifier(Modifier::Ctrl)
+            .modifier(Modifier::Shift);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -849,7 +889,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::Escape, vec![]);
+        let hotkey = Hotkey::new(Key::Escape);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -868,7 +908,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -893,7 +933,7 @@ mod tests {
 
         // Register a binding that panics
         let id1 = BindingId::new();
-        let hotkey1 = Hotkey::new(Key::P, vec![Modifier::Ctrl]);
+        let hotkey1 = Hotkey::new(Key::P).modifier(Modifier::Ctrl);
         let action1 = Action::from(move || {
             panic!("intentional test panic");
         });
@@ -903,7 +943,7 @@ mod tests {
 
         // Register a second binding that increments a counter
         let id2 = BindingId::new();
-        let hotkey2 = Hotkey::new(Key::Q, vec![Modifier::Ctrl]);
+        let hotkey2 = Hotkey::new(Key::Q).modifier(Modifier::Ctrl);
         let action2 = Action::from(move || {
             post_panic_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -930,7 +970,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -952,7 +992,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         engine
             .register_binding(RegisteredBinding::new(id, hotkey, Action::Swallow))
             .unwrap();
@@ -975,7 +1015,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -1004,7 +1044,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -1045,7 +1085,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
@@ -1171,6 +1211,151 @@ mod tests {
         // Only modifiers from device 11 should remain
         assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
         assert!(!engine.key_state.is_pressed(Key::LeftCtrl));
+    }
+
+    // Layer storage tests
+
+    #[test]
+    fn engine_stores_defined_layer() {
+        let mut engine = test_engine();
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, Action::Swallow)
+            .bind(Key::J, Action::Swallow);
+
+        let result = engine.define_layer(layer);
+        assert!(result.is_ok());
+        assert!(engine
+            .layers
+            .contains_key(&crate::action::LayerName::from("nav")));
+    }
+
+    #[test]
+    fn engine_rejects_duplicate_layer_name() {
+        let mut engine = test_engine();
+
+        let layer1 = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
+        assert!(engine.define_layer(layer1).is_ok());
+
+        let layer2 = crate::Layer::new("nav").bind(Key::J, Action::Swallow);
+        let result = engine.define_layer(layer2);
+        assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
+    }
+
+    #[test]
+    fn engine_stores_layer_bindings() {
+        let mut engine = test_engine();
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, Action::Swallow)
+            .bind(Key::J, Action::Swallow)
+            .bind(Key::K, Action::Swallow);
+
+        engine.define_layer(layer).unwrap();
+
+        let stored = engine
+            .layers
+            .get(&crate::action::LayerName::from("nav"))
+            .expect("layer should be stored");
+        assert_eq!(stored.bindings.len(), 3);
+    }
+
+    #[test]
+    fn engine_stores_layer_options() {
+        let mut engine = test_engine();
+        let layer = crate::Layer::new("oneshot-nav")
+            .bind(Key::H, Action::Swallow)
+            .swallow()
+            .oneshot(1)
+            .timeout(std::time::Duration::from_secs(5));
+
+        engine.define_layer(layer).unwrap();
+
+        let stored = engine
+            .layers
+            .get(&crate::action::LayerName::from("oneshot-nav"))
+            .expect("layer should be stored");
+        assert_eq!(stored.options.oneshot, Some(1));
+        assert_eq!(
+            stored.options.unmatched,
+            crate::layer::UnmatchedKeyBehavior::Swallow
+        );
+        assert_eq!(
+            stored.options.timeout,
+            Some(std::time::Duration::from_secs(5))
+        );
+    }
+
+    #[test]
+    fn engine_stores_empty_layer() {
+        let mut engine = test_engine();
+        let layer = crate::Layer::new("empty");
+
+        engine.define_layer(layer).unwrap();
+
+        let stored = engine
+            .layers
+            .get(&crate::action::LayerName::from("empty"))
+            .expect("layer should be stored");
+        assert_eq!(stored.bindings.len(), 0);
+    }
+
+    #[test]
+    fn define_layer_via_runtime_command() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer,
+                reply: reply_tx,
+            })
+            .expect("define layer command should send");
+
+        let result = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("define layer command should receive reply");
+        assert!(result.is_ok());
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn define_duplicate_layer_via_runtime_returns_error() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        // Define first layer — should succeed
+        let first_layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer: first_layer,
+                reply: reply_tx,
+            })
+            .expect("first define layer should send");
+        assert!(reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .is_ok());
+
+        // Define second layer with same name — should fail
+        let duplicate_layer = crate::Layer::new("nav").bind(Key::J, Action::Swallow);
+        let (dup_reply_tx, dup_reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer: duplicate_layer,
+                reply: dup_reply_tx,
+            })
+            .expect("duplicate define layer should send");
+        let result = dup_reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("duplicate define layer should receive reply");
+        assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
     }
 
     #[test]

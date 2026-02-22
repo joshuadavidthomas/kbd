@@ -32,6 +32,10 @@ fn error_display_messages_are_actionable() {
             Error::EngineError,
             "hotkey engine encountered an internal failure",
         ),
+        (
+            Error::LayerAlreadyDefined,
+            "a layer with this name is already defined",
+        ),
     ];
 
     for (error, expected_message) in cases {

@@ -734,11 +734,31 @@ pub struct Hotkey {
 }
 
 impl Hotkey {
+    /// Create a hotkey for a single key with no modifiers.
     #[must_use]
-    pub fn new(key: Key, mut modifiers: Vec<Modifier>) -> Self {
+    pub fn new(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: Vec::new(),
+        }
+    }
+
+    /// Create a hotkey from a key and a list of modifiers.
+    #[must_use]
+    pub fn with_modifiers(key: Key, mut modifiers: Vec<Modifier>) -> Self {
         modifiers.sort();
         modifiers.dedup();
         Self { key, modifiers }
+    }
+
+    /// Add a modifier to this hotkey.
+    #[must_use]
+    pub fn modifier(mut self, modifier: Modifier) -> Self {
+        if !self.modifiers.contains(&modifier) {
+            self.modifiers.push(modifier);
+            self.modifiers.sort();
+        }
+        self
     }
 
     #[must_use]
@@ -749,6 +769,12 @@ impl Hotkey {
     #[must_use]
     pub fn modifiers(&self) -> &[Modifier] {
         &self.modifiers
+    }
+}
+
+impl From<Key> for Hotkey {
+    fn from(key: Key) -> Self {
+        Self::new(key)
     }
 }
 
@@ -794,7 +820,7 @@ impl FromStr for Hotkey {
             key
         };
 
-        Ok(Self::new(key, modifiers))
+        Ok(Self::with_modifiers(key, modifiers))
     }
 }
 
@@ -895,7 +921,8 @@ mod tests {
 
     #[test]
     fn hotkey_new_sorts_and_dedups_modifiers() {
-        let hotkey = Hotkey::new(Key::A, vec![Modifier::Alt, Modifier::Ctrl, Modifier::Alt]);
+        let hotkey =
+            Hotkey::with_modifiers(Key::A, vec![Modifier::Alt, Modifier::Ctrl, Modifier::Alt]);
         assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Alt]);
     }
 
