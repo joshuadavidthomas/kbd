@@ -309,7 +309,7 @@ pub(crate) struct Engine {
     /// release event uses the same disposition. Essential for correct
     /// release behavior across layer transitions — if a key was consumed
     /// on press, its release should also be consumed even if the layer
-    /// was popped in between (oneshot, PopLayer action, etc.).
+    /// was popped in between (oneshot, `PopLayer` action, etc.).
     ///
     /// Reference: keyd's `cache_entry` system in `reference/keyd/src/keyboard.c`.
     press_cache: HashMap<Key, KeyEventDisposition>,
@@ -2575,7 +2575,10 @@ mod tests {
         // Press H — matches PopLayer, layer is popped, event consumed
         let press_disp = press_key(&mut engine, Key::H, 10);
         assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
-        assert!(engine.layer_stack.is_empty(), "layer should have been popped");
+        assert!(
+            engine.layer_stack.is_empty(),
+            "layer should have been popped"
+        );
 
         // Release H — should be consumed via cache
         let release_disp = release_key(&mut engine, Key::H, 10);
