@@ -52,29 +52,70 @@ use std::thread;
 
 use crate::action::Action;
 use crate::binding::BindingId;
+use crate::binding::Passthrough;
 use crate::engine::devices::DeviceKeyEvent;
 use crate::key::Hotkey;
 use crate::Error;
+use crate::Key;
 
 pub(crate) mod devices;
+pub(crate) mod forwarder;
 pub(crate) mod key_state;
 pub(crate) mod matcher;
 pub(crate) mod sequence;
 pub(crate) mod tap_hold;
 
-#[cfg(feature = "grab")]
-pub(crate) mod forwarder;
+/// Whether the engine is running in grab mode.
+///
+/// In grab mode, the engine takes exclusive ownership of input devices
+/// and forwards unmatched events through a virtual device. The forwarder
+/// is bundled with the enabled state so it's impossible to be in grab
+/// mode without a forwarder.
+pub(crate) enum GrabState {
+    Disabled,
+    Enabled {
+        forwarder: Box<dyn forwarder::ForwardSink>,
+    },
+}
+
+/// Disposition of a key event after engine processing.
+///
+/// Returned by `process_key_event` to indicate what happened with the
+/// event. Used by tests to verify forwarding and consumption behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeyEventDisposition {
+    /// Event matched a binding and was consumed (not forwarded).
+    MatchedConsumed,
+    /// Event matched a binding with passthrough and was forwarded.
+    MatchedForwarded,
+    /// Event did not match any binding and was forwarded (grab mode).
+    UnmatchedForwarded,
+    /// Event was not processed (grab mode disabled, or modifier/repeat).
+    Ignored,
+}
 
 pub(crate) struct RegisteredBinding {
     id: BindingId,
     hotkey: Hotkey,
     action: Action,
+    passthrough: Passthrough,
 }
 
 impl RegisteredBinding {
     #[must_use]
     pub(crate) fn new(id: BindingId, hotkey: Hotkey, action: Action) -> Self {
-        Self { id, hotkey, action }
+        Self {
+            id,
+            hotkey,
+            action,
+            passthrough: Passthrough::default(),
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
+        self.passthrough = passthrough;
+        self
     }
 
     #[must_use]
@@ -90,6 +131,11 @@ impl RegisteredBinding {
     #[must_use]
     pub(crate) const fn action(&self) -> &Action {
         &self.action
+    }
+
+    #[must_use]
+    pub(crate) const fn passthrough(&self) -> Passthrough {
+        self.passthrough
     }
 }
 
@@ -130,7 +176,7 @@ pub(crate) struct EngineRuntime {
 }
 
 impl EngineRuntime {
-    pub(crate) fn spawn() -> Result<Self, Error> {
+    pub(crate) fn spawn(grab_state: GrabState) -> Result<Self, Error> {
         let wake_fd = Arc::new(WakeFd::new()?);
         let (command_tx, command_rx) = mpsc::channel();
         let commands = CommandSender {
@@ -138,7 +184,7 @@ impl EngineRuntime {
             wake_fd: Arc::clone(&wake_fd),
         };
 
-        let engine = Engine::new(command_rx, wake_fd);
+        let engine = Engine::new(command_rx, wake_fd, grab_state);
         let join_handle = thread::spawn(move || run(engine));
 
         Ok(Self {
@@ -172,17 +218,27 @@ pub(crate) struct Engine {
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
     devices: devices::DeviceManager,
     key_state: key_state::KeyState,
+    grab_state: GrabState,
     command_rx: mpsc::Receiver<Command>,
     wake_fd: Arc<WakeFd>,
 }
 
 impl Engine {
-    fn new(command_rx: mpsc::Receiver<Command>, wake_fd: Arc<WakeFd>) -> Self {
+    fn new(
+        command_rx: mpsc::Receiver<Command>,
+        wake_fd: Arc<WakeFd>,
+        grab_state: GrabState,
+    ) -> Self {
+        let device_grab_mode = match &grab_state {
+            GrabState::Disabled => devices::DeviceGrabMode::Shared,
+            GrabState::Enabled { .. } => devices::DeviceGrabMode::Exclusive,
+        };
         Self {
             bindings_by_id: HashMap::new(),
             binding_ids_by_hotkey: HashMap::new(),
-            devices: devices::DeviceManager::default(),
+            devices: devices::DeviceManager::default_with_grab(device_grab_mode),
             key_state: key_state::KeyState::default(),
+            grab_state,
             command_rx,
             wake_fd,
         }
@@ -286,11 +342,11 @@ impl Engine {
             .process_polled_events(&poll_fds[1..], &mut self.key_state);
 
         for event in events {
-            self.process_key_event(event);
+            let _ = self.process_key_event(event);
         }
     }
 
-    fn process_key_event(&mut self, event: DeviceKeyEvent) {
+    fn process_key_event(&mut self, event: DeviceKeyEvent) -> KeyEventDisposition {
         self.key_state
             .apply_device_event(event.device_fd, event.key, event.transition);
 
@@ -303,8 +359,36 @@ impl Engine {
             &self.bindings_by_id,
         );
 
-        if let matcher::MatchResult::Matched(action) = result {
-            execute_action(action);
+        match result {
+            matcher::MatchResult::Matched {
+                action,
+                passthrough,
+            } => {
+                execute_action(action);
+                match passthrough {
+                    Passthrough::Enabled => {
+                        self.forward_event(event.key, event.transition);
+                        KeyEventDisposition::MatchedForwarded
+                    }
+                    Passthrough::Consume => KeyEventDisposition::MatchedConsumed,
+                }
+            }
+            matcher::MatchResult::NoMatch | matcher::MatchResult::Ignored => {
+                if matches!(self.grab_state, GrabState::Enabled { .. }) {
+                    self.forward_event(event.key, event.transition);
+                    KeyEventDisposition::UnmatchedForwarded
+                } else {
+                    KeyEventDisposition::Ignored
+                }
+            }
+        }
+    }
+
+    fn forward_event(&mut self, key: Key, transition: key_state::KeyTransition) {
+        if let GrabState::Enabled { forwarder } = &mut self.grab_state {
+            if let Err(error) = forwarder.forward_key(key, transition) {
+                tracing::error!(%error, "failed to forward key event through virtual device");
+            }
         }
     }
 }
@@ -465,9 +549,12 @@ mod tests {
     use super::Command;
     use super::Engine;
     use super::EngineRuntime;
+    use super::GrabState;
+    use super::KeyEventDisposition;
     use super::RegisteredBinding;
     use super::WakeFd;
     use crate::binding::BindingId;
+    use crate::binding::Passthrough;
     use crate::key::Hotkey;
     use crate::Action;
     use crate::Error;
@@ -476,7 +563,7 @@ mod tests {
 
     #[test]
     fn engine_processes_register_and_unregister_commands() {
-        let runtime = EngineRuntime::spawn().expect("engine should spawn");
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         let id = BindingId::new();
         let binding = test_binding(id, Key::A, &[Modifier::Ctrl]);
@@ -505,7 +592,7 @@ mod tests {
 
     #[test]
     fn engine_rejects_duplicate_hotkeys() {
-        let runtime = EngineRuntime::spawn().expect("engine should spawn");
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         let (first_reply_tx, first_reply_rx) = mpsc::channel();
 
@@ -541,7 +628,7 @@ mod tests {
 
     #[test]
     fn engine_reports_registration_queries() {
-        let runtime = EngineRuntime::spawn().expect("engine should spawn");
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
         let hotkey = Hotkey::new(Key::C, vec![Modifier::Shift]);
 
         let (register_reply_tx, register_reply_rx) = mpsc::channel();
@@ -577,7 +664,7 @@ mod tests {
 
     #[test]
     fn engine_shutdown_command_exits_thread() {
-        let runtime = EngineRuntime::spawn().expect("engine should spawn");
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         runtime
             .commands()
@@ -589,7 +676,7 @@ mod tests {
 
     #[test]
     fn command_sender_reports_manager_stopped_after_engine_exit() {
-        let runtime = EngineRuntime::spawn().expect("engine should spawn");
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
         let commands = runtime.commands();
 
         commands
@@ -608,27 +695,42 @@ mod tests {
         RegisteredBinding::new(id, hotkey, Action::Swallow)
     }
 
-    /// Create a minimal engine for unit testing (no devices, no event loop).
+    /// Create a minimal engine for unit testing (no devices, no grab, no event loop).
     fn test_engine() -> Engine {
-        let wake_fd = Arc::new(WakeFd::new().expect("wake fd should create"));
-        let (_tx, rx) = mpsc::channel();
-        Engine::new(rx, wake_fd)
+        test_engine_with_grab(GrabState::Disabled)
     }
 
-    fn press_key(engine: &mut Engine, key: Key, device_fd: i32) {
+    /// Create a test engine with grab mode enabled (using a recording forwarder).
+    fn test_engine_with_grab(grab_state: GrabState) -> Engine {
+        let wake_fd = Arc::new(WakeFd::new().expect("wake fd should create"));
+        let (_tx, rx) = mpsc::channel();
+        Engine::new(rx, wake_fd, grab_state)
+    }
+
+    /// Create grab state with a recording forwarder for testing.
+    /// Returns the GrabState and a handle to inspect forwarded events.
+    fn test_grab_state() -> (GrabState, super::forwarder::testing::ForwardedEvents) {
+        let (recorder, events) = super::forwarder::testing::RecordingForwarder::new();
+        let state = GrabState::Enabled {
+            forwarder: Box::new(recorder),
+        };
+        (state, events)
+    }
+
+    fn press_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventDisposition {
         engine.process_key_event(DeviceKeyEvent {
             device_fd,
             key,
             transition: KeyTransition::Press,
-        });
+        })
     }
 
-    fn release_key(engine: &mut Engine, key: Key, device_fd: i32) {
+    fn release_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventDisposition {
         engine.process_key_event(DeviceKeyEvent {
             device_fd,
             key,
             transition: KeyTransition::Release,
-        });
+        })
     }
 
     #[test]
@@ -816,5 +918,131 @@ mod tests {
         press_key(&mut engine, Key::C, 10);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    // Grab mode tests
+
+    #[test]
+    fn grab_mode_forwards_unmatched_key_events() {
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        engine
+            .register_binding(RegisteredBinding::new(id, hotkey, Action::Swallow))
+            .unwrap();
+
+        // Press A with no modifiers — no binding matches, should be forwarded
+        let disposition = press_key(&mut engine, Key::A, 10);
+        assert_eq!(disposition, KeyEventDisposition::UnmatchedForwarded);
+
+        // Verify the forwarder received the event
+        let events = forwarded.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], (Key::A, KeyTransition::Press));
+    }
+
+    #[test]
+    fn grab_mode_consumes_matched_key_events() {
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        engine
+            .register_binding(RegisteredBinding::new(id, hotkey, action))
+            .unwrap();
+
+        // Press Ctrl+C — matches binding, should be consumed
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        let disposition = press_key(&mut engine, Key::C, 10);
+
+        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Forwarder should NOT have the C press (modifier press is forwarded though)
+        let events = forwarded.lock().unwrap();
+        let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
+        assert!(c_events.is_empty(), "matched key C should not be forwarded");
+    }
+
+    #[test]
+    fn grab_mode_forwards_matched_event_with_passthrough() {
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding =
+            RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
+        engine.register_binding(binding).unwrap();
+
+        // Press Ctrl+C with passthrough — should fire AND forward
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        let disposition = press_key(&mut engine, Key::C, 10);
+
+        assert_eq!(disposition, KeyEventDisposition::MatchedForwarded);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        // Forwarder should have the C press event
+        let events = forwarded.lock().unwrap();
+        let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
+        assert_eq!(
+            c_events.len(),
+            1,
+            "passthrough should forward the matched key"
+        );
+    }
+
+    #[test]
+    fn no_grab_mode_does_not_forward_unmatched_events() {
+        let mut engine = test_engine();
+
+        // Press A with no bindings — should be ignored, not forwarded
+        let disposition = press_key(&mut engine, Key::A, 10);
+        assert_eq!(disposition, KeyEventDisposition::Ignored);
+    }
+
+    #[test]
+    fn grab_mode_forwards_release_events() {
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        // Press and release A — both should be forwarded (no binding matches)
+        let press_disposition = press_key(&mut engine, Key::A, 10);
+        let release_disposition = release_key(&mut engine, Key::A, 10);
+
+        assert_eq!(press_disposition, KeyEventDisposition::UnmatchedForwarded);
+        assert_eq!(release_disposition, KeyEventDisposition::UnmatchedForwarded);
+
+        let events = forwarded.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0], (Key::A, KeyTransition::Press));
+        assert_eq!(events[1], (Key::A, KeyTransition::Release));
+    }
+
+    #[test]
+    fn grab_mode_forwards_modifier_presses() {
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        // Pressing a modifier key with no bindings should be forwarded
+        let disposition = press_key(&mut engine, Key::LeftCtrl, 10);
+        assert_eq!(disposition, KeyEventDisposition::UnmatchedForwarded);
+
+        let events = forwarded.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], (Key::LeftCtrl, KeyTransition::Press));
     }
 }

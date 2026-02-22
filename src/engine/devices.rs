@@ -36,6 +36,15 @@ use crate::Key;
 const INPUT_DIRECTORY: &str = "/dev/input";
 const HOTPLUG_BUFFER_SIZE: usize = 4096;
 
+/// Whether devices should be grabbed for exclusive access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeviceGrabMode {
+    /// Normal mode — listen passively, events reach other applications.
+    Shared,
+    /// Grab mode — exclusive access, events only reach us.
+    Exclusive,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HotplugFsEvent {
     pub(crate) mask: u32,
@@ -84,6 +93,7 @@ impl DeviceInfo {
 #[derive(Debug)]
 pub(crate) struct DeviceManager {
     input_dir: PathBuf,
+    grab_mode: DeviceGrabMode,
     inotify_fd: Option<OwnedFd>,
     devices: HashMap<RawFd, ManagedDevice>,
     poll_fds: Vec<RawFd>,
@@ -91,14 +101,19 @@ pub(crate) struct DeviceManager {
 
 impl Default for DeviceManager {
     fn default() -> Self {
-        Self::from_input_dir(Path::new(INPUT_DIRECTORY))
+        Self::new(Path::new(INPUT_DIRECTORY), DeviceGrabMode::Shared)
     }
 }
 
 impl DeviceManager {
-    fn from_input_dir(input_dir: &Path) -> Self {
+    pub(crate) fn default_with_grab(grab_mode: DeviceGrabMode) -> Self {
+        Self::new(Path::new(INPUT_DIRECTORY), grab_mode)
+    }
+
+    pub(crate) fn new(input_dir: &Path, grab_mode: DeviceGrabMode) -> Self {
         let mut manager = Self {
             input_dir: input_dir.to_path_buf(),
+            grab_mode,
             inotify_fd: initialize_inotify(input_dir).ok(),
             devices: HashMap::new(),
             poll_fds: Vec::new(),
@@ -124,7 +139,7 @@ impl DeviceManager {
             return;
         }
 
-        let open_result = open_keyboard_device(path);
+        let open_result = open_keyboard_device(path, self.grab_mode);
         let Some(device) = open_result.ok().flatten() else {
             return;
         };
@@ -340,6 +355,10 @@ fn probe_keyboard_device(path: &Path) -> DiscoveryOutcome {
         return DiscoveryOutcome::Skip;
     };
 
+    if is_virtual_forwarder(&device) {
+        return DiscoveryOutcome::Skip;
+    }
+
     if is_keyboard_device(&device) {
         DiscoveryOutcome::Keyboard
     } else {
@@ -347,11 +366,22 @@ fn probe_keyboard_device(path: &Path) -> DiscoveryOutcome {
     }
 }
 
-fn open_keyboard_device(path: &Path) -> io::Result<Option<ManagedDevice>> {
-    let device = Device::open(path)?;
+fn open_keyboard_device(
+    path: &Path,
+    grab_mode: DeviceGrabMode,
+) -> io::Result<Option<ManagedDevice>> {
+    let mut device = Device::open(path)?;
 
     if !is_keyboard_device(&device) {
         return Ok(None);
+    }
+
+    if is_virtual_forwarder(&device) {
+        return Ok(None);
+    }
+
+    if matches!(grab_mode, DeviceGrabMode::Exclusive) {
+        device.grab()?;
     }
 
     device.set_nonblocking(true)?;
@@ -361,6 +391,19 @@ fn open_keyboard_device(path: &Path) -> io::Result<Option<ManagedDevice>> {
         info: DeviceInfo::from_device(&device),
         device,
     }))
+}
+
+/// Returns `true` if this device is our own virtual forwarder.
+///
+/// Used to prevent feedback loops: the forwarder creates a virtual keyboard
+/// device, and without this check we'd discover and grab our own output device.
+fn is_virtual_forwarder(device: &Device) -> bool {
+    device.name().is_some_and(is_virtual_forwarder_name)
+}
+
+/// Returns `true` if this device name matches our virtual forwarder name.
+fn is_virtual_forwarder_name(name: &str) -> bool {
+    name == crate::engine::forwarder::VIRTUAL_DEVICE_NAME
 }
 
 fn is_keyboard_device(device: &Device) -> bool {
@@ -644,6 +687,17 @@ mod tests {
             input_dir,
         );
         assert_eq!(ignored, HotplugPathChange::Unchanged);
+    }
+
+    #[test]
+    fn virtual_forwarder_name_is_detected() {
+        use super::is_virtual_forwarder_name;
+        use crate::engine::forwarder::VIRTUAL_DEVICE_NAME;
+
+        assert!(is_virtual_forwarder_name(VIRTUAL_DEVICE_NAME));
+        assert!(!is_virtual_forwarder_name("AT Translated Set 2 keyboard"));
+        assert!(!is_virtual_forwarder_name("Logitech USB Keyboard"));
+        assert!(!is_virtual_forwarder_name(""));
     }
 
     #[test]

@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 use crate::action::Action;
 use crate::binding::BindingId;
+use crate::binding::Passthrough;
 use crate::engine::key_state::KeyTransition;
 use crate::engine::RegisteredBinding;
 use crate::key::Hotkey;
@@ -25,10 +26,15 @@ use crate::Key;
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
 pub(crate) enum MatchResult<'a> {
-    /// A binding matched. Contains a reference to the matched action.
-    Matched(&'a Action),
+    /// A binding matched. Contains the action and passthrough setting.
+    Matched {
+        action: &'a Action,
+        passthrough: Passthrough,
+    },
     /// No binding matched the event.
     NoMatch,
+    /// The event was not eligible for matching (modifier-only press, release, repeat).
+    Ignored,
 }
 
 /// Attempt to find a binding that matches the given key event.
@@ -49,13 +55,13 @@ pub(crate) fn match_key_event<'a>(
 ) -> MatchResult<'a> {
     // Only match on key press events
     if !matches!(transition, KeyTransition::Press) {
-        return MatchResult::NoMatch;
+        return MatchResult::Ignored;
     }
 
     // Skip if the pressed key is itself a modifier — modifier-only presses
     // don't trigger hotkeys (they modify state for subsequent presses)
     if Modifier::from_key(key).is_some() {
-        return MatchResult::NoMatch;
+        return MatchResult::Ignored;
     }
 
     // Build candidate hotkey from the pressed key + active modifiers
@@ -63,7 +69,10 @@ pub(crate) fn match_key_event<'a>(
 
     if let Some(&id) = binding_ids_by_hotkey.get(&candidate) {
         if let Some(binding) = bindings_by_id.get(&id) {
-            return MatchResult::Matched(binding.action());
+            return MatchResult::Matched {
+                action: binding.action(),
+                passthrough: binding.passthrough(),
+            };
         }
     }
 
@@ -143,7 +152,11 @@ mod tests {
         );
 
         let result = bindings.match_event(Key::C, KeyTransition::Press, &[Modifier::Ctrl]);
-        let MatchResult::Matched(Action::Callback(cb)) = result else {
+        let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        else {
             panic!("expected Matched(Callback), got {result:?}");
         };
         cb();
@@ -200,7 +213,7 @@ mod tests {
             KeyTransition::Press,
             &[Modifier::Ctrl, Modifier::Shift],
         );
-        assert!(matches!(result, MatchResult::Matched(_)));
+        assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
     #[test]
@@ -215,7 +228,7 @@ mod tests {
             KeyTransition::Press,
             &[Modifier::Ctrl, Modifier::Shift],
         );
-        assert!(matches!(result, MatchResult::Matched(_)));
+        assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
     #[test]
@@ -224,7 +237,7 @@ mod tests {
         bindings.add(Key::Escape, &[], Action::Swallow);
 
         let result = bindings.match_event(Key::Escape, KeyTransition::Press, &[]);
-        assert!(matches!(result, MatchResult::Matched(_)));
+        assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
     #[test]
@@ -233,7 +246,7 @@ mod tests {
         bindings.add(Key::C, &[Modifier::Ctrl], Action::Swallow);
 
         let result = bindings.match_event(Key::C, KeyTransition::Release, &[Modifier::Ctrl]);
-        assert!(matches!(result, MatchResult::NoMatch));
+        assert!(matches!(result, MatchResult::Ignored));
     }
 
     #[test]
@@ -242,7 +255,7 @@ mod tests {
         bindings.add(Key::C, &[Modifier::Ctrl], Action::Swallow);
 
         let result = bindings.match_event(Key::C, KeyTransition::Repeat, &[Modifier::Ctrl]);
-        assert!(matches!(result, MatchResult::NoMatch));
+        assert!(matches!(result, MatchResult::Ignored));
     }
 
     #[test]
@@ -252,6 +265,6 @@ mod tests {
         bindings.add(Key::LeftCtrl, &[], Action::Swallow);
 
         let result = bindings.match_event(Key::LeftCtrl, KeyTransition::Press, &[]);
-        assert!(matches!(result, MatchResult::NoMatch));
+        assert!(matches!(result, MatchResult::Ignored));
     }
 }
