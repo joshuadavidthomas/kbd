@@ -210,10 +210,10 @@ Every project that builds shortcut UIs — Zed's keymap editor, Niri's
 hotkey overlay — needs metadata on bindings. Without it, consumers
 rebuild the same "description + visibility" plumbing on their own.
 
-- [ ] `description: Option<String>` on `BindingOptions` — human-readable label ("Copy to clipboard").
-- [ ] `OverlayVisibility` enum (`Visible` / `Hidden`) on `BindingOptions` — lets consumers build hotkey overlays where some bindings are excluded (Niri's `hotkey-overlay-title=null` pattern).
-- [ ] `description: Option<String>` on `LayerOptions` — layer-level label for overlay grouping.
-- [ ] Tests: metadata round-trips through register/introspect.
+- [x] `description: Option<String>` on `BindingOptions` — human-readable label ("Copy to clipboard").
+- [x] `OverlayVisibility` enum (`Visible` / `Hidden`) on `BindingOptions` — lets consumers build hotkey overlays where some bindings are excluded (Niri's `hotkey-overlay-title=null` pattern).
+- [x] `description: Option<String>` on `LayerOptions` — layer-level label for overlay grouping.
+- [x] Tests: metadata round-trips through register/introspect.
 
 ### 3.5 Introspection API
 
@@ -238,7 +238,7 @@ only matters once a layer stack exists.
 | 3.1 Layer definition | 5/5 |
 | 3.2 Layer stack | 7/7 |
 | 3.3 Press cache | 5/5 |
-| 3.4 Binding metadata | 0/4 |
+| 3.4 Binding metadata | 4/4 |
 | 3.5 Introspection | 0/6 |
 
 ---
