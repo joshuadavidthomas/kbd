@@ -318,7 +318,10 @@ impl HotkeyManager {
     ///
     /// Considers the current layer stack. Returns `None` if no binding
     /// matches the hotkey.
-    pub fn bindings_for_key(&self, hotkey: impl Into<Hotkey>) -> Result<Option<BindingInfo>, Error> {
+    pub fn bindings_for_key(
+        &self,
+        hotkey: impl Into<Hotkey>,
+    ) -> Result<Option<BindingInfo>, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::BindingsForKey {
@@ -348,8 +351,7 @@ impl HotkeyManager {
     pub fn conflicts(&self) -> Result<Vec<ConflictInfo>, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.commands
-            .send(Command::Conflicts { reply: reply_tx })?;
+        self.commands.send(Command::Conflicts { reply: reply_tx })?;
 
         reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }

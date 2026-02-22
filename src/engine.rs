@@ -585,7 +585,8 @@ impl Engine {
     }
 
     fn list_bindings(&self) -> Vec<BindingInfo> {
-        use crate::introspection::{BindingLocation, ShadowedStatus};
+        use crate::introspection::BindingLocation;
+        use crate::introspection::ShadowedStatus;
 
         // Build a map of hotkey → claiming layer name for active layers.
         // Walk top-down so the topmost layer claiming a hotkey "wins".
@@ -648,7 +649,8 @@ impl Engine {
     }
 
     fn binding_for_key(&self, hotkey: &Hotkey) -> Option<BindingInfo> {
-        use crate::introspection::{BindingLocation, ShadowedStatus};
+        use crate::introspection::BindingLocation;
+        use crate::introspection::ShadowedStatus;
 
         // Walk layer stack top-down, same as the matcher
         for entry in self.layer_stack.iter().rev() {
@@ -697,7 +699,8 @@ impl Engine {
     }
 
     fn conflicts(&self) -> Vec<ConflictInfo> {
-        use crate::introspection::{BindingLocation, ShadowedStatus};
+        use crate::introspection::BindingLocation;
+        use crate::introspection::ShadowedStatus;
 
         let all_bindings = self.list_bindings();
         let mut conflicts = Vec::new();
@@ -2784,11 +2787,12 @@ mod tests {
 
         engine
             .register_binding(
-                RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::C).modifier(Modifier::Ctrl), Action::Swallow)
-                    .with_options(
-                        crate::binding::BindingOptions::default()
-                            .with_description("Copy"),
-                    ),
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Swallow,
+                )
+                .with_options(crate::binding::BindingOptions::default().with_description("Copy")),
             )
             .unwrap();
 
@@ -2798,14 +2802,8 @@ mod tests {
         let info = &bindings[0];
         assert_eq!(info.hotkey, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert_eq!(info.description.as_deref(), Some("Copy"));
-        assert_eq!(
-            info.location,
-            crate::introspection::BindingLocation::Global
-        );
-        assert_eq!(
-            info.shadowed,
-            crate::introspection::ShadowedStatus::Active
-        );
+        assert_eq!(info.location, crate::introspection::BindingLocation::Global);
+        assert_eq!(info.shadowed, crate::introspection::ShadowedStatus::Active);
     }
 
     #[test]
@@ -2820,12 +2818,7 @@ mod tests {
         let bindings = engine.list_bindings();
         let layer_bindings: Vec<_> = bindings
             .iter()
-            .filter(|b| {
-                matches!(
-                    b.location,
-                    crate::introspection::BindingLocation::Layer(_)
-                )
-            })
+            .filter(|b| matches!(b.location, crate::introspection::BindingLocation::Layer(_)))
             .collect();
         assert_eq!(layer_bindings.len(), 2);
     }
@@ -2834,8 +2827,7 @@ mod tests {
     fn list_bindings_inactive_layer_binding_marked_inactive() {
         let mut engine = test_engine();
 
-        let layer = crate::Layer::new("nav")
-            .bind(Key::H, Action::Swallow);
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.define_layer(layer).unwrap();
         // Don't push the layer
 
@@ -2864,8 +2856,7 @@ mod tests {
             .unwrap();
 
         // Layer binding for H
-        let layer = crate::Layer::new("nav")
-            .bind(Key::H, Action::Swallow);
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.define_layer(layer).unwrap();
         engine
             .push_layer(crate::action::LayerName::from("nav"))
@@ -2883,9 +2874,7 @@ mod tests {
             .expect("should find global H");
         assert_eq!(
             global_h.shadowed,
-            crate::introspection::ShadowedStatus::ShadowedBy(
-                crate::action::LayerName::from("nav")
-            )
+            crate::introspection::ShadowedStatus::ShadowedBy(crate::action::LayerName::from("nav"))
         );
 
         // Layer H should be active
@@ -2906,12 +2895,10 @@ mod tests {
     fn list_bindings_higher_layer_shadows_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = crate::Layer::new("layer1")
-            .bind(Key::H, Action::Swallow);
+        let layer1 = crate::Layer::new("layer1").bind(Key::H, Action::Swallow);
         engine.define_layer(layer1).unwrap();
 
-        let layer2 = crate::Layer::new("layer2")
-            .bind(Key::H, Action::Swallow);
+        let layer2 = crate::Layer::new("layer2").bind(Key::H, Action::Swallow);
         engine.define_layer(layer2).unwrap();
 
         engine
@@ -2935,9 +2922,9 @@ mod tests {
             .expect("should find layer1 H");
         assert_eq!(
             layer1_h.shadowed,
-            crate::introspection::ShadowedStatus::ShadowedBy(
-                crate::action::LayerName::from("layer2")
-            )
+            crate::introspection::ShadowedStatus::ShadowedBy(crate::action::LayerName::from(
+                "layer2"
+            ))
         );
 
         let layer2_h = bindings
@@ -2967,10 +2954,7 @@ mod tests {
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Swallow,
                 )
-                .with_options(
-                    crate::binding::BindingOptions::default()
-                        .with_description("Copy"),
-                ),
+                .with_options(crate::binding::BindingOptions::default().with_description("Copy")),
             )
             .unwrap();
 
@@ -2980,10 +2964,7 @@ mod tests {
         let info = result.unwrap();
         assert_eq!(info.hotkey, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert_eq!(info.description.as_deref(), Some("Copy"));
-        assert_eq!(
-            info.location,
-            crate::introspection::BindingLocation::Global
-        );
+        assert_eq!(info.location, crate::introspection::BindingLocation::Global);
     }
 
     #[test]
@@ -3009,21 +2990,15 @@ mod tests {
         // Global binding for H
         engine
             .register_binding(
-                RegisteredBinding::new(
-                    BindingId::new(),
-                    Hotkey::new(Key::H),
-                    Action::Swallow,
-                )
-                .with_options(
-                    crate::binding::BindingOptions::default()
-                        .with_description("Global H"),
-                ),
+                RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Swallow)
+                    .with_options(
+                        crate::binding::BindingOptions::default().with_description("Global H"),
+                    ),
             )
             .unwrap();
 
         // Layer binding for H
-        let layer = crate::Layer::new("nav")
-            .bind(Key::H, Action::Swallow);
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.define_layer(layer).unwrap();
         engine
             .push_layer(crate::action::LayerName::from("nav"))
@@ -3035,9 +3010,7 @@ mod tests {
         let info = result.unwrap();
         assert_eq!(
             info.location,
-            crate::introspection::BindingLocation::Layer(
-                crate::action::LayerName::from("nav")
-            )
+            crate::introspection::BindingLocation::Layer(crate::action::LayerName::from("nav"))
         );
     }
 
@@ -3113,8 +3086,7 @@ mod tests {
             .unwrap();
 
         // Layer binding for H
-        let layer = crate::Layer::new("nav")
-            .bind(Key::H, Action::Swallow);
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.define_layer(layer).unwrap();
         engine
             .push_layer(crate::action::LayerName::from("nav"))
@@ -3131,9 +3103,7 @@ mod tests {
         );
         assert_eq!(
             conflict.shadowing_binding.location,
-            crate::introspection::BindingLocation::Layer(
-                crate::action::LayerName::from("nav")
-            )
+            crate::introspection::BindingLocation::Layer(crate::action::LayerName::from("nav"))
         );
     }
 
@@ -3141,12 +3111,10 @@ mod tests {
     fn conflicts_detects_layer_shadowing_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = crate::Layer::new("layer1")
-            .bind(Key::H, Action::Swallow);
+        let layer1 = crate::Layer::new("layer1").bind(Key::H, Action::Swallow);
         engine.define_layer(layer1).unwrap();
 
-        let layer2 = crate::Layer::new("layer2")
-            .bind(Key::H, Action::Swallow);
+        let layer2 = crate::Layer::new("layer2").bind(Key::H, Action::Swallow);
         engine.define_layer(layer2).unwrap();
 
         engine
@@ -3163,15 +3131,11 @@ mod tests {
         assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
         assert_eq!(
             conflict.shadowed_binding.location,
-            crate::introspection::BindingLocation::Layer(
-                crate::action::LayerName::from("layer1")
-            )
+            crate::introspection::BindingLocation::Layer(crate::action::LayerName::from("layer1"))
         );
         assert_eq!(
             conflict.shadowing_binding.location,
-            crate::introspection::BindingLocation::Layer(
-                crate::action::LayerName::from("layer2")
-            )
+            crate::introspection::BindingLocation::Layer(crate::action::LayerName::from("layer2"))
         );
     }
 
@@ -3189,10 +3153,7 @@ mod tests {
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Swallow,
                 )
-                .with_options(
-                    crate::binding::BindingOptions::default()
-                        .with_description("Copy"),
-                ),
+                .with_options(crate::binding::BindingOptions::default().with_description("Copy")),
                 reply: reply_tx,
             })
             .unwrap();
