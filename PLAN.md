@@ -380,6 +380,56 @@ Reference: `reference/keyd/src/keyboard.c` (chord state machine)
 
 ---
 
+## Future idea: derive macro for declarative bindings
+
+Not planned for any phase. Captured here so the idea isn't lost.
+
+The builder API (`Hotkey::new(Key::C).modifier(Modifier::Ctrl)`,
+`Layer::new("nav").bind(...)`) follows standard Rust builder conventions.
+A complementary derive macro could offer a declarative alternative for
+the common case, similar to how clap offers both `Command::new()` and
+`#[derive(Parser)]`.
+
+```rust
+#[derive(Bindings)]
+struct MyApp {
+    #[hotkey(key = C, modifiers = [Ctrl], action = on_copy)]
+    copy: Handle,
+
+    #[hotkey(key = V, modifiers = [Ctrl, Shift], action = on_paste)]
+    paste: Handle,
+}
+
+fn on_copy() { println!("copied"); }
+fn on_paste() { println!("pasted"); }
+```
+
+Action callbacks referenced by function path (like serde's
+`serialize_with`). Data actions (`EmitKey`, `PushLayer`, `PopLayer`,
+`Swallow`) could also be expressed directly in attributes.
+
+Layers could work similarly:
+
+```rust
+#[derive(Layer)]
+#[layer(name = "nav", swallow)]
+struct Nav {
+    #[bind(key = H, emit = Left)]
+    #[bind(key = J, emit = Down)]
+    #[bind(key = K, emit = Up)]
+    #[bind(key = L, emit = Right)]
+    #[bind(key = Escape, action = pop)]
+}
+```
+
+**Tradeoffs**: Stateful callbacks (closures capturing local variables)
+can't be expressed in attributes — users would drop to the builder API
+for those, same as clap users drop to the builder for dynamic args.
+Adds a proc-macro crate dependency. Should only be built once the
+builder API is stable, so the derive generates against a settled target.
+
+---
+
 ## Implementation order summary
 
 | Phase | Delivers | Items |
