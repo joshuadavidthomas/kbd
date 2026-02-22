@@ -381,7 +381,13 @@ src/
   handle.rs           Handle (RAII unregistration via command).
 
   engine/
-    mod.rs            Engine. Event loop. Command processing.
+    mod.rs            Engine struct, event loop, core matching/dispatch.
+    types.rs          GrabState, KeyEventDisposition, LayerEffect, MatchOutcome,
+                      LayerStackEntry, LayerTimeout.
+    binding.rs        RegisteredBinding (engine-internal binding storage).
+    command.rs        Command enum, CommandSender (manager→engine channel).
+    runtime.rs        EngineRuntime (spawn, shutdown, join).
+    wake.rs           WakeFd (eventfd wrapper), LoopControl.
     key_state.rs      What's currently pressed. Modifier state derived here.
     matcher.rs        Binding lookup against current state.
     sequence.rs       Sequence state machine (partial progress, timeouts).
