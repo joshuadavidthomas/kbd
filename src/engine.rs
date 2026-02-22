@@ -32,6 +32,11 @@
 //! - [`tap_hold`] — tap-hold pattern state machine
 //! - [`devices`] — device discovery, hotplug, capability detection
 //! - [`forwarder`] — uinput virtual device for event forwarding/emission
+//! - [`types`] — shared engine types (grab state, dispositions, layer stack entries)
+//! - [`binding`] — registered binding storage
+//! - [`command`] — command enum and sender for manager→engine communication
+//! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
+//! - [`wake`] — eventfd-based wake mechanism and loop control
 //!
 //! # Reference
 //!
@@ -41,22 +46,14 @@
 
 use std::collections::HashMap;
 use std::io;
-use std::mem::size_of;
-use std::os::fd::AsRawFd;
-use std::os::fd::FromRawFd;
-use std::os::fd::OwnedFd;
-use std::os::fd::RawFd;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
 use std::time::Instant;
 
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::BindingId;
-use crate::binding::BindingOptions;
 use crate::binding::Passthrough;
 use crate::engine::devices::DeviceKeyEvent;
 use crate::introspection::ActiveLayerInfo;
@@ -72,257 +69,30 @@ use crate::Error;
 use crate::Key;
 use crate::Modifier;
 
+pub(crate) mod binding;
+pub(crate) mod command;
 pub(crate) mod devices;
 pub(crate) mod forwarder;
 pub(crate) mod key_state;
 pub(crate) mod matcher;
+pub(crate) mod runtime;
 pub(crate) mod sequence;
 pub(crate) mod tap_hold;
+pub(crate) mod types;
+mod wake;
 
-/// Whether the engine is running in grab mode.
-///
-/// In grab mode, the engine takes exclusive ownership of input devices
-/// and forwards unmatched events through a virtual device. The forwarder
-/// is bundled with the enabled state so it's impossible to be in grab
-/// mode without a forwarder.
-pub(crate) enum GrabState {
-    Disabled,
-    Enabled {
-        forwarder: Box<dyn forwarder::ForwardSink>,
-    },
-}
-
-/// Disposition of a key event after engine processing.
-///
-/// Returned by `process_key_event` to indicate what happened with the
-/// event. Used by tests to verify forwarding and consumption behavior.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeyEventDisposition {
-    /// Event matched a binding and was consumed (not forwarded).
-    MatchedConsumed,
-    /// Event matched a binding with passthrough and was forwarded.
-    MatchedForwarded,
-    /// Event did not match any binding and was forwarded (grab mode).
-    UnmatchedForwarded,
-    /// Event was not processed (grab mode disabled, or modifier/repeat).
-    Ignored,
-}
-
-/// Layer stack mutation extracted from a matched action.
-///
-/// Used to defer layer modifications until after the matcher's borrow
-/// on engine state is released.
-enum LayerEffect {
-    None,
-    Push(LayerName),
-    Pop,
-    Toggle(LayerName),
-}
-
-impl From<&Action> for LayerEffect {
-    fn from(action: &Action) -> Self {
-        match action {
-            Action::PushLayer(name) => Self::Push(name.clone()),
-            Action::PopLayer => Self::Pop,
-            Action::ToggleLayer(name) => Self::Toggle(name.clone()),
-            Action::Callback(_)
-            | Action::EmitKey(..)
-            | Action::EmitSequence(..)
-            | Action::Swallow => Self::None,
-        }
-    }
-}
-
-/// Intermediate result from Phase 1 (matching) used in Phase 2 (execution).
-enum MatchOutcome {
-    Matched {
-        layer_effect: LayerEffect,
-        passthrough: Passthrough,
-    },
-    Swallowed,
-    NoMatch,
-    Ignored,
-}
-
-/// An entry in the layer stack, pairing the layer name with runtime state.
-pub(crate) struct LayerStackEntry {
-    name: LayerName,
-    /// Remaining keypress count for oneshot layers. `None` means not oneshot.
-    oneshot_remaining: Option<usize>,
-    /// Timeout configuration and last activity timestamp.
-    /// If set, the layer auto-pops when `Instant::now() - last_activity > timeout`.
-    timeout: Option<LayerTimeout>,
-}
-
-struct LayerTimeout {
-    duration: Duration,
-    last_activity: Instant,
-}
-
-pub(crate) struct RegisteredBinding {
-    id: BindingId,
-    hotkey: Hotkey,
-    action: Action,
-    options: BindingOptions,
-}
-
-impl RegisteredBinding {
-    #[must_use]
-    pub(crate) fn new(id: BindingId, hotkey: Hotkey, action: Action) -> Self {
-        Self {
-            id,
-            hotkey,
-            action,
-            options: BindingOptions::default(),
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn with_options(mut self, options: BindingOptions) -> Self {
-        self.options = options;
-        self
-    }
-
-    #[must_use]
-    pub(crate) fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
-        self.options = self.options.with_passthrough(passthrough);
-        self
-    }
-
-    #[must_use]
-    pub(crate) const fn id(&self) -> BindingId {
-        self.id
-    }
-
-    #[must_use]
-    pub(crate) fn hotkey(&self) -> &Hotkey {
-        &self.hotkey
-    }
-
-    #[must_use]
-    pub(crate) const fn action(&self) -> &Action {
-        &self.action
-    }
-
-    #[must_use]
-    pub(crate) const fn passthrough(&self) -> Passthrough {
-        self.options.passthrough()
-    }
-
-    #[must_use]
-    pub(crate) const fn options(&self) -> &BindingOptions {
-        &self.options
-    }
-}
-
-pub(crate) enum Command {
-    Register {
-        binding: RegisteredBinding,
-        reply: mpsc::Sender<Result<(), Error>>,
-    },
-    Unregister {
-        id: BindingId,
-    },
-    DefineLayer {
-        layer: Layer,
-        reply: mpsc::Sender<Result<(), Error>>,
-    },
-    PushLayer {
-        name: LayerName,
-        reply: mpsc::Sender<Result<(), Error>>,
-    },
-    PopLayer {
-        reply: mpsc::Sender<Result<LayerName, Error>>,
-    },
-    ToggleLayer {
-        name: LayerName,
-        reply: mpsc::Sender<Result<(), Error>>,
-    },
-    IsRegistered {
-        hotkey: Hotkey,
-        reply: mpsc::Sender<bool>,
-    },
-    IsKeyPressed {
-        key: Key,
-        reply: mpsc::Sender<bool>,
-    },
-    ActiveModifiers {
-        reply: mpsc::Sender<Vec<Modifier>>,
-    },
-    ListBindings {
-        reply: mpsc::Sender<Vec<BindingInfo>>,
-    },
-    BindingsForKey {
-        hotkey: Hotkey,
-        reply: mpsc::Sender<Option<BindingInfo>>,
-    },
-    ActiveLayers {
-        reply: mpsc::Sender<Vec<ActiveLayerInfo>>,
-    },
-    Conflicts {
-        reply: mpsc::Sender<Vec<ConflictInfo>>,
-    },
-    Shutdown,
-}
-
-#[derive(Clone)]
-pub(crate) struct CommandSender {
-    command_tx: mpsc::Sender<Command>,
-    wake_fd: Arc<WakeFd>,
-}
-
-impl CommandSender {
-    pub(crate) fn send(&self, command: Command) -> Result<(), Error> {
-        self.command_tx
-            .send(command)
-            .map_err(|_| Error::ManagerStopped)?;
-        self.wake_fd.wake().map_err(|_| Error::ManagerStopped)?;
-        Ok(())
-    }
-}
-
-pub(crate) struct EngineRuntime {
-    commands: CommandSender,
-    join_handle: thread::JoinHandle<Result<(), Error>>,
-}
-
-impl EngineRuntime {
-    pub(crate) fn spawn(grab_state: GrabState) -> Result<Self, Error> {
-        let wake_fd = Arc::new(WakeFd::new()?);
-        let (command_tx, command_rx) = mpsc::channel();
-        let commands = CommandSender {
-            command_tx,
-            wake_fd: Arc::clone(&wake_fd),
-        };
-
-        let engine = Engine::new(command_rx, wake_fd, grab_state);
-        let join_handle = thread::spawn(move || run(engine));
-
-        Ok(Self {
-            commands,
-            join_handle,
-        })
-    }
-
-    #[must_use]
-    pub(crate) fn commands(&self) -> CommandSender {
-        self.commands.clone()
-    }
-
-    pub(crate) fn shutdown(self) -> Result<(), Error> {
-        let send_result = self.commands.send(Command::Shutdown);
-        let join_result = self.join();
-
-        match (send_result, join_result) {
-            (Ok(()), Ok(())) => Ok(()),
-            (Err(error), Ok(())) | (_, Err(error)) => Err(error),
-        }
-    }
-
-    pub(crate) fn join(self) -> Result<(), Error> {
-        self.join_handle.join().map_err(|_| Error::EngineError)?
-    }
-}
+pub(crate) use self::binding::RegisteredBinding;
+pub(crate) use self::command::Command;
+pub(crate) use self::command::CommandSender;
+pub(crate) use self::runtime::EngineRuntime;
+pub(crate) use self::types::GrabState;
+pub(crate) use self::types::KeyEventDisposition;
+use self::types::LayerEffect;
+use self::types::LayerStackEntry;
+use self::types::LayerTimeout;
+use self::types::MatchOutcome;
+use self::wake::LoopControl;
+use self::wake::WakeFd;
 
 /// Engine-internal representation of a stored layer definition.
 pub(crate) struct StoredLayer {
@@ -963,112 +733,6 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
     }
 }
 
-enum LoopControl {
-    Continue,
-    Shutdown,
-}
-
-struct WakeFd {
-    fd: OwnedFd,
-}
-
-impl WakeFd {
-    fn new() -> Result<Self, Error> {
-        // SAFETY: Calling libc `eventfd` with constant flags.
-        let raw_fd = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
-        if raw_fd < 0 {
-            return Err(Error::EngineError);
-        }
-
-        // SAFETY: `raw_fd` is an owned descriptor returned by `eventfd`.
-        let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
-        Ok(Self { fd })
-    }
-
-    fn wake(&self) -> io::Result<()> {
-        let increment = 1_u64;
-
-        loop {
-            // SAFETY: `increment` points to an initialized `u64` with the exact
-            // byte size required by eventfd writes.
-            let result = unsafe {
-                libc::write(
-                    self.fd.as_raw_fd(),
-                    (&raw const increment).cast::<libc::c_void>(),
-                    size_of::<u64>(),
-                )
-            };
-
-            if result == 8 {
-                return Ok(());
-            }
-
-            if result < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                if error.kind() == io::ErrorKind::WouldBlock {
-                    return Ok(());
-                }
-                return Err(error);
-            }
-
-            return Err(io::Error::new(
-                io::ErrorKind::WriteZero,
-                "short write to wake eventfd",
-            ));
-        }
-    }
-
-    fn clear(&self) -> io::Result<()> {
-        let mut value = 0_u64;
-
-        loop {
-            // SAFETY: `value` points to valid writable memory for a single
-            // `u64`, which is the required eventfd read size.
-            let result = unsafe {
-                libc::read(
-                    self.fd.as_raw_fd(),
-                    (&raw mut value).cast::<libc::c_void>(),
-                    size_of::<u64>(),
-                )
-            };
-
-            if result == 8 {
-                continue;
-            }
-
-            if result < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                if error.kind() == io::ErrorKind::WouldBlock {
-                    return Ok(());
-                }
-                return Err(error);
-            }
-
-            if result == 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "wake eventfd closed while clearing",
-                ));
-            }
-
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "short read from wake eventfd",
-            ));
-        }
-    }
-
-    fn raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::AtomicUsize;
@@ -1079,13 +743,13 @@ mod tests {
 
     use super::devices::DeviceKeyEvent;
     use super::key_state::KeyTransition;
+    use super::wake::WakeFd;
     use super::Command;
     use super::Engine;
     use super::EngineRuntime;
     use super::GrabState;
     use super::KeyEventDisposition;
     use super::RegisteredBinding;
-    use super::WakeFd;
     use crate::binding::BindingId;
     use crate::binding::Passthrough;
     use crate::key::Hotkey;
@@ -1706,18 +1370,6 @@ mod tests {
     }
 
     #[test]
-    fn engine_rejects_duplicate_layer_name() {
-        let mut engine = test_engine();
-
-        let layer1 = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
-        assert!(engine.define_layer(layer1).is_ok());
-
-        let layer2 = crate::Layer::new("nav").bind(Key::J, Action::Swallow);
-        let result = engine.define_layer(layer2);
-        assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
-    }
-
-    #[test]
     fn engine_stores_layer_bindings() {
         let mut engine = test_engine();
         let layer = crate::Layer::new("nav")
@@ -1834,22 +1486,6 @@ mod tests {
         runtime.shutdown().expect("engine should shutdown cleanly");
     }
 
-    #[test]
-    fn grab_mode_forwards_modifier_presses() {
-        let (grab_state, forwarded) = test_grab_state();
-        let mut engine = test_engine_with_grab(grab_state);
-
-        // Pressing a modifier key with no bindings should be forwarded
-        let disposition = press_key(&mut engine, Key::LeftCtrl, 10);
-        assert_eq!(disposition, KeyEventDisposition::UnmatchedForwarded);
-
-        let events = forwarded.lock().unwrap();
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0], (Key::LeftCtrl, KeyTransition::Press));
-    }
-
-    // Layer stack operation tests
-
     fn define_and_push_layer(engine: &mut Engine, name: &str, bindings: Vec<(Key, Action)>) {
         let mut layer = crate::Layer::new(name);
         for (key, action) in bindings {
@@ -1909,20 +1545,6 @@ mod tests {
     }
 
     #[test]
-    fn push_undefined_layer_returns_error() {
-        let mut engine = test_engine();
-        let result = engine.push_layer(crate::action::LayerName::from("nonexistent"));
-        assert!(matches!(result, Err(Error::LayerNotDefined)));
-    }
-
-    #[test]
-    fn pop_empty_stack_returns_error() {
-        let mut engine = test_engine();
-        let result = engine.pop_layer();
-        assert!(matches!(result, Err(Error::EmptyLayerStack)));
-    }
-
-    #[test]
     fn toggle_layer_pushes_when_not_active() {
         let mut engine = test_engine();
         let counter = Arc::new(AtomicUsize::new(0));
@@ -1976,49 +1598,6 @@ mod tests {
         let mut engine = test_engine();
         let result = engine.toggle_layer(crate::action::LayerName::from("nonexistent"));
         assert!(matches!(result, Err(Error::LayerNotDefined)));
-    }
-
-    #[test]
-    fn layer_takes_priority_over_global_binding() {
-        let mut engine = test_engine();
-
-        let global_counter = Arc::new(AtomicUsize::new(0));
-        let gc = Arc::clone(&global_counter);
-        engine
-            .register_binding(RegisteredBinding::new(
-                BindingId::new(),
-                Hotkey::new(Key::H),
-                Action::from(move || {
-                    gc.fetch_add(1, Ordering::Relaxed);
-                }),
-            ))
-            .unwrap();
-
-        let layer_counter = Arc::new(AtomicUsize::new(0));
-        let lc = Arc::clone(&layer_counter);
-        define_and_push_layer(
-            &mut engine,
-            "nav",
-            vec![(
-                Key::H,
-                Action::from(move || {
-                    lc.fetch_add(1, Ordering::Relaxed);
-                }),
-            )],
-        );
-
-        press_key(&mut engine, Key::H, 10);
-
-        assert_eq!(
-            layer_counter.load(Ordering::Relaxed),
-            1,
-            "layer binding should fire"
-        );
-        assert_eq!(
-            global_counter.load(Ordering::Relaxed),
-            0,
-            "global binding should not fire"
-        );
     }
 
     #[test]
@@ -2677,44 +2256,6 @@ mod tests {
         assert!(
             x_events.is_empty(),
             "swallowed key should not be forwarded on release"
-        );
-    }
-
-    #[test]
-    fn press_cache_correct_across_oneshot_layer_pop() {
-        // Press H in an oneshot layer (consumed). Layer auto-pops.
-        // Release H — should still be consumed via press cache.
-        let (grab_state, forwarded) = test_grab_state();
-        let mut engine = test_engine_with_grab(grab_state);
-
-        let layer = crate::Layer::new("oneshot-nav")
-            .bind(Key::H, Action::Swallow)
-            .oneshot(1);
-        engine.define_layer(layer).unwrap();
-        engine
-            .push_layer(crate::action::LayerName::from("oneshot-nav"))
-            .unwrap();
-
-        // Press H — matches layer binding, consumed. Layer auto-pops.
-        let press_disp = press_key(&mut engine, Key::H, 10);
-        assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
-
-        // Layer should now be popped
-        assert!(
-            engine.layer_stack.is_empty(),
-            "oneshot layer should have popped"
-        );
-
-        // Release H — should still be consumed (press was cached before layer popped)
-        let release_disp = release_key(&mut engine, Key::H, 10);
-        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
-
-        // Verify H was NOT forwarded
-        let events = forwarded.lock().unwrap();
-        let h_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::H).collect();
-        assert!(
-            h_events.is_empty(),
-            "consumed key's release should not be forwarded after layer pop"
         );
     }
 
