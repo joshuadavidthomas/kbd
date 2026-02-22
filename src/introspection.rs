@@ -34,7 +34,7 @@ pub enum ShadowedStatus {
 ///
 /// Returned by [`HotkeyManager::list_bindings`] and
 /// [`HotkeyManager::bindings_for_key`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindingInfo {
     /// The hotkey (key + modifiers) that triggers this binding.
     pub hotkey: Hotkey,
@@ -51,7 +51,7 @@ pub struct BindingInfo {
 /// Snapshot of an active layer on the stack.
 ///
 /// Returned by [`HotkeyManager::active_layers`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveLayerInfo {
     /// The layer's name.
     pub name: LayerName,
@@ -64,7 +64,7 @@ pub struct ActiveLayerInfo {
 /// A pair of bindings in conflict — one shadows the other.
 ///
 /// Returned by [`HotkeyManager::conflicts`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictInfo {
     /// The hotkey at the center of the conflict.
     pub hotkey: Hotkey,

@@ -61,7 +61,9 @@ use crate::binding::Passthrough;
 use crate::engine::devices::DeviceKeyEvent;
 use crate::introspection::ActiveLayerInfo;
 use crate::introspection::BindingInfo;
+use crate::introspection::BindingLocation;
 use crate::introspection::ConflictInfo;
+use crate::introspection::ShadowedStatus;
 use crate::key::Hotkey;
 use crate::layer::Layer;
 use crate::layer::LayerBinding;
@@ -585,9 +587,6 @@ impl Engine {
     }
 
     fn list_bindings(&self) -> Vec<BindingInfo> {
-        use crate::introspection::BindingLocation;
-        use crate::introspection::ShadowedStatus;
-
         // Build a map of hotkey → claiming layer name for active layers.
         // Walk top-down so the topmost layer claiming a hotkey "wins".
         let mut claimed_by: HashMap<&Hotkey, &LayerName> = HashMap::new();
@@ -649,8 +648,11 @@ impl Engine {
     }
 
     fn binding_for_key(&self, hotkey: &Hotkey) -> Option<BindingInfo> {
-        use crate::introspection::BindingLocation;
-        use crate::introspection::ShadowedStatus;
+        // Modifier-only keys never fire bindings in the real matcher,
+        // so they can't match here either.
+        if Modifier::from_key(hotkey.key()).is_some() {
+            return None;
+        }
 
         // Walk layer stack top-down, same as the matcher
         for entry in self.layer_stack.iter().rev() {
@@ -708,9 +710,6 @@ impl Engine {
     }
 
     fn conflicts(&self) -> Vec<ConflictInfo> {
-        use crate::introspection::BindingLocation;
-        use crate::introspection::ShadowedStatus;
-
         let all_bindings = self.list_bindings();
         let mut conflicts = Vec::new();
 
@@ -3281,5 +3280,26 @@ mod tests {
         // H IS in the swallow layer — should still resolve
         let result = engine.binding_for_key(&Hotkey::new(Key::H));
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn binding_for_key_returns_none_for_modifier_key() {
+        let mut engine = test_engine();
+
+        // Even if someone registers a bare modifier key, the real matcher
+        // ignores modifier-only presses. binding_for_key should agree.
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::LeftCtrl),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        let result = engine.binding_for_key(&Hotkey::new(Key::LeftCtrl));
+        assert!(
+            result.is_none(),
+            "modifier-only key should not match, consistent with real matcher"
+        );
     }
 }
