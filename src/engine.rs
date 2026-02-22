@@ -666,6 +666,15 @@ impl Engine {
                         });
                     }
                 }
+
+                // Swallow layers block all unmatched keys from reaching
+                // lower layers and globals — matches the real matcher.
+                if matches!(
+                    stored.options.unmatched,
+                    crate::layer::UnmatchedKeyBehavior::Swallow
+                ) {
+                    return None;
+                }
             }
         }
 
@@ -3237,5 +3246,40 @@ mod tests {
             bindings[0].overlay_visibility,
             crate::binding::OverlayVisibility::Hidden
         );
+    }
+
+    #[test]
+    fn binding_for_key_respects_swallow_layer() {
+        let mut engine = test_engine();
+
+        // Global binding for X
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::X),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        // Swallow layer with only H bound
+        let layer = crate::Layer::new("modal")
+            .bind(Key::H, Action::Swallow)
+            .swallow();
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("modal"))
+            .unwrap();
+
+        // X is not in the swallow layer — the real matcher would
+        // return Swallowed, so binding_for_key should return None.
+        let result = engine.binding_for_key(&Hotkey::new(Key::X));
+        assert!(
+            result.is_none(),
+            "swallow layer should block fallthrough to global binding"
+        );
+
+        // H IS in the swallow layer — should still resolve
+        let result = engine.binding_for_key(&Hotkey::new(Key::H));
+        assert!(result.is_some());
     }
 }
