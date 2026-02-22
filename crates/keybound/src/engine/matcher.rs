@@ -18,10 +18,10 @@ use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::BindingId;
 use crate::binding::Passthrough;
-use crate::engine::key_state::KeyTransition;
 use crate::engine::LayerStackEntry;
 use crate::engine::RegisteredBinding;
 use crate::engine::StoredLayer;
+use crate::engine::key_state::KeyTransition;
 use crate::key::Hotkey;
 use crate::key::Modifier;
 use crate::layer::UnmatchedKeyBehavior;
@@ -98,13 +98,13 @@ pub(crate) fn match_key_event<'a>(
     }
 
     // Fall through to global bindings
-    if let Some(&id) = binding_ids_by_hotkey.get(candidate) {
-        if let Some(binding) = bindings_by_id.get(&id) {
-            return MatchResult::Matched {
-                action: binding.action(),
-                passthrough: binding.passthrough(),
-            };
-        }
+    if let Some(&id) = binding_ids_by_hotkey.get(candidate)
+        && let Some(binding) = bindings_by_id.get(&id)
+    {
+        return MatchResult::Matched {
+            action: binding.action(),
+            passthrough: binding.passthrough(),
+        };
     }
 
     MatchResult::NoMatch
@@ -116,26 +116,26 @@ pub(crate) fn match_key_event<'a>(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::sync::Arc;
 
-    use super::match_key_event;
     use super::MatchResult;
+    use super::match_key_event;
+    use crate::Key;
     use crate::action::Action;
     use crate::action::LayerName;
     use crate::binding::BindingId;
     use crate::binding::Passthrough;
-    use crate::engine::key_state::KeyTransition;
     use crate::engine::LayerStackEntry;
     use crate::engine::RegisteredBinding;
     use crate::engine::StoredLayer;
+    use crate::engine::key_state::KeyTransition;
     use crate::key::Hotkey;
     use crate::key::Modifier;
     use crate::layer::LayerBinding;
     use crate::layer::LayerOptions;
     use crate::layer::UnmatchedKeyBehavior;
-    use crate::Key;
 
     struct TestBindings {
         bindings_by_id: HashMap<BindingId, RegisteredBinding>,

@@ -1,3 +1,4 @@
+#![cfg(feature = "evdev")]
 //! Integration tests for the public API surface (Phase 1.8).
 //!
 //! The DESIGN.md example compiles and runs. The builder API works.

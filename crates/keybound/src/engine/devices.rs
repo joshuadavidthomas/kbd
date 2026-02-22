@@ -29,9 +29,9 @@ use evdev::EventSummary;
 use evdev::InputEvent;
 use evdev::KeyCode;
 
+use crate::Key;
 use crate::engine::key_state::KeyState;
 use crate::engine::key_state::KeyTransition;
-use crate::Key;
 
 pub(crate) const INPUT_DIRECTORY: &str = "/dev/input";
 const HOTPLUG_BUFFER_SIZE: usize = 4096;
@@ -604,14 +604,14 @@ mod tests {
     use evdev::InputEvent;
     use evdev::KeyCode;
 
-    use super::discover_devices_in_dir_with;
-    use super::parse_hotplug_events;
     use super::DiscoveryOutcome;
     use super::HotplugFsEvent;
     use super::HotplugPathChange;
     use super::ObservedKeyEvent;
-    use crate::engine::key_state::KeyTransition;
+    use super::discover_devices_in_dir_with;
+    use super::parse_hotplug_events;
     use crate::Key;
+    use crate::engine::key_state::KeyTransition;
 
     #[test]
     fn discover_event_devices_ignores_non_event_entries_and_non_keyboards() {

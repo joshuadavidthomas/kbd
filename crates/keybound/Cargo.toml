@@ -1,0 +1,43 @@
+[package]
+name = "keybound"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Global hotkey library for Linux — works on Wayland, X11, and TTY"
+keywords = ["hotkey", "global-shortcut", "keybinding", "wayland", "input"]
+categories = ["os::linux-apis", "api-bindings"]
+readme = "../../README.md"
+
+[features]
+async-std = ["dep:async-std", "dep:async-channel"]
+default = ["evdev"]
+evdev = []
+grab = ["evdev"]
+portal = ["dep:ashpd", "dep:async-std", "dep:kbd-portal"]
+serde = ["dep:serde"]
+tokio = ["dep:tokio", "dep:async-channel"]
+
+[dependencies]
+ashpd = { workspace = true, optional = true }
+async-channel = { workspace = true, optional = true }
+async-std = { workspace = true, optional = true }
+evdev = { workspace = true }
+kbd-core = { workspace = true }
+kbd-derive = { workspace = true, optional = true }
+kbd-evdev = { workspace = true, optional = true }
+kbd-portal = { workspace = true, optional = true }
+kbd-xkb = { workspace = true, optional = true }
+libc = { workspace = true }
+serde = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+[lints]
+workspace = true

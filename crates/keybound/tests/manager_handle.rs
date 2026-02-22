@@ -1,3 +1,5 @@
+#![cfg(feature = "evdev")]
+
 use keybound::Error;
 use keybound::Hotkey;
 use keybound::HotkeyManager;
@@ -13,9 +15,11 @@ fn register_and_drop_handle_unregisters_hotkey() {
         .register(hotkey.clone(), || {})
         .expect("register should succeed");
 
-    assert!(manager
-        .is_registered(hotkey.clone())
-        .expect("query should succeed"));
+    assert!(
+        manager
+            .is_registered(hotkey.clone())
+            .expect("query should succeed")
+    );
 
     drop(handle);
 
@@ -41,9 +45,11 @@ fn duplicate_hotkey_registration_returns_conflict_error() {
 fn is_key_pressed_returns_false_when_no_keys_pressed() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 
-    assert!(!manager
-        .is_key_pressed(Key::A)
-        .expect("query should succeed"));
+    assert!(
+        !manager
+            .is_key_pressed(Key::A)
+            .expect("query should succeed")
+    );
 }
 
 #[test]

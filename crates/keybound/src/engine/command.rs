@@ -1,8 +1,11 @@
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 
 use super::binding::RegisteredBinding;
 use super::wake::WakeFd;
+use crate::Error;
+use crate::Key;
+use crate::Modifier;
 use crate::action::LayerName;
 use crate::binding::BindingId;
 use crate::introspection::ActiveLayerInfo;
@@ -10,9 +13,6 @@ use crate::introspection::BindingInfo;
 use crate::introspection::ConflictInfo;
 use crate::key::Hotkey;
 use crate::layer::Layer;
-use crate::Error;
-use crate::Key;
-use crate::Modifier;
 
 pub(crate) enum Command {
     Register {

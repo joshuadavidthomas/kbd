@@ -32,8 +32,8 @@ pub enum ShadowedStatus {
 
 /// Snapshot of a single binding for introspection.
 ///
-/// Returned by [`HotkeyManager::list_bindings`] and
-/// [`HotkeyManager::bindings_for_key`].
+/// Returned by [`crate::HotkeyManager::list_bindings`] and
+/// [`crate::HotkeyManager::bindings_for_key`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindingInfo {
     /// The hotkey (key + modifiers) that triggers this binding.
@@ -50,7 +50,7 @@ pub struct BindingInfo {
 
 /// Snapshot of an active layer on the stack.
 ///
-/// Returned by [`HotkeyManager::active_layers`].
+/// Returned by [`crate::HotkeyManager::active_layers`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveLayerInfo {
     /// The layer's name.
@@ -63,7 +63,7 @@ pub struct ActiveLayerInfo {
 
 /// A pair of bindings in conflict — one shadows the other.
 ///
-/// Returned by [`HotkeyManager::conflicts`].
+/// Returned by [`crate::HotkeyManager::conflicts`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictInfo {
     /// The hotkey at the center of the conflict.

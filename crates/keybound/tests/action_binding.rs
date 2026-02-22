@@ -1,13 +1,14 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use keybound::Action;
 use keybound::BindingId;
 use keybound::BindingOptions;
 #[cfg(feature = "evdev")]
 use keybound::DeviceFilter;
+#[cfg(feature = "evdev")]
 use keybound::HotkeyManager;
 use keybound::Key;
 use keybound::Modifier;
@@ -121,6 +122,7 @@ fn binding_options_chains_all_metadata() {
 }
 
 #[test]
+#[cfg(feature = "evdev")]
 fn register_with_options_accepts_metadata() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 
@@ -133,6 +135,7 @@ fn register_with_options_accepts_metadata() {
 }
 
 #[test]
+#[cfg(feature = "evdev")]
 fn register_with_options_hidden_binding() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 
