@@ -387,6 +387,9 @@ fn auto_backend() -> Result<Backend, Error> {
     }
 }
 
+// With all features enabled, this function can return both Ok and Err.
+// With only `evdev`, clippy sees a single arm that always returns Ok.
+#[allow(clippy::unnecessary_wraps)]
 fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
     match backend {
         #[cfg(feature = "evdev")]
@@ -396,6 +399,10 @@ fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
     }
 }
 
+// With the `portal` feature enabled, this function can return Err for
+// portal+grab combinations. Without `portal`, the inner check is dead
+// and the function always returns Ok.
+#[allow(clippy::unnecessary_wraps)]
 fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Result<(), Error> {
     let _ = backend;
 

@@ -380,7 +380,7 @@ Things that stay as feature flags, not crates:
 
 - [ ] Move `engine/devices.rs` into `kbd-evdev/src/`.
 - [ ] Move `engine/forwarder.rs` into `kbd-evdev/src/`.
-- [ ] Move `From<evdev::KeyCode>` / `Into<evdev::KeyCode>` impls into `kbd-evdev`.
+- [ ] `evdev::KeyCode` conversions stay in `kbd-core` (orphan rule — see §3.7). `kbd-evdev` uses them via `kbd-core`'s `evdev` feature.
 - [ ] `kbd-evdev` exposes a backend trait or struct that `keybound` consumes.
 - [ ] `kbd-evdev` builds and tests pass: `cargo test -p kbd-evdev`.
 
