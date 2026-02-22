@@ -16,7 +16,7 @@ default = ["evdev"]
 evdev = ["kbd-core/evdev"]
 grab = ["evdev"]
 portal = ["dep:ashpd", "dep:async-std", "dep:kbd-portal"]
-serde = ["dep:serde"]
+serde = ["dep:serde", "kbd-core/serde"]
 tokio = ["dep:tokio", "dep:async-channel"]
 
 [dependencies]

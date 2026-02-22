@@ -74,7 +74,7 @@ mod tests {
     fn core_layer_builder() {
         let layer = Layer::new("test").bind(Key::H, Action::Swallow).swallow();
         assert_eq!(layer.name().as_str(), "test");
-        assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
+        assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
     }
 
     #[test]

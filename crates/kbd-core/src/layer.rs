@@ -29,13 +29,46 @@ pub enum UnmatchedKeyBehavior {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LayerOptions {
     /// If set, automatically pop the layer after this many keypresses.
-    pub oneshot: Option<usize>,
+    oneshot: Option<usize>,
     /// Whether unmatched keys are consumed or fall through.
-    pub unmatched: UnmatchedKeyBehavior,
+    unmatched: UnmatchedKeyBehavior,
     /// If set, automatically pop the layer after this duration of inactivity.
-    pub timeout: Option<Duration>,
+    timeout: Option<Duration>,
     /// Human-readable label for this layer, used for overlay grouping.
-    pub description: Option<Box<str>>,
+    description: Option<Box<str>>,
+}
+
+impl LayerOptions {
+    /// If set, automatically pop the layer after this many keypresses.
+    #[must_use]
+    pub const fn oneshot(&self) -> Option<usize> {
+        self.oneshot
+    }
+
+    /// Whether unmatched keys are consumed or fall through.
+    #[must_use]
+    pub const fn unmatched(&self) -> UnmatchedKeyBehavior {
+        self.unmatched
+    }
+
+    /// If set, automatically pop the layer after this duration of inactivity.
+    #[must_use]
+    pub const fn timeout(&self) -> Option<Duration> {
+        self.timeout
+    }
+
+    /// Human-readable label for this layer, used for overlay grouping.
+    #[must_use]
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// Set unmatched key behavior.
+    #[must_use]
+    pub const fn with_unmatched(mut self, behavior: UnmatchedKeyBehavior) -> Self {
+        self.unmatched = behavior;
+        self
+    }
 }
 
 /// A single binding within a layer.
@@ -223,20 +256,20 @@ mod tests {
     #[test]
     fn layer_swallow_sets_option() {
         let layer = Layer::new("test").swallow();
-        assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
+        assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
     }
 
     #[test]
     fn layer_oneshot_sets_depth() {
         let layer = Layer::new("test").oneshot(3);
-        assert_eq!(layer.options().oneshot, Some(3));
+        assert_eq!(layer.options().oneshot(), Some(3));
     }
 
     #[test]
     fn layer_timeout_sets_duration() {
         let duration = Duration::from_secs(5);
         let layer = Layer::new("test").timeout(duration);
-        assert_eq!(layer.options().timeout, Some(duration));
+        assert_eq!(layer.options().timeout(), Some(duration));
     }
 
     #[test]
@@ -251,22 +284,19 @@ mod tests {
 
         assert_eq!(layer.name().as_str(), "nav");
         assert_eq!(layer.binding_count(), 2);
-        assert_eq!(
-            layer.options().description.as_deref(),
-            Some("Navigation keys")
-        );
-        assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
-        assert_eq!(layer.options().oneshot, Some(1));
-        assert_eq!(layer.options().timeout, Some(Duration::from_millis(500)));
+        assert_eq!(layer.options().description(), Some("Navigation keys"));
+        assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+        assert_eq!(layer.options().oneshot(), Some(1));
+        assert_eq!(layer.options().timeout(), Some(Duration::from_millis(500)));
     }
 
     #[test]
     fn layer_options_default_is_fallthrough_no_oneshot_no_timeout_no_description() {
         let options = LayerOptions::default();
-        assert_eq!(options.oneshot, None);
-        assert_eq!(options.unmatched, UnmatchedKeyBehavior::Fallthrough);
-        assert_eq!(options.timeout, None);
-        assert_eq!(options.description, None);
+        assert_eq!(options.oneshot(), None);
+        assert_eq!(options.unmatched(), UnmatchedKeyBehavior::Fallthrough);
+        assert_eq!(options.timeout(), None);
+        assert_eq!(options.description(), None);
     }
 
     #[test]
@@ -282,16 +312,13 @@ mod tests {
         let (name, bindings, options) = layer.into_parts();
         assert_eq!(name.as_str(), "nav");
         assert_eq!(bindings.len(), 1);
-        assert_eq!(options.unmatched, UnmatchedKeyBehavior::Swallow);
+        assert_eq!(options.unmatched(), UnmatchedKeyBehavior::Swallow);
     }
 
     #[test]
     fn layer_description_sets_label() {
         let layer = Layer::new("nav").description("Navigation keys");
-        assert_eq!(
-            layer.options().description.as_deref(),
-            Some("Navigation keys")
-        );
+        assert_eq!(layer.options().description(), Some("Navigation keys"));
     }
 
     #[test]
@@ -301,6 +328,6 @@ mod tests {
             .description("Navigation keys");
 
         let (_, _, options) = layer.into_parts();
-        assert_eq!(options.description.as_deref(), Some("Navigation keys"));
+        assert_eq!(options.description(), Some("Navigation keys"));
     }
 }

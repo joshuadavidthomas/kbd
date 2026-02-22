@@ -101,7 +101,7 @@ pub fn match_key_event<'a>(
 
             // No match in this layer — check swallow behavior
             if matches!(
-                stored_layer.options.unmatched,
+                stored_layer.options.unmatched(),
                 UnmatchedKeyBehavior::Swallow
             ) {
                 return MatchResult::Swallowed;
@@ -574,10 +574,7 @@ mod tests {
         bindings.add_layer(
             "modal",
             vec![layer_binding(Key::H, &[], Action::Swallow)],
-            LayerOptions {
-                unmatched: UnmatchedKeyBehavior::Swallow,
-                ..Default::default()
-            },
+            LayerOptions::default().with_unmatched(UnmatchedKeyBehavior::Swallow),
         );
         bindings.push_layer("modal");
 

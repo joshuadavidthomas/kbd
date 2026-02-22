@@ -316,8 +316,8 @@ impl Engine {
 
     fn push_layer(&mut self, name: LayerName) -> Result<(), Error> {
         let stored = self.layers.get(&name).ok_or(Error::LayerNotDefined)?;
-        let oneshot_remaining = stored.options.oneshot;
-        let timeout = stored.options.timeout.map(|duration| LayerTimeout {
+        let oneshot_remaining = stored.options.oneshot();
+        let timeout = stored.options.timeout().map(|duration| LayerTimeout {
             duration,
             last_activity: Instant::now(),
         });
@@ -439,7 +439,7 @@ impl Engine {
                 // Swallow layers block all unmatched keys from reaching
                 // lower layers and globals — matches the real matcher.
                 if matches!(
-                    stored.options.unmatched,
+                    stored.options.unmatched(),
                     crate::layer::UnmatchedKeyBehavior::Swallow
                 ) {
                     return None;
@@ -469,7 +469,7 @@ impl Engine {
             .filter_map(|entry| {
                 self.layers.get(&entry.name).map(|stored| ActiveLayerInfo {
                     name: entry.name.clone(),
-                    description: stored.options.description.clone(),
+                    description: stored.options.description().map(Box::from),
                     binding_count: stored.bindings.len(),
                 })
             })
@@ -1400,13 +1400,13 @@ mod tests {
             .layers
             .get(&crate::action::LayerName::from("oneshot-nav"))
             .expect("layer should be stored");
-        assert_eq!(stored.options.oneshot, Some(1));
+        assert_eq!(stored.options.oneshot(), Some(1));
         assert_eq!(
-            stored.options.unmatched,
+            stored.options.unmatched(),
             crate::layer::UnmatchedKeyBehavior::Swallow
         );
         assert_eq!(
-            stored.options.timeout,
+            stored.options.timeout(),
             Some(std::time::Duration::from_secs(5))
         );
     }
