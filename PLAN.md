@@ -186,21 +186,21 @@ works. Push/pop/toggle from callbacks and manager.
 
 ### 3.2 Layer stack operations
 
-- [ ] `manager.push_layer("name")` / `manager.pop_layer()`.
-- [ ] `Action::PushLayer` / `Action::PopLayer` / `Action::ToggleLayer` — layer control from within callbacks/bindings.
-- [ ] Engine maintains layer stack. Matching walks stack top-down then global.
-- [ ] Oneshot: layer auto-pops after N keypresses.
-- [ ] Swallow: unmatched keys in the active layer are consumed, not passed to lower layers.
-- [ ] Timeout: layer auto-pops after inactivity period.
-- [ ] Tests: push/pop, stack priority, oneshot, swallow, timeout, same key in different layers.
+- [x] `manager.push_layer("name")` / `manager.pop_layer()`.
+- [x] `Action::PushLayer` / `Action::PopLayer` / `Action::ToggleLayer` — layer control from within callbacks/bindings.
+- [x] Engine maintains layer stack. Matching walks stack top-down then global.
+- [x] Oneshot: layer auto-pops after N keypresses.
+- [x] Swallow: unmatched keys in the active layer are consumed, not passed to lower layers.
+- [x] Timeout: layer auto-pops after inactivity period.
+- [x] Tests: push/pop, stack priority, oneshot, swallow, timeout, same key in different layers.
 
 ### 3.3 Press cache (`src/engine/`)
 
-- [ ] On key press, cache the action that was executed for that key.
-- [ ] On key release, use cached action (not current matching result).
-- [ ] Cache entries cleared after release processing.
-- [ ] Correct release behavior across layer transitions (press in layer A, release after layer A is popped).
-- [ ] Tests: layer pop during keypress, cache cleanup.
+- [x] On key press, cache the action that was executed for that key.
+- [x] On key release, use cached action (not current matching result).
+- [x] Cache entries cleared after release processing.
+- [x] Correct release behavior across layer transitions (press in layer A, release after layer A is popped).
+- [x] Tests: layer pop during keypress, cache cleanup.
 
 Reference: `reference/keyd/src/keyboard.c` (cache_entry system)
 
@@ -235,9 +235,9 @@ only matters once a layer stack exists.
 
 | Section | Items |
 |---------|-------|
-| 3.1 Layer definition | 0/5 |
-| 3.2 Layer stack | 0/7 |
-| 3.3 Press cache | 0/5 |
+| 3.1 Layer definition | 5/5 |
+| 3.2 Layer stack | 7/7 |
+| 3.3 Press cache | 5/5 |
 | 3.4 Binding metadata | 0/4 |
 | 3.5 Introspection | 0/6 |
 
