@@ -85,6 +85,15 @@ pub struct StoredLayer {
     pub options: LayerOptions,
 }
 
+impl std::fmt::Debug for StoredLayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoredLayer")
+            .field("bindings", &self.bindings.len())
+            .field("options", &self.options)
+            .finish()
+    }
+}
+
 /// A named collection of bindings that can be activated and deactivated.
 ///
 /// Construct via the builder pattern:
