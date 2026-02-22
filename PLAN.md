@@ -422,11 +422,26 @@ struct Nav {
 }
 ```
 
-**Tradeoffs**: Stateful callbacks (closures capturing local variables)
-can't be expressed in attributes — users would drop to the builder API
-for those, same as clap users drop to the builder for dynamic args.
-Adds a proc-macro crate dependency. Should only be built once the
-builder API is stable, so the derive generates against a settled target.
+**The clap model**: clap's derive works because the struct IS the state
+— `#[derive(Parser)]` generates a `FromArgMatches` impl that populates
+struct fields from parsed input. The struct holds the result. Same
+pattern here: the derive struct holds `Handle`s, and a generated
+`register()` method populates them:
+
+```rust
+let app = MyApp::register(&manager)?;
+// app.copy and app.paste are live Handle values
+// drop(app) unregisters everything — scoped lifetime for free
+```
+
+For stateful callbacks that need captured variables, users drop to the
+builder API — same as clap users drop to the builder for dynamic args
+or custom `value_parser` closures. Function paths in attributes for
+the common stateless case, builder for the rest.
+
+**Tradeoffs**: Adds a proc-macro crate dependency. Should only be built
+once the builder API is stable, so the derive generates against a
+settled target.
 
 ---
 
