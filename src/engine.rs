@@ -52,10 +52,14 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::action::Action;
+use crate::action::LayerName;
 use crate::binding::BindingId;
 use crate::binding::Passthrough;
 use crate::engine::devices::DeviceKeyEvent;
 use crate::key::Hotkey;
+use crate::layer::Layer;
+use crate::layer::LayerBinding;
+use crate::layer::LayerOptions;
 use crate::Error;
 use crate::Key;
 use crate::Modifier;
@@ -149,6 +153,10 @@ pub(crate) enum Command {
     Unregister {
         id: BindingId,
     },
+    DefineLayer {
+        layer: Layer,
+        reply: mpsc::Sender<Result<(), Error>>,
+    },
     IsRegistered {
         hotkey: Hotkey,
         reply: mpsc::Sender<bool>,
@@ -222,9 +230,16 @@ impl EngineRuntime {
     }
 }
 
+/// Engine-internal representation of a stored layer definition.
+pub(crate) struct StoredLayer {
+    pub(crate) bindings: Vec<LayerBinding>,
+    pub(crate) options: LayerOptions,
+}
+
 pub(crate) struct Engine {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
+    layers: HashMap<LayerName, StoredLayer>,
     devices: devices::DeviceManager,
     key_state: key_state::KeyState,
     grab_state: GrabState,
@@ -245,6 +260,7 @@ impl Engine {
         Self {
             bindings_by_id: HashMap::new(),
             binding_ids_by_hotkey: HashMap::new(),
+            layers: HashMap::new(),
             devices: devices::DeviceManager::new(
                 Path::new(devices::INPUT_DIRECTORY),
                 device_grab_mode,
@@ -319,6 +335,11 @@ impl Engine {
                 self.unregister_binding(id);
                 LoopControl::Continue
             }
+            Command::DefineLayer { layer, reply } => {
+                let result = self.define_layer(layer);
+                let _ = reply.send(result);
+                LoopControl::Continue
+            }
             Command::IsRegistered { hotkey, reply } => {
                 let is_registered = self.binding_ids_by_hotkey.contains_key(&hotkey);
                 let _ = reply.send(is_registered);
@@ -347,6 +368,18 @@ impl Engine {
 
         self.binding_ids_by_hotkey.insert(hotkey, id);
         self.bindings_by_id.insert(id, binding);
+        Ok(())
+    }
+
+    fn define_layer(&mut self, layer: Layer) -> Result<(), Error> {
+        let (name, bindings, options) = layer.into_parts();
+
+        if self.layers.contains_key(&name) {
+            return Err(Error::LayerAlreadyDefined);
+        }
+
+        self.layers
+            .insert(name, StoredLayer { bindings, options });
         Ok(())
     }
 
@@ -1171,6 +1204,147 @@ mod tests {
         // Only modifiers from device 11 should remain
         assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
         assert!(!engine.key_state.is_pressed(Key::LeftCtrl));
+    }
+
+    // Layer storage tests
+
+    #[test]
+    fn engine_stores_defined_layer() {
+        let mut engine = test_engine();
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, &[], Action::Swallow)
+            .bind(Key::J, &[], Action::Swallow);
+
+        let result = engine.define_layer(layer);
+        assert!(result.is_ok());
+        assert!(engine.layers.contains_key(&crate::action::LayerName::from("nav")));
+    }
+
+    #[test]
+    fn engine_rejects_duplicate_layer_name() {
+        let mut engine = test_engine();
+
+        let layer1 = crate::Layer::new("nav").bind(Key::H, &[], Action::Swallow);
+        assert!(engine.define_layer(layer1).is_ok());
+
+        let layer2 = crate::Layer::new("nav").bind(Key::J, &[], Action::Swallow);
+        let result = engine.define_layer(layer2);
+        assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
+    }
+
+    #[test]
+    fn engine_stores_layer_bindings() {
+        let mut engine = test_engine();
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, &[], Action::Swallow)
+            .bind(Key::J, &[], Action::Swallow)
+            .bind(Key::K, &[], Action::Swallow);
+
+        engine.define_layer(layer).unwrap();
+
+        let stored = engine
+            .layers
+            .get(&crate::action::LayerName::from("nav"))
+            .expect("layer should be stored");
+        assert_eq!(stored.bindings.len(), 3);
+    }
+
+    #[test]
+    fn engine_stores_layer_options() {
+        let mut engine = test_engine();
+        let layer = crate::Layer::new("oneshot-nav")
+            .bind(Key::H, &[], Action::Swallow)
+            .swallow()
+            .oneshot(1)
+            .timeout(std::time::Duration::from_secs(5));
+
+        engine.define_layer(layer).unwrap();
+
+        let stored = engine
+            .layers
+            .get(&crate::action::LayerName::from("oneshot-nav"))
+            .expect("layer should be stored");
+        assert_eq!(stored.options.oneshot, Some(1));
+        assert_eq!(
+            stored.options.unmatched,
+            crate::layer::UnmatchedKeyBehavior::Swallow
+        );
+        assert_eq!(
+            stored.options.timeout,
+            Some(std::time::Duration::from_secs(5))
+        );
+    }
+
+    #[test]
+    fn engine_stores_empty_layer() {
+        let mut engine = test_engine();
+        let layer = crate::Layer::new("empty");
+
+        engine.define_layer(layer).unwrap();
+
+        let stored = engine
+            .layers
+            .get(&crate::action::LayerName::from("empty"))
+            .expect("layer should be stored");
+        assert_eq!(stored.bindings.len(), 0);
+    }
+
+    #[test]
+    fn define_layer_via_runtime_command() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        let layer = crate::Layer::new("nav").bind(Key::H, &[], Action::Swallow);
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer,
+                reply: reply_tx,
+            })
+            .expect("define layer command should send");
+
+        let result = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("define layer command should receive reply");
+        assert!(result.is_ok());
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn define_duplicate_layer_via_runtime_returns_error() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        let layer1 = crate::Layer::new("nav").bind(Key::H, &[], Action::Swallow);
+        let (reply_tx1, reply_rx1) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer: layer1,
+                reply: reply_tx1,
+            })
+            .expect("first define layer should send");
+        assert!(reply_rx1
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .is_ok());
+
+        let layer2 = crate::Layer::new("nav").bind(Key::J, &[], Action::Swallow);
+        let (reply_tx2, reply_rx2) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::DefineLayer {
+                layer: layer2,
+                reply: reply_tx2,
+            })
+            .expect("second define layer should send");
+        let result = reply_rx2
+            .recv_timeout(Duration::from_secs(1))
+            .expect("second define layer should receive reply");
+        assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
     }
 
     #[test]

@@ -23,4 +23,6 @@ pub enum Error {
     ManagerStopped,
     #[error("hotkey engine encountered an internal failure")]
     EngineError,
+    #[error("a layer with this name is already defined")]
+    LayerAlreadyDefined,
 }

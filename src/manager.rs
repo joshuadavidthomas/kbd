@@ -39,6 +39,7 @@ use crate::handle::Handle;
 use crate::key::Hotkey;
 use crate::key::Key;
 use crate::key::Modifier;
+use crate::layer::Layer;
 use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,9 +228,26 @@ impl HotkeyManager {
         Ok(())
     }
 
+    /// Define a named layer.
+    ///
+    /// Sends the layer definition to the engine for storage. The layer
+    /// is not active until explicitly pushed via `push_layer()`.
+    ///
+    /// Returns `Error::LayerAlreadyDefined` if a layer with the same
+    /// name has already been defined.
+    pub fn define_layer(&self, layer: Layer) -> Result<(), Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::DefineLayer {
+            layer,
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+    }
+
     // TODO: register_sequence() — multi-step hotkey
     // TODO: register_tap_hold() — dual-function key
-    // TODO: define_layer() — register a Layer
     // TODO: push_layer() / pop_layer() — layer stack control
 }
 
