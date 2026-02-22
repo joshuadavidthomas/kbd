@@ -25,7 +25,6 @@ use crate::engine::StoredLayer;
 use crate::key::Hotkey;
 use crate::key::Modifier;
 use crate::layer::UnmatchedKeyBehavior;
-use crate::Key;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
@@ -57,7 +56,6 @@ pub(crate) enum MatchResult<'a> {
 /// Only key press events trigger matching — release and repeat events
 /// are ignored at this phase (press cache for releases comes in Phase 3.3).
 pub(crate) fn match_key_event<'a>(
-    key: Key,
     transition: KeyTransition,
     candidate: &Hotkey,
     layer_stack: &[LayerStackEntry],
@@ -72,7 +70,7 @@ pub(crate) fn match_key_event<'a>(
 
     // Skip if the pressed key is itself a modifier — modifier-only presses
     // don't trigger hotkeys (they modify state for subsequent presses)
-    if Modifier::from_key(key).is_some() {
+    if Modifier::from_key(candidate.key()).is_some() {
         return MatchResult::Ignored;
     }
 
@@ -186,7 +184,6 @@ mod tests {
         ) -> MatchResult<'_> {
             let candidate = Hotkey::with_modifiers(key, active_modifiers.to_vec());
             match_key_event(
-                key,
                 transition,
                 &candidate,
                 &self.layer_stack,

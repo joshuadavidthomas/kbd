@@ -518,7 +518,8 @@ impl Engine {
         if !self.layers.contains_key(&name) {
             return Err(Error::LayerNotDefined);
         }
-        if let Some(pos) = self.layer_stack.iter().position(|entry| entry.name == name) {
+        // Remove the topmost (most recently pushed) occurrence, not the bottommost.
+        if let Some(pos) = self.layer_stack.iter().rposition(|entry| entry.name == name) {
             self.layer_stack.remove(pos);
         } else {
             self.push_layer(name)?;
@@ -554,7 +555,6 @@ impl Engine {
         // so we extract what we need and drop the borrow before Phase 2.
         let outcome = {
             let result = matcher::match_key_event(
-                event.key,
                 event.transition,
                 &candidate,
                 &self.layer_stack,
@@ -702,7 +702,7 @@ impl Engine {
 /// never kills the engine thread.
 ///
 /// Only handles `Action::Callback`. Layer-control actions are handled by
-/// `Engine::execute_action_on_engine` which has access to engine state.
+/// `Engine::apply_layer_effect` which has access to engine state.
 fn execute_action(action: &Action) {
     if let Action::Callback(callback) = action {
         if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
