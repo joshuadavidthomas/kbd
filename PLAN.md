@@ -387,61 +387,130 @@ Not planned for any phase. Captured here so the idea isn't lost.
 The builder API (`Hotkey::new(Key::C).modifier(Modifier::Ctrl)`,
 `Layer::new("nav").bind(...)`) follows standard Rust builder conventions.
 A complementary derive macro could offer a declarative alternative for
-the common case, similar to how clap offers both `Command::new()` and
+bindings, similar to how clap offers both `Command::new()` and
 `#[derive(Parser)]`.
+
+### The core pattern
+
+The struct IS the state — each field is a `Handle`, and dropping the
+struct unregisters everything. Follows the clap model where
+`#[derive(Parser)]` generates a `FromArgMatches` impl that populates
+struct fields from parsed input.
 
 ```rust
 #[derive(Bindings)]
 struct MyApp {
-    #[hotkey(key = C, modifiers = [Ctrl], action = on_copy)]
+    #[hotkey("ctrl+c", action = on_copy)]
     copy: Handle,
 
-    #[hotkey(key = V, modifiers = [Ctrl, Shift], action = on_paste)]
+    #[hotkey("ctrl+shift+v", action = on_paste)]
     paste: Handle,
 }
 
 fn on_copy() { println!("copied"); }
 fn on_paste() { println!("pasted"); }
+
+let app = MyApp::register(&manager)?;
+// app.copy and app.paste are live Handle values
+// drop(app) → both handles dropped → both bindings unregistered
 ```
 
 Action callbacks referenced by function path (like serde's
-`serialize_with`). Data actions (`EmitKey`, `PushLayer`, `PopLayer`,
-`Swallow`) could also be expressed directly in attributes.
+`serialize_with`).
 
-Layers could work similarly:
+The generated `register()` method uses `?` on each registration.
+If a later registration fails, earlier handles drop and unregister —
+partial registration rollback via RAII, for free.
+
+### Composition via flatten
+
+The strongest argument for the derive. Mirrors clap's
+`#[command(flatten)]`:
 
 ```rust
-#[derive(Layer)]
-#[layer(name = "nav", swallow)]
-struct Nav {
-    #[bind(key = H, emit = Left)]
-    #[bind(key = J, emit = Down)]
-    #[bind(key = K, emit = Up)]
-    #[bind(key = L, emit = Right)]
-    #[bind(key = Escape, action = pop)]
+#[derive(Bindings)]
+struct EditorBindings {
+    #[hotkey("ctrl+c", action = on_copy)]
+    copy: Handle,
+
+    #[hotkey("ctrl+v", action = on_paste)]
+    paste: Handle,
+}
+
+#[derive(Bindings)]
+struct NavigationBindings {
+    #[hotkey("ctrl+g", action = on_goto)]
+    goto: Handle,
+}
+
+#[derive(Bindings)]
+struct MyApp {
+    #[flatten]
+    editor: EditorBindings,
+
+    #[flatten]
+    navigation: NavigationBindings,
+
+    #[hotkey("ctrl+q", action = on_quit)]
+    quit: Handle,
 }
 ```
 
-**The clap model**: clap's derive works because the struct IS the state
-— `#[derive(Parser)]` generates a `FromArgMatches` impl that populates
-struct fields from parsed input. The struct holds the result. Same
-pattern here: the derive struct holds `Handle`s, and a generated
-`register()` method populates them:
+Each group is independently definable, testable, composable. The
+generated `register` calls `register` recursively on nested types.
+
+### Stateful callbacks
+
+Fields without an `action` attribute become parameters on the
+generated `register` method:
 
 ```rust
-let app = MyApp::register(&manager)?;
-// app.copy and app.paste are live Handle values
-// drop(app) unregisters everything — scoped lifetime for free
+#[derive(Bindings)]
+struct MyApp {
+    #[hotkey("ctrl+c", action = on_copy)]
+    copy: Handle,
+
+    #[hotkey("ctrl+v")]  // no action — becomes a parameter
+    paste: Handle,
+}
+
+// Generated:
+// fn register(
+//     manager: &HotkeyManager,
+//     paste: impl Fn() + Send + Sync + 'static,
+// ) -> Result<Self, Error>
+
+let clipboard = Arc::clone(&shared_clipboard);
+let app = MyApp::register(&manager, move || {
+    paste_from(&clipboard.lock().unwrap());
+})?;
 ```
 
-For stateful callbacks that need captured variables, users drop to the
-builder API — same as clap users drop to the builder for dynamic args
-or custom `value_parser` closures. Function paths in attributes for
-the common stateless case, builder for the rest.
+This gets unwieldy with many dynamic callbacks. At that point, use the
+builder. Same split as clap: derive for the common declarative case,
+builder for the dynamic/stateful case.
 
-**Tradeoffs**: Adds a proc-macro crate dependency. Should only be built
-once the builder API is stable, so the derive generates against a
-settled target.
+### Scope
+
+The derive covers **bindings only**. Layers stay builder-only — they're
+already declarative and clean, produce no handles, and don't benefit
+from the struct-as-state pattern. Not everything needs two ways to
+do it.
+
+### Compile-time string validation
+
+One thing the derive can do that the builder can't: validate hotkey
+strings at compile time. `#[hotkey("ctrl+z")]` fails the build if `"z"`
+isn't a valid key name. The builder already gets compile-time safety
+through the `Key` enum, but string-based configuration is common in
+keybinding-heavy apps and catching typos at build time is valuable.
+
+### When to build
+
+After Phase 4, when the full action vocabulary exists (sequences,
+tap-hold, emit). The derive should generate against a settled builder
+API. Adds a `keybound-derive` proc-macro crate dependency (syn, quote,
+proc-macro2).
 
 ---
 
