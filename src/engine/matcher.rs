@@ -53,8 +53,8 @@ pub(crate) enum MatchResult<'a> {
 /// 2. Check global bindings (always-active base layer)
 /// 3. If nothing matched, the event is unmatched
 ///
-/// Only key press events trigger matching — release and repeat events
-/// are ignored at this phase (press cache for releases comes in Phase 3.3).
+/// Only key press events trigger matching — release events use the press
+/// cache (see `Engine::process_key_event`), repeat events are ignored.
 pub(crate) fn match_key_event<'a>(
     transition: KeyTransition,
     candidate: &Hotkey,
