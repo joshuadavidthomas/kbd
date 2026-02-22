@@ -142,21 +142,16 @@ impl HotkeyManager {
     }
 
     /// Register a simple hotkey callback.
-    pub fn register<F>(
-        &self,
-        key: Key,
-        modifiers: &[Modifier],
-        callback: F,
-    ) -> Result<Handle, Error>
+    pub fn register<F>(&self, hotkey: impl Into<Hotkey>, callback: F) -> Result<Handle, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
-        self.register_action(key, modifiers, Action::from(callback))
+        self.register_action(hotkey.into(), Action::from(callback))
     }
 
     /// Query whether a hotkey is currently registered.
-    pub fn is_registered(&self, key: Key, modifiers: &[Modifier]) -> Result<bool, Error> {
-        let hotkey = Hotkey::new(key, modifiers.to_vec());
+    pub fn is_registered(&self, hotkey: impl Into<Hotkey>) -> Result<bool, Error> {
+        let hotkey = hotkey.into();
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::IsRegistered {
@@ -215,14 +210,8 @@ impl HotkeyManager {
         self.shutdown_inner()
     }
 
-    fn register_action(
-        &self,
-        key: Key,
-        modifiers: &[Modifier],
-        action: Action,
-    ) -> Result<Handle, Error> {
+    fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<Handle, Error> {
         let id = BindingId::new();
-        let hotkey = Hotkey::new(key, modifiers.to_vec());
         let binding = RegisteredBinding::new(id, hotkey, action);
         let (reply_tx, reply_rx) = mpsc::channel();
 

@@ -8,6 +8,7 @@
 
 use keybound::Backend;
 use keybound::Handle;
+use keybound::Hotkey;
 use keybound::HotkeyManager;
 use keybound::Key;
 use keybound::Modifier;
@@ -16,9 +17,12 @@ use keybound::Modifier;
 fn design_md_simple_example() {
     let manager = HotkeyManager::new().expect("manager should start");
     let _handle: Handle = manager
-        .register(Key::C, &[Modifier::Ctrl, Modifier::Shift], || {
-            println!("fired");
-        })
+        .register(
+            Hotkey::new(Key::C, vec![Modifier::Ctrl, Modifier::Shift]),
+            || {
+                println!("fired");
+            },
+        )
         .expect("registration should succeed");
 }
 

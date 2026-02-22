@@ -8,12 +8,12 @@
 //! # Quick start
 //!
 //! ```rust,no_run
-//! use keybound::{HotkeyManager, Key, Modifier};
+//! use keybound::{Hotkey, HotkeyManager, Key, Modifier};
 //!
 //! let manager = HotkeyManager::new()?;
 //!
 //! let _handle = manager.register(
-//!     Key::C, &[Modifier::Ctrl, Modifier::Shift],
+//!     Hotkey::new(Key::C, vec![Modifier::Ctrl, Modifier::Shift]),
 //!     || println!("fired"),
 //! )?;
 //! # Ok::<(), keybound::Error>(())
