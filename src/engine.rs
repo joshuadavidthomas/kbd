@@ -708,7 +708,7 @@ mod tests {
     }
 
     /// Create grab state with a recording forwarder for testing.
-    /// Returns the GrabState and a handle to inspect forwarded events.
+    /// Returns the `GrabState` and a handle to inspect forwarded events.
     fn test_grab_state() -> (GrabState, super::forwarder::testing::ForwardedEvents) {
         let (recorder, events) = super::forwarder::testing::RecordingForwarder::new();
         let state = GrabState::Enabled {
