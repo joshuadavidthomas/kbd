@@ -37,6 +37,25 @@ fn duplicate_hotkey_registration_returns_conflict_error() {
 }
 
 #[test]
+fn is_key_pressed_returns_false_when_no_keys_pressed() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    assert!(!manager
+        .is_key_pressed(Key::A)
+        .expect("query should succeed"));
+}
+
+#[test]
+fn active_modifiers_returns_empty_when_no_keys_pressed() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let modifiers = manager
+        .active_modifiers()
+        .expect("query should succeed");
+    assert!(modifiers.is_empty());
+}
+
+#[test]
 fn shutdown_stops_handle_unregistration_commands() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 

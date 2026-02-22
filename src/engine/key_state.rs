@@ -71,8 +71,32 @@ impl KeyState {
     ///
     /// Left/right variants are canonicalized: if either `LeftCtrl` or `RightCtrl`
     /// is held, `Modifier::Ctrl` is in the returned set.
+    ///
+    /// Aggregates across all devices.
     #[must_use]
     pub(crate) fn active_modifiers(&self) -> Vec<Modifier> {
+        Self::modifiers_from_pressed(|key| self.is_pressed(key))
+    }
+
+    /// Check whether a specific key is pressed on a specific device.
+    #[must_use]
+    pub(crate) fn is_pressed_on_device(&self, device_fd: RawFd, key: Key) -> bool {
+        self.pressed_by_device
+            .get(&device_fd)
+            .is_some_and(|pressed| pressed.contains(&key))
+    }
+
+    /// Returns the set of modifiers currently held on a specific device.
+    ///
+    /// Same canonicalization as [`active_modifiers`](Self::active_modifiers),
+    /// but scoped to a single device.
+    #[must_use]
+    pub(crate) fn active_modifiers_for_device(&self, device_fd: RawFd) -> Vec<Modifier> {
+        Self::modifiers_from_pressed(|key| self.is_pressed_on_device(device_fd, key))
+    }
+
+    /// Shared implementation for deriving active modifiers from a key-pressed predicate.
+    fn modifiers_from_pressed(is_pressed: impl Fn(Key) -> bool) -> Vec<Modifier> {
         let mut modifiers = Vec::new();
 
         for &modifier in &[
@@ -82,7 +106,7 @@ impl KeyState {
             Modifier::Super,
         ] {
             let (left, right) = modifier.keys();
-            if self.is_pressed(left) || self.is_pressed(right) {
+            if is_pressed(left) || is_pressed(right) {
                 modifiers.push(modifier);
             }
         }
@@ -179,6 +203,64 @@ mod tests {
         assert_eq!(
             key_state.active_modifiers(),
             vec![Modifier::Ctrl, Modifier::Shift]
+        );
+    }
+
+    #[test]
+    fn is_pressed_on_device_tracks_per_device() {
+        let mut key_state = KeyState::default();
+
+        key_state.apply_device_event(10, Key::A, KeyTransition::Press);
+        key_state.apply_device_event(11, Key::B, KeyTransition::Press);
+
+        assert!(key_state.is_pressed_on_device(10, Key::A));
+        assert!(!key_state.is_pressed_on_device(10, Key::B));
+        assert!(key_state.is_pressed_on_device(11, Key::B));
+        assert!(!key_state.is_pressed_on_device(11, Key::A));
+    }
+
+    #[test]
+    fn is_pressed_on_device_returns_false_for_unknown_device() {
+        let key_state = KeyState::default();
+        assert!(!key_state.is_pressed_on_device(99, Key::A));
+    }
+
+    #[test]
+    fn active_modifiers_for_device_isolates_per_device() {
+        let mut key_state = KeyState::default();
+
+        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
+        key_state.apply_device_event(11, Key::LeftShift, KeyTransition::Press);
+
+        assert_eq!(
+            key_state.active_modifiers_for_device(10),
+            vec![Modifier::Ctrl]
+        );
+        assert_eq!(
+            key_state.active_modifiers_for_device(11),
+            vec![Modifier::Shift]
+        );
+        assert!(key_state.active_modifiers_for_device(99).is_empty());
+    }
+
+    #[test]
+    fn disconnect_clears_modifiers_for_device() {
+        let mut key_state = KeyState::default();
+
+        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::LeftShift, KeyTransition::Press);
+        key_state.apply_device_event(11, Key::LeftAlt, KeyTransition::Press);
+
+        key_state.disconnect_device(10);
+
+        // Global modifiers should only reflect device 11
+        assert_eq!(key_state.active_modifiers(), vec![Modifier::Alt]);
+        // Device 10's modifiers are gone
+        assert!(key_state.active_modifiers_for_device(10).is_empty());
+        // Device 11's modifiers are intact
+        assert_eq!(
+            key_state.active_modifiers_for_device(11),
+            vec![Modifier::Alt]
         );
     }
 }

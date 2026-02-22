@@ -202,11 +202,35 @@ impl HotkeyManager {
         Ok(())
     }
 
+    /// Query whether a specific key is currently pressed on any device.
+    pub fn is_key_pressed(&self, key: Key) -> Result<bool, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::IsKeyPressed {
+            key,
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
+    /// Query the set of modifiers currently held, derived from key state.
+    ///
+    /// Left/right variants are canonicalized: if either `LeftCtrl` or `RightCtrl`
+    /// is held, `Modifier::Ctrl` is in the returned set.
+    pub fn active_modifiers(&self) -> Result<Vec<Modifier>, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands
+            .send(Command::ActiveModifiers { reply: reply_tx })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
     // TODO: register_sequence() — multi-step hotkey
     // TODO: register_tap_hold() — dual-function key
     // TODO: define_layer() — register a Layer
     // TODO: push_layer() / pop_layer() — layer stack control
-    // TODO: is_key_pressed() / active_modifiers() — state queries
 }
 
 impl Drop for HotkeyManager {
