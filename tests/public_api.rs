@@ -127,8 +127,8 @@ fn manager_builder_api() {
 fn placeholder_types_are_exported() {
     // Layer and LayerOptions are placeholder types for forward compatibility.
     // They exist in the public API surface now but are implemented in Phase 3.
-    let _layer = Layer;
-    let _opts = LayerOptions;
+    drop(Layer);
+    drop(LayerOptions);
 }
 
 #[test]
