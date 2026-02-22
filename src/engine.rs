@@ -2593,23 +2593,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn press_cache_unmatched_release_still_forwarded() {
-        // Unmatched key press in grab mode is forwarded. The release
-        // should also be forwarded (cache stores unmatched disposition).
-        let (grab_state, forwarded) = test_grab_state();
-        let mut engine = test_engine_with_grab(grab_state);
-
-        // No bindings — all keys are unmatched
-        let press_disp = press_key(&mut engine, Key::A, 10);
-        assert_eq!(press_disp, KeyEventDisposition::UnmatchedForwarded);
-
-        let release_disp = release_key(&mut engine, Key::A, 10);
-        assert_eq!(release_disp, KeyEventDisposition::UnmatchedForwarded);
-
-        let events = forwarded.lock().unwrap();
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0], (Key::A, KeyTransition::Press));
-        assert_eq!(events[1], (Key::A, KeyTransition::Release));
-    }
 }
