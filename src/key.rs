@@ -752,6 +752,12 @@ impl Hotkey {
     }
 }
 
+impl From<Key> for Hotkey {
+    fn from(key: Key) -> Self {
+        Self::new(key, vec![])
+    }
+}
+
 impl FromStr for Hotkey {
     type Err = ParseHotkeyError;
 

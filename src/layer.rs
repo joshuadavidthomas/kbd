@@ -24,8 +24,6 @@ use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::Passthrough;
 use crate::key::Hotkey;
-use crate::key::Key;
-use crate::key::Modifier;
 
 /// Whether unmatched keys in an active layer fall through to lower layers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -65,13 +63,13 @@ pub(crate) struct LayerBinding {
 /// Construct via the builder pattern:
 ///
 /// ```rust
-/// use keybound::{Action, Key, Layer, Modifier};
+/// use keybound::{Action, Hotkey, Key, Layer, Modifier};
 ///
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, &[], Action::Swallow)
-///     .bind(Key::J, &[], Action::Swallow)
-///     .bind(Key::K, &[], Action::Swallow)
-///     .bind(Key::L, &[], Action::Swallow)
+///     .bind(Key::H, Action::Swallow)
+///     .bind(Key::J, Action::Swallow)
+///     .bind(Hotkey::new(Key::K, vec![Modifier::Ctrl]), Action::Swallow)
+///     .bind(Key::L, Action::Swallow)
 ///     .swallow();
 /// ```
 pub struct Layer {
@@ -93,10 +91,9 @@ impl Layer {
 
     /// Add a binding to this layer.
     #[must_use]
-    pub fn bind(mut self, key: Key, modifiers: &[Modifier], action: impl Into<Action>) -> Self {
-        let hotkey = Hotkey::new(key, modifiers.to_vec());
+    pub fn bind(mut self, hotkey: impl Into<Hotkey>, action: impl Into<Action>) -> Self {
         self.bindings.push(LayerBinding {
-            hotkey,
+            hotkey: hotkey.into(),
             action: action.into(),
             passthrough: Passthrough::default(),
         });
@@ -187,23 +184,24 @@ mod tests {
 
     #[test]
     fn layer_bind_adds_binding() {
-        let layer = Layer::new("nav").bind(Key::H, &[], Action::Swallow);
+        let layer = Layer::new("nav").bind(Key::H, Action::Swallow);
         assert_eq!(layer.binding_count(), 1);
     }
 
     #[test]
     fn layer_bind_multiple_bindings() {
         let layer = Layer::new("nav")
-            .bind(Key::H, &[], Action::Swallow)
-            .bind(Key::J, &[], Action::Swallow)
-            .bind(Key::K, &[], Action::Swallow)
-            .bind(Key::L, &[], Action::Swallow);
+            .bind(Key::H, Action::Swallow)
+            .bind(Key::J, Action::Swallow)
+            .bind(Key::K, Action::Swallow)
+            .bind(Key::L, Action::Swallow);
         assert_eq!(layer.binding_count(), 4);
     }
 
     #[test]
     fn layer_bind_preserves_hotkey() {
-        let layer = Layer::new("nav").bind(Key::H, &[Modifier::Ctrl], Action::Swallow);
+        let layer =
+            Layer::new("nav").bind(Hotkey::new(Key::H, vec![Modifier::Ctrl]), Action::Swallow);
         let (_, bindings, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].hotkey.key(), Key::H);
@@ -212,7 +210,7 @@ mod tests {
 
     #[test]
     fn layer_bind_accepts_closure() {
-        let layer = Layer::new("test").bind(Key::A, &[], || println!("fired"));
+        let layer = Layer::new("test").bind(Key::A, || println!("fired"));
         assert_eq!(layer.binding_count(), 1);
     }
 
@@ -238,8 +236,8 @@ mod tests {
     #[test]
     fn layer_builder_chains_all_options() {
         let layer = Layer::new("nav")
-            .bind(Key::H, &[], Action::Swallow)
-            .bind(Key::J, &[], Action::Swallow)
+            .bind(Key::H, Action::Swallow)
+            .bind(Key::J, Action::Swallow)
             .swallow()
             .oneshot(1)
             .timeout(Duration::from_millis(500));
@@ -267,9 +265,7 @@ mod tests {
 
     #[test]
     fn layer_into_parts_decomposes() {
-        let layer = Layer::new("nav")
-            .bind(Key::H, &[], Action::Swallow)
-            .swallow();
+        let layer = Layer::new("nav").bind(Key::H, Action::Swallow).swallow();
 
         let (name, bindings, options) = layer.into_parts();
         assert_eq!(name.as_str(), "nav");

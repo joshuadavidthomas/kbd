@@ -1212,8 +1212,8 @@ mod tests {
     fn engine_stores_defined_layer() {
         let mut engine = test_engine();
         let layer = crate::Layer::new("nav")
-            .bind(Key::H, &[], Action::Swallow)
-            .bind(Key::J, &[], Action::Swallow);
+            .bind(Key::H, Action::Swallow)
+            .bind(Key::J, Action::Swallow);
 
         let result = engine.define_layer(layer);
         assert!(result.is_ok());
@@ -1226,10 +1226,10 @@ mod tests {
     fn engine_rejects_duplicate_layer_name() {
         let mut engine = test_engine();
 
-        let layer1 = crate::Layer::new("nav").bind(Key::H, &[], Action::Swallow);
+        let layer1 = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
         assert!(engine.define_layer(layer1).is_ok());
 
-        let layer2 = crate::Layer::new("nav").bind(Key::J, &[], Action::Swallow);
+        let layer2 = crate::Layer::new("nav").bind(Key::J, Action::Swallow);
         let result = engine.define_layer(layer2);
         assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
     }
@@ -1238,9 +1238,9 @@ mod tests {
     fn engine_stores_layer_bindings() {
         let mut engine = test_engine();
         let layer = crate::Layer::new("nav")
-            .bind(Key::H, &[], Action::Swallow)
-            .bind(Key::J, &[], Action::Swallow)
-            .bind(Key::K, &[], Action::Swallow);
+            .bind(Key::H, Action::Swallow)
+            .bind(Key::J, Action::Swallow)
+            .bind(Key::K, Action::Swallow);
 
         engine.define_layer(layer).unwrap();
 
@@ -1255,7 +1255,7 @@ mod tests {
     fn engine_stores_layer_options() {
         let mut engine = test_engine();
         let layer = crate::Layer::new("oneshot-nav")
-            .bind(Key::H, &[], Action::Swallow)
+            .bind(Key::H, Action::Swallow)
             .swallow()
             .oneshot(1)
             .timeout(std::time::Duration::from_secs(5));
@@ -1295,7 +1295,7 @@ mod tests {
     fn define_layer_via_runtime_command() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
-        let layer = crate::Layer::new("nav").bind(Key::H, &[], Action::Swallow);
+        let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         runtime
@@ -1319,7 +1319,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define first layer — should succeed
-        let first_layer = crate::Layer::new("nav").bind(Key::H, &[], Action::Swallow);
+        let first_layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1334,7 +1334,7 @@ mod tests {
             .is_ok());
 
         // Define second layer with same name — should fail
-        let duplicate_layer = crate::Layer::new("nav").bind(Key::J, &[], Action::Swallow);
+        let duplicate_layer = crate::Layer::new("nav").bind(Key::J, Action::Swallow);
         let (dup_reply_tx, dup_reply_rx) = mpsc::channel();
         runtime
             .commands()
