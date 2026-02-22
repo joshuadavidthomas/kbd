@@ -24,9 +24,10 @@
 //! past a few hundred lines, something is wrong.
 
 use std::fmt;
-use std::sync::mpsc;
 use std::sync::Mutex;
+use std::sync::mpsc;
 
+use crate::Error;
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::backend::Backend;
@@ -45,7 +46,6 @@ use crate::key::Hotkey;
 use crate::key::Key;
 use crate::key::Modifier;
 use crate::layer::Layer;
-use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackendSelection {

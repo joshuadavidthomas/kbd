@@ -12,9 +12,9 @@
 //! Note: keyd creates two virtual devices (keyboard + pointer). For now
 //! we only need one (keyboard). Pointer device is a future stretch goal.
 
-use crate::engine::key_state::KeyTransition;
 use crate::Error;
 use crate::Key;
+use crate::engine::key_state::KeyTransition;
 
 /// Name of the virtual device we create, used for self-detection.
 pub(crate) const VIRTUAL_DEVICE_NAME: &str = "keybound-virtual-keyboard";
@@ -91,9 +91,9 @@ pub(super) mod testing {
     use std::sync::Mutex;
 
     use super::ForwardSink;
-    use crate::engine::key_state::KeyTransition;
     use crate::Error;
     use crate::Key;
+    use crate::engine::key_state::KeyTransition;
 
     /// Shared buffer for inspecting forwarded events in tests.
     pub(in crate::engine) type ForwardedEvents = Arc<Mutex<Vec<(Key, KeyTransition)>>>;

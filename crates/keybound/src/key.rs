@@ -317,36 +317,36 @@ fn parse_key_token(token: &str) -> Option<Key> {
 
     let upper = trimmed.to_ascii_uppercase();
 
-    if let Some(function_number) = upper.strip_prefix('F') {
-        if let Ok(number) = function_number.parse::<u8>() {
-            return match number {
-                1 => Some(Key::F1),
-                2 => Some(Key::F2),
-                3 => Some(Key::F3),
-                4 => Some(Key::F4),
-                5 => Some(Key::F5),
-                6 => Some(Key::F6),
-                7 => Some(Key::F7),
-                8 => Some(Key::F8),
-                9 => Some(Key::F9),
-                10 => Some(Key::F10),
-                11 => Some(Key::F11),
-                12 => Some(Key::F12),
-                13 => Some(Key::F13),
-                14 => Some(Key::F14),
-                15 => Some(Key::F15),
-                16 => Some(Key::F16),
-                17 => Some(Key::F17),
-                18 => Some(Key::F18),
-                19 => Some(Key::F19),
-                20 => Some(Key::F20),
-                21 => Some(Key::F21),
-                22 => Some(Key::F22),
-                23 => Some(Key::F23),
-                24 => Some(Key::F24),
-                _ => None,
-            };
-        }
+    if let Some(function_number) = upper.strip_prefix('F')
+        && let Ok(number) = function_number.parse::<u8>()
+    {
+        return match number {
+            1 => Some(Key::F1),
+            2 => Some(Key::F2),
+            3 => Some(Key::F3),
+            4 => Some(Key::F4),
+            5 => Some(Key::F5),
+            6 => Some(Key::F6),
+            7 => Some(Key::F7),
+            8 => Some(Key::F8),
+            9 => Some(Key::F9),
+            10 => Some(Key::F10),
+            11 => Some(Key::F11),
+            12 => Some(Key::F12),
+            13 => Some(Key::F13),
+            14 => Some(Key::F14),
+            15 => Some(Key::F15),
+            16 => Some(Key::F16),
+            17 => Some(Key::F17),
+            18 => Some(Key::F18),
+            19 => Some(Key::F19),
+            20 => Some(Key::F20),
+            21 => Some(Key::F21),
+            22 => Some(Key::F22),
+            23 => Some(Key::F23),
+            24 => Some(Key::F24),
+            _ => None,
+        };
     }
 
     match upper.as_str() {

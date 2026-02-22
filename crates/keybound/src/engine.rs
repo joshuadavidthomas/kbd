@@ -47,10 +47,13 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::Path;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::time::Instant;
 
+use crate::Error;
+use crate::Key;
+use crate::Modifier;
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::BindingId;
@@ -65,9 +68,6 @@ use crate::key::Hotkey;
 use crate::layer::Layer;
 use crate::layer::LayerBinding;
 use crate::layer::LayerOptions;
-use crate::Error;
-use crate::Key;
-use crate::Modifier;
 
 pub(crate) mod binding;
 pub(crate) mod command;
@@ -451,16 +451,16 @@ impl Engine {
         }
 
         // Fall through to global bindings
-        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey) {
-            if let Some(binding) = self.bindings_by_id.get(&id) {
-                return Some(BindingInfo {
-                    hotkey: binding.hotkey().clone(),
-                    description: binding.options().description().map(Box::from),
-                    location: BindingLocation::Global,
-                    shadowed: ShadowedStatus::Active,
-                    overlay_visibility: binding.options().overlay_visibility(),
-                });
-            }
+        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey)
+            && let Some(binding) = self.bindings_by_id.get(&id)
+        {
+            return Some(BindingInfo {
+                hotkey: binding.hotkey().clone(),
+                description: binding.options().description().map(Box::from),
+                location: BindingLocation::Global,
+                shadowed: ShadowedStatus::Active,
+                overlay_visibility: binding.options().overlay_visibility(),
+            });
         }
 
         None
@@ -528,20 +528,19 @@ impl Engine {
         // corresponding press instead of re-matching. This ensures correct
         // release behavior across layer transitions — if a key was consumed
         // on press, its release is consumed even if the layer was popped.
-        if matches!(event.transition, key_state::KeyTransition::Release) {
-            if let Some(cached) = self.press_cache.remove(&event.key) {
-                match cached {
-                    KeyEventDisposition::MatchedForwarded
-                    | KeyEventDisposition::UnmatchedForwarded => {
-                        self.forward_event(event.key, event.transition);
-                    }
-                    KeyEventDisposition::MatchedConsumed | KeyEventDisposition::Ignored => {}
+        if matches!(event.transition, key_state::KeyTransition::Release)
+            && let Some(cached) = self.press_cache.remove(&event.key)
+        {
+            match cached {
+                KeyEventDisposition::MatchedForwarded | KeyEventDisposition::UnmatchedForwarded => {
+                    self.forward_event(event.key, event.transition);
                 }
-                return cached;
+                KeyEventDisposition::MatchedConsumed | KeyEventDisposition::Ignored => {}
             }
-            // No cache entry (modifier release, or key pressed before cache existed).
-            // Fall through to normal processing.
+            return cached;
         }
+        // No cache entry (modifier release, or key pressed before cache existed).
+        // Fall through to normal processing.
 
         let active_modifiers = self.key_state.active_modifiers();
         let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
@@ -694,10 +693,10 @@ impl Engine {
     }
 
     fn forward_event(&mut self, key: Key, transition: key_state::KeyTransition) {
-        if let GrabState::Enabled { forwarder } = &mut self.grab_state {
-            if let Err(error) = forwarder.forward_key(key, transition) {
-                tracing::error!(%error, "failed to forward key event through virtual device");
-            }
+        if let GrabState::Enabled { forwarder } = &mut self.grab_state
+            && let Err(error) = forwarder.forward_key(key, transition)
+        {
+            tracing::error!(%error, "failed to forward key event through virtual device");
         }
     }
 }
@@ -708,15 +707,15 @@ impl Engine {
 /// Only handles `Action::Callback`. Layer-control actions are handled by
 /// `Engine::apply_layer_effect` which has access to engine state.
 fn execute_action(action: &Action) {
-    if let Action::Callback(callback) = action {
-        if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    if let Action::Callback(callback) = action
+        && let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             callback();
-        })) {
-            tracing::error!(
-                panic_info = format!("{panic:?}"),
-                "user callback panicked — panic caught, engine continues"
-            );
-        }
+        }))
+    {
+        tracing::error!(
+            panic_info = format!("{panic:?}"),
+            "user callback panicked — panic caught, engine continues"
+        );
     }
 }
 
@@ -735,28 +734,28 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
     use std::sync::mpsc;
-    use std::sync::Arc;
     use std::time::Duration;
 
-    use super::devices::DeviceKeyEvent;
-    use super::key_state::KeyTransition;
-    use super::wake::WakeFd;
     use super::Command;
     use super::Engine;
     use super::EngineRuntime;
     use super::GrabState;
     use super::KeyEventDisposition;
     use super::RegisteredBinding;
-    use crate::binding::BindingId;
-    use crate::binding::Passthrough;
-    use crate::key::Hotkey;
+    use super::devices::DeviceKeyEvent;
+    use super::key_state::KeyTransition;
+    use super::wake::WakeFd;
     use crate::Action;
     use crate::Error;
     use crate::Key;
     use crate::Modifier;
+    use crate::binding::BindingId;
+    use crate::binding::Passthrough;
+    use crate::key::Hotkey;
 
     #[test]
     fn engine_processes_register_and_unregister_commands() {
@@ -1364,9 +1363,11 @@ mod tests {
 
         let result = engine.define_layer(layer);
         assert!(result.is_ok());
-        assert!(engine
-            .layers
-            .contains_key(&crate::action::LayerName::from("nav")));
+        assert!(
+            engine
+                .layers
+                .contains_key(&crate::action::LayerName::from("nav"))
+        );
     }
 
     #[test]
@@ -1463,10 +1464,12 @@ mod tests {
                 reply: reply_tx,
             })
             .expect("first define layer should send");
-        assert!(reply_rx
-            .recv_timeout(Duration::from_secs(1))
-            .unwrap()
-            .is_ok());
+        assert!(
+            reply_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .is_ok()
+        );
 
         // Define second layer with same name — should fail
         let duplicate_layer = crate::Layer::new("nav").bind(Key::J, Action::Swallow);

@@ -1,13 +1,13 @@
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::thread;
 
+use super::Engine;
 use super::command::Command;
 use super::command::CommandSender;
 use super::run;
 use super::types::GrabState;
 use super::wake::WakeFd;
-use super::Engine;
 use crate::Error;
 
 pub(crate) struct EngineRuntime {

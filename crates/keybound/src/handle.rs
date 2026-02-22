@@ -12,10 +12,10 @@
 
 use std::fmt;
 
+use crate::Error;
 use crate::binding::BindingId;
 use crate::engine::Command;
 use crate::engine::CommandSender;
-use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HandleState {

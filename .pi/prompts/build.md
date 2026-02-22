@@ -16,6 +16,7 @@ Do not remove TODO comments unless you are actually implementing what that TODO 
 Stop when the section is complete. You must complete the section.
 
 After completing the work, start the `review_loop` tool once with fresh context and default iterations. Instruct each looping agent to read the relevant rust skills before working and to commit after completing its review. It's important for the review loop to spend time thinking before acting.
-Treat `review_loop` as fire-and-forget: **call it once, say "I have started the review loop", and stop**.
 
-After the review loop is complete, update @PLAN.md to check off the items that were completed in this section. Run `just clippy` and `just fmt`. Then create a PR. Do not reference the phase or section number in the commit or PR title, just describe what the changes accomplish.
+Treat `review_loop` as fire-and-forget: call it once, say "I have started the review loop", and **immediately end your turn. Do not output anything else. Do not continue to the next steps. Your turn is done.**
+
+**In a subsequent conversation** (after the review loop has completed), update @PLAN.md to check off the items that were completed in this section. Run `just clippy` and `just fmt`. Then create a PR. Do not reference the phase or section number in the commit or PR title, just describe what the changes accomplish.
