@@ -58,6 +58,7 @@ use crate::engine::devices::DeviceKeyEvent;
 use crate::key::Hotkey;
 use crate::Error;
 use crate::Key;
+use crate::Modifier;
 
 pub(crate) mod devices;
 pub(crate) mod forwarder;
@@ -157,7 +158,7 @@ pub(crate) enum Command {
         reply: mpsc::Sender<bool>,
     },
     ActiveModifiers {
-        reply: mpsc::Sender<Vec<crate::Modifier>>,
+        reply: mpsc::Sender<Vec<Modifier>>,
     },
     Shutdown,
 }
@@ -347,16 +348,6 @@ impl Engine {
         self.binding_ids_by_hotkey.insert(hotkey, id);
         self.bindings_by_id.insert(id, binding);
         Ok(())
-    }
-
-    #[must_use]
-    fn is_key_pressed(&self, key: Key) -> bool {
-        self.key_state.is_pressed(key)
-    }
-
-    #[must_use]
-    fn active_modifiers(&self) -> Vec<crate::Modifier> {
-        self.key_state.active_modifiers()
     }
 
     fn unregister_binding(&mut self, id: BindingId) {
@@ -1095,32 +1086,32 @@ mod tests {
     fn is_key_pressed_query_reflects_key_state() {
         let mut engine = test_engine();
 
-        assert!(!engine.is_key_pressed(Key::A));
+        assert!(!engine.key_state.is_pressed(Key::A));
 
         press_key(&mut engine, Key::A, 10);
-        assert!(engine.is_key_pressed(Key::A));
+        assert!(engine.key_state.is_pressed(Key::A));
 
         release_key(&mut engine, Key::A, 10);
-        assert!(!engine.is_key_pressed(Key::A));
+        assert!(!engine.key_state.is_pressed(Key::A));
     }
 
     #[test]
     fn active_modifiers_query_reflects_held_modifiers() {
         let mut engine = test_engine();
 
-        assert!(engine.active_modifiers().is_empty());
+        assert!(engine.key_state.active_modifiers().is_empty());
 
         press_key(&mut engine, Key::LeftCtrl, 10);
-        assert_eq!(engine.active_modifiers(), vec![Modifier::Ctrl]);
+        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Ctrl]);
 
         press_key(&mut engine, Key::LeftShift, 10);
         assert_eq!(
-            engine.active_modifiers(),
+            engine.key_state.active_modifiers(),
             vec![Modifier::Ctrl, Modifier::Shift]
         );
 
         release_key(&mut engine, Key::LeftCtrl, 10);
-        assert_eq!(engine.active_modifiers(), vec![Modifier::Shift]);
+        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
     }
 
     #[test]
@@ -1170,7 +1161,7 @@ mod tests {
         press_key(&mut engine, Key::LeftShift, 11);
 
         assert_eq!(
-            engine.active_modifiers(),
+            engine.key_state.active_modifiers(),
             vec![Modifier::Ctrl, Modifier::Shift]
         );
 
@@ -1178,8 +1169,8 @@ mod tests {
         engine.key_state.disconnect_device(10);
 
         // Only modifiers from device 11 should remain
-        assert_eq!(engine.active_modifiers(), vec![Modifier::Shift]);
-        assert!(!engine.is_key_pressed(Key::LeftCtrl));
+        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
+        assert!(!engine.key_state.is_pressed(Key::LeftCtrl));
     }
 
     #[test]
