@@ -81,7 +81,6 @@ pub(crate) mod command;
 pub(crate) mod devices;
 pub(crate) mod forwarder;
 pub(crate) mod key_state;
-pub(crate) mod matcher;
 pub(crate) mod runtime;
 pub(crate) mod sequence;
 pub(crate) mod tap_hold;

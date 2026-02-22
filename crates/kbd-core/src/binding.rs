@@ -5,8 +5,9 @@
 //! holds per-binding configuration. [`RegisteredBinding`] pairs them with
 //! a hotkey and action for engine storage.
 //!
-//! Device filtering (`DeviceFilter`) is platform-specific and lives in
-//! the `keybound` facade crate, not here.
+//! Device filtering ([`DeviceFilter`]) is defined here behind the `evdev`
+//! feature flag — it's a pure data type describing device match criteria
+//! (name patterns, USB IDs).
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;

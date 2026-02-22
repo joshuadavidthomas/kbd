@@ -370,11 +370,11 @@ Things that stay as feature flags, not crates:
 
 ### 3.7 Move types into `kbd-core`
 
-- [ ] Move `key.rs`, `action.rs`, `binding.rs`, `layer.rs` into `kbd-core/src/`.
-- [ ] Move `engine/matcher.rs`, `engine/key_state.rs` into `kbd-core/src/` (these are pure logic).
-- [ ] Move core error variants into `kbd-core/src/error.rs`.
-- [ ] `evdev::KeyCode` conversions move from `key.rs` to `kbd-evdev` — `kbd-core` Key has no evdev dependency.
-- [ ] `kbd-core` builds and tests pass independently: `cargo test -p kbd-core`.
+- [x] Move `key.rs`, `action.rs`, `binding.rs`, `layer.rs` into `kbd-core/src/`.
+- [x] Move `engine/matcher.rs`, `engine/key_state.rs` into `kbd-core/src/` (these are pure logic).
+- [x] Move core error variants into `kbd-core/src/error.rs`.
+- [x] `evdev::KeyCode` conversions stay in `kbd-core` behind `evdev` feature flag — orphan rule requires `From<ForeignType> for LocalType` to be in the crate that defines the local type. `kbd-evdev` cannot implement `From<KeyCode> for Key` because `Key` is defined in `kbd-core`.
+- [x] `kbd-core` builds and tests pass independently: `cargo test -p kbd-core`.
 
 ### 3.8 Move evdev code into `kbd-evdev`
 
@@ -433,7 +433,7 @@ match matcher.process(hotkey, transition) {
 | Section | Items |
 |---------|-------|
 | 3.6 Workspace scaffolding | 9/9 |
-| 3.7 Move types to kbd-core | 0/5 |
+| 3.7 Move types to kbd-core | 5/5 |
 | 3.8 Move evdev to kbd-evdev | 0/5 |
 | 3.9 Public Matcher | 0/6 |
 | 3.10 Rewire keybound facade | 0/5 |

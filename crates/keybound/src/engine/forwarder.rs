@@ -19,9 +19,6 @@ use crate::engine::key_state::KeyTransition;
 /// Name of the virtual device we create, used for self-detection.
 pub(crate) const VIRTUAL_DEVICE_NAME: &str = "keybound-virtual-keyboard";
 
-/// Maximum key code we register with uinput.
-const MAX_FORWARDABLE_KEY_CODE: u16 = 767;
-
 /// Sink for forwarding key events through a virtual device.
 ///
 /// The engine uses this trait to forward unmatched events (in grab mode)
@@ -30,14 +27,20 @@ pub(crate) trait ForwardSink: Send {
     fn forward_key(&mut self, key: Key, transition: KeyTransition) -> Result<(), Error>;
 }
 
+/// Maximum key code we register with uinput.
+#[cfg(feature = "grab")]
+const MAX_FORWARDABLE_KEY_CODE: u16 = 767;
+
 /// Virtual uinput device for forwarding unmatched key events in grab mode.
 ///
 /// Creates a virtual keyboard device via `/dev/uinput`. Unmatched events
 /// are re-emitted through this device so they reach applications normally.
+#[cfg(feature = "grab")]
 pub(crate) struct UinputForwarder {
     device: evdev::uinput::VirtualDevice,
 }
 
+#[cfg(feature = "grab")]
 impl UinputForwarder {
     pub(crate) fn new() -> Result<Self, Error> {
         let mut keys = evdev::AttributeSet::<evdev::KeyCode>::new();
@@ -66,6 +69,7 @@ impl UinputForwarder {
     }
 }
 
+#[cfg(feature = "grab")]
 impl ForwardSink for UinputForwarder {
     fn forward_key(&mut self, key: Key, transition: KeyTransition) -> Result<(), Error> {
         let key_code: evdev::KeyCode = key.into();

@@ -24,7 +24,7 @@ ashpd = { workspace = true, optional = true }
 async-channel = { workspace = true, optional = true }
 async-std = { workspace = true, optional = true }
 evdev = { workspace = true }
-kbd-core = { workspace = true }
+kbd-core = { workspace = true, features = ["evdev"] }
 kbd-derive = { workspace = true, optional = true }
 kbd-evdev = { workspace = true, optional = true }
 kbd-portal = { workspace = true, optional = true }

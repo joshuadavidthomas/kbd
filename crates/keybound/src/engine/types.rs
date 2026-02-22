@@ -10,6 +10,7 @@ use crate::binding::Passthrough;
 /// mode without a forwarder.
 pub(crate) enum GrabState {
     Disabled,
+    #[cfg_attr(not(feature = "grab"), allow(dead_code))]
     Enabled {
         forwarder: Box<dyn super::forwarder::ForwardSink>,
     },

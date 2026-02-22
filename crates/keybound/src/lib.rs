@@ -31,7 +31,6 @@
 mod action;
 mod backend;
 mod binding;
-#[allow(dead_code)]
 mod engine;
 mod error;
 mod handle;
