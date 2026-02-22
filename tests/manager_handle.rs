@@ -49,9 +49,7 @@ fn is_key_pressed_returns_false_when_no_keys_pressed() {
 fn active_modifiers_returns_empty_when_no_keys_pressed() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 
-    let modifiers = manager
-        .active_modifiers()
-        .expect("query should succeed");
+    let modifiers = manager.active_modifiers().expect("query should succeed");
     assert!(modifiers.is_empty());
 }
 
