@@ -46,12 +46,21 @@ impl UinputForwarder {
         }
 
         let device = evdev::uinput::VirtualDevice::builder()
-            .map_err(|_| Error::DeviceError)?
+            .map_err(|error| {
+                tracing::warn!(%error, "failed to open /dev/uinput");
+                Error::DeviceError
+            })?
             .name(VIRTUAL_DEVICE_NAME)
             .with_keys(&keys)
-            .map_err(|_| Error::DeviceError)?
+            .map_err(|error| {
+                tracing::warn!(%error, "failed to configure uinput key capabilities");
+                Error::DeviceError
+            })?
             .build()
-            .map_err(|_| Error::DeviceError)?;
+            .map_err(|error| {
+                tracing::warn!(%error, "failed to create uinput virtual device");
+                Error::DeviceError
+            })?;
 
         Ok(Self { device })
     }

@@ -365,12 +365,15 @@ impl Engine {
                 passthrough,
             } => {
                 execute_action(action);
-                match passthrough {
-                    Passthrough::Enabled => {
+                let grab_enabled = matches!(self.grab_state, GrabState::Enabled { .. });
+                match (passthrough, grab_enabled) {
+                    (Passthrough::Enabled, true) => {
                         self.forward_event(event.key, event.transition);
                         KeyEventDisposition::MatchedForwarded
                     }
-                    Passthrough::Consume => KeyEventDisposition::MatchedConsumed,
+                    (Passthrough::Enabled, false) | (Passthrough::Consume, _) => {
+                        KeyEventDisposition::MatchedConsumed
+                    }
                 }
             }
             matcher::MatchResult::NoMatch | matcher::MatchResult::Ignored => {
@@ -1012,6 +1015,32 @@ mod tests {
         // Press A with no bindings — should be ignored, not forwarded
         let disposition = press_key(&mut engine, Key::A, 10);
         assert_eq!(disposition, KeyEventDisposition::Ignored);
+    }
+
+    #[test]
+    fn passthrough_without_grab_mode_still_returns_consumed() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C, vec![Modifier::Ctrl]);
+        let action = Action::from(move || {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding =
+            RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
+        engine.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        let disposition = press_key(&mut engine, Key::C, 10);
+
+        // Without grab mode, passthrough is a no-op — event reaches apps
+        // through the normal kernel path. The engine reports MatchedConsumed
+        // because it matched and executed the action; no virtual-device
+        // forwarding occurred.
+        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 
     #[test]

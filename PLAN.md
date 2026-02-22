@@ -136,14 +136,14 @@ are forwarded through uinput. Key state is queryable.
 
 ### 2.1 Grab mode (`src/engine/devices.rs`, `src/engine/forwarder.rs`)
 
-- [ ] `EVIOCGRAB` on devices when grab mode is enabled.
-- [ ] Virtual uinput device creation for event forwarding.
-- [ ] Unmatched key events forwarded through virtual device.
-- [ ] Matched events consumed (not forwarded) by default.
-- [ ] Passthrough option: matched events forwarded AND action executed.
-- [ ] Self-detection: ignore our own virtual device in device discovery.
-- [ ] Portal backend returns clear `UnsupportedFeature` error for grab.
-- [ ] Tests: event consumption, forwarding, passthrough, self-detection.
+- [x] `EVIOCGRAB` on devices when grab mode is enabled.
+- [x] Virtual uinput device creation for event forwarding.
+- [x] Unmatched key events forwarded through virtual device.
+- [x] Matched events consumed (not forwarded) by default.
+- [x] Passthrough option: matched events forwarded AND action executed.
+- [x] Self-detection: ignore our own virtual device in device discovery.
+- [x] Portal backend returns clear `UnsupportedFeature` error for grab.
+- [x] Tests: event consumption, forwarding, passthrough, self-detection.
 
 Reference: `archive/v0/src/listener/forwarding.rs`,
 `archive/v0/src/listener/io.rs` (EVIOCGRAB, self-detection)
@@ -160,7 +160,7 @@ Reference: `archive/v0/src/listener/forwarding.rs`,
 
 | Section | Items |
 |---------|-------|
-| 2.1 Grab mode | 0/8 |
+| 2.1 Grab mode | 8/8 |
 | 2.2 Key state queries | 0/5 |
 
 ---
