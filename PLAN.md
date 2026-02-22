@@ -102,17 +102,17 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 
 ### 1.7 Basic hotkey matching (`src/engine/matcher.rs`)
 
-- [ ] Given a key event + current modifier state, find the matching binding.
-- [ ] Modifier state derived from key state (what modifier keys are currently pressed).
-- [ ] Match fires callback via `Action::Callback`.
-- [ ] Unmatched events ignored (no grab mode yet).
-- [ ] Tests: single hotkey match, modifier combinations, no match.
+- [x] Given a key event + current modifier state, find the matching binding.
+- [x] Modifier state derived from key state (what modifier keys are currently pressed).
+- [x] Match fires callback via `Action::Callback`.
+- [x] Unmatched events ignored (no grab mode yet).
+- [x] Tests: single hotkey match, modifier combinations, no match.
 
 ### 1.8 Integration and public API (`src/lib.rs`)
 
-- [ ] Public re-exports are correct and minimal.
-- [ ] The example from DESIGN.md compiles and works: `manager.register(Key::C, &[Modifier::Ctrl, Modifier::Shift], || ...)`.
-- [ ] `cargo test` passes, `cargo clippy` clean, `cargo doc` builds.
+- [x] Public re-exports are correct and minimal.
+- [x] The example from DESIGN.md compiles and works: `manager.register(Key::C, &[Modifier::Ctrl, Modifier::Shift], || ...)`.
+- [x] `cargo test` passes, `cargo clippy` clean, `cargo doc` builds.
 
 ### Phase 1 gate
 
@@ -124,8 +124,8 @@ Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
 | 1.4 Engine skeleton | 7/7 |
 | 1.5 Device reading | 7/7 |
 | 1.6 Manager and handle | 7/7 |
-| 1.7 Basic matching | 0/5 |
-| 1.8 Integration | 0/3 |
+| 1.7 Basic matching | 5/5 |
+| 1.8 Integration | 3/3 |
 
 ---
 
