@@ -58,6 +58,7 @@ use crate::engine::devices::DeviceKeyEvent;
 use crate::key::Hotkey;
 use crate::Error;
 use crate::Key;
+use crate::Modifier;
 
 pub(crate) mod devices;
 pub(crate) mod forwarder;
@@ -151,6 +152,13 @@ pub(crate) enum Command {
     IsRegistered {
         hotkey: Hotkey,
         reply: mpsc::Sender<bool>,
+    },
+    IsKeyPressed {
+        key: Key,
+        reply: mpsc::Sender<bool>,
+    },
+    ActiveModifiers {
+        reply: mpsc::Sender<Vec<Modifier>>,
     },
     Shutdown,
 }
@@ -314,6 +322,14 @@ impl Engine {
             Command::IsRegistered { hotkey, reply } => {
                 let is_registered = self.binding_ids_by_hotkey.contains_key(&hotkey);
                 let _ = reply.send(is_registered);
+                LoopControl::Continue
+            }
+            Command::IsKeyPressed { key, reply } => {
+                let _ = reply.send(self.key_state.is_pressed(key));
+                LoopControl::Continue
+            }
+            Command::ActiveModifiers { reply } => {
+                let _ = reply.send(self.key_state.active_modifiers());
                 LoopControl::Continue
             }
             Command::Shutdown => LoopControl::Shutdown,
@@ -1064,6 +1080,97 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert_eq!(events[0], (Key::A, KeyTransition::Press));
         assert_eq!(events[1], (Key::A, KeyTransition::Release));
+    }
+
+    #[test]
+    fn is_key_pressed_query_reflects_key_state() {
+        let mut engine = test_engine();
+
+        assert!(!engine.key_state.is_pressed(Key::A));
+
+        press_key(&mut engine, Key::A, 10);
+        assert!(engine.key_state.is_pressed(Key::A));
+
+        release_key(&mut engine, Key::A, 10);
+        assert!(!engine.key_state.is_pressed(Key::A));
+    }
+
+    #[test]
+    fn active_modifiers_query_reflects_held_modifiers() {
+        let mut engine = test_engine();
+
+        assert!(engine.key_state.active_modifiers().is_empty());
+
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Ctrl]);
+
+        press_key(&mut engine, Key::LeftShift, 10);
+        assert_eq!(
+            engine.key_state.active_modifiers(),
+            vec![Modifier::Ctrl, Modifier::Shift]
+        );
+
+        release_key(&mut engine, Key::LeftCtrl, 10);
+        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
+    }
+
+    #[test]
+    fn is_key_pressed_command_via_runtime() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::IsKeyPressed {
+                key: Key::A,
+                reply: reply_tx,
+            })
+            .expect("query command should send");
+
+        let is_pressed = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("query command should receive reply");
+        assert!(!is_pressed);
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn active_modifiers_command_via_runtime() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::ActiveModifiers { reply: reply_tx })
+            .expect("query command should send");
+
+        let modifiers = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("query command should receive reply");
+        assert!(modifiers.is_empty());
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn modifier_state_cleaned_on_device_disconnect() {
+        let mut engine = test_engine();
+
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::LeftShift, 11);
+
+        assert_eq!(
+            engine.key_state.active_modifiers(),
+            vec![Modifier::Ctrl, Modifier::Shift]
+        );
+
+        // Simulate device 10 disconnecting
+        engine.key_state.disconnect_device(10);
+
+        // Only modifiers from device 11 should remain
+        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
+        assert!(!engine.key_state.is_pressed(Key::LeftCtrl));
     }
 
     #[test]

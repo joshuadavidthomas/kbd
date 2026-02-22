@@ -150,18 +150,18 @@ Reference: `archive/v0/src/listener/forwarding.rs`,
 
 ### 2.2 Key state queries
 
-- [ ] `manager.is_key_pressed(key)` — queries engine via command/reply.
-- [ ] `manager.active_modifiers()` — returns set of held modifiers, derived from key state.
-- [ ] Per-device key state tracking (for device-specific bindings in Phase 4).
-- [ ] Modifier state cleaned up on device disconnect.
-- [ ] Tests: key state during press/release, modifier derivation, disconnect cleanup.
+- [x] `manager.is_key_pressed(key)` — queries engine via command/reply.
+- [x] `manager.active_modifiers()` — returns set of held modifiers, derived from key state.
+- [x] Per-device key state tracking (for device-specific bindings in Phase 4).
+- [x] Modifier state cleaned up on device disconnect.
+- [x] Tests: key state during press/release, modifier derivation, disconnect cleanup.
 
 ### Phase 2 gate
 
 | Section | Items |
 |---------|-------|
 | 2.1 Grab mode | 8/8 |
-| 2.2 Key state queries | 0/5 |
+| 2.2 Key state queries | 5/5 |
 
 ---
 
