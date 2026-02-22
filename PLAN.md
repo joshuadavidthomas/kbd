@@ -358,15 +358,15 @@ Things that stay as feature flags, not crates:
 
 ### 3.6 Workspace scaffolding
 
-- [ ] Create `crates/` directory with all six crate dirs and `Cargo.toml` for each.
-- [ ] Root `Cargo.toml` becomes workspace manifest with `members = ["crates/*"]`.
-- [ ] `kbd-core/Cargo.toml`: only `thiserror`, optional `serde` feature.
-- [ ] `kbd-evdev/Cargo.toml`: `evdev`, `kbd-core`.
-- [ ] `kbd-portal/Cargo.toml`: `ashpd`, `kbd-core`. Starts as stub with `unimplemented!()` entry points and a doc comment.
-- [ ] `kbd-xkb/Cargo.toml`: placeholder, no deps yet. Doc comment explains Phase 4.9.
-- [ ] `kbd-derive/Cargo.toml`: placeholder `proc-macro` crate. Doc comment explains future intent.
-- [ ] `keybound/Cargo.toml`: depends on `kbd-core`, optional deps on `kbd-evdev`, `kbd-portal`, `kbd-xkb`, `kbd-derive`.
-- [ ] All crates compile. `cargo build --workspace` succeeds.
+- [x] Create `crates/` directory with all six crate dirs and `Cargo.toml` for each.
+- [x] Root `Cargo.toml` becomes workspace manifest with `members = ["crates/*"]`.
+- [x] `kbd-core/Cargo.toml`: only `thiserror`, optional `serde` feature.
+- [x] `kbd-evdev/Cargo.toml`: `evdev`, `kbd-core`.
+- [x] `kbd-portal/Cargo.toml`: `ashpd`, `kbd-core`. Starts as stub with `unimplemented!()` entry points and a doc comment.
+- [x] `kbd-xkb/Cargo.toml`: placeholder, no deps yet. Doc comment explains Phase 4.9.
+- [x] `kbd-derive/Cargo.toml`: placeholder `proc-macro` crate. Doc comment explains future intent.
+- [x] `keybound/Cargo.toml`: depends on `kbd-core`, optional deps on `kbd-evdev`, `kbd-portal`, `kbd-xkb`, `kbd-derive`.
+- [x] All crates compile. `cargo build --workspace` succeeds.
 
 ### 3.7 Move types into `kbd-core`
 
@@ -432,7 +432,7 @@ match matcher.process(hotkey, transition) {
 
 | Section | Items |
 |---------|-------|
-| 3.6 Workspace scaffolding | 0/9 |
+| 3.6 Workspace scaffolding | 9/9 |
 | 3.7 Move types to kbd-core | 0/5 |
 | 3.8 Move evdev to kbd-evdev | 0/5 |
 | 3.9 Public Matcher | 0/6 |
