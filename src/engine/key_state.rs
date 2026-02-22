@@ -17,8 +17,7 @@ use std::collections::HashSet;
 use std::os::fd::RawFd;
 
 use crate::Key;
-
-// TODO: active_modifiers() — derived from pressed keys, not parallel state
+use crate::Modifier;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyTransition {
@@ -67,6 +66,29 @@ impl KeyState {
             .values()
             .any(|pressed| pressed.contains(&key))
     }
+
+    /// Returns the set of modifiers currently held, derived from pressed keys.
+    ///
+    /// Left/right variants are canonicalized: if either `LeftCtrl` or `RightCtrl`
+    /// is held, `Modifier::Ctrl` is in the returned set.
+    #[must_use]
+    pub(crate) fn active_modifiers(&self) -> Vec<Modifier> {
+        let mut modifiers = Vec::new();
+
+        for &modifier in &[
+            Modifier::Ctrl,
+            Modifier::Shift,
+            Modifier::Alt,
+            Modifier::Super,
+        ] {
+            let (left, right) = modifier.keys();
+            if self.is_pressed(left) || self.is_pressed(right) {
+                modifiers.push(modifier);
+            }
+        }
+
+        modifiers
+    }
 }
 
 #[cfg(test)]
@@ -74,6 +96,7 @@ mod tests {
     use super::KeyState;
     use super::KeyTransition;
     use crate::Key;
+    use crate::Modifier;
 
     #[test]
     fn pressed_keys_are_tracked_per_device() {
@@ -109,5 +132,53 @@ mod tests {
 
         assert!(!key_state.is_pressed(Key::LeftCtrl));
         assert!(key_state.is_pressed(Key::C));
+    }
+
+    #[test]
+    fn active_modifiers_derived_from_pressed_keys() {
+        let mut key_state = KeyState::default();
+
+        assert!(key_state.active_modifiers().is_empty());
+
+        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
+        assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
+
+        key_state.apply_device_event(10, Key::LeftShift, KeyTransition::Press);
+        assert_eq!(
+            key_state.active_modifiers(),
+            vec![Modifier::Ctrl, Modifier::Shift]
+        );
+
+        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Release);
+        assert_eq!(key_state.active_modifiers(), vec![Modifier::Shift]);
+    }
+
+    #[test]
+    fn active_modifiers_canonicalizes_left_and_right() {
+        let mut key_state = KeyState::default();
+
+        key_state.apply_device_event(10, Key::RightCtrl, KeyTransition::Press);
+        assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
+
+        // Both left and right held still yields one modifier
+        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
+        assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
+
+        // Releasing one side keeps the modifier active
+        key_state.apply_device_event(10, Key::RightCtrl, KeyTransition::Release);
+        assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
+    }
+
+    #[test]
+    fn active_modifiers_spans_devices() {
+        let mut key_state = KeyState::default();
+
+        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
+        key_state.apply_device_event(11, Key::RightShift, KeyTransition::Press);
+
+        assert_eq!(
+            key_state.active_modifiers(),
+            vec![Modifier::Ctrl, Modifier::Shift]
+        );
     }
 }
