@@ -8,8 +8,10 @@ use keybound::BindingId;
 use keybound::BindingOptions;
 #[cfg(feature = "evdev")]
 use keybound::DeviceFilter;
+use keybound::HotkeyManager;
 use keybound::Key;
 use keybound::Modifier;
+use keybound::OverlayVisibility;
 use keybound::Passthrough;
 
 #[test]
@@ -78,4 +80,66 @@ fn action_variants_exist_for_future_features() {
     let _ = Action::ToggleLayer("nav".into());
     let _ = Action::PopLayer;
     let _ = Action::Swallow;
+}
+
+// Phase 3.4: Binding metadata
+
+#[test]
+fn binding_options_description_defaults_to_none() {
+    let options = BindingOptions::default();
+    assert_eq!(options.description(), None);
+}
+
+#[test]
+fn binding_options_with_description_sets_label() {
+    let options = BindingOptions::default().with_description("Copy to clipboard");
+    assert_eq!(options.description(), Some("Copy to clipboard"));
+}
+
+#[test]
+fn binding_options_overlay_visibility_defaults_to_visible() {
+    let options = BindingOptions::default();
+    assert_eq!(options.overlay_visibility(), OverlayVisibility::Visible);
+}
+
+#[test]
+fn binding_options_with_overlay_visibility_hidden() {
+    let options = BindingOptions::default().with_overlay_visibility(OverlayVisibility::Hidden);
+    assert_eq!(options.overlay_visibility(), OverlayVisibility::Hidden);
+}
+
+#[test]
+fn binding_options_chains_all_metadata() {
+    let options = BindingOptions::default()
+        .with_description("Quit application")
+        .with_overlay_visibility(OverlayVisibility::Hidden)
+        .with_passthrough(Passthrough::Enabled);
+
+    assert_eq!(options.description(), Some("Quit application"));
+    assert_eq!(options.overlay_visibility(), OverlayVisibility::Hidden);
+    assert_eq!(options.passthrough(), Passthrough::Enabled);
+}
+
+#[test]
+fn register_with_options_accepts_metadata() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let options = BindingOptions::default()
+        .with_description("Copy to clipboard")
+        .with_overlay_visibility(OverlayVisibility::Visible);
+
+    let handle = manager.register_with_options(Key::C, || println!("copy"), options);
+    assert!(handle.is_ok());
+}
+
+#[test]
+fn register_with_options_hidden_binding() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let options = BindingOptions::default()
+        .with_description("Internal binding")
+        .with_overlay_visibility(OverlayVisibility::Hidden);
+
+    let handle = manager.register_with_options(Key::F12, || {}, options);
+    assert!(handle.is_ok());
 }

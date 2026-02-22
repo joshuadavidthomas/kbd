@@ -31,6 +31,7 @@ use crate::action::Action;
 use crate::action::LayerName;
 use crate::backend::Backend;
 use crate::binding::BindingId;
+use crate::binding::BindingOptions;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
@@ -211,9 +212,18 @@ impl HotkeyManager {
         self.shutdown_inner()
     }
 
-    fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<Handle, Error> {
+    /// Register a hotkey with an explicit action and binding options.
+    ///
+    /// Use when you need metadata (description, overlay visibility) or
+    /// behavioral options beyond what `register()` provides.
+    pub fn register_with_options(
+        &self,
+        hotkey: impl Into<Hotkey>,
+        action: impl Into<Action>,
+        options: BindingOptions,
+    ) -> Result<Handle, Error> {
         let id = BindingId::new();
-        let binding = RegisteredBinding::new(id, hotkey, action);
+        let binding = RegisteredBinding::new(id, hotkey.into(), action.into()).with_options(options);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::Register {
@@ -225,6 +235,10 @@ impl HotkeyManager {
             Ok(()) => Ok(Handle::new(id, self.commands.clone())),
             Err(error) => Err(error),
         }
+    }
+
+    fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<Handle, Error> {
+        self.register_with_options(hotkey, action, BindingOptions::default())
     }
 
     fn shutdown_inner(&self) -> Result<(), Error> {

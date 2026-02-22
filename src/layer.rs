@@ -44,6 +44,8 @@ pub struct LayerOptions {
     pub unmatched: UnmatchedKeyBehavior,
     /// If set, automatically pop the layer after this duration of inactivity.
     pub timeout: Option<Duration>,
+    /// Human-readable label for this layer, used for overlay grouping.
+    pub description: Option<Box<str>>,
 }
 
 /// A single binding within a layer.
@@ -117,6 +119,15 @@ impl Layer {
     #[must_use]
     pub fn timeout(mut self, duration: Duration) -> Self {
         self.options.timeout = Some(duration);
+        self
+    }
+
+    /// Set a human-readable description for this layer.
+    ///
+    /// Used for overlay grouping and help screen display.
+    #[must_use]
+    pub fn description(mut self, description: impl Into<Box<str>>) -> Self {
+        self.options.description = Some(description.into());
         self
     }
 
@@ -251,11 +262,12 @@ mod tests {
     }
 
     #[test]
-    fn layer_options_default_is_fallthrough_no_oneshot_no_timeout() {
+    fn layer_options_default_is_fallthrough_no_oneshot_no_timeout_no_description() {
         let options = LayerOptions::default();
         assert_eq!(options.oneshot, None);
         assert_eq!(options.unmatched, UnmatchedKeyBehavior::Fallthrough);
         assert_eq!(options.timeout, None);
+        assert_eq!(options.description, None);
     }
 
     #[test]
@@ -272,5 +284,24 @@ mod tests {
         assert_eq!(name.as_str(), "nav");
         assert_eq!(bindings.len(), 1);
         assert_eq!(options.unmatched, UnmatchedKeyBehavior::Swallow);
+    }
+
+    #[test]
+    fn layer_description_sets_label() {
+        let layer = Layer::new("nav").description("Navigation keys");
+        assert_eq!(
+            layer.options().description.as_deref(),
+            Some("Navigation keys")
+        );
+    }
+
+    #[test]
+    fn layer_description_preserved_in_into_parts() {
+        let layer = Layer::new("nav")
+            .bind(Key::H, Action::Swallow)
+            .description("Navigation keys");
+
+        let (_, _, options) = layer.into_parts();
+        assert_eq!(options.description.as_deref(), Some("Navigation keys"));
     }
 }
