@@ -33,7 +33,7 @@ use crate::engine::key_state::KeyState;
 use crate::engine::key_state::KeyTransition;
 use crate::Key;
 
-const INPUT_DIRECTORY: &str = "/dev/input";
+pub(crate) const INPUT_DIRECTORY: &str = "/dev/input";
 const HOTPLUG_BUFFER_SIZE: usize = 4096;
 
 /// Whether devices should be grabbed for exclusive access.
@@ -106,10 +106,6 @@ impl Default for DeviceManager {
 }
 
 impl DeviceManager {
-    pub(crate) fn default_with_grab(grab_mode: DeviceGrabMode) -> Self {
-        Self::new(Path::new(INPUT_DIRECTORY), grab_mode)
-    }
-
     pub(crate) fn new(input_dir: &Path, grab_mode: DeviceGrabMode) -> Self {
         let mut manager = Self {
             input_dir: input_dir.to_path_buf(),

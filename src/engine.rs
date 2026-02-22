@@ -46,6 +46,7 @@ use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
 use std::os::fd::RawFd;
+use std::path::Path;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
@@ -236,7 +237,10 @@ impl Engine {
         Self {
             bindings_by_id: HashMap::new(),
             binding_ids_by_hotkey: HashMap::new(),
-            devices: devices::DeviceManager::default_with_grab(device_grab_mode),
+            devices: devices::DeviceManager::new(
+                Path::new(devices::INPUT_DIRECTORY),
+                device_grab_mode,
+            ),
             key_state: key_state::KeyState::default(),
             grab_state,
             command_rx,
