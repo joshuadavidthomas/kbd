@@ -260,8 +260,7 @@ impl HotkeyManager {
     pub fn pop_layer(&self) -> Result<LayerName, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.commands
-            .send(Command::PopLayer { reply: reply_tx })?;
+        self.commands.send(Command::PopLayer { reply: reply_tx })?;
 
         reply_rx.recv().map_err(|_| Error::ManagerStopped)?
     }

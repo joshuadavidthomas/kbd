@@ -90,7 +90,10 @@ pub(crate) fn match_key_event<'a>(
             }
 
             // No match in this layer — check swallow behavior
-            if matches!(stored_layer.options.unmatched, UnmatchedKeyBehavior::Swallow) {
+            if matches!(
+                stored_layer.options.unmatched,
+                UnmatchedKeyBehavior::Swallow
+            ) {
                 return MatchResult::Swallowed;
             }
         }
@@ -163,10 +166,8 @@ mod tests {
         }
 
         fn add_layer(&mut self, name: &str, bindings: Vec<LayerBinding>, options: LayerOptions) {
-            self.layers.insert(
-                LayerName::from(name),
-                StoredLayer { bindings, options },
-            );
+            self.layers
+                .insert(LayerName::from(name), StoredLayer { bindings, options });
         }
 
         fn push_layer(&mut self, name: &str) {
@@ -371,25 +372,49 @@ mod tests {
         // Global binding for H
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
-        bindings.add(Key::H, &[], Action::from(move || { gc.fetch_add(1, Ordering::Relaxed); }));
+        bindings.add(
+            Key::H,
+            &[],
+            Action::from(move || {
+                gc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
 
         // Layer binding for H
         let layer_counter = Arc::new(AtomicUsize::new(0));
         let lc = Arc::clone(&layer_counter);
         bindings.add_layer(
             "nav",
-            vec![layer_binding(Key::H, &[], Action::from(move || { lc.fetch_add(1, Ordering::Relaxed); }))],
+            vec![layer_binding(
+                Key::H,
+                &[],
+                Action::from(move || {
+                    lc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
             LayerOptions::default(),
         );
         bindings.push_layer("nav");
 
         let result = bindings.match_event(Key::H, KeyTransition::Press, &[]);
-        if let MatchResult::Matched { action: Action::Callback(cb), .. } = result {
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
             cb();
         }
 
-        assert_eq!(layer_counter.load(Ordering::Relaxed), 1, "layer binding should fire");
-        assert_eq!(global_counter.load(Ordering::Relaxed), 0, "global binding should not fire");
+        assert_eq!(
+            layer_counter.load(Ordering::Relaxed),
+            1,
+            "layer binding should fire"
+        );
+        assert_eq!(
+            global_counter.load(Ordering::Relaxed),
+            0,
+            "global binding should not fire"
+        );
     }
 
     #[test]
@@ -400,7 +425,13 @@ mod tests {
         let l1c = Arc::clone(&layer1_counter);
         bindings.add_layer(
             "layer1",
-            vec![layer_binding(Key::H, &[], Action::from(move || { l1c.fetch_add(1, Ordering::Relaxed); }))],
+            vec![layer_binding(
+                Key::H,
+                &[],
+                Action::from(move || {
+                    l1c.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
             LayerOptions::default(),
         );
 
@@ -408,7 +439,13 @@ mod tests {
         let l2c = Arc::clone(&layer2_counter);
         bindings.add_layer(
             "layer2",
-            vec![layer_binding(Key::H, &[], Action::from(move || { l2c.fetch_add(1, Ordering::Relaxed); }))],
+            vec![layer_binding(
+                Key::H,
+                &[],
+                Action::from(move || {
+                    l2c.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
             LayerOptions::default(),
         );
 
@@ -416,12 +453,24 @@ mod tests {
         bindings.push_layer("layer2");
 
         let result = bindings.match_event(Key::H, KeyTransition::Press, &[]);
-        if let MatchResult::Matched { action: Action::Callback(cb), .. } = result {
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
             cb();
         }
 
-        assert_eq!(layer2_counter.load(Ordering::Relaxed), 1, "topmost layer2 should fire");
-        assert_eq!(layer1_counter.load(Ordering::Relaxed), 0, "lower layer1 should not fire");
+        assert_eq!(
+            layer2_counter.load(Ordering::Relaxed),
+            1,
+            "topmost layer2 should fire"
+        );
+        assert_eq!(
+            layer1_counter.load(Ordering::Relaxed),
+            0,
+            "lower layer1 should not fire"
+        );
     }
 
     #[test]
@@ -432,7 +481,13 @@ mod tests {
         let l1c = Arc::clone(&layer1_counter);
         bindings.add_layer(
             "layer1",
-            vec![layer_binding(Key::J, &[], Action::from(move || { l1c.fetch_add(1, Ordering::Relaxed); }))],
+            vec![layer_binding(
+                Key::J,
+                &[],
+                Action::from(move || {
+                    l1c.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
             LayerOptions::default(), // Fallthrough
         );
 
@@ -447,7 +502,11 @@ mod tests {
 
         // J is not in layer2, should fall through to layer1
         let result = bindings.match_event(Key::J, KeyTransition::Press, &[]);
-        if let MatchResult::Matched { action: Action::Callback(cb), .. } = result {
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
             cb();
         }
 
@@ -460,7 +519,13 @@ mod tests {
 
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
-        bindings.add(Key::X, &[], Action::from(move || { gc.fetch_add(1, Ordering::Relaxed); }));
+        bindings.add(
+            Key::X,
+            &[],
+            Action::from(move || {
+                gc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
 
         bindings.add_layer(
             "nav",
@@ -471,7 +536,11 @@ mod tests {
 
         // X is not in nav layer, falls through to global
         let result = bindings.match_event(Key::X, KeyTransition::Press, &[]);
-        if let MatchResult::Matched { action: Action::Callback(cb), .. } = result {
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
             cb();
         }
 
@@ -485,7 +554,13 @@ mod tests {
         // Global binding that should NOT fire
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
-        bindings.add(Key::X, &[], Action::from(move || { gc.fetch_add(1, Ordering::Relaxed); }));
+        bindings.add(
+            Key::X,
+            &[],
+            Action::from(move || {
+                gc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
 
         bindings.add_layer(
             "modal",
@@ -509,19 +584,35 @@ mod tests {
 
         let base_counter = Arc::new(AtomicUsize::new(0));
         let bc = Arc::clone(&base_counter);
-        bindings.add(Key::H, &[], Action::from(move || { bc.fetch_add(1, Ordering::Relaxed); }));
+        bindings.add(
+            Key::H,
+            &[],
+            Action::from(move || {
+                bc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
 
         let nav_counter = Arc::new(AtomicUsize::new(0));
         let nc = Arc::clone(&nav_counter);
         bindings.add_layer(
             "nav",
-            vec![layer_binding(Key::H, &[], Action::from(move || { nc.fetch_add(1, Ordering::Relaxed); }))],
+            vec![layer_binding(
+                Key::H,
+                &[],
+                Action::from(move || {
+                    nc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
             LayerOptions::default(),
         );
 
         // Without layer active, H hits global
         let result = bindings.match_event(Key::H, KeyTransition::Press, &[]);
-        if let MatchResult::Matched { action: Action::Callback(cb), .. } = result {
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
             cb();
         }
         assert_eq!(base_counter.load(Ordering::Relaxed), 1);
@@ -530,7 +621,11 @@ mod tests {
         // With layer active, H hits layer
         bindings.push_layer("nav");
         let result = bindings.match_event(Key::H, KeyTransition::Press, &[]);
-        if let MatchResult::Matched { action: Action::Callback(cb), .. } = result {
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
             cb();
         }
         assert_eq!(base_counter.load(Ordering::Relaxed), 1); // unchanged

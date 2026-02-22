@@ -1622,7 +1622,9 @@ mod tests {
             layer = layer.bind(key, action);
         }
         engine.define_layer(layer).unwrap();
-        engine.push_layer(crate::action::LayerName::from(name)).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from(name))
+            .unwrap();
     }
 
     #[test]
@@ -1634,7 +1636,12 @@ mod tests {
         define_and_push_layer(
             &mut engine,
             "nav",
-            vec![(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))],
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
         );
 
         press_key(&mut engine, Key::H, 10);
@@ -1650,7 +1657,12 @@ mod tests {
         define_and_push_layer(
             &mut engine,
             "nav",
-            vec![(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))],
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
         );
 
         // Pop the layer
@@ -1682,11 +1694,17 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = crate::Layer::new("nav")
-            .bind(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }));
+        let layer = crate::Layer::new("nav").bind(
+            Key::H,
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
         engine.define_layer(layer).unwrap();
 
-        engine.toggle_layer(crate::action::LayerName::from("nav")).unwrap();
+        engine
+            .toggle_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
 
         press_key(&mut engine, Key::H, 10);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
@@ -1701,11 +1719,18 @@ mod tests {
         define_and_push_layer(
             &mut engine,
             "nav",
-            vec![(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))],
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
         );
 
         // Toggle off
-        engine.toggle_layer(crate::action::LayerName::from("nav")).unwrap();
+        engine
+            .toggle_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
 
         // H should no longer match
         press_key(&mut engine, Key::H, 10);
@@ -1729,7 +1754,9 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
-                Action::from(move || { gc.fetch_add(1, Ordering::Relaxed); }),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
             ))
             .unwrap();
 
@@ -1738,13 +1765,26 @@ mod tests {
         define_and_push_layer(
             &mut engine,
             "nav",
-            vec![(Key::H, Action::from(move || { lc.fetch_add(1, Ordering::Relaxed); }))],
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    lc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
         );
 
         press_key(&mut engine, Key::H, 10);
 
-        assert_eq!(layer_counter.load(Ordering::Relaxed), 1, "layer binding should fire");
-        assert_eq!(global_counter.load(Ordering::Relaxed), 0, "global binding should not fire");
+        assert_eq!(
+            layer_counter.load(Ordering::Relaxed),
+            1,
+            "layer binding should fire"
+        );
+        assert_eq!(
+            global_counter.load(Ordering::Relaxed),
+            0,
+            "global binding should not fire"
+        );
     }
 
     #[test]
@@ -1756,7 +1796,12 @@ mod tests {
         define_and_push_layer(
             &mut engine,
             "layer1",
-            vec![(Key::H, Action::from(move || { l1c.fetch_add(1, Ordering::Relaxed); }))],
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    l1c.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
         );
 
         let layer2_counter = Arc::new(AtomicUsize::new(0));
@@ -1764,13 +1809,26 @@ mod tests {
         define_and_push_layer(
             &mut engine,
             "layer2",
-            vec![(Key::H, Action::from(move || { l2c.fetch_add(1, Ordering::Relaxed); }))],
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    l2c.fetch_add(1, Ordering::Relaxed);
+                }),
+            )],
         );
 
         press_key(&mut engine, Key::H, 10);
 
-        assert_eq!(layer2_counter.load(Ordering::Relaxed), 1, "topmost layer should fire");
-        assert_eq!(layer1_counter.load(Ordering::Relaxed), 0, "lower layer should not fire");
+        assert_eq!(
+            layer2_counter.load(Ordering::Relaxed),
+            1,
+            "topmost layer should fire"
+        );
+        assert_eq!(
+            layer1_counter.load(Ordering::Relaxed),
+            0,
+            "lower layer should not fire"
+        );
     }
 
     #[test]
@@ -1783,15 +1841,13 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
-                Action::from(move || { gc.fetch_add(1, Ordering::Relaxed); }),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
             ))
             .unwrap();
 
-        define_and_push_layer(
-            &mut engine,
-            "nav",
-            vec![(Key::H, Action::Swallow)],
-        );
+        define_and_push_layer(&mut engine, "nav", vec![(Key::H, Action::Swallow)]);
 
         // X not in layer, falls through to global
         press_key(&mut engine, Key::X, 10);
@@ -1808,7 +1864,9 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
-                Action::from(move || { gc.fetch_add(1, Ordering::Relaxed); }),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
             ))
             .unwrap();
 
@@ -1816,7 +1874,9 @@ mod tests {
             .bind(Key::H, Action::Swallow)
             .swallow();
         engine.define_layer(layer).unwrap();
-        engine.push_layer(crate::action::LayerName::from("modal")).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("modal"))
+            .unwrap();
 
         // X not in swallow layer — consumed, global should NOT fire
         let disposition = press_key(&mut engine, Key::X, 10);
@@ -1830,8 +1890,12 @@ mod tests {
 
         let layer_counter = Arc::new(AtomicUsize::new(0));
         let lc = Arc::clone(&layer_counter);
-        let layer = crate::Layer::new("nav")
-            .bind(Key::H, Action::from(move || { lc.fetch_add(1, Ordering::Relaxed); }));
+        let layer = crate::Layer::new("nav").bind(
+            Key::H,
+            Action::from(move || {
+                lc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
         engine.define_layer(layer).unwrap();
 
         // Register a global binding that pushes the layer
@@ -1858,10 +1922,17 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
         let layer = crate::Layer::new("nav")
-            .bind(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
             .bind(Key::Escape, Action::PopLayer);
         engine.define_layer(layer).unwrap();
-        engine.push_layer(crate::action::LayerName::from("nav")).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
 
         // H fires in nav layer
         press_key(&mut engine, Key::H, 10);
@@ -1883,8 +1954,12 @@ mod tests {
 
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
-        let layer = crate::Layer::new("nav")
-            .bind(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }));
+        let layer = crate::Layer::new("nav").bind(
+            Key::H,
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
         engine.define_layer(layer).unwrap();
 
         // Register toggle binding
@@ -1922,7 +1997,9 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
-                Action::from(move || { gc.fetch_add(1, Ordering::Relaxed); }),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
             ))
             .unwrap();
 
@@ -1931,7 +2008,12 @@ mod tests {
         define_and_push_layer(
             &mut engine,
             "nav",
-            vec![(Key::H, Action::from(move || { lc.fetch_add(100, Ordering::Relaxed); }))],
+            vec![(
+                Key::H,
+                Action::from(move || {
+                    lc.fetch_add(100, Ordering::Relaxed);
+                }),
+            )],
         );
 
         press_key(&mut engine, Key::H, 10);
@@ -1953,10 +2035,17 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         let layer = crate::Layer::new("oneshot")
-            .bind(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
             .oneshot(1);
         engine.define_layer(layer).unwrap();
-        engine.push_layer(crate::action::LayerName::from("oneshot")).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("oneshot"))
+            .unwrap();
 
         // First keypress — should match and auto-pop
         press_key(&mut engine, Key::H, 10);
@@ -1975,10 +2064,17 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         let layer = crate::Layer::new("oneshot")
-            .bind(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
             .oneshot(1);
         engine.define_layer(layer).unwrap();
-        engine.push_layer(crate::action::LayerName::from("oneshot")).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("oneshot"))
+            .unwrap();
 
         // Press an unmatched key — should count toward oneshot depth and pop
         press_key(&mut engine, Key::X, 10);
@@ -1996,10 +2092,17 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         let layer = crate::Layer::new("oneshot2")
-            .bind(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
             .oneshot(2);
         engine.define_layer(layer).unwrap();
-        engine.push_layer(crate::action::LayerName::from("oneshot2")).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("oneshot2"))
+            .unwrap();
 
         // First keypress — layer still active
         press_key(&mut engine, Key::H, 10);
@@ -2025,9 +2128,15 @@ mod tests {
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
-            .send(Command::DefineLayer { layer, reply: reply_tx })
+            .send(Command::DefineLayer {
+                layer,
+                reply: reply_tx,
+            })
             .unwrap();
-        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
 
         // Push layer
         let (reply_tx, reply_rx) = mpsc::channel();
@@ -2071,9 +2180,15 @@ mod tests {
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
-            .send(Command::DefineLayer { layer, reply: reply_tx })
+            .send(Command::DefineLayer {
+                layer,
+                reply: reply_tx,
+            })
             .unwrap();
-        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
 
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
@@ -2083,7 +2198,10 @@ mod tests {
                 reply: reply_tx,
             })
             .unwrap();
-        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
 
         // Pop layer
         let (reply_tx, reply_rx) = mpsc::channel();
@@ -2120,10 +2238,17 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         let layer = crate::Layer::new("timed")
-            .bind(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
             .timeout(Duration::from_millis(50));
         engine.define_layer(layer).unwrap();
-        engine.push_layer(crate::action::LayerName::from("timed")).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("timed"))
+            .unwrap();
 
         // H fires while layer is active
         press_key(&mut engine, Key::H, 10);
@@ -2148,10 +2273,17 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         let layer = crate::Layer::new("timed")
-            .bind(Key::H, Action::from(move || { cc.fetch_add(1, Ordering::Relaxed); }))
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
             .timeout(Duration::from_millis(100));
         engine.define_layer(layer).unwrap();
-        engine.push_layer(crate::action::LayerName::from("timed")).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("timed"))
+            .unwrap();
 
         // Activity within the timeout window
         std::thread::sleep(Duration::from_millis(50));
@@ -2186,9 +2318,15 @@ mod tests {
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
-            .send(Command::DefineLayer { layer, reply: reply_tx })
+            .send(Command::DefineLayer {
+                layer,
+                reply: reply_tx,
+            })
             .unwrap();
-        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
 
         // Toggle on
         let (reply_tx, reply_rx) = mpsc::channel();
