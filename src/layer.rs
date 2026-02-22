@@ -250,12 +250,17 @@ mod tests {
         let layer = Layer::new("nav")
             .bind(Key::H, Action::Swallow)
             .bind(Key::J, Action::Swallow)
+            .description("Navigation keys")
             .swallow()
             .oneshot(1)
             .timeout(Duration::from_millis(500));
 
         assert_eq!(layer.name().as_str(), "nav");
         assert_eq!(layer.binding_count(), 2);
+        assert_eq!(
+            layer.options().description.as_deref(),
+            Some("Navigation keys")
+        );
         assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
         assert_eq!(layer.options().oneshot, Some(1));
         assert_eq!(layer.options().timeout, Some(Duration::from_millis(500)));

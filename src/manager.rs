@@ -151,6 +151,31 @@ impl HotkeyManager {
         self.register_action(hotkey.into(), Action::from(callback))
     }
 
+    /// Register a hotkey with an explicit action and binding options.
+    ///
+    /// Use when you need metadata (description, overlay visibility) or
+    /// behavioral options beyond what `register()` provides.
+    pub fn register_with_options(
+        &self,
+        hotkey: impl Into<Hotkey>,
+        action: impl Into<Action>,
+        options: BindingOptions,
+    ) -> Result<Handle, Error> {
+        let id = BindingId::new();
+        let binding = RegisteredBinding::new(id, hotkey.into(), action.into()).with_options(options);
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::Register {
+            binding,
+            reply: reply_tx,
+        })?;
+
+        match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
+            Ok(()) => Ok(Handle::new(id, self.commands.clone())),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Query whether a hotkey is currently registered.
     pub fn is_registered(&self, hotkey: impl Into<Hotkey>) -> Result<bool, Error> {
         let hotkey = hotkey.into();
@@ -210,31 +235,6 @@ impl HotkeyManager {
     /// Stop the manager and join the engine thread.
     pub fn shutdown(self) -> Result<(), Error> {
         self.shutdown_inner()
-    }
-
-    /// Register a hotkey with an explicit action and binding options.
-    ///
-    /// Use when you need metadata (description, overlay visibility) or
-    /// behavioral options beyond what `register()` provides.
-    pub fn register_with_options(
-        &self,
-        hotkey: impl Into<Hotkey>,
-        action: impl Into<Action>,
-        options: BindingOptions,
-    ) -> Result<Handle, Error> {
-        let id = BindingId::new();
-        let binding = RegisteredBinding::new(id, hotkey.into(), action.into()).with_options(options);
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::Register {
-            binding,
-            reply: reply_tx,
-        })?;
-
-        match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
-            Ok(()) => Ok(Handle::new(id, self.commands.clone())),
-            Err(error) => Err(error),
-        }
     }
 
     fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<Handle, Error> {

@@ -95,6 +95,7 @@ fn layer_default_options() {
     assert_eq!(options.oneshot, None);
     assert_eq!(options.unmatched, UnmatchedKeyBehavior::Fallthrough);
     assert_eq!(options.timeout, None);
+    assert_eq!(options.description, None);
 }
 
 // Phase 3.4: Binding metadata on layers
