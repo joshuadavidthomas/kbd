@@ -3070,17 +3070,17 @@ mod tests {
             .push_layer(crate::action::LayerName::from("layer2"))
             .unwrap();
 
-        let layers = engine.active_layers();
-        assert_eq!(layers.len(), 2);
+        let active = engine.active_layers();
+        assert_eq!(active.len(), 2);
 
         // Bottom to top order
-        assert_eq!(layers[0].name.as_str(), "layer1");
-        assert_eq!(layers[0].description.as_deref(), Some("First layer"));
-        assert_eq!(layers[0].binding_count, 1);
+        assert_eq!(active[0].name.as_str(), "layer1");
+        assert_eq!(active[0].description.as_deref(), Some("First layer"));
+        assert_eq!(active[0].binding_count, 1);
 
-        assert_eq!(layers[1].name.as_str(), "layer2");
-        assert_eq!(layers[1].description.as_deref(), Some("Second layer"));
-        assert_eq!(layers[1].binding_count, 2);
+        assert_eq!(active[1].name.as_str(), "layer2");
+        assert_eq!(active[1].description.as_deref(), Some("Second layer"));
+        assert_eq!(active[1].binding_count, 2);
     }
 
     #[test]
