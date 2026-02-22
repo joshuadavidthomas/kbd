@@ -519,7 +519,11 @@ impl Engine {
             return Err(Error::LayerNotDefined);
         }
         // Remove the topmost (most recently pushed) occurrence, not the bottommost.
-        if let Some(pos) = self.layer_stack.iter().rposition(|entry| entry.name == name) {
+        if let Some(pos) = self
+            .layer_stack
+            .iter()
+            .rposition(|entry| entry.name == name)
+        {
             self.layer_stack.remove(pos);
         } else {
             self.push_layer(name)?;
