@@ -51,6 +51,15 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Instant;
 
+use kbd_core::binding::RegisteredBinding;
+use kbd_core::key_state::KeyState;
+use kbd_core::key_state::KeyTransition;
+use kbd_core::layer::StoredLayer;
+use kbd_core::matcher::LayerStackEntry;
+use kbd_core::matcher::LayerTimeout;
+use kbd_core::matcher::MatchResult;
+use kbd_core::matcher::match_key_event;
+
 use crate::Error;
 use crate::Key;
 use crate::Modifier;
@@ -66,8 +75,6 @@ use crate::introspection::ConflictInfo;
 use crate::introspection::ShadowedStatus;
 use crate::key::Hotkey;
 use crate::layer::Layer;
-use crate::layer::LayerBinding;
-use crate::layer::LayerOptions;
 
 pub(crate) mod binding;
 pub(crate) mod command;
@@ -81,24 +88,15 @@ pub(crate) mod tap_hold;
 pub(crate) mod types;
 mod wake;
 
-pub(crate) use self::binding::RegisteredBinding;
 pub(crate) use self::command::Command;
 pub(crate) use self::command::CommandSender;
 pub(crate) use self::runtime::EngineRuntime;
 pub(crate) use self::types::GrabState;
 pub(crate) use self::types::KeyEventDisposition;
 use self::types::LayerEffect;
-use self::types::LayerStackEntry;
-use self::types::LayerTimeout;
 use self::types::MatchOutcome;
 use self::wake::LoopControl;
 use self::wake::WakeFd;
-
-/// Engine-internal representation of a stored layer definition.
-pub(crate) struct StoredLayer {
-    pub(crate) bindings: Vec<LayerBinding>,
-    pub(crate) options: LayerOptions,
-}
 
 pub(crate) struct Engine {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
@@ -114,7 +112,7 @@ pub(crate) struct Engine {
     /// Reference: keyd's `cache_entry` system in `reference/keyd/src/keyboard.c`.
     press_cache: HashMap<Key, KeyEventDisposition>,
     devices: devices::DeviceManager,
-    key_state: key_state::KeyState,
+    key_state: KeyState,
     grab_state: GrabState,
     command_rx: mpsc::Receiver<Command>,
     wake_fd: Arc<WakeFd>,
@@ -140,7 +138,7 @@ impl Engine {
                 Path::new(devices::INPUT_DIRECTORY),
                 device_grab_mode,
             ),
-            key_state: key_state::KeyState::default(),
+            key_state: KeyState::default(),
             grab_state,
             command_rx,
             wake_fd,
@@ -528,7 +526,7 @@ impl Engine {
         // corresponding press instead of re-matching. This ensures correct
         // release behavior across layer transitions — if a key was consumed
         // on press, its release is consumed even if the layer was popped.
-        if matches!(event.transition, key_state::KeyTransition::Release)
+        if matches!(event.transition, KeyTransition::Release)
             && let Some(cached) = self.press_cache.remove(&event.key)
         {
             match cached {
@@ -549,7 +547,7 @@ impl Engine {
         // The MatchResult borrows self.layers and self.bindings_by_id,
         // so we extract what we need and drop the borrow before Phase 2.
         let outcome = {
-            let result = matcher::match_key_event(
+            let result = match_key_event(
                 event.transition,
                 &candidate,
                 &self.layer_stack,
@@ -559,7 +557,7 @@ impl Engine {
             );
 
             match result {
-                matcher::MatchResult::Matched {
+                MatchResult::Matched {
                     action,
                     passthrough,
                 } => {
@@ -572,9 +570,9 @@ impl Engine {
                         passthrough,
                     }
                 }
-                matcher::MatchResult::Swallowed => MatchOutcome::Swallowed,
-                matcher::MatchResult::NoMatch => MatchOutcome::NoMatch,
-                matcher::MatchResult::Ignored => MatchOutcome::Ignored,
+                MatchResult::Swallowed => MatchOutcome::Swallowed,
+                MatchResult::NoMatch => MatchOutcome::NoMatch,
+                MatchResult::Ignored => MatchOutcome::Ignored,
             }
         };
         // result dropped — self.layers borrow released
@@ -613,14 +611,14 @@ impl Engine {
 
         // Cache the disposition for non-modifier key presses so the
         // corresponding release uses the same disposition.
-        if matches!(event.transition, key_state::KeyTransition::Press)
+        if matches!(event.transition, KeyTransition::Press)
             && Modifier::from_key(event.key).is_none()
         {
             self.press_cache.insert(event.key, disposition);
         }
 
         // Phase 3: Tick oneshot counters and reset timeout clocks for non-modifier key presses
-        if matches!(event.transition, key_state::KeyTransition::Press)
+        if matches!(event.transition, KeyTransition::Press)
             && Modifier::from_key(event.key).is_none()
             && was_actionable
         {
@@ -692,7 +690,7 @@ impl Engine {
         }
     }
 
-    fn forward_event(&mut self, key: Key, transition: key_state::KeyTransition) {
+    fn forward_event(&mut self, key: Key, transition: KeyTransition) {
         if let GrabState::Enabled { forwarder } = &mut self.grab_state
             && let Err(error) = forwarder.forward_key(key, transition)
         {
@@ -740,14 +738,15 @@ mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
+    use kbd_core::binding::RegisteredBinding;
+    use kbd_core::key_state::KeyTransition;
+
     use super::Command;
     use super::Engine;
     use super::EngineRuntime;
     use super::GrabState;
     use super::KeyEventDisposition;
-    use super::RegisteredBinding;
     use super::devices::DeviceKeyEvent;
-    use super::key_state::KeyTransition;
     use super::wake::WakeFd;
     use crate::Action;
     use crate::Error;

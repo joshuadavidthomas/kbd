@@ -27,6 +27,8 @@ use std::fmt;
 use std::sync::Mutex;
 use std::sync::mpsc;
 
+use kbd_core::binding::RegisteredBinding;
+
 use crate::Error;
 use crate::action::Action;
 use crate::action::LayerName;
@@ -37,7 +39,6 @@ use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
-use crate::engine::RegisteredBinding;
 use crate::handle::Handle;
 use crate::introspection::ActiveLayerInfo;
 use crate::introspection::BindingInfo;

@@ -13,7 +13,7 @@ readme = "../../README.md"
 [features]
 async-std = ["dep:async-std", "dep:async-channel"]
 default = ["evdev"]
-evdev = []
+evdev = ["kbd-core/evdev"]
 grab = ["evdev"]
 portal = ["dep:ashpd", "dep:async-std", "dep:kbd-portal"]
 serde = ["dep:serde"]

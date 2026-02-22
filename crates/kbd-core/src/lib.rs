@@ -21,7 +21,101 @@
 //! - Keyboard layout / xkbcommon (`kbd-xkb`)
 //! - Threaded manager, message passing, handles (`keybound`)
 
-// TODO: Phase 3.7 — move key.rs, action.rs, binding.rs, layer.rs here
-// TODO: Phase 3.7 — move engine/matcher.rs, engine/key_state.rs here (pure logic)
-// TODO: Phase 3.7 — move core error variants here
 // TODO: Phase 3.9 — expose public synchronous Matcher type
+
+pub mod action;
+pub mod binding;
+pub mod error;
+pub mod key;
+pub mod key_state;
+pub mod layer;
+pub mod matcher;
+
+pub use crate::action::Action;
+pub use crate::action::LayerName;
+pub use crate::binding::BindingId;
+pub use crate::binding::BindingOptions;
+pub use crate::binding::OverlayVisibility;
+pub use crate::binding::Passthrough;
+pub use crate::error::Error;
+pub use crate::key::Hotkey;
+pub use crate::key::HotkeySequence;
+pub use crate::key::Key;
+pub use crate::key::Modifier;
+pub use crate::key::ParseHotkeyError;
+pub use crate::layer::Layer;
+pub use crate::layer::LayerOptions;
+pub use crate::layer::UnmatchedKeyBehavior;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn core_key_types_exist_and_parse() {
+        let hotkey: Hotkey = "Ctrl+C".parse().unwrap();
+        assert_eq!(hotkey.key(), Key::C);
+        assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl]);
+    }
+
+    #[test]
+    fn core_action_from_closure() {
+        let _action: Action = Action::from(|| println!("test"));
+    }
+
+    #[test]
+    fn core_binding_id_is_unique() {
+        let id1 = BindingId::new();
+        let id2 = BindingId::new();
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn core_layer_builder() {
+        let layer = Layer::new("test").bind(Key::H, Action::Swallow).swallow();
+        assert_eq!(layer.name().as_str(), "test");
+        assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
+    }
+
+    #[test]
+    fn core_error_types() {
+        let err = Error::AlreadyRegistered;
+        let msg = format!("{err}");
+        assert!(!msg.is_empty());
+    }
+
+    #[test]
+    fn core_key_state_tracks_presses() {
+        let mut state = key_state::KeyState::default();
+        state.apply_device_event(10, Key::A, key_state::KeyTransition::Press);
+        assert!(state.is_pressed(Key::A));
+        state.apply_device_event(10, Key::A, key_state::KeyTransition::Release);
+        assert!(!state.is_pressed(Key::A));
+    }
+
+    #[test]
+    fn core_matcher_finds_binding() {
+        use std::collections::HashMap;
+
+        let mut bindings_by_id = HashMap::new();
+        let mut binding_ids_by_hotkey = HashMap::new();
+        let layers = HashMap::new();
+        let layer_stack = Vec::new();
+
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
+        let binding = binding::RegisteredBinding::new(id, hotkey.clone(), Action::Swallow);
+        binding_ids_by_hotkey.insert(hotkey.clone(), id);
+        bindings_by_id.insert(id, binding);
+
+        let result = matcher::match_key_event(
+            key_state::KeyTransition::Press,
+            &hotkey,
+            &layer_stack,
+            &layers,
+            &binding_ids_by_hotkey,
+            &bindings_by_id,
+        );
+        assert!(matches!(result, matcher::MatchResult::Matched { .. }));
+    }
+}
