@@ -54,6 +54,20 @@ pub enum Passthrough {
     Enabled,
 }
 
+/// Whether a binding appears in hotkey overlays and help screens.
+///
+/// Lets consumers build discoverable hotkey overlays while excluding
+/// internal or administrative bindings. Follows the pattern from
+/// Niri's `hotkey-overlay-title=null`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum OverlayVisibility {
+    /// Binding is shown in overlays and help screens.
+    #[default]
+    Visible,
+    /// Binding is hidden from overlays and help screens.
+    Hidden,
+}
+
 /// Device filter expression for restricting binding scope.
 #[cfg(feature = "evdev")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -68,6 +82,10 @@ pub enum DeviceFilter {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BindingOptions {
     passthrough: Passthrough,
+    /// Human-readable label for this binding ("Copy to clipboard").
+    description: Option<Box<str>>,
+    /// Whether this binding appears in hotkey overlays and help screens.
+    overlay_visibility: OverlayVisibility,
     #[cfg(feature = "evdev")]
     device_filter: Option<DeviceFilter>,
 }
@@ -81,6 +99,32 @@ impl BindingOptions {
     #[must_use]
     pub const fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
         self.passthrough = passthrough;
+        self
+    }
+
+    /// Human-readable label for this binding, if set.
+    #[must_use]
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// Set a human-readable label for this binding.
+    #[must_use]
+    pub fn with_description(mut self, description: impl Into<Box<str>>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Whether this binding appears in hotkey overlays.
+    #[must_use]
+    pub const fn overlay_visibility(&self) -> OverlayVisibility {
+        self.overlay_visibility
+    }
+
+    /// Set overlay visibility for this binding.
+    #[must_use]
+    pub const fn with_overlay_visibility(mut self, visibility: OverlayVisibility) -> Self {
+        self.overlay_visibility = visibility;
         self
     }
 

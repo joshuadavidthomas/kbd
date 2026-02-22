@@ -95,4 +95,54 @@ fn layer_default_options() {
     assert_eq!(options.oneshot, None);
     assert_eq!(options.unmatched, UnmatchedKeyBehavior::Fallthrough);
     assert_eq!(options.timeout, None);
+    assert_eq!(options.description, None);
+}
+
+// Phase 3.4: Binding metadata on layers
+
+#[test]
+fn layer_options_description_defaults_to_none() {
+    let options = LayerOptions::default();
+    assert_eq!(options.description, None);
+}
+
+#[test]
+fn layer_description_sets_label() {
+    let layer = Layer::new("nav").description("Navigation keys");
+    assert_eq!(
+        layer.options().description.as_deref(),
+        Some("Navigation keys")
+    );
+}
+
+#[test]
+fn layer_description_chains_with_other_options() {
+    let layer = Layer::new("nav")
+        .bind(Key::H, Action::Swallow)
+        .description("Navigation keys")
+        .swallow()
+        .oneshot(1)
+        .timeout(Duration::from_secs(5));
+
+    assert_eq!(
+        layer.options().description.as_deref(),
+        Some("Navigation keys")
+    );
+    assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
+    assert_eq!(layer.options().oneshot, Some(1));
+    assert_eq!(layer.binding_count(), 1);
+}
+
+#[test]
+fn layer_description_preserved_through_define_layer() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let layer = Layer::new("nav")
+        .bind(Key::H, Action::Swallow)
+        .description("Navigation keys");
+
+    // If define_layer succeeds, the metadata was accepted by the engine.
+    // Full introspection comes in Phase 3.5.
+    let result = manager.define_layer(layer);
+    assert!(result.is_ok());
 }

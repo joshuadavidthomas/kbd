@@ -53,6 +53,7 @@ pub use crate::binding::BindingOptions;
 // Re-export device filter when evdev is available.
 #[cfg(feature = "evdev")]
 pub use crate::binding::DeviceFilter;
+pub use crate::binding::OverlayVisibility;
 pub use crate::binding::Passthrough;
 pub use crate::error::Error;
 // #[cfg(any(feature = "tokio", feature = "async-std"))]

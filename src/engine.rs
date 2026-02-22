@@ -56,6 +56,7 @@ use std::time::Instant;
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::BindingId;
+use crate::binding::BindingOptions;
 use crate::binding::Passthrough;
 use crate::engine::devices::DeviceKeyEvent;
 use crate::key::Hotkey;
@@ -157,7 +158,7 @@ pub(crate) struct RegisteredBinding {
     id: BindingId,
     hotkey: Hotkey,
     action: Action,
-    passthrough: Passthrough,
+    options: BindingOptions,
 }
 
 impl RegisteredBinding {
@@ -167,13 +168,19 @@ impl RegisteredBinding {
             id,
             hotkey,
             action,
-            passthrough: Passthrough::default(),
+            options: BindingOptions::default(),
         }
     }
 
     #[must_use]
+    pub(crate) fn with_options(mut self, options: BindingOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    #[must_use]
     pub(crate) fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
-        self.passthrough = passthrough;
+        self.options = self.options.with_passthrough(passthrough);
         self
     }
 
@@ -194,7 +201,12 @@ impl RegisteredBinding {
 
     #[must_use]
     pub(crate) const fn passthrough(&self) -> Passthrough {
-        self.passthrough
+        self.options.passthrough()
+    }
+
+    #[must_use]
+    pub(crate) const fn options(&self) -> &BindingOptions {
+        &self.options
     }
 }
 
