@@ -10,6 +10,12 @@ Reference implementation (keyd) in `reference/keyd/`.
 **Read [DESIGN.md](DESIGN.md) first.** It defines the domain model,
 architecture, and design decisions. This plan is the task breakdown.
 
+**Read [ATTRIBUTION.md](ATTRIBUTION.md) before referencing other
+projects.** Some are MIT-compatible (keyd, global-hotkey,
+livesplit-hotkey) — code can be adapted with attribution. Others are
+GPL (Niri, COSMIC, Zed editor) — inspiration only, clean-room
+implementation required.
+
 **Phases are sequential.** Each phase produces a working, testable library.
 The output of one phase is the input for the next. Do not skip ahead.
 
@@ -198,6 +204,33 @@ works. Push/pop/toggle from callbacks and manager.
 
 Reference: `reference/keyd/src/keyboard.c` (cache_entry system)
 
+### 3.4 Binding metadata
+
+Every project that builds shortcut UIs — Zed's keymap editor, Niri's
+hotkey overlay — needs metadata on bindings. Without it, consumers
+rebuild the same "description + visibility" plumbing on their own.
+
+- [ ] `description: Option<String>` on `BindingOptions` — human-readable label ("Copy to clipboard").
+- [ ] `OverlayVisibility` enum (`Visible` / `Hidden`) on `BindingOptions` — lets consumers build hotkey overlays where some bindings are excluded (Niri's `hotkey-overlay-title=null` pattern).
+- [ ] `description: Option<String>` on `LayerOptions` — layer-level label for overlay grouping.
+- [ ] Tests: metadata round-trips through register/introspect.
+
+### 3.5 Introspection API
+
+The #1 thing apps need beyond "register and fire." Zed builds a full
+keymap editor with conflict tooltips. Niri has a `show-hotkey-overlay`
+action. Without introspection, every consumer rebuilds this from scratch.
+
+Layers make introspection interesting — "what's active, what's shadowed"
+only matters once a layer stack exists.
+
+- [ ] `manager.list_bindings()` → returns active bindings with key, description, layer, and shadowed status.
+- [ ] `manager.bindings_for_key(key, mods)` → what would fire if this key were pressed now (considering layer stack).
+- [ ] `manager.active_layers()` → current layer stack with names and options.
+- [ ] `manager.conflicts()` → bindings shadowed by higher-priority layers.
+- [ ] All queries via command/reply through existing message-passing channel.
+- [ ] Tests: introspect after register, introspect with layers, shadowed binding detection.
+
 ### Phase 3 gate
 
 | Section | Items |
@@ -205,6 +238,81 @@ Reference: `reference/keyd/src/keyboard.c` (cache_entry system)
 | 3.1 Layer definition | 0/5 |
 | 3.2 Layer stack | 0/7 |
 | 3.3 Press cache | 0/5 |
+| 3.4 Binding metadata | 0/4 |
+| 3.5 Introspection | 0/6 |
+
+---
+
+## Phase 3.5: Core crate extraction
+
+**Goal**: `keybound-core` is a standalone, pure-logic crate with zero
+platform dependencies. `keybound` depends on it for global hotkey
+functionality. In-app consumers use `keybound-core` directly.
+
+Every project we studied — Zed, COSMIC, Niri, every tiling WM — builds
+the same inner engine: key types, modifier tracking, layer/context
+stack, binding matching, sequence resolution. The only difference
+between global and in-app is where events come from and what "context"
+means. This phase recognizes that keybound already has that engine and
+makes it independently usable.
+
+This happens before Phase 4 because Phase 4 adds many features
+(sequences, tap-hold, portal, serde). Each one is easier to build when
+the core/global boundary is already clean. The portal backend (4.5) is
+a second event source — having a clean core makes "multiple backends
+feed one matcher" natural.
+
+### 3.6 Workspace split
+
+- [ ] Cargo workspace with two crates: `keybound-core` (pure logic) and `keybound` (Linux global hotkey, depends on core).
+- [ ] `keybound-core` exposes: `Key`, `Modifier`, `Hotkey`, `HotkeySequence`, `Action` (data variants), `Binding`, `BindingOptions`, `Layer`, `LayerOptions`, `Matcher`, `KeyState`, error types.
+- [ ] `keybound` re-exports all core types — existing public API unchanged.
+- [ ] `keybound-core` has zero platform dependencies. The `evdev` feature and conversions stay in `keybound`.
+- [ ] Tests: `keybound-core` has its own test suite for pure matching logic. `keybound` integration tests unchanged.
+
+### 3.7 Public synchronous `Matcher`
+
+The `Matcher` is the embeddable engine. No threads, no channels, no
+evdev. Consumers drive it from their own event loop — winit, GPUI,
+Smithay, a game loop, whatever.
+
+```rust
+use keybound_core::{Matcher, Key, Modifier, Hotkey, Layer, Action};
+
+let mut matcher = Matcher::new();
+matcher.register(Hotkey::parse("Ctrl+S")?, Action::from(|| save()));
+
+// In your event loop — you bring the events:
+let hotkey = Hotkey::new(key, mods);
+match matcher.process(hotkey, transition) {
+    MatchResult::Matched { action, .. } => action.execute(),
+    MatchResult::Pending { .. } => show_sequence_indicator(),
+    MatchResult::NoMatch => pass_to_focused_widget(),
+    MatchResult::Swallowed => {}
+}
+```
+
+- [ ] `Matcher` as a public synchronous type: `matcher.process(hotkey, transition) → MatchResult`.
+- [ ] `MatchResult::Pending` variant for mid-sequence state — consumers need this for UI feedback ("waiting for next key…").
+- [ ] `Matcher` exposes layer operations directly: `push_layer()`, `pop_layer()`, `toggle_layer()`, `define_layer()`.
+- [ ] `Matcher` exposes introspection: `list_bindings()`, `bindings_for_key()`, `active_layers()`, `conflicts()`.
+- [ ] `HotkeyManager` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
+- [ ] Tests: `Matcher` used standalone without any `HotkeyManager` or engine thread.
+
+### 3.8 Windowing library conversions
+
+- [ ] Feature-gated `From<winit::keyboard::KeyCode> for Key` behind `winit` feature flag.
+- [ ] Conversion coverage: all keys that have equivalents in both enums, others map to `Key::Unknown`.
+- [ ] Other frameworks (iced, Smithay keysyms) added on demand via additional feature flags.
+- [ ] Tests: round-trip conversion for common keys.
+
+### Phase 3.5 gate
+
+| Section | Items |
+|---------|-------|
+| 3.6 Workspace split | 0/5 |
+| 3.7 Public Matcher | 0/6 |
+| 3.8 Windowing conversions | 0/4 |
 
 ---
 
@@ -222,7 +330,10 @@ architecture. Library is feature-complete relative to v0.
 - [ ] Abort key (configurable, default Escape).
 - [ ] Overlapping prefixes handled (standalone fires on timeout if no next step).
 - [ ] Multiple active sequences tracked independently.
-- [ ] Tests: complete, timeout, wrong key, abort, overlapping prefixes, concurrent.
+- [ ] Pending state exposed: `MatchResult::Pending { steps_matched, steps_remaining }` so consumers can show progress mid-sequence (Zed returns this for "Ctrl+K → waiting…" UI).
+- [ ] `manager.pending_sequence()` → current in-progress sequence info (if any), for UI display.
+- [ ] Event stream (§4.6) emits `SequenceStep` events as each step matches.
+- [ ] Tests: complete, timeout, wrong key, abort, overlapping prefixes, concurrent, pending state queries.
 
 Reference: `archive/v0/src/listener/sequence.rs`
 
@@ -247,19 +358,24 @@ Reference: `archive/v0/src/tap_hold.rs`
 
 Reference: `archive/v0/src/listener/dispatch.rs` (device-specific dispatch)
 
-### 4.4 Debounce and rate limiting
+### 4.4 Debounce, rate limiting, and repeat policy
 
 - [ ] Per-binding debounce (suppress triggers within time window).
 - [ ] Per-binding rate limit (cap invocations per interval).
-- [ ] Tests: debounce suppression, rate limiting.
+- [ ] `BindingOptions::repeat_policy(RepeatPolicy)` — `Allow`, `Suppress`, `Custom { rate, delay }`.
+- [ ] Engine filters evdev repeat events per-binding based on policy. Distinct from debounce: repeat is the OS auto-repeating a held key, debounce suppresses rapid re-presses.
+- [ ] Tests: debounce suppression, rate limiting, repeat suppression, custom repeat rate, interaction between debounce and repeat.
 
-### 4.5 Portal backend (`src/backend/portal.rs`)
+### 4.5 Portal backend and consume preference (`src/backend/portal.rs`)
 
 - [ ] XDG GlobalShortcuts portal implementation.
 - [ ] Auto-detection: try portal, fall back to evdev.
 - [ ] Explicit backend selection via builder.
 - [ ] Clear errors when portal unavailable or feature not compiled.
-- [ ] Tests: backend selection, fallback, feature-gated errors.
+- [ ] `ConsumePreference` enum: `NoPreference`, `PreferConsume`, `PreferNoConsume`, `MustConsume`, `MustNotConsume` (proven model from livesplit-hotkey — real users have different permission levels and sandbox constraints).
+- [ ] Builder-level: `HotkeyManager::builder().consume_preference(ConsumePreference::PreferConsume)`.
+- [ ] Preference guides backend selection: `MustConsume` → needs grab or portal, fails on plain evdev. `MustNotConsume` → plain evdev only. `PreferConsume` → tries grab/portal first, falls back to observe.
+- [ ] Tests: backend selection, fallback, feature-gated errors, preference-guided selection, failure on impossible preference.
 
 Reference: `archive/v0/src/backend.rs` (portal implementation)
 
@@ -278,17 +394,62 @@ Reference: `archive/v0/src/backend.rs` (portal implementation)
 - [ ] No `ActionMap`/`HotkeyConfig` — users compose types into their own configs.
 - [ ] Tests: round-trip serialization.
 
+### 4.8 Modifier aliases
+
+Every tiling WM has a "Mod key" concept — Niri's `COMPOSITOR` modifier,
+i3/sway's `$mod`, Hyprland's `SUPER`. Users swap between Super, Alt,
+etc. Without aliases, consumers hand-roll string replacement before
+parsing hotkeys.
+
+- [ ] `manager.define_modifier_alias("Mod", Modifier::Super)` — abstract modifier that resolves at runtime.
+- [ ] `Hotkey::parse("Mod+T")` accepts aliases. Alias resolution happens in the matcher, not in parsing — bindings are portable across alias configurations.
+- [ ] Aliases configurable on `Matcher` directly (for `keybound-core` consumers) and via command/reply on `HotkeyManager`.
+- [ ] Alias reassignment: changing "Mod" from Super to Alt updates resolution for all existing bindings using that alias.
+- [ ] Tests: alias definition, resolution during matching, reassignment, unknown alias errors.
+
+### 4.9 Keyboard layout awareness (XKB)
+
+keybound works at the evdev keycode level, which is position-based. On a
+Dvorak layout, `Key::S` is still physical position S (which types "O").
+COSMIC and Niri both solved this with xkbcommon because real users
+switch layouts. This is the difference between "works for QWERTY
+Americans" and "works for everyone."
+
+- [ ] Feature-gated behind `xkb` feature flag. Optional xkbcommon dependency.
+- [ ] `KeyReference` enum: `ByCode(Key)` (position-based, current behavior) | `BySymbol(Keysym)` (character-based, layout-aware).
+- [ ] Hotkey parsing disambiguation: `"Ctrl+a"` (character) vs `"Ctrl+KeyA"` (position), or equivalent scheme.
+- [ ] xkbcommon integration: resolve evdev keycodes → keysyms based on active XKB layout.
+- [ ] Layout change detection: subscribe to xkb layout change events, re-resolve symbol-based bindings.
+- [ ] Core types (`KeyReference`) live in `keybound-core`. The evdev↔xkb hookup lives in `keybound`.
+- [ ] Tests: QWERTY vs Dvorak binding resolution, layout switch mid-session, mixed code/symbol bindings.
+
+### 4.10 Binding provenance
+
+Zed tracks whether a binding came from "base keymap", "vim extension",
+or "user keymap" for conflict resolution and display. Without
+provenance, consumers rebuild source tracking on their own — especially
+when loading defaults + user overrides from config files (§4.7 serde).
+
+- [ ] `BindingSource` newtype (wraps a string label: `"default"`, `"user"`, `"plugin"`, or custom).
+- [ ] `BindingOptions::source(BindingSource::new("user"))`.
+- [ ] Introspection API (§3.5) returns source info per binding.
+- [ ] Optional source-aware precedence: user-sourced bindings override default-sourced for the same hotkey, without requiring explicit unregister + re-register.
+- [ ] Tests: source tagging, source in introspection results, source-aware conflict resolution.
+
 ### Phase 4 gate
 
 | Section | Items |
 |---------|-------|
-| 4.1 Sequences | 0/8 |
+| 4.1 Sequences | 0/11 |
 | 4.2 Tap-hold | 0/6 |
 | 4.3 Device filtering | 0/5 |
-| 4.4 Debounce/rate limit | 0/3 |
-| 4.5 Portal backend | 0/5 |
+| 4.4 Debounce/rate/repeat | 0/5 |
+| 4.5 Portal/consume pref | 0/8 |
 | 4.6 Async events | 0/5 |
 | 4.7 Serde | 0/4 |
+| 4.8 Modifier aliases | 0/5 |
+| 4.9 XKB layout | 0/7 |
+| 4.10 Provenance | 0/5 |
 
 ---
 
@@ -329,6 +490,33 @@ transformation engine, not just a detection library.
 - [ ] `OverloadStrategy::IdleTimeout` (use idle time before keypress for disambiguation).
 - [ ] Tests: each strategy, fast-typing scenarios.
 
+### 5.5 Lock and inhibitor awareness
+
+Niri has `allow-when-locked` and `allow-inhibiting` per binding. These
+are real Wayland concepts — compositors can inhibit keyboard shortcuts
+(e.g., during screen sharing), and some bindings (media keys,
+push-to-talk) should work regardless of lock state.
+
+- [ ] `BindingOptions::allow_when_locked()` — binding fires even when screen is locked.
+- [ ] `BindingOptions::allow_when_inhibited()` — binding fires even when compositor inhibits shortcuts.
+- [ ] Engine queries lock/inhibitor state from compositor (Wayland-specific, portal-mediated where available).
+- [ ] Graceful degradation: on backends that can't detect lock/inhibitor state, all bindings fire (current behavior preserved).
+- [ ] Tests: lock-aware filtering, inhibitor-aware filtering, graceful fallback on unaware backends.
+
+### 5.6 External context hooks
+
+Global hotkey consumers sometimes want to condition on external state —
+focused application, active workspace, user-defined modes. The layer
+stack is the right primitive; this section makes the pattern explicit
+rather than leaving consumers to reinvent it.
+
+- [ ] `ContextEvent` type consumers can send to the engine: `ContextEvent::FocusChanged { app_id: String }`, `ContextEvent::Custom(String)`.
+- [ ] `manager.send_context(event)` — inject external context change into the engine.
+- [ ] Layer definitions can declare `activate_on` context predicates — simple string matching (e.g., `activate_on: "app_id == firefox"`), not a full expression language.
+- [ ] Automatic layer push/pop when context predicates match/unmatch.
+- [ ] Pattern documentation: "subscribe to your compositor's focus-change signal, send `ContextEvent::FocusChanged` — keybound handles the layer transitions."
+- [ ] Tests: external event triggers layer push, predicate matching, auto-pop on context change.
+
 ### Phase 5 gate
 
 | Section | Items |
@@ -337,6 +525,8 @@ transformation engine, not just a detection library.
 | 5.2 Key remapping | 0/4 |
 | 5.3 Oneshot layers | 0/5 |
 | 5.4 Overload variants | 0/5 |
+| 5.5 Lock/inhibitor | 0/5 |
+| 5.6 Context hooks | 0/6 |
 
 ---
 
@@ -520,14 +710,18 @@ proc-macro2).
 |-------|----------|-------|
 | **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
 | **2** | Grab mode + key state | 13 |
-| **3** | Layers | 17 |
-| **4** | Sequences, tap-hold, device filtering, portal, async, serde | 36 |
-| **5** | Key remapping and transformation | 19 |
+| **3** | Layers + metadata + introspection | 27 |
+| **3.5** | Core crate extraction (`keybound-core`) | 15 |
+| **4** | Sequences, tap-hold, device filtering, portal, async, serde, aliases, XKB, provenance | 61 |
+| **5** | Key remapping, transformation, lock/inhibitor, context hooks | 30 |
 | **6** | Stretch: chords, mouse, full keymaps | 11+ |
 | **7** | Cross-platform | 3 |
 
-Phase 1 makes it work. Phase 2 makes it intercept. Phase 3 makes it modal.
-Phase 4 makes it feature-complete. Phase 5 makes it a transformation engine.
+Phase 1 makes it work. Phase 2 makes it intercept. Phase 3 makes it
+modal and introspectable. Phase 3.5 makes it embeddable — any Rust app
+can use the core engine without evdev. Phase 4 makes it feature-complete
+and layout-aware. Phase 5 makes it a transformation engine that's
+context-aware.
 
 ---
 

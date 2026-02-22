@@ -4,27 +4,54 @@ This document captures the core ideas, domain model, and architectural
 direction for restructuring keybound. It's not a task list — it's the
 conceptual foundation that the task list should serve.
 
+See [ATTRIBUTION.md](ATTRIBUTION.md) for licensing constraints on
+reference projects. Some can be adapted (MIT), others are
+inspiration-only (GPL).
+
 ## What is this library?
 
-One sentence: **When a specific pattern of keys happens on a Linux input
-device, do something.**
+Two layers:
 
-Everything else is detail. The library handles the platform complexity —
-evdev, portal, permissions, hotplug, virtual devices — so the user just
-describes what patterns they care about and what should happen.
+**Core** (`keybound-core`): A pure-logic keyboard shortcut engine.
+Key types, modifier tracking, binding matching, layer stacks, sequence
+resolution — the parts that every Rust project rebuilds from scratch.
+No platform dependencies. Embeddable in any event loop.
+
+**Global** (`keybound`): A Linux global hotkey library built on the
+core engine. Adds evdev, XDG portal, grab mode, device hotplug, virtual
+devices — the platform complexity so users just describe patterns and
+actions.
+
+One sentence for the core: **Given a key event and some state, which
+binding matches?**
+
+One sentence for the global layer: **When a specific pattern of keys
+happens on a Linux input device, do something.**
+
+The core exists because Zed, COSMIC, Niri, and every Rust compositor
+and editor independently build the same matching engine. The global
+layer exists because no Rust crate handles Linux hotkeys properly —
+especially on Wayland.
 
 ## What concepts does a user need?
 
-Four:
+**Core concepts** (both in-app and global):
 
 1. **Keys** — what physical keys you're working with
 2. **Bindings** — "when this happens, do that"
 3. **Layers** — "in this context, these bindings are active"
+
+**Global-only concept:**
+
 4. **Grab mode** — "intercept everything, not just listen"
 
 That's the mental model. Everything the library does should trace back to
 one of these four ideas. If a type or module can't explain which concept it
 serves, it probably shouldn't exist.
+
+In-app consumers use concepts 1–3 through the `Matcher` directly. Global
+consumers get all four through `HotkeyManager`, which drives a `Matcher`
+on an engine thread with evdev/portal plumbing.
 
 ## The domain model
 
