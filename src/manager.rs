@@ -162,7 +162,8 @@ impl HotkeyManager {
         options: BindingOptions,
     ) -> Result<Handle, Error> {
         let id = BindingId::new();
-        let binding = RegisteredBinding::new(id, hotkey.into(), action.into()).with_options(options);
+        let binding =
+            RegisteredBinding::new(id, hotkey.into(), action.into()).with_options(options);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::Register {
