@@ -305,6 +305,14 @@ pub(crate) struct Engine {
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
     layer_stack: Vec<LayerStackEntry>,
+    /// Press cache: records what happened on key press so the corresponding
+    /// release event uses the same disposition. Essential for correct
+    /// release behavior across layer transitions — if a key was consumed
+    /// on press, its release should also be consumed even if the layer
+    /// was popped in between (oneshot, `PopLayer` action, etc.).
+    ///
+    /// Reference: keyd's `cache_entry` system in `reference/keyd/src/keyboard.c`.
+    press_cache: HashMap<Key, KeyEventDisposition>,
     devices: devices::DeviceManager,
     key_state: key_state::KeyState,
     grab_state: GrabState,
@@ -327,6 +335,7 @@ impl Engine {
             binding_ids_by_hotkey: HashMap::new(),
             layers: HashMap::new(),
             layer_stack: Vec::new(),
+            press_cache: HashMap::new(),
             devices: devices::DeviceManager::new(
                 Path::new(devices::INPUT_DIRECTORY),
                 device_grab_mode,
@@ -551,6 +560,25 @@ impl Engine {
         self.key_state
             .apply_device_event(event.device_fd, event.key, event.transition);
 
+        // Press cache: on release, use the cached disposition from the
+        // corresponding press instead of re-matching. This ensures correct
+        // release behavior across layer transitions — if a key was consumed
+        // on press, its release is consumed even if the layer was popped.
+        if matches!(event.transition, key_state::KeyTransition::Release) {
+            if let Some(cached) = self.press_cache.remove(&event.key) {
+                match cached {
+                    KeyEventDisposition::MatchedForwarded
+                    | KeyEventDisposition::UnmatchedForwarded => {
+                        self.forward_event(event.key, event.transition);
+                    }
+                    KeyEventDisposition::MatchedConsumed | KeyEventDisposition::Ignored => {}
+                }
+                return cached;
+            }
+            // No cache entry (modifier release, or key pressed before cache existed).
+            // Fall through to normal processing.
+        }
+
         let active_modifiers = self.key_state.active_modifiers();
         let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
 
@@ -619,6 +647,14 @@ impl Engine {
                 }
             }
         };
+
+        // Cache the disposition for non-modifier key presses so the
+        // corresponding release uses the same disposition.
+        if matches!(event.transition, key_state::KeyTransition::Press)
+            && Modifier::from_key(event.key).is_none()
+        {
+            self.press_cache.insert(event.key, disposition);
+        }
 
         // Phase 3: Tick oneshot counters and reset timeout clocks for non-modifier key presses
         if matches!(event.transition, key_state::KeyTransition::Press)
@@ -2345,5 +2381,215 @@ mod tests {
         assert!(result.is_ok());
 
         runtime.shutdown().unwrap();
+    }
+
+    // Press cache tests (Section 3.3)
+
+    #[test]
+    fn press_cache_release_consumed_when_press_was_consumed() {
+        // In grab mode, if a press matched a binding and was consumed,
+        // the release should also be consumed (not forwarded).
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        // Press Ctrl, then press C (matched, consumed)
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+
+        // Release C — should be consumed, NOT forwarded
+        let disposition = release_key(&mut engine, Key::C, 10);
+        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+
+        // Verify no C events were forwarded
+        let events = forwarded.lock().unwrap();
+        let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
+        assert!(
+            c_events.is_empty(),
+            "consumed key's release should not be forwarded"
+        );
+    }
+
+    #[test]
+    fn press_cache_release_forwarded_when_press_had_passthrough() {
+        // In grab mode, if a press matched with passthrough, the release
+        // should also be forwarded (with MatchedForwarded disposition).
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        engine
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Swallow,
+                )
+                .with_passthrough(Passthrough::Enabled),
+            )
+            .unwrap();
+
+        // Press Ctrl+C with passthrough — matched, forwarded
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        let press_disp = press_key(&mut engine, Key::C, 10);
+        assert_eq!(press_disp, KeyEventDisposition::MatchedForwarded);
+
+        // Release C — should also be forwarded as MatchedForwarded
+        let release_disp = release_key(&mut engine, Key::C, 10);
+        assert_eq!(release_disp, KeyEventDisposition::MatchedForwarded);
+
+        // Verify C was forwarded on both press and release
+        let events = forwarded.lock().unwrap();
+        let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
+        assert_eq!(
+            c_events.len(),
+            2,
+            "passthrough key should be forwarded on both press and release"
+        );
+    }
+
+    #[test]
+    fn press_cache_release_consumed_when_swallowed() {
+        // In grab mode, if a press was swallowed by a layer, the release
+        // should also be consumed (not forwarded).
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        let layer = crate::Layer::new("modal")
+            .bind(Key::H, Action::Swallow)
+            .swallow();
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("modal"))
+            .unwrap();
+
+        // Press X — unmatched but swallowed by the modal layer
+        let press_disp = press_key(&mut engine, Key::X, 10);
+        assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
+
+        // Release X — should also be consumed
+        let release_disp = release_key(&mut engine, Key::X, 10);
+        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
+
+        // Verify X was NOT forwarded
+        let events = forwarded.lock().unwrap();
+        let x_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::X).collect();
+        assert!(
+            x_events.is_empty(),
+            "swallowed key should not be forwarded on release"
+        );
+    }
+
+    #[test]
+    fn press_cache_correct_across_oneshot_layer_pop() {
+        // Press H in an oneshot layer (consumed). Layer auto-pops.
+        // Release H — should still be consumed via press cache.
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        let layer = crate::Layer::new("oneshot-nav")
+            .bind(Key::H, Action::Swallow)
+            .oneshot(1);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("oneshot-nav"))
+            .unwrap();
+
+        // Press H — matches layer binding, consumed. Layer auto-pops.
+        let press_disp = press_key(&mut engine, Key::H, 10);
+        assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
+
+        // Layer should now be popped
+        assert!(
+            engine.layer_stack.is_empty(),
+            "oneshot layer should have popped"
+        );
+
+        // Release H — should still be consumed (press was cached before layer popped)
+        let release_disp = release_key(&mut engine, Key::H, 10);
+        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
+
+        // Verify H was NOT forwarded
+        let events = forwarded.lock().unwrap();
+        let h_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::H).collect();
+        assert!(
+            h_events.is_empty(),
+            "consumed key's release should not be forwarded after layer pop"
+        );
+    }
+
+    #[test]
+    fn press_cache_cleared_after_release() {
+        // After releasing a cached key, the second press+release cycle
+        // should match normally, not use stale cache data.
+        let (grab_state, _forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        engine
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            ))
+            .unwrap();
+
+        // First press+release cycle
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+        let release_disp = release_key(&mut engine, Key::C, 10);
+        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
+
+        // Second press should match normally (cache was cleared on release)
+        let second_press_disp = press_key(&mut engine, Key::C, 10);
+        assert_eq!(second_press_disp, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn press_cache_layer_pop_during_press_release_correct() {
+        // Press H in a layer that has H → PopLayer. The press matches,
+        // pops the layer, and is consumed. The release should still be
+        // consumed via press cache even though the layer is now gone.
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        let layer = crate::Layer::new("nav")
+            .bind(Key::H, Action::PopLayer)
+            .bind(Key::J, Action::Swallow);
+        engine.define_layer(layer).unwrap();
+        engine
+            .push_layer(crate::action::LayerName::from("nav"))
+            .unwrap();
+
+        // Press H — matches PopLayer, layer is popped, event consumed
+        let press_disp = press_key(&mut engine, Key::H, 10);
+        assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
+        assert!(
+            engine.layer_stack.is_empty(),
+            "layer should have been popped"
+        );
+
+        // Release H — should be consumed via cache
+        let release_disp = release_key(&mut engine, Key::H, 10);
+        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
+
+        // Verify H was not forwarded
+        let events = forwarded.lock().unwrap();
+        let h_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::H).collect();
+        assert!(
+            h_events.is_empty(),
+            "press cache should prevent release forwarding after layer pop"
+        );
     }
 }
