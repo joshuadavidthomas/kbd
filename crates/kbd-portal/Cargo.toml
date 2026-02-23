@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "XDG GlobalShortcuts portal backend for keybound — Wayland-friendly, no root needed."
+description = "XDG GlobalShortcuts portal backend for kbd — Wayland-friendly, no root needed."
 keywords = ["portal", "wayland", "xdg", "keyboard"]
 categories = ["os::linux-apis"]
 

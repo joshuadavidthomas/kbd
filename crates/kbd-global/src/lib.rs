@@ -1,4 +1,5 @@
-//! Global hotkey library for Linux — works on Wayland, X11, and TTY.
+//! Global hotkey facade for kbd — threaded engine, device management,
+//! and backend selection for Linux.
 //!
 //! When a specific pattern of keys happens on a Linux input device, do
 //! something. The library handles platform complexity — evdev, portal,
@@ -8,7 +9,7 @@
 //! # Quick start
 //!
 //! ```rust,no_run
-//! use keybound::{Hotkey, HotkeyManager, Key, Modifier};
+//! use kbd_global::{Hotkey, HotkeyManager, Key, Modifier};
 //!
 //! let manager = HotkeyManager::new()?;
 //!
@@ -16,7 +17,7 @@
 //!     Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
 //!     || println!("fired"),
 //! )?;
-//! # Ok::<(), keybound::Error>(())
+//! # Ok::<(), kbd_global::Error>(())
 //! ```
 //!
 //! # Concepts
@@ -38,7 +39,7 @@ mod manager;
 mod events;
 
 // Re-exports from kbd-core — all domain types live there.
-// keybound re-exports them so consumers use a single `keybound::` import path.
+// kbd-global re-exports them so consumers use a single `kbd_global::` import path.
 pub use kbd_core::action::Action;
 pub use kbd_core::action::LayerName;
 pub use kbd_core::binding::BindingId;

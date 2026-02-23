@@ -1,7 +1,7 @@
-use keybound::Hotkey;
-use keybound::HotkeySequence;
-use keybound::Key;
-use keybound::Modifier;
+use kbd_global::Hotkey;
+use kbd_global::HotkeySequence;
+use kbd_global::Key;
+use kbd_global::Modifier;
 
 #[test]
 fn parses_hotkey_with_aliases_case_insensitive() {

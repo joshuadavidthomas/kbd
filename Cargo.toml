@@ -6,7 +6,7 @@ resolver = "3"
 edition = "2024"
 authors = ["Josh Thomas <josh@joshthomas.dev>"]
 license = "MIT"
-repository = "https://github.com/joshuadavidthomas/keybound"
+repository = "https://github.com/joshuadavidthomas/kbd"
 
 [workspace.dependencies]
 # Internal crates
@@ -15,6 +15,7 @@ kbd-evdev = { path = "crates/kbd-evdev" }
 kbd-portal = { path = "crates/kbd-portal" }
 kbd-xkb = { path = "crates/kbd-xkb" }
 kbd-derive = { path = "crates/kbd-derive" }
+kbd-global = { path = "crates/kbd-global" }
 
 # External dependencies
 ashpd = { version = "0.13", default-features = false, features = ["async-io"] }

@@ -1,11 +1,11 @@
 [package]
-name = "keybound"
+name = "kbd-global"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Global hotkey library for Linux — works on Wayland, X11, and TTY"
+description = "Global hotkey facade for kbd — threaded engine, device management, and backend selection for Linux"
 keywords = ["hotkey", "global-shortcut", "keybinding", "wayland", "input"]
 categories = ["os::linux-apis", "api-bindings"]
 readme = "../../README.md"

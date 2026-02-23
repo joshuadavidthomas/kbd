@@ -1,7 +1,7 @@
 use kbd_evdev::EvdevKeyExt;
 use kbd_evdev::KeyCodeExt;
-use keybound::Key;
-use keybound::Modifier;
+use kbd_global::Key;
+use kbd_global::Modifier;
 
 #[test]
 fn key_round_trips_through_evdev_keycode() {

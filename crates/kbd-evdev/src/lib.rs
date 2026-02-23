@@ -1,4 +1,4 @@
-//! evdev backend for keybound.
+//! evdev backend for kbd.
 //!
 //! This crate provides the Linux input device layer:
 //!

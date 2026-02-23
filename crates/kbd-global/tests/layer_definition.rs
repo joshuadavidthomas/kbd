@@ -1,14 +1,14 @@
 use std::time::Duration;
 
-use keybound::Action;
-use keybound::Error;
-use keybound::Hotkey;
-use keybound::HotkeyManager;
-use keybound::Key;
-use keybound::Layer;
-use keybound::LayerOptions;
-use keybound::Modifier;
-use keybound::UnmatchedKeyBehavior;
+use kbd_global::Action;
+use kbd_global::Error;
+use kbd_global::Hotkey;
+use kbd_global::HotkeyManager;
+use kbd_global::Key;
+use kbd_global::Layer;
+use kbd_global::LayerOptions;
+use kbd_global::Modifier;
+use kbd_global::UnmatchedKeyBehavior;
 
 #[test]
 fn define_layer_via_manager() {
