@@ -595,6 +595,30 @@ Build on demand (niche):
 | 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 11/11 |
 | 3.12 Framework integration crates | 6/6 (build now) + 6 on-demand |
+| 3.13 Examples | 0/5 |
+
+### 3.13 Examples
+
+Runnable examples in `examples/` that exercise each crate's public API.
+These are sanity checks — proof that the pieces connect. They also
+serve as living documentation for downstream consumers.
+
+- [ ] `examples/matcher.rs`: Standalone `Matcher` usage — register
+      bindings, define layers, process key events, query introspection.
+      No platform deps, no async. Shows kbd-core works on its own.
+- [ ] `examples/crossterm.rs`: Minimal TUI loop using `kbd-crossterm`
+      + `kbd-core`. Reads real terminal key events, converts via
+      extension traits, feeds to `Matcher`, prints match results.
+      `cargo run --example crossterm`.
+- [ ] `examples/evdev.rs`: Read evdev key events, convert to kbd-core
+      types, feed to `Matcher`. Requires a keyboard device (prints
+      usage if no permission). `cargo run --example evdev`.
+- [ ] `examples/global.rs`: Full `HotkeyManager` lifecycle — register
+      a few hotkeys, run the engine, print when they fire. Shows the
+      threaded runtime. `cargo run --example global`.
+- [ ] `examples/layers.rs`: Layer stack walkthrough — define layers,
+      push/pop/toggle, show how bindings shadow and fall through.
+      Builds on the matcher example with richer layer scenarios.
 
 ---
 
@@ -996,7 +1020,7 @@ proc-macro2).
 | **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
 | **2** | Grab mode + key state | 13 |
 | **3** | Layers + metadata + introspection | 27 |
-| **3.5** | Workspace split, keyboard-types adoption, framework bridges | 55 |
+| **3.5** | Workspace split, keyboard-types adoption, framework bridges, examples | 60 |
 | **4** | Sequences, tap-hold, device filtering, portal, async, serde, aliases, XKB, provenance | 61 |
 | **5** | Key remapping, transformation, lock/inhibitor, context hooks | 30 |
 | **6** | Stretch: chords, mouse, full keymaps | 14 |
