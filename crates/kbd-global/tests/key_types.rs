@@ -22,9 +22,16 @@ fn key_round_trips_through_evdev_keycode() {
 }
 
 #[test]
-fn unknown_evdev_keycode_maps_to_unknown_key() {
+fn media_key_round_trips_through_evdev() {
     use evdev::KeyCode;
-    assert_eq!(KeyCode::KEY_VOLUMEUP.to_key(), Key::UNIDENTIFIED);
+    assert_eq!(KeyCode::KEY_VOLUMEUP.to_key(), Key::AUDIO_VOLUME_UP);
+    assert_eq!(Key::AUDIO_VOLUME_UP.to_key_code(), KeyCode::KEY_VOLUMEUP);
+}
+
+#[test]
+fn unmapped_evdev_keycode_maps_to_unknown_key() {
+    use evdev::KeyCode;
+    assert_eq!(KeyCode::KEY_PROG1.to_key(), Key::UNIDENTIFIED);
 }
 
 #[test]

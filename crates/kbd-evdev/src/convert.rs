@@ -149,6 +149,19 @@ impl KeyCodeExt for KeyCode {
             KeyCode::KEY_RIGHTALT => Key::ALT_RIGHT,
             KeyCode::KEY_LEFTMETA => Key::META_LEFT,
             KeyCode::KEY_RIGHTMETA => Key::META_RIGHT,
+            KeyCode::KEY_VOLUMEUP => Key::AUDIO_VOLUME_UP,
+            KeyCode::KEY_VOLUMEDOWN => Key::AUDIO_VOLUME_DOWN,
+            KeyCode::KEY_MUTE => Key::AUDIO_VOLUME_MUTE,
+            KeyCode::KEY_PLAYPAUSE => Key::MEDIA_PLAY_PAUSE,
+            KeyCode::KEY_STOPCD => Key::MEDIA_STOP,
+            KeyCode::KEY_NEXTSONG => Key::MEDIA_TRACK_NEXT,
+            KeyCode::KEY_PREVIOUSSONG => Key::MEDIA_TRACK_PREVIOUS,
+            KeyCode::KEY_SYSRQ => Key::PRINT_SCREEN,
+            KeyCode::KEY_SCROLLLOCK => Key::SCROLL_LOCK,
+            KeyCode::KEY_PAUSE => Key::PAUSE,
+            KeyCode::KEY_NUMLOCK => Key::NUM_LOCK,
+            KeyCode::KEY_COMPOSE => Key::CONTEXT_MENU,
+            KeyCode::KEY_POWER => Key::POWER,
             _ => Key::UNIDENTIFIED,
         }
     }
@@ -269,6 +282,19 @@ impl EvdevKeyExt for Key {
             Key::ALT_RIGHT => KeyCode::KEY_RIGHTALT,
             Key::META_LEFT => KeyCode::KEY_LEFTMETA,
             Key::META_RIGHT => KeyCode::KEY_RIGHTMETA,
+            Key::AUDIO_VOLUME_UP => KeyCode::KEY_VOLUMEUP,
+            Key::AUDIO_VOLUME_DOWN => KeyCode::KEY_VOLUMEDOWN,
+            Key::AUDIO_VOLUME_MUTE => KeyCode::KEY_MUTE,
+            Key::MEDIA_PLAY_PAUSE => KeyCode::KEY_PLAYPAUSE,
+            Key::MEDIA_STOP => KeyCode::KEY_STOPCD,
+            Key::MEDIA_TRACK_NEXT => KeyCode::KEY_NEXTSONG,
+            Key::MEDIA_TRACK_PREVIOUS => KeyCode::KEY_PREVIOUSSONG,
+            Key::PRINT_SCREEN => KeyCode::KEY_SYSRQ,
+            Key::SCROLL_LOCK => KeyCode::KEY_SCROLLLOCK,
+            Key::PAUSE => KeyCode::KEY_PAUSE,
+            Key::NUM_LOCK => KeyCode::KEY_NUMLOCK,
+            Key::CONTEXT_MENU => KeyCode::KEY_COMPOSE,
+            Key::POWER => KeyCode::KEY_POWER,
             // Key wraps keyboard_types::Code which is #[non_exhaustive].
             // Codes without a known evdev mapping (including Key::UNIDENTIFIED)
             // fall back to KEY_UNKNOWN.
@@ -304,9 +330,43 @@ mod tests {
     }
 
     #[test]
-    fn unknown_keycode_maps_to_unknown() {
-        let key = KeyCode::KEY_VOLUMEUP.to_key();
+    fn unmapped_keycode_maps_to_unknown() {
+        // Use a key code that has no Key:: constant or mapping
+        let key = KeyCode::KEY_PROG1.to_key();
         assert_eq!(key, Key::UNIDENTIFIED);
+    }
+
+    #[test]
+    fn media_keys_round_trip() {
+        for key in [
+            Key::AUDIO_VOLUME_UP,
+            Key::AUDIO_VOLUME_DOWN,
+            Key::AUDIO_VOLUME_MUTE,
+            Key::MEDIA_PLAY_PAUSE,
+            Key::MEDIA_STOP,
+            Key::MEDIA_TRACK_NEXT,
+            Key::MEDIA_TRACK_PREVIOUS,
+        ] {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn system_keys_round_trip() {
+        for key in [
+            Key::PRINT_SCREEN,
+            Key::SCROLL_LOCK,
+            Key::PAUSE,
+            Key::NUM_LOCK,
+            Key::CONTEXT_MENU,
+            Key::POWER,
+        ] {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
     }
 
     #[test]

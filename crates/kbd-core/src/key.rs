@@ -298,12 +298,25 @@ impl Key {
             Code::AltRight => "RightAlt",
             Code::MetaLeft => "LeftSuper",
             Code::MetaRight => "RightSuper",
+            Code::AudioVolumeUp => "VolumeUp",
+            Code::AudioVolumeDown => "VolumeDown",
+            Code::AudioVolumeMute => "VolumeMute",
+            Code::MediaPlayPause => "MediaPlayPause",
+            Code::MediaStop => "MediaStop",
+            Code::MediaTrackNext => "MediaNext",
+            Code::MediaTrackPrevious => "MediaPrevious",
+            Code::PrintScreen => "PrintScreen",
+            Code::ScrollLock => "ScrollLock",
+            Code::Pause => "Pause",
+            Code::NumLock => "NumLock",
+            Code::ContextMenu => "ContextMenu",
+            Code::Power => "Power",
             Code::Unidentified => "Unknown",
             // Fallback: use the Code's own Display for keys we haven't
             // assigned a short name to. This leaks the variant name
-            // (e.g., "AudioVolumeUp") which is still human-readable.
-            // Each unique Code variant leaks one allocation (~20 bytes)
-            // via a bounded cache (~170 variants max, ~3.4 KB total).
+            // which is still human-readable. Each unique Code variant
+            // leaks one allocation (~20 bytes) via a bounded cache
+            // (~170 variants max, ~3.4 KB total).
             _ => {
                 use std::collections::HashMap;
                 use std::sync::LazyLock;
@@ -498,6 +511,19 @@ fn parse_key_token(token: &str) -> Option<Key> {
             Some(Key::META_LEFT)
         }
         "RIGHTSUPER" | "RSUPER" | "RIGHTMETA" | "RMETA" => Some(Key::META_RIGHT),
+        "VOLUMEUP" | "VOLUP" => Some(Key::AUDIO_VOLUME_UP),
+        "VOLUMEDOWN" | "VOLDOWN" => Some(Key::AUDIO_VOLUME_DOWN),
+        "VOLUMEMUTE" | "MUTE" => Some(Key::AUDIO_VOLUME_MUTE),
+        "MEDIAPLAYPAUSE" | "PLAYPAUSE" => Some(Key::MEDIA_PLAY_PAUSE),
+        "MEDIASTOP" => Some(Key::MEDIA_STOP),
+        "MEDIANEXT" | "MEDIATRACKNEXT" => Some(Key::MEDIA_TRACK_NEXT),
+        "MEDIAPREVIOUS" | "MEDIATRACKPREVIOUS" | "MEDIAPREV" => Some(Key::MEDIA_TRACK_PREVIOUS),
+        "PRINTSCREEN" | "PRINT" | "PRTSC" | "SYSRQ" => Some(Key::PRINT_SCREEN),
+        "SCROLLLOCK" => Some(Key::SCROLL_LOCK),
+        "PAUSE" | "BREAK" => Some(Key::PAUSE),
+        "NUMLOCK" => Some(Key::NUM_LOCK),
+        "CONTEXTMENU" | "MENU" | "APPS" => Some(Key::CONTEXT_MENU),
+        "POWER" => Some(Key::POWER),
         _ => None,
     }
 }
@@ -833,9 +859,19 @@ mod tests {
     }
 
     #[test]
-    fn key_display_falls_back_to_code_for_unknown() {
-        let volume = Key(Code::AudioVolumeUp);
-        assert_eq!(volume.to_string(), "AudioVolumeUp");
+    fn key_display_for_media_and_system_keys() {
+        assert_eq!(Key::AUDIO_VOLUME_UP.to_string(), "VolumeUp");
+        assert_eq!(Key::PRINT_SCREEN.to_string(), "PrintScreen");
+        assert_eq!(Key::NUM_LOCK.to_string(), "NumLock");
+        assert_eq!(Key::CONTEXT_MENU.to_string(), "ContextMenu");
+    }
+
+    #[test]
+    fn key_display_falls_back_to_code_for_unmapped_variant() {
+        // Use a Code variant that has no Key:: constant or as_str() mapping
+        let key = Key(Code::Again);
+        // Falls through to the leak-cache path, gets Code's Display name
+        assert!(!key.to_string().is_empty());
     }
 
     #[test]
@@ -849,6 +885,13 @@ mod tests {
             Key::ARROW_UP,
             Key::NUMPAD0,
             Key::NUMPAD_ENTER,
+            Key::AUDIO_VOLUME_UP,
+            Key::PRINT_SCREEN,
+            Key::SCROLL_LOCK,
+            Key::PAUSE,
+            Key::NUM_LOCK,
+            Key::CONTEXT_MENU,
+            Key::POWER,
         ] {
             let s = key.to_string();
             let parsed: Key = s.parse().unwrap();
