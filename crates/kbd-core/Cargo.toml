@@ -11,8 +11,10 @@ categories = ["data-structures"]
 
 [features]
 serde = ["dep:serde"]
+winit = ["dep:keyboard-types"]
 
 [dependencies]
+keyboard-types = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
 

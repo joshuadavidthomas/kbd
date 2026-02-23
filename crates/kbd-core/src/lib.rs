@@ -30,6 +30,9 @@ pub mod key_state;
 pub mod layer;
 pub mod matcher;
 
+#[cfg(feature = "winit")]
+mod winit;
+
 pub use crate::action::Action;
 pub use crate::action::LayerName;
 pub use crate::binding::BindingId;
