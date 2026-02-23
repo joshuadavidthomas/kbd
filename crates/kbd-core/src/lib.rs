@@ -36,6 +36,7 @@ pub use crate::binding::BindingId;
 pub use crate::binding::BindingOptions;
 pub use crate::binding::OverlayVisibility;
 pub use crate::binding::Passthrough;
+pub use crate::binding::RegisteredBinding;
 pub use crate::error::Error;
 pub use crate::introspection::ActiveLayerInfo;
 pub use crate::introspection::BindingInfo;
@@ -47,9 +48,11 @@ pub use crate::key::HotkeySequence;
 pub use crate::key::Key;
 pub use crate::key::Modifier;
 pub use crate::key::ParseHotkeyError;
+pub use crate::key_state::KeyTransition;
 pub use crate::layer::Layer;
 pub use crate::layer::LayerOptions;
 pub use crate::layer::UnmatchedKeyBehavior;
+pub use crate::matcher::MatchResult;
 pub use crate::matcher::Matcher;
 
 #[cfg(test)]

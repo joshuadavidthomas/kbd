@@ -363,8 +363,8 @@ impl Engine {
 /// Execute a callback action with panic isolation — a panicking callback
 /// never kills the engine thread.
 ///
-/// Only handles `Action::Callback`. Layer-control actions are handled by
-/// `Engine::apply_layer_effect` which has access to engine state.
+/// Only handles `Action::Callback`. Layer-control actions (`PushLayer`,
+/// `PopLayer`, `ToggleLayer`) are handled by `Matcher::process()` internally.
 fn execute_action(action: &Action) {
     if let Action::Callback(callback) = action
         && let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
