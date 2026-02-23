@@ -46,20 +46,20 @@ pub enum DeviceGrabMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HotplugFsEvent {
-    pub mask: u32,
-    pub device_name: String,
+pub(crate) struct HotplugFsEvent {
+    pub(crate) mask: u32,
+    pub(crate) device_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HotplugPathChange {
+pub(crate) enum HotplugPathChange {
     Added(PathBuf),
     Removed(PathBuf),
     Unchanged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiscoveryOutcome {
+pub(crate) enum DiscoveryOutcome {
     Keyboard,
     NotKeyboard,
     Skip,
@@ -68,28 +68,7 @@ pub enum DiscoveryOutcome {
 #[derive(Debug)]
 struct ManagedDevice {
     path: PathBuf,
-    #[allow(dead_code)]
-    info: DeviceInfo,
     device: Device,
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-struct DeviceInfo {
-    name: String,
-    vendor: u16,
-    product: u16,
-}
-
-impl DeviceInfo {
-    fn from_device(device: &Device) -> Self {
-        let input_id = device.input_id();
-        Self {
-            name: device.name().unwrap_or_default().to_string(),
-            vendor: input_id.vendor(),
-            product: input_id.product(),
-        }
-    }
 }
 
 /// A key event from a specific device.
@@ -415,7 +394,6 @@ impl ManagedDevice {
 
         Ok(Some(Self {
             path: path.to_path_buf(),
-            info: DeviceInfo::from_device(&device),
             device,
         }))
     }
@@ -461,7 +439,7 @@ impl DeviceExt for Device {
     }
 }
 
-pub fn discover_devices_in_dir_with<F>(
+pub(crate) fn discover_devices_in_dir_with<F>(
     input_dir: &Path,
     mut classify: F,
 ) -> io::Result<Vec<PathBuf>>
@@ -561,7 +539,7 @@ impl HotplugFsEvent {
 }
 
 #[must_use]
-pub fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<HotplugFsEvent> {
+pub(crate) fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<HotplugFsEvent> {
     let mut events = Vec::new();
     let mut offset = 0_usize;
 

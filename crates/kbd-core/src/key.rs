@@ -1,9 +1,11 @@
 //! Key types: [`Key`], [`Modifier`], [`Hotkey`], [`HotkeySequence`].
 //!
 //! Single source of truth for all key-related logic: the key enum, modifier
-//! convenience type, hotkey combinations, string parsing (`FromStr`),
-//! display formatting, and optional evdev conversions (`From`/`Into` behind
-//! the `evdev` feature flag).
+//! convenience type, hotkey combinations, string parsing (`FromStr`), and
+//! display formatting.
+//!
+//! Platform-specific conversions (e.g., evdev key codes) live in their
+//! respective backend crates (`kbd-evdev`) as extension traits.
 
 use std::fmt;
 use std::str::FromStr;
