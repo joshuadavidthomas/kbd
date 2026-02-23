@@ -10,33 +10,64 @@ inspiration-only (GPL).
 
 ## What is this library?
 
-Two layers:
+keybound is a keyboard shortcut engine for Rust on Linux.
 
-**Core** (`kbd-core`): A pure-logic keyboard shortcut engine.
-Key types, modifier tracking, binding matching, layer stacks, sequence
-resolution — the parts that every Rust project rebuilds from scratch.
-No platform dependencies. Embeddable in any event loop.
+### When to use it
 
-**Backends** (`kbd-evdev`, `kbd-portal`, `kbd-xkb`): Platform-specific
-crates, each isolated behind its own dependency boundary. evdev for
-Linux input devices. Portal for Wayland's XDG GlobalShortcuts. XKB for
-keyboard layout awareness.
+**You're building an app that needs system-wide hotkeys.** A launcher
+triggered by Super+Space, a screenshot tool on PrintScreen, push-to-talk
+on a media key, a clipboard manager on Ctrl+Shift+V — shortcuts that
+work regardless of which window has focus. Use the `keybound` facade
+crate. It handles device access, backend selection, grab mode, and
+hotplug so you just describe patterns and actions.
 
-**Facade** (`keybound`): A Linux global hotkey library built on the
-core engine and backends. Adds the threaded manager, backend selection,
-grab mode, device hotplug — the platform complexity so users just
-describe patterns and actions.
+**You're building a compositor, editor, or framework that needs shortcut
+matching.** Niri, COSMIC, Zed, and every tiling WM independently build
+the same inner engine: key types, modifier tracking, binding tables,
+layer stacks, sequence resolution. Use `kbd-core` directly. It's a
+synchronous `Matcher` you drive from your own event loop — no threads,
+no device access, no platform dependencies. You bring the events, it
+tells you what matched.
 
-One sentence for the core: **Given a key event and some state, which
-binding matches?**
+**You're building a key remapper or input transformation tool.** A tool
+that remaps CapsLock to Escape, implements vim-style layers (hjkl as
+arrows), or adds tap-hold behavior (tap CapsLock = Esc, hold = Ctrl).
+Use `keybound` with grab mode enabled. The library intercepts events
+via evdev, matches them, and can emit different keys through a virtual
+uinput device.
 
-One sentence for the facade: **When a specific pattern of keys happens
-on a Linux input device, do something.**
+**You're building a sandboxed Wayland app that wants shortcuts.** A
+Flatpak-packaged media player or communication tool that needs a
+push-to-talk key or media controls without requiring device access. Use
+`keybound` with the portal backend — it requests shortcuts through the
+XDG GlobalShortcuts portal, mediated by the compositor.
 
-The core exists because Zed, COSMIC, Niri, and every Rust compositor
-and editor independently build the same matching engine. The facade
-exists because no Rust crate handles Linux hotkeys properly —
-especially on Wayland.
+### Who should use what
+
+| You're building... | Use | Why |
+|---|---|---|
+| App with global hotkeys | `keybound` | Full stack: devices, matching, callbacks |
+| Compositor / tiling WM | `kbd-core` + `kbd-evdev` | You have your own event loop and device access |
+| GUI framework shortcuts | `kbd-core` | Embed the `Matcher` in your framework's event loop |
+| Key remapper / macro tool | `keybound` (grab mode) | Intercept + transform + re-emit keys |
+| Sandboxed Wayland app | `keybound` + `kbd-portal` | Desktop-mediated shortcuts, no root needed |
+
+### The crate split
+
+**`kbd-core`**: Pure-logic shortcut engine. Key types, modifier
+tracking, binding matching, layer stacks, sequence resolution. No
+platform dependencies. Embeddable in any event loop.
+
+**`kbd-evdev`**: Linux evdev backend. Device discovery, hotplug, grab,
+uinput forwarding.
+
+**`kbd-portal`**: XDG GlobalShortcuts portal backend. D-Bus,
+compositor-mediated, sandboxed.
+
+**`kbd-xkb`**: Keyboard layout awareness via xkbcommon.
+
+**`keybound`**: The facade. Threaded manager, backend selection, the
+works. Most users start here.
 
 ## Where keybound sits in the Linux input stack
 
