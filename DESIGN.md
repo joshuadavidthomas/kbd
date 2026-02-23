@@ -38,6 +38,114 @@ and editor independently build the same matching engine. The facade
 exists because no Rust crate handles Linux hotkeys properly —
 especially on Wayland.
 
+## Where keybound sits in the Linux input stack
+
+Linux keyboard input is layered. Each layer serves different consumers
+and provides different capabilities:
+
+```
+┌─────────────────────────────────────────────┐
+│  GUI toolkits (GTK, Qt, iced, egui)         │  Widget-level key handling
+│  Windowing (winit, Wayland wl_keyboard)     │  App-level key events
+├─────────────────────────────────────────────┤
+│  Display server                             │
+│    X11: XGrabKey for global shortcuts       │
+│    Wayland: focus-bound, no global grabs    │
+│    XDG Portal: GlobalShortcuts (sandboxed)  │
+├─────────────────────────────────────────────┤
+│  libinput                                   │  Userspace device handling
+│  evdev (/dev/input/event*)                  │  Kernel device events
+│  uinput                                     │  Virtual device injection
+├─────────────────────────────────────────────┤
+│  Kernel HID / input subsystem               │  Hardware → input_event
+└─────────────────────────────────────────────┘
+```
+
+**keybound operates at two levels:**
+
+1. **evdev** (primary backend) — reads raw key events from kernel
+   device nodes. This is the privileged path: it sees all keys
+   regardless of which application has focus, can grab devices for
+   exclusive access, and can inject remapped keys through uinput.
+   Requires read access to `/dev/input/` (typically via the `input`
+   group or seat management).
+
+2. **XDG GlobalShortcuts portal** (secondary backend) — the
+   unprivileged, desktop-mediated path for Wayland. Applications
+   request shortcuts through D-Bus; the compositor decides whether
+   to grant them. No device access needed, works in sandboxes
+   (Flatpak), but limited to shortcut activation signals — no grab,
+   no remapping, no raw key state.
+
+**`kbd-core` operates at no platform level.** It's a pure-logic engine:
+given a key event and some state, which binding matches? Consumers at
+*any* layer — compositors processing libinput events, GUI apps
+handling winit key events, even terminal tools — can drive the
+`Matcher` from their own event loop.
+
+### What keybound is not
+
+**Not a text input library.** Text input (IME composition, dead keys,
+Unicode output) is fundamentally different from key binding. A key press
+is a physical event; text is the result of layout resolution, compose
+sequences, and input method state. keybound deals in physical key
+events. Text input belongs in xkbcommon, the toolkit's text input API,
+or the compositor's text-input protocol.
+
+**Not a terminal input handler.** Terminal apps receive keyboard input
+through the TTY layer (termios), which encodes keys as byte sequences.
+That's a different world with different constraints (no key release
+events, escape sequence ambiguity). Libraries like crossterm handle
+this. keybound's `kbd-core` *could* be useful if a terminal app maps
+decoded key events to `Key` values and feeds them to the `Matcher`,
+but keybound doesn't handle the terminal decoding itself.
+
+**Not a GUI toolkit integration.** Toolkits (GTK, Qt) have their own
+keyboard event systems with widget focus, accelerators, and input
+method support. keybound doesn't replace those. The sweet spot is
+global shortcuts (system-wide, outside any toolkit) or shared binding
+logic (the `Matcher` used alongside toolkit events, not instead of
+them).
+
+## Physical keys vs logical keys
+
+keybound works at the **physical key** level. `Key::A` means "the key
+in the A position on a US QWERTY layout" — it's a position on the
+keyboard, not the character it produces. On a Dvorak layout, that same
+physical key produces "A" but is in a different position than you'd
+expect from the label.
+
+This is the right default for a hotkey library: most shortcuts are
+defined by position (Ctrl+C means "the key where C is on QWERTY"),
+and position-based bindings work across layouts without re-mapping.
+
+The **logical key** level — "what character does this key produce
+given the current layout?" — is a separate concern, handled by
+xkbcommon and planned for `kbd-xkb` (Phase 4.9 in the plan). The
+plan's `KeyReference` enum (`ByCode` / `BySymbol`) will support both
+modes when needed.
+
+### The key type and `keyboard-types`
+
+The W3C UI Events specification defines two key concepts that map
+directly to the physical/logical split:
+
+- **`Code`** — physical key position (what keybound's `Key` represents)
+- **`Key`** — logical key value, layout-aware (what `kbd-xkb` will add)
+
+The [`keyboard-types`](https://crates.io/crates/keyboard-types) crate
+implements these W3C types and is used by winit, iced, and most of the
+Rust windowing ecosystem. Since keybound's `Key` represents the same
+concept as `keyboard_types::Code`, there is an open question about
+whether to adopt `Code` as the foundation for `Key` rather than
+maintaining a parallel enum. See the "Alternative: Adopt
+`keyboard-types` as the core key type" section in PLAN.md for the
+detailed tradeoff analysis.
+
+Regardless of that decision, the physical/logical distinction is
+foundational: keybound binds physical key positions by default, with
+layout-aware binding as an opt-in extension.
+
 ## What concepts does a user need?
 
 **Core concepts** (both in-app and global):
@@ -572,6 +680,38 @@ If `Action` exists from the start, closures are just `Action::Callback`
 with a `From` impl. The simple API stays simple. The power API composes.
 And config serialization works for free — `Action` variants (except
 `Callback`) are data, not code, so they serialize naturally.
+
+### Why two backends with different capabilities
+
+The two backends exist because Linux doesn't have one "global shortcut"
+mechanism — it has a privileged path and an unprivileged path, and they
+can do different things:
+
+| Capability | evdev | XDG Portal |
+|---|---|---|
+| See all key events | ✅ | ❌ (activation signals only) |
+| Key state queries | ✅ | ❌ |
+| Grab (exclusive access) | ✅ | ❌ |
+| Remap / emit keys (uinput) | ✅ | ❌ |
+| Works without root/input group | ❌ | ✅ |
+| Works in Flatpak sandbox | ❌ | ✅ |
+| Desktop-mediated consent | ❌ | ✅ |
+| Tap-hold, chords, sequences | ✅ | ❌ (no raw events) |
+
+These aren't two implementations of the same thing. They're different
+tools for different situations. A system daemon that remaps CapsLock
+needs evdev. A sandboxed media player that wants play/pause on a
+global shortcut uses the portal.
+
+`ConsumePreference` (planned in Phase 4.5) lets the user express their
+intent — "I need to consume keys" vs "I just need to observe" — and
+the library selects or validates the backend accordingly. This is
+modeled after livesplit-hotkey's approach, which solved the same
+problem across multiple platforms.
+
+The facade (`keybound`) handles backend selection. The core (`kbd-core`)
+doesn't know backends exist — it's the pure matching engine that both
+backends feed into.
 
 ### Why not the current config system
 
