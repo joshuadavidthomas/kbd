@@ -1,8 +1,11 @@
-# keybound: Redesign
+# kbd: Redesign
 
 This document captures the core ideas, domain model, and architectural
-direction for restructuring keybound. It's not a task list — it's the
-conceptual foundation that the task list should serve.
+direction for kbd. It's not a task list — it's the conceptual
+foundation that the task list should serve.
+
+**Naming**: The project is `kbd`. All crates use the `kbd-` prefix:
+`kbd-core`, `kbd-global`, `kbd-crossterm`, etc.
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) for licensing constraints on
 reference projects. Some can be adapted (MIT), others are
@@ -10,33 +13,286 @@ inspiration-only (GPL).
 
 ## What is this library?
 
-Two layers:
+kbd is a keyboard shortcut engine for Rust.
 
-**Core** (`kbd-core`): A pure-logic keyboard shortcut engine.
-Key types, modifier tracking, binding matching, layer stacks, sequence
-resolution — the parts that every Rust project rebuilds from scratch.
-No platform dependencies. Embeddable in any event loop.
+The core (`kbd-core`) is platform-agnostic — it handles key types,
+modifier tracking, binding matching, layer stacks, and sequence
+resolution. It works anywhere you have key events: GUI apps, TUI apps,
+compositors, game engines.
 
-**Backends** (`kbd-evdev`, `kbd-portal`, `kbd-xkb`): Platform-specific
-crates, each isolated behind its own dependency boundary. evdev for
-Linux input devices. Portal for Wayland's XDG GlobalShortcuts. XKB for
-keyboard layout awareness.
+The facade (`kbd-global`) adds a Linux global hotkey backend on top,
+with evdev device access, grab mode, and XDG portal support.
 
-**Facade** (`keybound`): A Linux global hotkey library built on the
-core engine and backends. Adds the threaded manager, backend selection,
-grab mode, device hotplug — the platform complexity so users just
-describe patterns and actions.
+### When to use it
 
-One sentence for the core: **Given a key event and some state, which
-binding matches?**
+**You're building a TUI app with modal keybindings.** A file manager,
+editor, or dashboard with vim-style modes — normal, insert, command,
+search — where different keys do different things depending on context.
+Every ratatui app hand-rolls this with nested match statements. Use
+`kbd-core`'s `Matcher` with layers instead. It handles mode switching,
+key sequences, configurable bindings from strings, and introspection
+(list all bindings for a help screen). Add `kbd-crossterm` for
+crossterm key event conversion.
 
-One sentence for the facade: **When a specific pattern of keys happens
-on a Linux input device, do something.**
+**You're building a GUI app that needs shortcut matching.** An iced,
+egui, or winit-based app with configurable shortcuts, multi-step key
+sequences (Ctrl+K → Ctrl+C), or context-dependent bindings. GUI
+frameworks expose raw key events but don't provide shortcut
+infrastructure — no layers, no sequences, no conflict detection. Use
+`kbd-core`'s `Matcher` in your event loop. Conversion crates
+(`kbd-winit`, `kbd-iced`, `kbd-egui`) bridge each framework's key
+types to `kbd-core`'s — the conversions are mechanical since everyone
+derives from the same W3C spec.
 
-The core exists because Zed, COSMIC, Niri, and every Rust compositor
-and editor independently build the same matching engine. The facade
-exists because no Rust crate handles Linux hotkeys properly —
-especially on Wayland.
+**You're building a compositor, editor, or framework that needs shortcut
+matching.** Niri, COSMIC, Zed, Helix, and every tiling WM independently
+build the same inner engine: key types, modifier tracking, binding
+tables, layer stacks, sequence resolution. Use `kbd-core` directly.
+It's a synchronous `Matcher` you drive from your own event loop — no
+threads, no device access, no platform dependencies.
+
+**You're building an app that needs system-wide hotkeys on Linux.** A
+launcher triggered by Super+Space, a screenshot tool on PrintScreen,
+push-to-talk on a media key — shortcuts that work regardless of which
+window has focus. Use the `kbd-global` facade crate. It handles device
+access, backend selection, grab mode, and hotplug.
+
+**You're building a key remapper or input transformation tool.** A tool
+that remaps CapsLock to Escape, implements vim-style layers (hjkl as
+arrows), or adds tap-hold behavior (tap CapsLock = Esc, hold = Ctrl).
+Use `kbd-global` with grab mode enabled. The library intercepts events
+via evdev, matches them, and can emit different keys through a virtual
+uinput device.
+
+**You're building a Tauri app that needs global hotkeys on Linux.**
+Tauri's `tauri-plugin-global-shortcut` (backed by the `global-hotkey`
+crate) uses X11 `XGrabKey`, which doesn't work on Wayland. Use
+`kbd-global` as your Linux backend — evdev works on both X11 and
+Wayland, and the portal backend handles sandboxed environments.
+
+**You're building a sandboxed Wayland app that wants shortcuts.** A
+Flatpak-packaged media player that needs push-to-talk or media
+controls without requiring device access. Use `kbd-global` with the
+portal backend — it requests shortcuts through the XDG GlobalShortcuts
+portal, mediated by the compositor.
+
+### Who should use what
+
+| You're building... | Use | Why |
+|---|---|---|
+| TUI app (ratatui/crossterm) | `kbd-core` + `kbd-crossterm` | Layers, sequences, configurable bindings |
+| TUI app (termion) | `kbd-core` + `kbd-termion` | Same, for termion-based apps |
+| winit app | `kbd-core` + `kbd-winit` | Mechanical conversion, same W3C key names |
+| iced app | `kbd-core` + `kbd-iced` | Mechanical conversion, same W3C key names |
+| egui app | `kbd-core` + `kbd-egui` | Bridge for egui's custom key types |
+| Dioxus app | `kbd-core` | Uses `keyboard_types::Code` natively |
+| Floem / GPUI app | `kbd-core` + `kbd-winit` | Built on winit, key events come from there |
+| Makepad app | `kbd-core` + `kbd-makepad` | Custom key types, conversion needed |
+| GTK app (gtk-rs) | `kbd-core` + `kbd-gtk` | Bridge for GTK native key events |
+| Tauri app (Linux) | `kbd-global` | Tauri's global-shortcut plugin uses X11 grabs that fail on Wayland; kbd-global's evdev+portal backends cover all Linux |
+| Compositor / tiling WM | `kbd-core` + `kbd-evdev` | Your own event loop and device access |
+| App with global hotkeys (Linux) | `kbd-global` | Full stack: devices, matching, callbacks |
+| Key remapper / macro tool | `kbd-global` (grab mode) | Intercept + transform + re-emit keys |
+| Sandboxed Wayland app | `kbd-global` + `kbd-portal` | Desktop-mediated shortcuts, no root needed |
+
+### The crate split
+
+**`kbd-core`**: Pure-logic shortcut engine. Key types (built on
+`keyboard_types::Code`), modifier tracking, binding matching, layer
+stacks, sequence resolution. Platform-agnostic. Embeddable in any
+event loop.
+
+**Framework bridge crates** — conversion traits between each
+framework's key types and `kbd-core`. Each is a thin crate with the
+framework and `kbd-core` as its only dependencies.
+
+| Crate | Bridges | Notes |
+|---|---|---|
+| `kbd-crossterm` | crossterm | TUI apps (ratatui). Logical key model (`Char('a')`) |
+| `kbd-winit` | winit | Also covers floem, GPUI (built on winit) |
+| `kbd-iced` | iced | Mirrors winit's types independently |
+| `kbd-egui` | egui | Custom key enum |
+| `kbd-termion` | termion | Legacy TUI. Modifiers baked into key variants |
+| `kbd-makepad` | Makepad | Custom platform bindings, no winit |
+| `kbd-gtk` | gtk-rs | GTK native key events |
+
+All GUI frameworks (winit, iced, egui, floem, Makepad) derive their
+key types from the same W3C spec, so conversions are mechanical 1:1
+mappings. crossterm and termion use logical key models (characters,
+not physical positions) — slightly different but straightforward.
+
+Not every crate needs to exist at launch. `kbd-crossterm` is the
+priority — it proves the conversion pattern and serves the TUI
+ecosystem (ratatui). The GUI bridges (`kbd-winit`, `kbd-iced`,
+`kbd-egui`) are built when downstream projects adopt `kbd-core`.
+The rest (`kbd-termion`, `kbd-makepad`, `kbd-gtk`) are niche.
+
+**Backend crates** — platform-specific input and device access:
+
+**`kbd-evdev`**: Linux evdev backend. Device discovery, hotplug, grab,
+uinput forwarding.
+
+**`kbd-portal`**: XDG GlobalShortcuts portal backend. D-Bus,
+compositor-mediated, sandboxed.
+
+**`kbd-xkb`**: Keyboard layout awareness via xkbcommon.
+
+**`kbd-global`**: The facade. Threaded manager, backend selection, the
+works. Linux global hotkey users start here. Also a potential
+backend for Tauri apps on Linux — Tauri's `global-shortcut` plugin
+uses X11 grabs that don't work on Wayland; kbd-global's evdev and
+portal backends cover all Linux configurations.
+
+## Where kbd-core fits
+
+`kbd-core` is the matching engine. It has no opinion about where key
+events come from. You give it a key + modifiers + press/release, it
+tells you which binding matched. The `Matcher` is synchronous and
+single-threaded — it fits inside any event loop.
+
+```
+Your event source          kbd-core              Your app
+─────────────────          ────────              ────────
+crossterm KeyEvent ──┐
+termion Key ─────────┤
+winit KeyCode ───────┤
+iced keyboard::Key ──┤
+egui Key ────────────┼──▶ Matcher.process() ──▶ MatchResult
+Dioxus Code ─────────┤      │                    │
+evdev key event ─────┤      │                    ├─ Matched { action }
+Wayland wl_keyboard ─┤      │                    ├─ Pending { sequence }
+Smithay input ───────┘      │                    ├─ Swallowed
+                         layers                  └─ NoMatch
+                         bindings
+                         key state
+```
+
+Conversion crates (`kbd-crossterm`, `kbd-winit`, `kbd-iced`,
+`kbd-egui`, etc.) and backend crates (`kbd-evdev`, `kbd-portal`)
+handle the translation from each event source to `kbd-core` types.
+Dioxus uses `keyboard_types::Code` directly and needs no conversion
+crate.
+
+## The Linux global hotkey backend
+
+The `kbd-global` facade adds Linux-specific plumbing on top of `kbd-core`:
+a threaded engine, device management, and two backends.
+
+Linux keyboard input is layered:
+
+```
+┌─────────────────────────────────────────────┐
+│  GUI toolkits (GTK, Qt, iced, egui)         │  Widget-level key handling
+│  Windowing (winit, Wayland wl_keyboard)     │  App-level key events
+├─────────────────────────────────────────────┤
+│  Display server                             │
+│    X11: XGrabKey for global shortcuts       │
+│    Wayland: focus-bound, no global grabs    │
+│    XDG Portal: GlobalShortcuts (sandboxed)  │
+├─────────────────────────────────────────────┤
+│  libinput                                   │  Userspace device handling
+│  evdev (/dev/input/event*)                  │  Kernel device events
+│  uinput                                     │  Virtual device injection
+├─────────────────────────────────────────────┤
+│  Kernel HID / input subsystem               │  Hardware → input_event
+└─────────────────────────────────────────────┘
+```
+
+The `kbd-global` facade operates at two levels:
+
+1. **evdev** (primary) — reads raw key events from kernel device nodes.
+   Sees all keys regardless of focus, can grab devices for exclusive
+   access, and can inject remapped keys through uinput. Requires read
+   access to `/dev/input/` (typically via the `input` group or seat
+   management).
+
+2. **XDG GlobalShortcuts portal** (secondary) — the unprivileged,
+   desktop-mediated path for Wayland. Applications request shortcuts
+   through D-Bus; the compositor decides whether to grant them. No
+   device access needed, works in sandboxes (Flatpak), but limited to
+   shortcut activation signals — no grab, no remapping, no raw key
+   state.
+
+### What kbd is not
+
+**Not a text input library.** Text input (IME composition, dead keys,
+Unicode output) is fundamentally different from key binding. kbd deals
+in key identities and modifier combinations, not composed text.
+
+**Not a terminal or GUI framework.** The library doesn't decode terminal
+escape sequences (that's crossterm) or manage widget focus (that's your
+toolkit). `kbd-crossterm` and `kbd-egui` bridge the key types;
+`kbd-core`'s `Matcher` handles the shortcut logic. The framework
+handles everything else.
+
+## Key identity: physical position, logical character, or both
+
+`Key` in `kbd-core` is a **key identity** — which key was pressed. Most
+of the time this is a physical key position: `Key::A` means "the key
+labeled A on a US QWERTY layout." Shortcuts defined by position
+(Ctrl+C) work across keyboard layouts without re-mapping.
+
+The source of the event determines the semantics:
+
+- **evdev** — physical position (scancode-based)
+- **winit / iced** — physical position (`keyboard_types::Code`)
+- **crossterm** — logical character (terminal resolves the layout)
+
+`kbd-core` doesn't distinguish between these. `Key::A` from evdev and
+`Key::A` from crossterm match the same bindings. This is correct for
+shortcuts — "Ctrl+A" means the same thing regardless of which layer
+reported it.
+
+For **layout-aware binding** — "bind the key that produces `/` on the
+current layout" — `kbd-xkb` (Phase 4.9) will add `KeyReference::BySymbol`,
+resolving keysyms via xkbcommon.
+
+### The key type and `keyboard-types`
+
+`kbd-core`'s `Key` type is a newtype over
+[`keyboard_types::Code`](https://crates.io/crates/keyboard-types),
+the W3C standard for physical key positions.
+
+```rust
+#[repr(transparent)]
+pub struct Key(pub keyboard_types::Code);
+```
+
+Associated constants provide a clean API: `Key::A`, `Key::ENTER`,
+`Key::VOLUME_UP`. The inner `Code` is public.
+
+Why `keyboard-types` instead of maintaining our own enum:
+
+- **We don't maintain 250+ key variants** — new keys in the crate
+  are automatically available.
+- **It's the W3C standard** — the same spec that winit, iced, and
+  every other framework derives their key types from.
+- **It's lightweight** — zero transitive deps (only optional serde).
+
+An important nuance: **most frameworks do not depend on
+`keyboard-types`**. winit, iced, egui, floem, and Makepad each
+define their own key enums — derived from the same W3C spec, but
+different Rust types. Only Dioxus directly uses
+`keyboard_types::Code`.
+
+The Rust GUI/TUI keyboard type landscape:
+
+| Framework | Key type source | Conversion to kbd-core |
+|---|---|---|
+| Dioxus | `keyboard_types::Code` | Free (same type) |
+| winit | Own `KeyCode` (W3C-derived) | `kbd-winit` (1:1 mapping) |
+| iced | Own `Code` (mirrors winit) | `kbd-iced` (1:1 mapping) |
+| floem | Via winit | `kbd-winit` covers it |
+| GPUI (Zed) | Wraps winit | `kbd-winit` covers it |
+| egui | Own `Key` enum | `kbd-egui` |
+| Makepad | Custom `KeyCode` | `kbd-makepad` |
+| gtk-rs | GTK native events | `kbd-gtk` |
+| crossterm | `KeyCode::Char('a')` (logical) | `kbd-crossterm` |
+| termion | `Key::Char('a')` (logical, mods baked in) | `kbd-termion` |
+| Tauri | JS `KeyboardEvent` via webview | Use `kbd-global` as backend |
+
+`keyboard-types` is a required dependency of `kbd-core` (zero-dep
+itself, platform-agnostic).
 
 ## What concepts does a user need?
 
@@ -56,7 +312,7 @@ serves, it probably shouldn't exist.
 
 In-app consumers use concepts 1–3 through the `Matcher` in `kbd-core`
 directly. Global consumers get all four through `HotkeyManager` in the
-`keybound` facade, which drives a `Matcher` on an engine thread with
+`kbd-global` facade, which drives a `Matcher` on an engine thread with
 `kbd-evdev`/`kbd-portal` plumbing.
 
 ## The domain model
@@ -68,6 +324,12 @@ distinction between "modifier" and "key" is about *role in a combination*,
 not about the key itself. In Ctrl+C, Ctrl is the modifier and C is the
 trigger — but that's a property of the combination, not of Ctrl.
 
+`Key` is a newtype over `keyboard_types::Code` — the W3C standard enum
+of physical key positions. This gives `kbd-core` the full key vocabulary
+(250+ keys including media, browser, system keys) without maintaining a
+parallel enum. Associated constants (`Key::A`, `Key::ENTER`,
+`Key::VOLUME_UP`) provide the API surface.
+
 For the API, the Ctrl/Shift/Alt/Super abstraction is genuinely useful.
 Users think in terms of "Ctrl+C", not "KEY_LEFTCTRL + KEY_C". And modifiers
 need left/right canonicalization. So:
@@ -76,12 +338,6 @@ need left/right canonicalization. So:
 - `Modifier` is a convenience type for the four common modifiers, handling
   left/right equivalence
 - Internally, everything resolves to key codes
-
-These two types share almost all their behavior: parsing from strings,
-converting to/from evdev key codes, display formatting. The current code
-duplicates all of this across two separate implementations. That duplication
-goes away — either through a shared trait, a macro, or by deriving Modifier
-from Key.
 
 A `Hotkey` is a trigger key plus a set of modifiers: the parsed form of
 `"Ctrl+Shift+A"`. A `HotkeySequence` is a series of hotkeys performed in
@@ -362,107 +618,113 @@ eventfd is added to the engine's poll set alongside device fds.
 
 ## Module structure
 
+The workspace split (Phase 3.5) distributes code across crates. Each
+crate has a focused responsibility:
+
 ```
-src/
-  lib.rs              Public facade. Re-exports the curated API surface.
-  error.rs            Error type (thiserror).
+crates/
+  kbd-core/src/
+    lib.rs              Public API surface for the platform-agnostic engine.
+    key.rs              Key (newtype over keyboard_types::Code), Modifier,
+                        Hotkey, HotkeySequence. Parsing, display, aliases.
+    action.rs           Action enum (Callback, EmitKey, PushLayer, etc.).
+    binding.rs          Binding, BindingOptions, BindingId.
+    layer.rs            Layer, LayerOptions.
+    matcher.rs          Matcher — synchronous binding engine. Layers,
+                        sequences, key state, press cache.
+    key_state.rs        What's currently pressed. Modifier state derived here.
+    error.rs            Core error types (parse, conflict, layer).
 
-  key.rs              Key, Modifier, Hotkey, HotkeySequence.
-                      Parsing (FromStr), display, evdev conversions (From/Into).
-                      Single source of truth for all key-related logic.
+  kbd-crossterm/src/
+    lib.rs              CrosstermKeyExt, CrosstermEventExt traits.
+                        crossterm KeyCode/KeyEvent → Key/Hotkey conversion.
 
-  action.rs           Action enum.
-  binding.rs          Binding, BindingOptions. Pattern enum (or patterns
-                      are just Hotkey / HotkeySequence / TapHold config).
-  layer.rs            Layer, LayerOptions.
+  kbd-winit/src/        (on demand)
+    lib.rs              WinitKeyExt — winit KeyCode ↔ Key. 1:1 W3C mapping.
 
-  manager.rs          HotkeyManager. Thin public API.
-                      Sends commands, returns handles.
-  handle.rs           Handle (RAII unregistration via command).
+  kbd-iced/src/         (on demand)
+    lib.rs              IcedKeyExt — iced key::Code ↔ Key.
 
-  engine/
-    mod.rs            Engine struct, event loop, core matching/dispatch.
-    types.rs          GrabState, KeyEventDisposition, LayerEffect, MatchOutcome,
-                      LayerStackEntry, LayerTimeout.
-    binding.rs        RegisteredBinding (engine-internal binding storage).
-    command.rs        Command enum, CommandSender (manager→engine channel).
-    runtime.rs        EngineRuntime (spawn, shutdown, join).
-    wake.rs           WakeFd (eventfd wrapper), LoopControl.
-    key_state.rs      What's currently pressed. Modifier state derived here.
-    matcher.rs        Binding lookup against current state.
-    sequence.rs       Sequence state machine (partial progress, timeouts).
-    tap_hold.rs       Tap-hold state machine (pending, resolved).
-    devices.rs        Device discovery, hotplug, capability detection.
-    forwarder.rs      uinput virtual device for event forwarding/emission.
+  kbd-egui/src/         (on demand)
+    lib.rs              EguiKeyExt, EguiModifiersExt — egui Key → Key.
 
-  backend/
-    mod.rs            Backend trait + selection logic.
-    evdev.rs          evdev backend.
-    portal.rs         XDG portal backend.
+  kbd-evdev/src/
+    lib.rs              Extension traits: evdev KeyCode ↔ Key.
+    devices.rs          Device discovery, hotplug (inotify), capability detection.
+    forwarder.rs        uinput virtual device for event forwarding/emission.
 
-  events.rs           HotkeyEvent, async event stream (feature-gated).
+  kbd-portal/src/
+    lib.rs              XDG GlobalShortcuts portal (DBus via ashpd).
+
+  kbd-xkb/src/
+    lib.rs              xkbcommon integration: keycode → keysym, layout detection.
+
+  kbd-derive/src/
+    lib.rs              #[derive(Bindings)] proc macro (future).
+
+  kbd-global/src/
+    lib.rs              Facade. Re-exports kbd-core types.
+    manager.rs          HotkeyManager — thin command sender.
+    handle.rs           Handle — RAII unregistration via command.
+    engine/
+      mod.rs            Engine struct, event loop, core matching/dispatch.
+      types.rs          GrabState, KeyEventDisposition, MatchOutcome, etc.
+      command.rs        Command enum, CommandSender (manager→engine channel).
+      runtime.rs        EngineRuntime (spawn, shutdown, join).
+      wake.rs           WakeFd (eventfd wrapper), LoopControl.
+    backend/
+      mod.rs            Backend trait + selection logic.
+      evdev.rs          evdev backend (delegates to kbd-evdev).
+      portal.rs         Portal backend (delegates to kbd-portal).
+    events.rs           HotkeyEvent, async event stream (feature-gated).
 ```
 
-**What's gone:**
+**What's gone from v0:**
 
-- `config.rs` — the `ActionMap` / `HotkeyConfig` / `RegisteredConfig`
-  application framework. Replaced by serde derives on the core types (`Key`,
-  `Modifier`, `Hotkey`, `Action`, `Layer`) so users compose them into their
-  own config structs.
-- `manager/callbacks.rs`, `manager/registration.rs`, `manager/handles.rs`,
-  `manager/options.rs` — the manager becomes thin enough to not need
-  submodules. Handle moves to its own file.
-- `listener/` (the entire directory) — replaced by `engine/`. The "listener"
-  concept is subsumed by the engine, which both listens for events and
-  processes commands.
-- `mode/` (six files) — replaced by `layer.rs`. One file. The layer stack
-  is managed by the engine, not a separate `ModeRegistry`.
-- `key_state.rs` — moves into the engine where it belongs.
-- `tap_hold.rs` (top-level) — moves into the engine.
-
-**What's new:**
-
-- `action.rs` — the `Action` enum, first-class output vocabulary.
-- `binding.rs` — the unified `Binding` type.
-- `engine/` — the engine that owns all state.
-- `engine/matcher.rs` — binding lookup (replaces the scattered dispatch
-  modules).
+- `config.rs` — the application framework (`ActionMap`, `HotkeyConfig`,
+  `RegisteredConfig`). Users compose their own config using serde on
+  the core types.
+- `listener/` — replaced by `engine/` with message passing.
+- `mode/` (six files) — replaced by `layer.rs` in `kbd-core`.
+- Duplicated key/modifier logic — shared via the type system.
 
 ## Type inventory
 
 What types does a user need to know? Roughly:
 
-**Always needed (core):**
-- `HotkeyManager` — entry point
-- `Key` — a key
+**`kbd-core` types (any consumer):**
+- `Key` — a key (newtype over `keyboard_types::Code`)
 - `Modifier` — Ctrl/Shift/Alt/Super
 - `Hotkey` — key + modifiers, parseable from strings
-- `Handle` — keeps a binding alive
+- `Matcher` — synchronous binding engine, the core of everything
+- `MatchResult` — what the matcher decided (matched, pending, swallowed, no match)
+- `Action` — what happens on match (callback, emit key, push layer, etc.)
+- `Layer` / `LayerOptions` — named binding groups
+- `HotkeySequence` — multi-step combos
+- `BindingOptions` — per-binding configuration
 - `Error` — what went wrong
 
-**When using power features:**
-- `Action` — what happens on match (callback is just one variant)
-- `Layer` / `LayerOptions` — named binding groups
-- `TapHoldOptions` — timing for dual-function keys
-- `HotkeySequence` — multi-step combos
-- `BindingOptions` — per-binding configuration (device filter, passthrough,
-  debounce)
+**`kbd-global` facade types (global hotkey consumers):**
+- `HotkeyManager` — entry point for global hotkeys
+- `Handle` — keeps a binding alive (RAII unregistration)
 - `DeviceFilter` — restrict to specific devices
 - `Backend` — explicit backend selection
+- `ConsumePreference` — observe vs intercept intent
 
-**When using async:**
+**When using async (feature-gated):**
 - `HotkeyEvent` — event notifications
 - `HotkeyEventStream` — async stream
 
-That's ~15 types, down from 22+, and with a clearer hierarchy. The core 6
-cover most use cases. The rest are opt-in for power users.
+In-app consumers (TUI, GUI) use `kbd-core` types directly with the
+`Matcher`. Global hotkey consumers use `kbd-global`'s `HotkeyManager`,
+which drives a `Matcher` on an engine thread internally.
 
 ## What the simple API looks like
 
 The simple case must stay simple:
 
 ```rust
-use keybound::{HotkeyManager, Key, Modifier};
+use kbd_global::{HotkeyManager, Key, Modifier};
 
 let manager = HotkeyManager::new()?;
 
@@ -479,7 +741,7 @@ wrapped in `Action::Callback`. The user never sees `Action`, `Binding`,
 The power case is composable:
 
 ```rust
-use keybound::{Action, HotkeyManager, Key, Layer, Modifier, TapHoldOptions};
+use kbd_global::{Action, HotkeyManager, Key, Layer, Modifier, TapHoldOptions};
 
 let manager = HotkeyManager::builder().grab().build()?;
 
@@ -572,6 +834,38 @@ If `Action` exists from the start, closures are just `Action::Callback`
 with a `From` impl. The simple API stays simple. The power API composes.
 And config serialization works for free — `Action` variants (except
 `Callback`) are data, not code, so they serialize naturally.
+
+### Why two backends with different capabilities
+
+The two backends exist because Linux doesn't have one "global shortcut"
+mechanism — it has a privileged path and an unprivileged path, and they
+can do different things:
+
+| Capability | evdev | XDG Portal |
+|---|---|---|
+| See all key events | ✅ | ❌ (activation signals only) |
+| Key state queries | ✅ | ❌ |
+| Grab (exclusive access) | ✅ | ❌ |
+| Remap / emit keys (uinput) | ✅ | ❌ |
+| Works without root/input group | ❌ | ✅ |
+| Works in Flatpak sandbox | ❌ | ✅ |
+| Desktop-mediated consent | ❌ | ✅ |
+| Tap-hold, chords, sequences | ✅ | ❌ (no raw events) |
+
+These aren't two implementations of the same thing. They're different
+tools for different situations. A system daemon that remaps CapsLock
+needs evdev. A sandboxed media player that wants play/pause on a
+global shortcut uses the portal.
+
+`ConsumePreference` (planned in Phase 4.5) lets the user express their
+intent — "I need to consume keys" vs "I just need to observe" — and
+the library selects or validates the backend accordingly. This is
+modeled after livesplit-hotkey's approach, which solved the same
+problem across multiple platforms.
+
+The facade (`kbd-global`) handles backend selection. The core (`kbd-core`)
+doesn't know backends exist — it's the pure matching engine that both
+backends feed into.
 
 ### Why not the current config system
 
