@@ -15,10 +15,12 @@ kbd-evdev = { path = "crates/kbd-evdev" }
 kbd-global = { path = "crates/kbd-global" }
 kbd-portal = { path = "crates/kbd-portal" }
 kbd-crossterm = { path = "crates/kbd-crossterm" }
+kbd-tao = { path = "crates/kbd-tao" }
 kbd-winit = { path = "crates/kbd-winit" }
 kbd-xkb = { path = "crates/kbd-xkb" }
 
 crossterm = { version = "0.29", default-features = false, features = ["events"] }
+tao = { version = "0.34", default-features = false }
 winit = { version = "0.30", default-features = false, features = ["x11"] }
 ashpd = { version = "0.13", default-features = false, features = ["async-io"] }
 async-channel = { version = "2.3" }

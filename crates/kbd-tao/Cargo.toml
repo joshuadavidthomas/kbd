@@ -1,0 +1,15 @@
+[package]
+name = "kbd-tao"
+version = "0.1.0"
+description = "tao bridge for kbd — converts tao key events and modifiers to kbd types."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tao.workspace = true
+kbd-core.workspace = true
+
+[lints]
+workspace = true

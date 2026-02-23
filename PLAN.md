@@ -602,12 +602,12 @@ adding new bridge crates straightforward: extension traits with
 
 `kbd-tao` — tao bridge (Tauri's winit fork):
 
-- [ ] Create `crates/kbd-tao/` with `Cargo.toml` (deps: `tao`,
+- [x] Create `crates/kbd-tao/` with `Cargo.toml` (deps: `tao`,
       `kbd-core`).
-- [ ] `TaoKeyExt` trait: `tao::keyboard::KeyCode → Key`. Own W3C
+- [x] `TaoKeyExt` trait: `tao::keyboard::KeyCode → Key`. Own W3C
       enum, same variant names — mechanical 1:1 mapping.
-- [ ] `TaoEventExt` trait: `tao::event::KeyEvent → Hotkey`.
-- [ ] Tests and `cargo build --workspace`.
+- [x] `TaoEventExt` trait: `tao::event::KeyEvent → Hotkey`.
+- [x] Tests and `cargo build --workspace`.
 
 `kbd-iced` — iced bridge:
 
@@ -649,7 +649,7 @@ Build on demand (niche):
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 11/11 |
-| 3.12 Framework integration crates | 10/23 (build now) + 3 on-demand |
+| 3.12 Framework integration crates | 14/23 (build now) + 3 on-demand |
 | 3.13 Examples | 0/11 |
 
 ### 3.13 Examples
