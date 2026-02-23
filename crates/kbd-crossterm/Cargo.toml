@@ -1,0 +1,15 @@
+[package]
+name = "kbd-crossterm"
+version = "0.1.0"
+description = "crossterm bridge for kbd — converts crossterm key events and modifiers to kbd types."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+crossterm.workspace = true
+kbd-core.workspace = true
+
+[lints]
+workspace = true

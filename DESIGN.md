@@ -82,14 +82,16 @@ portal, mediated by the compositor.
 |---|---|---|
 | TUI app (ratatui/crossterm) | `kbd-core` + `kbd-crossterm` | Layers, sequences, configurable bindings |
 | TUI app (termion) | `kbd-core` + `kbd-termion` | Same, for termion-based apps |
-| winit app | `kbd-core` + `kbd-winit` | Mechanical conversion, same W3C key names |
-| iced app | `kbd-core` + `kbd-iced` | Mechanical conversion, same W3C key names |
+| winit app | `kbd-core` + `kbd-winit` | Thin bridge — winit re-exports `keyboard_types::Code` |
+| tao app | `kbd-core` + `kbd-tao` | tao (Tauri's winit fork) has its own `KeyCode` |
+| Tauri app (global hotkeys) | `kbd-global` | Replaces Tauri's X11-only global-shortcut plugin |
+| iced app | `kbd-core` + `kbd-iced` | Bridge for iced's own W3C-derived key types |
 | egui app | `kbd-core` + `kbd-egui` | Bridge for egui's custom key types |
 | Dioxus app | `kbd-core` | `Key::from(code)`, no bridge crate needed |
-| Floem / GPUI app | `kbd-core` + `kbd-winit` | Built on winit, key events come from there |
+| Floem app | `kbd-core` | Uses `keyboard_types::Code` via `ui_events`, no bridge needed |
+| GPUI (Zed) app | N/A | GPUI has its own comprehensive keybinding system |
 | Makepad app | `kbd-core` + `kbd-makepad` | Custom key types, conversion needed |
 | GTK app (gtk-rs) | `kbd-core` + `kbd-gtk` | Bridge for GTK native key events |
-| Tauri app (Linux) | `kbd-global` | Tauri's global-shortcut plugin uses X11 grabs that fail on Wayland; kbd-global's evdev+portal backends cover all Linux |
 | Compositor / tiling WM | `kbd-core` + `kbd-evdev` | Your own event loop and device access |
 | App with global hotkeys (Linux) | `kbd-global` | Full stack: devices, matching, callbacks |
 | Key remapper / macro tool | `kbd-global` (grab mode) | Intercept + transform + re-emit keys |
@@ -109,23 +111,30 @@ framework and `kbd-core` as its only dependencies.
 | Crate | Bridges | Notes |
 |---|---|---|
 | `kbd-crossterm` | crossterm | TUI apps (ratatui). Logical key model (`Char('a')`) |
-| `kbd-winit` | winit | Also covers floem, GPUI (built on winit) |
-| `kbd-iced` | iced | Mirrors winit's types independently |
-| `kbd-egui` | egui | Custom key enum |
+| `kbd-winit` | winit | winit re-exports `keyboard_types::Code`, so conversion is near-trivial |
+| `kbd-tao` | tao | Tauri's winit fork. Own `KeyCode` enum, same W3C variants |
+| `kbd-iced` | iced | Own W3C-derived key types |
+| `kbd-egui` | egui | Custom key enum, not 1:1 |
 | `kbd-termion` | termion | Legacy TUI. Modifiers baked into key variants |
 | `kbd-makepad` | Makepad | Custom platform bindings, no winit |
 | `kbd-gtk` | gtk-rs | GTK native key events |
 
-All GUI frameworks (winit, iced, egui, floem, Makepad) derive their
-key types from the same W3C spec, so conversions are mechanical 1:1
-mappings. crossterm and termion use logical key models (characters,
-not physical positions) — slightly different but straightforward.
+Bridge crates exist for frameworks where **Rust is the frontend** and
+keyboard events arrive as Rust types. Most derive their key types
+from the same W3C spec, so conversions are mechanical 1:1 mappings.
+egui is the exception with a smaller custom enum. crossterm and
+termion use logical key models (characters, not physical positions).
 
-Not every crate needs to exist at launch. `kbd-crossterm` is the
-priority — it proves the conversion pattern and serves the TUI
-ecosystem (ratatui). The GUI bridges (`kbd-winit`, `kbd-iced`,
-`kbd-egui`) are built when downstream projects adopt `kbd-core`.
-The rest (`kbd-termion`, `kbd-makepad`, `kbd-gtk`) are niche.
+Some frameworks don't need a bridge crate: Dioxus and floem both use
+`keyboard_types::Code` directly. GPUI has its own comprehensive
+keybinding system (action dispatch, context-aware keymap,
+multi-keystroke sequences) and doesn't need one. Tauri handles in-app
+keybindings in JavaScript (the frontend is a webview) — its kbd use
+case is `kbd-global` for Linux global hotkeys.
+
+The TUI and GUI bridges (`kbd-crossterm`, `kbd-winit`, `kbd-tao`,
+`kbd-iced`, `kbd-egui`) are built first. The rest (`kbd-termion`,
+`kbd-makepad`, `kbd-gtk`) are niche and built on demand.
 
 **Backend crates** — platform-specific input and device access:
 
@@ -277,26 +286,27 @@ Why `keyboard-types` instead of maintaining our own enum:
   breaks.
 
 An important nuance: **most frameworks do not depend on
-`keyboard-types`**. winit, iced, egui, floem, and Makepad each
-define their own key enums — derived from the same W3C spec, but
-different Rust types. Only Dioxus directly uses
-`keyboard_types::Code`.
+`keyboard-types`**. winit re-exports it, and floem uses it via
+`ui_events`, but iced, egui, tao, and Makepad each define their own
+key types. Only Dioxus and floem can use `kbd-core` directly without
+a bridge crate.
 
 The Rust GUI/TUI keyboard type landscape:
 
 | Framework | Key type source | Conversion to kbd-core |
 |---|---|---|
 | Dioxus | `keyboard_types::Code` | `Key::from(code)` (no bridge crate) |
-| winit | Own `KeyCode` (W3C-derived) | `kbd-winit` (1:1 mapping) |
-| iced | Own `Code` (mirrors winit) | `kbd-iced` (1:1 mapping) |
-| floem | Via winit | `kbd-winit` covers it |
-| GPUI (Zed) | Wraps winit | `kbd-winit` covers it |
-| egui | Own `Key` enum | `kbd-egui` |
+| floem | `keyboard_types::Code` via `ui_events` | No bridge crate needed (like Dioxus) |
+| winit | Re-exports `keyboard_types::Code` as `KeyCode` | `kbd-winit` (near-trivial, same underlying type) |
+| tao | Own `KeyCode` (W3C-derived, winit fork) | `kbd-tao` (1:1 mapping) |
+| iced | Own `Code` (W3C-derived) | `kbd-iced` (1:1 mapping) |
+| egui | Own `Key` enum (smaller, not 1:1) | `kbd-egui` |
+| GPUI (Zed) | Own `Keystroke` (string key names) | N/A — GPUI has its own keybinding system |
 | Makepad | Custom `KeyCode` | `kbd-makepad` |
-| gtk-rs | GTK native events | `kbd-gtk` |
+| gtk-rs | GTK native events (GDK keysyms) | `kbd-gtk` |
 | crossterm | `KeyCode::Char('a')` (logical) | `kbd-crossterm` |
 | termion | `Key::Char('a')` (logical, mods baked in) | `kbd-termion` |
-| Tauri | JS `KeyboardEvent` via webview | Use `kbd-global` as backend |
+| Tauri | In-app keys in JS, global hotkeys in Rust | `kbd-global` for Linux global hotkeys |
 
 `keyboard-types` is a required dependency of `kbd-core` (zero-dep
 itself, platform-agnostic).
