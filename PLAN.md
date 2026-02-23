@@ -407,12 +407,12 @@ match matcher.process(hotkey, transition) {
 }
 ```
 
-- [ ] `Matcher` as a public synchronous type: `matcher.process(hotkey, transition) → MatchResult`.
-- [ ] `MatchResult::Pending` variant for mid-sequence state — consumers need this for UI feedback ("waiting for next key…").
-- [ ] `Matcher` exposes layer operations directly: `push_layer()`, `pop_layer()`, `toggle_layer()`, `define_layer()`.
-- [ ] `Matcher` exposes introspection: `list_bindings()`, `bindings_for_key()`, `active_layers()`, `conflicts()`.
-- [ ] `HotkeyManager` in `keybound` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
-- [ ] Tests: `Matcher` used standalone without any `HotkeyManager` or engine thread.
+- [x] `Matcher` as a public synchronous type: `matcher.process(hotkey, transition) → MatchResult`.
+- [x] `MatchResult::Pending` variant for mid-sequence state — consumers need this for UI feedback ("waiting for next key…").
+- [x] `Matcher` exposes layer operations directly: `push_layer()`, `pop_layer()`, `toggle_layer()`, `define_layer()`.
+- [x] `Matcher` exposes introspection: `list_bindings()`, `bindings_for_key()`, `active_layers()`, `conflicts()`.
+- [x] `HotkeyManager` in `keybound` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
+- [x] Tests: `Matcher` used standalone without any `HotkeyManager` or engine thread.
 
 ### 3.10 Rewire `keybound` facade
 
@@ -438,7 +438,7 @@ match matcher.process(hotkey, transition) {
 | 3.6 Workspace scaffolding | 9/9 |
 | 3.7 Move types to kbd-core | 5/5 |
 | 3.8 Move evdev to kbd-evdev | 5/5 |
-| 3.9 Public Matcher | 0/6 |
+| 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire keybound facade | 0/7 |
 | 3.11 Windowing conversions | 0/4 |
 

@@ -21,11 +21,10 @@
 //! - Keyboard layout / xkbcommon (`kbd-xkb`)
 //! - Threaded manager, message passing, handles (`keybound`)
 
-// TODO: Phase 3.9 — expose public synchronous Matcher type
-
 pub mod action;
 pub mod binding;
 pub mod error;
+pub mod introspection;
 pub mod key;
 pub mod key_state;
 pub mod layer;
@@ -37,15 +36,24 @@ pub use crate::binding::BindingId;
 pub use crate::binding::BindingOptions;
 pub use crate::binding::OverlayVisibility;
 pub use crate::binding::Passthrough;
+pub use crate::binding::RegisteredBinding;
 pub use crate::error::Error;
+pub use crate::introspection::ActiveLayerInfo;
+pub use crate::introspection::BindingInfo;
+pub use crate::introspection::BindingLocation;
+pub use crate::introspection::ConflictInfo;
+pub use crate::introspection::ShadowedStatus;
 pub use crate::key::Hotkey;
 pub use crate::key::HotkeySequence;
 pub use crate::key::Key;
 pub use crate::key::Modifier;
 pub use crate::key::ParseHotkeyError;
+pub use crate::key_state::KeyTransition;
 pub use crate::layer::Layer;
 pub use crate::layer::LayerOptions;
 pub use crate::layer::UnmatchedKeyBehavior;
+pub use crate::matcher::MatchResult;
+pub use crate::matcher::Matcher;
 
 #[cfg(test)]
 mod tests {
@@ -95,27 +103,11 @@ mod tests {
 
     #[test]
     fn core_matcher_finds_binding() {
-        use std::collections::HashMap;
-
-        let mut bindings_by_id = HashMap::new();
-        let mut binding_ids_by_hotkey = HashMap::new();
-        let layers = HashMap::new();
-        let layer_stack = Vec::new();
-
-        let id = BindingId::new();
+        let mut matcher = Matcher::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-        let binding = binding::RegisteredBinding::new(id, hotkey.clone(), Action::Swallow);
-        binding_ids_by_hotkey.insert(hotkey.clone(), id);
-        bindings_by_id.insert(id, binding);
+        matcher.register(hotkey.clone(), Action::Swallow).unwrap();
 
-        let result = matcher::match_key_event(
-            key_state::KeyTransition::Press,
-            &hotkey,
-            &layer_stack,
-            &layers,
-            &binding_ids_by_hotkey,
-            &bindings_by_id,
-        );
+        let result = matcher.process(&hotkey, key_state::KeyTransition::Press);
         assert!(matches!(result, matcher::MatchResult::Matched { .. }));
     }
 }

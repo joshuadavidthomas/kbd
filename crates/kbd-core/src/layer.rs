@@ -73,16 +73,16 @@ impl LayerOptions {
 
 /// A single binding within a layer.
 #[derive(Debug)]
-pub struct LayerBinding {
-    pub hotkey: Hotkey,
-    pub action: Action,
-    pub passthrough: Passthrough,
+pub(crate) struct LayerBinding {
+    pub(crate) hotkey: Hotkey,
+    pub(crate) action: Action,
+    pub(crate) passthrough: Passthrough,
 }
 
 /// Engine-internal representation of a stored layer definition.
-pub struct StoredLayer {
-    pub bindings: Vec<LayerBinding>,
-    pub options: LayerOptions,
+pub(crate) struct StoredLayer {
+    pub(crate) bindings: Vec<LayerBinding>,
+    pub(crate) options: LayerOptions,
 }
 
 impl std::fmt::Debug for StoredLayer {
@@ -186,7 +186,7 @@ impl Layer {
 
     /// Consume this layer and return its constituent parts.
     #[must_use]
-    pub fn into_parts(self) -> (LayerName, Vec<LayerBinding>, LayerOptions) {
+    pub(crate) fn into_parts(self) -> (LayerName, Vec<LayerBinding>, LayerOptions) {
         (self.name, self.bindings, self.options)
     }
 }

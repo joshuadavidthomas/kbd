@@ -48,32 +48,18 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
-use std::time::Instant;
 
-use kbd_core::matcher::LayerStackEntry;
-use kbd_core::matcher::LayerTimeout;
+use kbd_core::Matcher;
 use kbd_core::matcher::MatchResult;
-use kbd_core::matcher::match_key_event;
 
 use self::key_state::KeyState;
 use self::key_state::KeyTransition;
 use crate::Error;
 use crate::Key;
-use crate::Modifier;
 use crate::action::Action;
-use crate::action::LayerName;
-use crate::binding::BindingId;
 use crate::binding::Passthrough;
-use crate::binding::RegisteredBinding;
 use crate::engine::devices::DeviceKeyEvent;
-use crate::introspection::ActiveLayerInfo;
-use crate::introspection::BindingInfo;
-use crate::introspection::BindingLocation;
-use crate::introspection::ConflictInfo;
-use crate::introspection::ShadowedStatus;
 use crate::key::Hotkey;
-use crate::layer::Layer;
-use crate::layer::StoredLayer;
 
 pub(crate) mod command;
 pub(crate) mod devices;
@@ -90,16 +76,13 @@ pub(crate) use self::command::CommandSender;
 pub(crate) use self::runtime::EngineRuntime;
 pub(crate) use self::types::GrabState;
 pub(crate) use self::types::KeyEventDisposition;
-use self::types::LayerEffect;
 use self::types::MatchOutcome;
 use self::wake::LoopControl;
 use self::wake::WakeFd;
 
 pub(crate) struct Engine {
-    bindings_by_id: HashMap<BindingId, RegisteredBinding>,
-    binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
-    layers: HashMap<LayerName, StoredLayer>,
-    layer_stack: Vec<LayerStackEntry>,
+    /// The synchronous matching engine — owns bindings, layers, and layer stack.
+    matcher: Matcher,
     /// Press cache: records what happened on key press so the corresponding
     /// release event uses the same disposition. Essential for correct
     /// release behavior across layer transitions — if a key was consumed
@@ -126,10 +109,7 @@ impl Engine {
             GrabState::Enabled { .. } => devices::DeviceGrabMode::Exclusive,
         };
         Self {
-            bindings_by_id: HashMap::new(),
-            binding_ids_by_hotkey: HashMap::new(),
-            layers: HashMap::new(),
-            layer_stack: Vec::new(),
+            matcher: Matcher::new(),
             press_cache: HashMap::new(),
             devices: devices::DeviceManager::new(
                 Path::new(devices::INPUT_DIRECTORY),
@@ -184,21 +164,7 @@ impl Engine {
     /// Returns the poll timeout in milliseconds based on the nearest layer timeout.
     /// Returns -1 (infinite) if no timeouts are pending.
     fn next_timer_deadline_ms(&self) -> i32 {
-        let now = Instant::now();
-        let mut min_remaining = None;
-
-        for entry in &self.layer_stack {
-            if let Some(timeout) = &entry.timeout {
-                let elapsed = now.duration_since(timeout.last_activity);
-                let remaining = timeout.duration.saturating_sub(elapsed);
-                min_remaining = Some(match min_remaining {
-                    Some(current) => std::cmp::min(current, remaining),
-                    None => remaining,
-                });
-            }
-        }
-
-        match min_remaining {
+        match self.matcher.next_timeout_deadline() {
             Some(remaining) => {
                 let ms = remaining.as_millis();
                 // Clamp to i32::MAX, add 1ms to ensure we wake after expiry
@@ -225,37 +191,36 @@ impl Engine {
     fn handle_command(&mut self, command: Command) -> LoopControl {
         match command {
             Command::Register { binding, reply } => {
-                let register_result = self.register_binding(binding);
-                let _ = reply.send(register_result);
+                let result = self.matcher.register_binding(binding);
+                let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::Unregister { id } => {
-                self.unregister_binding(id);
+                self.matcher.unregister(id);
                 LoopControl::Continue
             }
             Command::DefineLayer { layer, reply } => {
-                let result = self.define_layer(layer);
-                let _ = reply.send(result);
+                let result = self.matcher.define_layer(layer);
+                let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::PushLayer { name, reply } => {
-                let result = self.push_layer(name);
-                let _ = reply.send(result);
+                let result = self.matcher.push_layer(name);
+                let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::PopLayer { reply } => {
-                let result = self.pop_layer();
-                let _ = reply.send(result);
+                let result = self.matcher.pop_layer();
+                let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::ToggleLayer { name, reply } => {
-                let result = self.toggle_layer(name);
-                let _ = reply.send(result);
+                let result = self.matcher.toggle_layer(name);
+                let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::IsRegistered { hotkey, reply } => {
-                let is_registered = self.binding_ids_by_hotkey.contains_key(&hotkey);
-                let _ = reply.send(is_registered);
+                let _ = reply.send(self.matcher.is_registered(&hotkey));
                 LoopControl::Continue
             }
             Command::IsKeyPressed { key, reply } => {
@@ -267,241 +232,22 @@ impl Engine {
                 LoopControl::Continue
             }
             Command::ListBindings { reply } => {
-                let _ = reply.send(self.list_bindings());
+                let _ = reply.send(self.matcher.list_bindings());
                 LoopControl::Continue
             }
             Command::BindingsForKey { hotkey, reply } => {
-                let _ = reply.send(self.binding_for_key(&hotkey));
+                let _ = reply.send(self.matcher.bindings_for_key(&hotkey));
                 LoopControl::Continue
             }
             Command::ActiveLayers { reply } => {
-                let _ = reply.send(self.active_layers());
+                let _ = reply.send(self.matcher.active_layers());
                 LoopControl::Continue
             }
             Command::Conflicts { reply } => {
-                let _ = reply.send(self.conflicts());
+                let _ = reply.send(self.matcher.conflicts());
                 LoopControl::Continue
             }
             Command::Shutdown => LoopControl::Shutdown,
-        }
-    }
-
-    fn register_binding(&mut self, binding: RegisteredBinding) -> Result<(), Error> {
-        let id = binding.id();
-        let hotkey = binding.hotkey().clone();
-
-        if self.bindings_by_id.contains_key(&id) || self.binding_ids_by_hotkey.contains_key(&hotkey)
-        {
-            return Err(Error::AlreadyRegistered);
-        }
-
-        self.binding_ids_by_hotkey.insert(hotkey, id);
-        self.bindings_by_id.insert(id, binding);
-        Ok(())
-    }
-
-    fn define_layer(&mut self, layer: Layer) -> Result<(), Error> {
-        let (name, bindings, options) = layer.into_parts();
-
-        match self.layers.entry(name) {
-            std::collections::hash_map::Entry::Occupied(_) => Err(Error::LayerAlreadyDefined),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(StoredLayer { bindings, options });
-                Ok(())
-            }
-        }
-    }
-
-    fn push_layer(&mut self, name: LayerName) -> Result<(), Error> {
-        let stored = self.layers.get(&name).ok_or(Error::LayerNotDefined)?;
-        let oneshot_remaining = stored.options.oneshot();
-        let timeout = stored.options.timeout().map(|duration| LayerTimeout {
-            duration,
-            last_activity: Instant::now(),
-        });
-        self.layer_stack.push(LayerStackEntry {
-            name,
-            oneshot_remaining,
-            timeout,
-        });
-        Ok(())
-    }
-
-    fn pop_layer(&mut self) -> Result<LayerName, Error> {
-        self.layer_stack
-            .pop()
-            .map(|entry| entry.name)
-            .ok_or(Error::EmptyLayerStack)
-    }
-
-    fn toggle_layer(&mut self, name: LayerName) -> Result<(), Error> {
-        if !self.layers.contains_key(&name) {
-            return Err(Error::LayerNotDefined);
-        }
-        // Remove the topmost (most recently pushed) occurrence, not the bottommost.
-        if let Some(pos) = self
-            .layer_stack
-            .iter()
-            .rposition(|entry| entry.name == name)
-        {
-            self.layer_stack.remove(pos);
-        } else {
-            self.push_layer(name)?;
-        }
-        Ok(())
-    }
-
-    fn list_bindings(&self) -> Vec<BindingInfo> {
-        // Build a map of hotkey → claiming layer name for active layers.
-        // Walk top-down so the topmost layer claiming a hotkey "wins".
-        let mut claimed_by: HashMap<&Hotkey, &LayerName> = HashMap::new();
-        for entry in self.layer_stack.iter().rev() {
-            if let Some(stored) = self.layers.get(&entry.name) {
-                for binding in &stored.bindings {
-                    claimed_by.entry(&binding.hotkey).or_insert(&entry.name);
-                }
-            }
-        }
-
-        let mut results = Vec::new();
-
-        // Global bindings
-        for binding in self.bindings_by_id.values() {
-            let shadowed = if let Some(&layer_name) = claimed_by.get(binding.hotkey()) {
-                ShadowedStatus::ShadowedBy(layer_name.clone())
-            } else {
-                ShadowedStatus::Active
-            };
-
-            results.push(BindingInfo {
-                hotkey: binding.hotkey().clone(),
-                description: binding.options().description().map(Box::from),
-                location: BindingLocation::Global,
-                shadowed,
-                overlay_visibility: binding.options().overlay_visibility(),
-            });
-        }
-
-        // Layer bindings (all defined layers, active or not)
-        for (layer_name, stored) in &self.layers {
-            let is_active = self.layer_stack.iter().any(|e| &e.name == layer_name);
-
-            for binding in &stored.bindings {
-                let shadowed = if !is_active {
-                    ShadowedStatus::Inactive
-                } else if let Some(&claiming_layer) = claimed_by.get(&binding.hotkey) {
-                    if claiming_layer == layer_name {
-                        ShadowedStatus::Active
-                    } else {
-                        ShadowedStatus::ShadowedBy(claiming_layer.clone())
-                    }
-                } else {
-                    ShadowedStatus::Active
-                };
-
-                results.push(BindingInfo {
-                    hotkey: binding.hotkey.clone(),
-                    description: None,
-                    location: BindingLocation::Layer(layer_name.clone()),
-                    shadowed,
-                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
-                });
-            }
-        }
-
-        results
-    }
-
-    fn binding_for_key(&self, hotkey: &Hotkey) -> Option<BindingInfo> {
-        // Modifier-only keys never fire bindings in the real matcher,
-        // so they can't match here either.
-        if Modifier::from_key(hotkey.key()).is_some() {
-            return None;
-        }
-
-        // Walk layer stack top-down, same as the matcher
-        for entry in self.layer_stack.iter().rev() {
-            if let Some(stored) = self.layers.get(&entry.name) {
-                for binding in &stored.bindings {
-                    if binding.hotkey == *hotkey {
-                        return Some(BindingInfo {
-                            hotkey: binding.hotkey.clone(),
-                            description: None,
-                            location: BindingLocation::Layer(entry.name.clone()),
-                            shadowed: ShadowedStatus::Active,
-                            overlay_visibility: crate::binding::OverlayVisibility::Visible,
-                        });
-                    }
-                }
-
-                // Swallow layers block all unmatched keys from reaching
-                // lower layers and globals — matches the real matcher.
-                if matches!(
-                    stored.options.unmatched(),
-                    crate::layer::UnmatchedKeyBehavior::Swallow
-                ) {
-                    return None;
-                }
-            }
-        }
-
-        // Fall through to global bindings
-        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey)
-            && let Some(binding) = self.bindings_by_id.get(&id)
-        {
-            return Some(BindingInfo {
-                hotkey: binding.hotkey().clone(),
-                description: binding.options().description().map(Box::from),
-                location: BindingLocation::Global,
-                shadowed: ShadowedStatus::Active,
-                overlay_visibility: binding.options().overlay_visibility(),
-            });
-        }
-
-        None
-    }
-
-    fn active_layers(&self) -> Vec<ActiveLayerInfo> {
-        self.layer_stack
-            .iter()
-            .filter_map(|entry| {
-                self.layers.get(&entry.name).map(|stored| ActiveLayerInfo {
-                    name: entry.name.clone(),
-                    description: stored.options.description().map(Box::from),
-                    binding_count: stored.bindings.len(),
-                })
-            })
-            .collect()
-    }
-
-    fn conflicts(&self) -> Vec<ConflictInfo> {
-        let all_bindings = self.list_bindings();
-        let mut conflicts = Vec::new();
-
-        // Find all shadowed bindings and pair with their shadowing binding
-        for shadowed in &all_bindings {
-            if let ShadowedStatus::ShadowedBy(ref shadowing_layer) = shadowed.shadowed {
-                // Find the binding that's doing the shadowing
-                if let Some(shadowing) = all_bindings.iter().find(|b| {
-                    b.hotkey == shadowed.hotkey
-                        && b.location == BindingLocation::Layer(shadowing_layer.clone())
-                        && matches!(b.shadowed, ShadowedStatus::Active)
-                }) {
-                    conflicts.push(ConflictInfo {
-                        hotkey: shadowed.hotkey.clone(),
-                        shadowed_binding: shadowed.clone(),
-                        shadowing_binding: shadowing.clone(),
-                    });
-                }
-            }
-        }
-
-        conflicts
-    }
-
-    fn unregister_binding(&mut self, id: BindingId) {
-        if let Some(binding) = self.bindings_by_id.remove(&id) {
-            self.binding_ids_by_hotkey.remove(binding.hotkey());
         }
     }
 
@@ -521,82 +267,68 @@ impl Engine {
         self.key_state
             .apply_device_event(event.device_fd, event.key, event.transition);
 
-        // Press cache: on release, use the cached disposition from the
-        // corresponding press instead of re-matching. This ensures correct
-        // release behavior across layer transitions — if a key was consumed
-        // on press, its release is consumed even if the layer was popped.
-        if matches!(event.transition, KeyTransition::Release)
-            && let Some(cached) = self.press_cache.remove(&event.key)
-        {
-            match cached {
-                KeyEventDisposition::MatchedForwarded | KeyEventDisposition::UnmatchedForwarded => {
-                    self.forward_event(event.key, event.transition);
+        // Press cache: on release or repeat, use the cached disposition from
+        // the corresponding press instead of re-matching. This ensures:
+        // - Release: correct behavior across layer transitions — if a key was
+        //   consumed on press, its release is consumed even if the layer was popped.
+        // - Repeat: consumed keys don't leak repeats through the virtual device
+        //   in grab mode, and passthrough keys correctly forward repeats.
+        // Release removes the cache entry; repeat peeks without removing.
+        if !matches!(event.transition, KeyTransition::Press) {
+            let cached = if matches!(event.transition, KeyTransition::Release) {
+                self.press_cache.remove(&event.key)
+            } else {
+                self.press_cache.get(&event.key).copied()
+            };
+            if let Some(cached) = cached {
+                match cached {
+                    KeyEventDisposition::MatchedForwarded
+                    | KeyEventDisposition::UnmatchedForwarded => {
+                        self.forward_event(event.key, event.transition);
+                    }
+                    KeyEventDisposition::MatchedConsumed | KeyEventDisposition::Ignored => {}
                 }
-                KeyEventDisposition::MatchedConsumed | KeyEventDisposition::Ignored => {}
+                return cached;
             }
-            return cached;
         }
-        // No cache entry (modifier release, or key pressed before cache existed).
+        // No cache entry (modifier key, or key pressed before cache existed).
         // Fall through to normal processing.
 
         let active_modifiers = self.key_state.active_modifiers();
         let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
 
-        // Phase 1: Match against layer stack + global bindings.
-        // The MatchResult borrows self.layers and self.bindings_by_id,
-        // so we extract what we need and drop the borrow before Phase 2.
+        // Process through the Matcher which handles matching + layer effects.
+        // The Matcher applies layer effects (PushLayer/PopLayer/ToggleLayer)
+        // internally during process(). We extract the outcome to handle
+        // callback execution and forwarding.
         let outcome = {
-            let result = match_key_event(
-                event.transition,
-                &candidate,
-                &self.layer_stack,
-                &self.layers,
-                &self.binding_ids_by_hotkey,
-                &self.bindings_by_id,
-            );
-
-            match result {
+            let result = self.matcher.process(&candidate, event.transition);
+            match &result {
                 MatchResult::Matched {
                     action,
                     passthrough,
                 } => {
-                    // Execute non-mutating parts (callbacks) while borrow is held
                     execute_action(action);
-                    // Extract layer effect for Phase 2
-                    let layer_effect = LayerEffect::from(action);
                     MatchOutcome::Matched {
-                        layer_effect,
-                        passthrough,
+                        passthrough: *passthrough,
                     }
                 }
                 MatchResult::Swallowed => MatchOutcome::Swallowed,
                 MatchResult::NoMatch => MatchOutcome::NoMatch,
-                MatchResult::Ignored => MatchOutcome::Ignored,
+                // Sequences not yet implemented (Phase 4)
+                MatchResult::Ignored | MatchResult::Pending { .. } => MatchOutcome::Ignored,
             }
         };
-        // result dropped — self.layers borrow released
 
-        let was_actionable = !matches!(outcome, MatchOutcome::Ignored);
-
-        // Phase 2: Apply layer mutations and determine event disposition
+        // Determine event disposition based on match outcome and grab state
         let disposition = match outcome {
-            MatchOutcome::Matched {
-                layer_effect,
-                passthrough,
-            } => {
-                self.apply_layer_effect(layer_effect);
-                match passthrough {
-                    Passthrough::Enabled
-                        if matches!(self.grab_state, GrabState::Enabled { .. }) =>
-                    {
-                        self.forward_event(event.key, event.transition);
-                        KeyEventDisposition::MatchedForwarded
-                    }
-                    Passthrough::Enabled | Passthrough::Consume => {
-                        KeyEventDisposition::MatchedConsumed
-                    }
+            MatchOutcome::Matched { passthrough } => match passthrough {
+                Passthrough::Enabled if matches!(self.grab_state, GrabState::Enabled { .. }) => {
+                    self.forward_event(event.key, event.transition);
+                    KeyEventDisposition::MatchedForwarded
                 }
-            }
+                Passthrough::Enabled | Passthrough::Consume => KeyEventDisposition::MatchedConsumed,
+            },
             MatchOutcome::Swallowed => KeyEventDisposition::MatchedConsumed,
             MatchOutcome::NoMatch | MatchOutcome::Ignored => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
@@ -611,82 +343,12 @@ impl Engine {
         // Cache the disposition for non-modifier key presses so the
         // corresponding release uses the same disposition.
         if matches!(event.transition, KeyTransition::Press)
-            && Modifier::from_key(event.key).is_none()
+            && kbd_core::key::Modifier::from_key(event.key).is_none()
         {
             self.press_cache.insert(event.key, disposition);
         }
 
-        // Phase 3: Tick oneshot counters and reset timeout clocks for non-modifier key presses
-        if matches!(event.transition, KeyTransition::Press)
-            && Modifier::from_key(event.key).is_none()
-            && was_actionable
-        {
-            self.reset_layer_timeouts();
-            self.tick_oneshot_layers();
-        }
-
         disposition
-    }
-
-    /// Reset timeout clocks on all active timeout layers (activity occurred).
-    fn reset_layer_timeouts(&mut self) {
-        let now = Instant::now();
-        for entry in &mut self.layer_stack {
-            if let Some(timeout) = &mut entry.timeout {
-                timeout.last_activity = now;
-            }
-        }
-    }
-
-    /// Check all active timeout layers and pop any that have expired.
-    fn check_layer_timeouts(&mut self) {
-        let now = Instant::now();
-        self.layer_stack.retain(|entry| {
-            if let Some(timeout) = &entry.timeout {
-                now.duration_since(timeout.last_activity) < timeout.duration
-            } else {
-                true
-            }
-        });
-    }
-
-    /// Decrement oneshot counters on the layer stack and pop expired layers.
-    fn tick_oneshot_layers(&mut self) {
-        // Walk top-down, decrement the first oneshot layer found, pop if exhausted
-        let mut pop_index = None;
-        for (i, entry) in self.layer_stack.iter_mut().enumerate().rev() {
-            if let Some(remaining) = &mut entry.oneshot_remaining {
-                *remaining = remaining.saturating_sub(1);
-                if *remaining == 0 {
-                    pop_index = Some(i);
-                }
-                break;
-            }
-        }
-        if let Some(index) = pop_index {
-            self.layer_stack.remove(index);
-        }
-    }
-
-    fn apply_layer_effect(&mut self, effect: LayerEffect) {
-        match effect {
-            LayerEffect::None => {}
-            LayerEffect::Push(name) => {
-                if let Err(error) = self.push_layer(name) {
-                    tracing::error!(%error, "failed to push layer from action");
-                }
-            }
-            LayerEffect::Pop => {
-                if let Err(error) = self.pop_layer() {
-                    tracing::error!(%error, "failed to pop layer from action");
-                }
-            }
-            LayerEffect::Toggle(name) => {
-                if let Err(error) = self.toggle_layer(name) {
-                    tracing::error!(%error, "failed to toggle layer from action");
-                }
-            }
-        }
     }
 
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {
@@ -701,8 +363,8 @@ impl Engine {
 /// Execute a callback action with panic isolation — a panicking callback
 /// never kills the engine thread.
 ///
-/// Only handles `Action::Callback`. Layer-control actions are handled by
-/// `Engine::apply_layer_effect` which has access to engine state.
+/// Only handles `Action::Callback`. Layer-control actions (`PushLayer`,
+/// `PopLayer`, `ToggleLayer`) are handled by `Matcher::process()` internally.
 fn execute_action(action: &Action) {
     if let Action::Callback(callback) = action
         && let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -725,7 +387,7 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
         }
 
         engine.process_polled_events(&poll_fds);
-        engine.check_layer_timeouts();
+        engine.matcher.check_timeouts();
     }
 }
 
@@ -943,7 +605,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         // Simulate: press Ctrl, then press C
         press_key(&mut engine, Key::LeftCtrl, 10);
@@ -964,7 +626,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         // Press V instead of C (with Ctrl held)
         press_key(&mut engine, Key::LeftCtrl, 10);
@@ -985,7 +647,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         // Press Ctrl+Shift+C — binding only wants Ctrl+C
         press_key(&mut engine, Key::LeftCtrl, 10);
@@ -1009,7 +671,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::LeftCtrl, 10);
         press_key(&mut engine, Key::LeftShift, 10);
@@ -1030,7 +692,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::Escape, 10);
 
@@ -1049,7 +711,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         // Press the hotkey so it fires once
         press_key(&mut engine, Key::LeftCtrl, 10);
@@ -1074,6 +736,7 @@ mod tests {
             panic!("intentional test panic");
         });
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(id1, hotkey1, action1))
             .unwrap();
 
@@ -1084,6 +747,7 @@ mod tests {
             post_panic_clone.fetch_add(1, Ordering::Relaxed);
         });
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(id2, hotkey2, action2))
             .unwrap();
 
@@ -1111,7 +775,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         // Use RightCtrl instead of LeftCtrl — should still match
         press_key(&mut engine, Key::RightCtrl, 10);
@@ -1130,6 +794,7 @@ mod tests {
         let id = BindingId::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(id, hotkey, Action::Swallow))
             .unwrap();
 
@@ -1156,6 +821,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(id, hotkey, action))
             .unwrap();
 
@@ -1186,7 +852,7 @@ mod tests {
         });
         let binding =
             RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         // Press Ctrl+C with passthrough — should fire AND forward
         press_key(&mut engine, Key::LeftCtrl, 10);
@@ -1227,7 +893,7 @@ mod tests {
         });
         let binding =
             RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
-        engine.register_binding(binding).unwrap();
+        engine.matcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::LeftCtrl, 10);
         let disposition = press_key(&mut engine, Key::C, 10);
@@ -1358,13 +1024,21 @@ mod tests {
             .bind(Key::H, Action::Swallow)
             .bind(Key::J, Action::Swallow);
 
-        let result = engine.define_layer(layer);
+        let result = engine.matcher.define_layer(layer);
         assert!(result.is_ok());
-        assert!(
-            engine
-                .layers
-                .contains_key(&crate::action::LayerName::from("nav"))
-        );
+
+        // Verify via introspection: the layer's bindings are listed
+        let bindings = engine.matcher.list_bindings();
+        let nav_bindings: Vec<_> = bindings
+            .iter()
+            .filter(|b| {
+                b.location
+                    == crate::introspection::BindingLocation::Layer(crate::action::LayerName::from(
+                        "nav",
+                    ))
+            })
+            .collect();
+        assert_eq!(nav_bindings.len(), 2);
     }
 
     #[test]
@@ -1375,13 +1049,20 @@ mod tests {
             .bind(Key::J, Action::Swallow)
             .bind(Key::K, Action::Swallow);
 
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
 
-        let stored = engine
-            .layers
-            .get(&crate::action::LayerName::from("nav"))
-            .expect("layer should be stored");
-        assert_eq!(stored.bindings.len(), 3);
+        // Verify via introspection: three bindings in the nav layer
+        let bindings = engine.matcher.list_bindings();
+        let nav_bindings: Vec<_> = bindings
+            .iter()
+            .filter(|b| {
+                b.location
+                    == crate::introspection::BindingLocation::Layer(crate::action::LayerName::from(
+                        "nav",
+                    ))
+            })
+            .collect();
+        assert_eq!(nav_bindings.len(), 3);
     }
 
     #[test]
@@ -1393,21 +1074,29 @@ mod tests {
             .oneshot(1)
             .timeout(std::time::Duration::from_secs(5));
 
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
 
-        let stored = engine
-            .layers
-            .get(&crate::action::LayerName::from("oneshot-nav"))
-            .expect("layer should be stored");
-        assert_eq!(stored.options.oneshot(), Some(1));
-        assert_eq!(
-            stored.options.unmatched(),
-            crate::layer::UnmatchedKeyBehavior::Swallow
-        );
-        assert_eq!(
-            stored.options.timeout(),
-            Some(std::time::Duration::from_secs(5))
-        );
+        // Verify layer was stored by pushing and checking behavior:
+        // the oneshot layer should auto-pop after 1 keypress
+        engine
+            .matcher
+            .push_layer(crate::action::LayerName::from("oneshot-nav"))
+            .unwrap();
+
+        // H should match in the layer
+        let result = engine
+            .matcher
+            .process(&Hotkey::new(Key::H), KeyTransition::Press);
+        assert!(matches!(
+            result,
+            kbd_core::matcher::MatchResult::Matched { .. }
+        ));
+
+        // After oneshot depth of 1, layer should be gone
+        let result = engine
+            .matcher
+            .process(&Hotkey::new(Key::H), KeyTransition::Press);
+        assert!(matches!(result, kbd_core::matcher::MatchResult::NoMatch));
     }
 
     #[test]
@@ -1415,13 +1104,17 @@ mod tests {
         let mut engine = test_engine();
         let layer = crate::Layer::new("empty");
 
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
 
-        let stored = engine
-            .layers
-            .get(&crate::action::LayerName::from("empty"))
-            .expect("layer should be stored");
-        assert_eq!(stored.bindings.len(), 0);
+        // Push the empty layer — should succeed and have 0 bindings
+        engine
+            .matcher
+            .push_layer(crate::action::LayerName::from("empty"))
+            .unwrap();
+        let active = engine.matcher.active_layers();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].name.as_str(), "empty");
+        assert_eq!(active[0].binding_count, 0);
     }
 
     #[test]
@@ -1491,8 +1184,9 @@ mod tests {
         for (key, action) in bindings {
             layer = layer.bind(key, action);
         }
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from(name))
             .unwrap();
     }
@@ -1536,7 +1230,7 @@ mod tests {
         );
 
         // Pop the layer
-        let popped = engine.pop_layer().unwrap();
+        let popped = engine.matcher.pop_layer().unwrap();
         assert_eq!(popped.as_str(), "nav");
 
         // H should no longer match
@@ -1556,9 +1250,10 @@ mod tests {
                 cc.fetch_add(1, Ordering::Relaxed);
             }),
         );
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
 
         engine
+            .matcher
             .toggle_layer(crate::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1585,6 +1280,7 @@ mod tests {
 
         // Toggle off
         engine
+            .matcher
             .toggle_layer(crate::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1596,8 +1292,10 @@ mod tests {
     #[test]
     fn toggle_undefined_layer_returns_error() {
         let mut engine = test_engine();
-        let result = engine.toggle_layer(crate::action::LayerName::from("nonexistent"));
-        assert!(matches!(result, Err(Error::LayerNotDefined)));
+        let result = engine
+            .matcher
+            .toggle_layer(crate::action::LayerName::from("nonexistent"));
+        assert!(matches!(result, Err(kbd_core::Error::LayerNotDefined)));
     }
 
     #[test]
@@ -1651,6 +1349,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
@@ -1674,6 +1373,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
@@ -1686,8 +1386,9 @@ mod tests {
         let layer = crate::Layer::new("modal")
             .bind(Key::H, Action::Swallow)
             .swallow();
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("modal"))
             .unwrap();
 
@@ -1709,10 +1410,11 @@ mod tests {
                 lc.fetch_add(1, Ordering::Relaxed);
             }),
         );
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
 
         // Register a global binding that pushes the layer
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F1),
@@ -1742,8 +1444,9 @@ mod tests {
                 }),
             )
             .bind(Key::Escape, Action::PopLayer);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1773,10 +1476,11 @@ mod tests {
                 cc.fetch_add(1, Ordering::Relaxed);
             }),
         );
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
 
         // Register toggle binding
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F2),
@@ -1807,6 +1511,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
@@ -1834,7 +1539,7 @@ mod tests {
         assert_eq!(layer_counter.load(Ordering::Relaxed), 100);
 
         // Pop layer, now global should fire
-        engine.pop_layer().unwrap();
+        engine.matcher.pop_layer().unwrap();
         release_key(&mut engine, Key::H, 10);
         press_key(&mut engine, Key::H, 10);
         assert_eq!(global_counter.load(Ordering::Relaxed), 1);
@@ -1855,8 +1560,9 @@ mod tests {
                 }),
             )
             .oneshot(1);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("oneshot"))
             .unwrap();
 
@@ -1884,8 +1590,9 @@ mod tests {
                 }),
             )
             .oneshot(1);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("oneshot"))
             .unwrap();
 
@@ -1912,8 +1619,9 @@ mod tests {
                 }),
             )
             .oneshot(2);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("oneshot2"))
             .unwrap();
 
@@ -2058,8 +1766,9 @@ mod tests {
                 }),
             )
             .timeout(Duration::from_millis(50));
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("timed"))
             .unwrap();
 
@@ -2072,7 +1781,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(80));
 
         // Check timeouts (simulating the engine loop check)
-        engine.check_layer_timeouts();
+        engine.matcher.check_timeouts();
 
         // Layer should be gone — H no longer matches
         press_key(&mut engine, Key::H, 10);
@@ -2093,8 +1802,9 @@ mod tests {
                 }),
             )
             .timeout(Duration::from_millis(100));
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("timed"))
             .unwrap();
 
@@ -2106,7 +1816,7 @@ mod tests {
 
         // Wait a bit more but not enough from last activity
         std::thread::sleep(Duration::from_millis(50));
-        engine.check_layer_timeouts();
+        engine.matcher.check_timeouts();
 
         // Layer should still be active
         press_key(&mut engine, Key::H, 10);
@@ -2115,7 +1825,7 @@ mod tests {
 
         // Now wait for full timeout from last activity
         std::thread::sleep(Duration::from_millis(120));
-        engine.check_layer_timeouts();
+        engine.matcher.check_timeouts();
 
         // Layer should be gone
         press_key(&mut engine, Key::H, 10);
@@ -2166,6 +1876,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -2198,6 +1909,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
+            .matcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -2237,8 +1949,9 @@ mod tests {
         let layer = crate::Layer::new("modal")
             .bind(Key::H, Action::Swallow)
             .swallow();
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("modal"))
             .unwrap();
 
@@ -2270,6 +1983,7 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -2302,8 +2016,9 @@ mod tests {
         let layer = crate::Layer::new("nav")
             .bind(Key::H, Action::PopLayer)
             .bind(Key::J, Action::Swallow);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("nav"))
             .unwrap();
 
@@ -2311,7 +2026,7 @@ mod tests {
         let press_disp = press_key(&mut engine, Key::H, 10);
         assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
         assert!(
-            engine.layer_stack.is_empty(),
+            engine.matcher.active_layers().is_empty(),
             "layer should have been popped"
         );
 
@@ -2328,6 +2043,88 @@ mod tests {
         );
     }
 
+    #[test]
+    fn press_cache_repeat_consumed_when_press_was_consumed() {
+        // In grab mode, if a press matched a binding and was consumed,
+        // repeat events should also be consumed (not forwarded).
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        engine
+            .matcher
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        // Press Ctrl, then press C (matched, consumed)
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+
+        // Repeat C — should be consumed, NOT forwarded
+        let disposition = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 10,
+            key: Key::C,
+            transition: KeyTransition::Repeat,
+        });
+        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+
+        // Release C — should also be consumed
+        let release_disposition = release_key(&mut engine, Key::C, 10);
+        assert_eq!(release_disposition, KeyEventDisposition::MatchedConsumed);
+
+        // Verify no C events were forwarded
+        let events = forwarded.lock().unwrap();
+        let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
+        assert!(
+            c_events.is_empty(),
+            "consumed key's repeat and release should not be forwarded"
+        );
+    }
+
+    #[test]
+    fn press_cache_repeat_forwarded_when_press_had_passthrough() {
+        // In grab mode, if a press matched with passthrough,
+        // repeat events should also be forwarded.
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        engine
+            .matcher
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Swallow,
+                )
+                .with_passthrough(Passthrough::Enabled),
+            )
+            .unwrap();
+
+        // Press Ctrl+C with passthrough — matched, forwarded
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+
+        // Repeat C — should be forwarded (passthrough)
+        let disposition = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 10,
+            key: Key::C,
+            transition: KeyTransition::Repeat,
+        });
+        assert_eq!(disposition, KeyEventDisposition::MatchedForwarded);
+
+        // Verify C was forwarded on press and repeat
+        let events = forwarded.lock().unwrap();
+        let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
+        assert_eq!(
+            c_events.len(),
+            2,
+            "passthrough key should be forwarded on both press and repeat"
+        );
+    }
+
     // Introspection tests (Section 3.5)
 
     #[test]
@@ -2335,6 +2132,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
+            .matcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -2345,7 +2143,7 @@ mod tests {
             )
             .unwrap();
 
-        let bindings = engine.list_bindings();
+        let bindings = engine.matcher.list_bindings();
         assert_eq!(bindings.len(), 1);
 
         let info = &bindings[0];
@@ -2362,9 +2160,9 @@ mod tests {
         let layer = crate::Layer::new("nav")
             .bind(Key::H, Action::Swallow)
             .bind(Key::J, Action::Swallow);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
 
-        let bindings = engine.list_bindings();
+        let bindings = engine.matcher.list_bindings();
         let layer_bindings: Vec<_> = bindings
             .iter()
             .filter(|b| matches!(b.location, crate::introspection::BindingLocation::Layer(_)))
@@ -2377,10 +2175,10 @@ mod tests {
         let mut engine = test_engine();
 
         let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         // Don't push the layer
 
-        let bindings = engine.list_bindings();
+        let bindings = engine.matcher.list_bindings();
         let nav_binding = bindings
             .iter()
             .find(|b| b.hotkey == Hotkey::new(Key::H))
@@ -2397,6 +2195,7 @@ mod tests {
 
         // Global binding for H
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
@@ -2406,12 +2205,13 @@ mod tests {
 
         // Layer binding for H
         let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("nav"))
             .unwrap();
 
-        let bindings = engine.list_bindings();
+        let bindings = engine.matcher.list_bindings();
 
         // Global H should be shadowed by nav layer
         let global_h = bindings
@@ -2445,19 +2245,21 @@ mod tests {
         let mut engine = test_engine();
 
         let layer1 = crate::Layer::new("layer1").bind(Key::H, Action::Swallow);
-        engine.define_layer(layer1).unwrap();
+        engine.matcher.define_layer(layer1).unwrap();
 
         let layer2 = crate::Layer::new("layer2").bind(Key::H, Action::Swallow);
-        engine.define_layer(layer2).unwrap();
+        engine.matcher.define_layer(layer2).unwrap();
 
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("layer1"))
             .unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("layer2"))
             .unwrap();
 
-        let bindings = engine.list_bindings();
+        let bindings = engine.matcher.list_bindings();
 
         let layer1_h = bindings
             .iter()
@@ -2497,6 +2299,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
+            .matcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -2507,7 +2310,9 @@ mod tests {
             )
             .unwrap();
 
-        let result = engine.binding_for_key(&Hotkey::new(Key::C).modifier(Modifier::Ctrl));
+        let result = engine
+            .matcher
+            .bindings_for_key(&Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert!(result.is_some());
 
         let info = result.unwrap();
@@ -2521,6 +2326,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -2528,7 +2334,9 @@ mod tests {
             ))
             .unwrap();
 
-        let result = engine.binding_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
+        let result = engine
+            .matcher
+            .bindings_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
         assert!(result.is_none());
     }
 
@@ -2538,6 +2346,7 @@ mod tests {
 
         // Global binding for H
         engine
+            .matcher
             .register_binding(
                 RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Swallow)
                     .with_options(
@@ -2548,12 +2357,13 @@ mod tests {
 
         // Layer binding for H
         let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("nav"))
             .unwrap();
 
-        let result = engine.binding_for_key(&Hotkey::new(Key::H));
+        let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::H));
         assert!(result.is_some());
 
         let info = result.unwrap();
@@ -2566,7 +2376,7 @@ mod tests {
     #[test]
     fn active_layers_returns_empty_when_no_layers_pushed() {
         let engine = test_engine();
-        let layers = engine.active_layers();
+        let layers = engine.matcher.active_layers();
         assert!(layers.is_empty());
     }
 
@@ -2577,22 +2387,24 @@ mod tests {
         let layer1 = crate::Layer::new("layer1")
             .bind(Key::H, Action::Swallow)
             .description("First layer");
-        engine.define_layer(layer1).unwrap();
+        engine.matcher.define_layer(layer1).unwrap();
 
         let layer2 = crate::Layer::new("layer2")
             .bind(Key::J, Action::Swallow)
             .bind(Key::K, Action::Swallow)
             .description("Second layer");
-        engine.define_layer(layer2).unwrap();
+        engine.matcher.define_layer(layer2).unwrap();
 
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("layer1"))
             .unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("layer2"))
             .unwrap();
 
-        let active = engine.active_layers();
+        let active = engine.matcher.active_layers();
         assert_eq!(active.len(), 2);
 
         // Bottom to top order
@@ -2610,6 +2422,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -2617,7 +2430,7 @@ mod tests {
             ))
             .unwrap();
 
-        let conflicts = engine.conflicts();
+        let conflicts = engine.matcher.conflicts();
         assert!(conflicts.is_empty());
     }
 
@@ -2627,6 +2440,7 @@ mod tests {
 
         // Global binding for H
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
@@ -2636,12 +2450,13 @@ mod tests {
 
         // Layer binding for H
         let layer = crate::Layer::new("nav").bind(Key::H, Action::Swallow);
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("nav"))
             .unwrap();
 
-        let conflicts = engine.conflicts();
+        let conflicts = engine.matcher.conflicts();
         assert_eq!(conflicts.len(), 1);
 
         let conflict = &conflicts[0];
@@ -2661,19 +2476,21 @@ mod tests {
         let mut engine = test_engine();
 
         let layer1 = crate::Layer::new("layer1").bind(Key::H, Action::Swallow);
-        engine.define_layer(layer1).unwrap();
+        engine.matcher.define_layer(layer1).unwrap();
 
         let layer2 = crate::Layer::new("layer2").bind(Key::H, Action::Swallow);
-        engine.define_layer(layer2).unwrap();
+        engine.matcher.define_layer(layer2).unwrap();
 
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("layer1"))
             .unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("layer2"))
             .unwrap();
 
-        let conflicts = engine.conflicts();
+        let conflicts = engine.matcher.conflicts();
         assert_eq!(conflicts.len(), 1);
 
         let conflict = &conflicts[0];
@@ -2767,6 +2584,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
+            .matcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -2780,7 +2598,7 @@ mod tests {
             )
             .unwrap();
 
-        let bindings = engine.list_bindings();
+        let bindings = engine.matcher.list_bindings();
         assert_eq!(bindings.len(), 1);
         assert_eq!(
             bindings[0].overlay_visibility,
@@ -2794,6 +2612,7 @@ mod tests {
 
         // Global binding for X
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
@@ -2805,21 +2624,22 @@ mod tests {
         let layer = crate::Layer::new("modal")
             .bind(Key::H, Action::Swallow)
             .swallow();
-        engine.define_layer(layer).unwrap();
+        engine.matcher.define_layer(layer).unwrap();
         engine
+            .matcher
             .push_layer(crate::action::LayerName::from("modal"))
             .unwrap();
 
         // X is not in the swallow layer — the real matcher would
         // return Swallowed, so binding_for_key should return None.
-        let result = engine.binding_for_key(&Hotkey::new(Key::X));
+        let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::X));
         assert!(
             result.is_none(),
             "swallow layer should block fallthrough to global binding"
         );
 
         // H IS in the swallow layer — should still resolve
-        let result = engine.binding_for_key(&Hotkey::new(Key::H));
+        let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::H));
         assert!(result.is_some());
     }
 
@@ -2830,6 +2650,7 @@ mod tests {
         // Even if someone registers a bare modifier key, the real matcher
         // ignores modifier-only presses. binding_for_key should agree.
         engine
+            .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::LeftCtrl),
@@ -2837,7 +2658,7 @@ mod tests {
             ))
             .unwrap();
 
-        let result = engine.binding_for_key(&Hotkey::new(Key::LeftCtrl));
+        let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::LeftCtrl));
         assert!(
             result.is_none(),
             "modifier-only key should not match, consistent with real matcher"
