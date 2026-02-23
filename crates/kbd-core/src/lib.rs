@@ -100,27 +100,11 @@ mod tests {
 
     #[test]
     fn core_matcher_finds_binding() {
-        use std::collections::HashMap;
-
-        let mut bindings_by_id = HashMap::new();
-        let mut binding_ids_by_hotkey = HashMap::new();
-        let layers = HashMap::new();
-        let layer_stack = Vec::new();
-
-        let id = BindingId::new();
+        let mut matcher = Matcher::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-        let binding = binding::RegisteredBinding::new(id, hotkey.clone(), Action::Swallow);
-        binding_ids_by_hotkey.insert(hotkey.clone(), id);
-        bindings_by_id.insert(id, binding);
+        matcher.register(hotkey.clone(), Action::Swallow).unwrap();
 
-        let result = matcher::match_key_event(
-            key_state::KeyTransition::Press,
-            &hotkey,
-            &layer_stack,
-            &layers,
-            &binding_ids_by_hotkey,
-            &bindings_by_id,
-        );
+        let result = matcher.process(&hotkey, key_state::KeyTransition::Press);
         assert!(matches!(result, matcher::MatchResult::Matched { .. }));
     }
 }

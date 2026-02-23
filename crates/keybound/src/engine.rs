@@ -267,33 +267,40 @@ impl Engine {
         self.key_state
             .apply_device_event(event.device_fd, event.key, event.transition);
 
-        // Press cache: on release, use the cached disposition from the
-        // corresponding press instead of re-matching. This ensures correct
-        // release behavior across layer transitions — if a key was consumed
-        // on press, its release is consumed even if the layer was popped.
-        if matches!(event.transition, KeyTransition::Release)
-            && let Some(cached) = self.press_cache.remove(&event.key)
-        {
-            match cached {
-                KeyEventDisposition::MatchedForwarded | KeyEventDisposition::UnmatchedForwarded => {
-                    self.forward_event(event.key, event.transition);
+        // Press cache: on release or repeat, use the cached disposition from
+        // the corresponding press instead of re-matching. This ensures:
+        // - Release: correct behavior across layer transitions — if a key was
+        //   consumed on press, its release is consumed even if the layer was popped.
+        // - Repeat: consumed keys don't leak repeats through the virtual device
+        //   in grab mode, and passthrough keys correctly forward repeats.
+        // Release removes the cache entry; repeat peeks without removing.
+        if !matches!(event.transition, KeyTransition::Press) {
+            let cached = if matches!(event.transition, KeyTransition::Release) {
+                self.press_cache.remove(&event.key)
+            } else {
+                self.press_cache.get(&event.key).copied()
+            };
+            if let Some(cached) = cached {
+                match cached {
+                    KeyEventDisposition::MatchedForwarded
+                    | KeyEventDisposition::UnmatchedForwarded => {
+                        self.forward_event(event.key, event.transition);
+                    }
+                    KeyEventDisposition::MatchedConsumed | KeyEventDisposition::Ignored => {}
                 }
-                KeyEventDisposition::MatchedConsumed | KeyEventDisposition::Ignored => {}
+                return cached;
             }
-            return cached;
         }
-        // No cache entry (modifier release, or key pressed before cache existed).
+        // No cache entry (modifier key, or key pressed before cache existed).
         // Fall through to normal processing.
 
         let active_modifiers = self.key_state.active_modifiers();
         let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
 
-        // Use Matcher for matching + layer effects.
+        // Process through the Matcher which handles matching + layer effects.
         // The Matcher applies layer effects (PushLayer/PopLayer/ToggleLayer)
         // internally during process(). We extract the outcome to handle
         // callback execution and forwarding.
-        // Process through the Matcher which handles matching + layer effects.
-        // Scope the MatchResult borrow to extract outcome before forwarding.
         let outcome = {
             let result = self.matcher.process(&candidate, event.transition);
             match &result {
@@ -2033,6 +2040,88 @@ mod tests {
         assert!(
             h_events.is_empty(),
             "press cache should prevent release forwarding after layer pop"
+        );
+    }
+
+    #[test]
+    fn press_cache_repeat_consumed_when_press_was_consumed() {
+        // In grab mode, if a press matched a binding and was consumed,
+        // repeat events should also be consumed (not forwarded).
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        engine
+            .matcher
+            .register_binding(RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::Swallow,
+            ))
+            .unwrap();
+
+        // Press Ctrl, then press C (matched, consumed)
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+
+        // Repeat C — should be consumed, NOT forwarded
+        let disposition = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 10,
+            key: Key::C,
+            transition: KeyTransition::Repeat,
+        });
+        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+
+        // Release C — should also be consumed
+        let release_disposition = release_key(&mut engine, Key::C, 10);
+        assert_eq!(release_disposition, KeyEventDisposition::MatchedConsumed);
+
+        // Verify no C events were forwarded
+        let events = forwarded.lock().unwrap();
+        let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
+        assert!(
+            c_events.is_empty(),
+            "consumed key's repeat and release should not be forwarded"
+        );
+    }
+
+    #[test]
+    fn press_cache_repeat_forwarded_when_press_had_passthrough() {
+        // In grab mode, if a press matched with passthrough,
+        // repeat events should also be forwarded.
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        engine
+            .matcher
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Swallow,
+                )
+                .with_passthrough(Passthrough::Enabled),
+            )
+            .unwrap();
+
+        // Press Ctrl+C with passthrough — matched, forwarded
+        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::C, 10);
+
+        // Repeat C — should be forwarded (passthrough)
+        let disposition = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 10,
+            key: Key::C,
+            transition: KeyTransition::Repeat,
+        });
+        assert_eq!(disposition, KeyEventDisposition::MatchedForwarded);
+
+        // Verify C was forwarded on press and repeat
+        let events = forwarded.lock().unwrap();
+        let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
+        assert_eq!(
+            c_events.len(),
+            2,
+            "passthrough key should be forwarded on both press and repeat"
         );
     }
 
