@@ -1,4 +1,5 @@
-use crate::binding::Passthrough;
+#[cfg(feature = "evdev")]
+use kbd_core::binding::Passthrough;
 
 /// Whether the engine is running in grab mode.
 ///
@@ -8,6 +9,7 @@ use crate::binding::Passthrough;
 /// mode without a forwarder.
 pub(crate) enum GrabState {
     Disabled,
+    #[cfg(feature = "evdev")]
     #[cfg_attr(not(feature = "grab"), allow(dead_code))]
     Enabled {
         forwarder: Box<dyn super::forwarder::ForwardSink>,
@@ -18,6 +20,7 @@ pub(crate) enum GrabState {
 ///
 /// Returned by `process_key_event` to indicate what happened with the
 /// event. Used by tests to verify forwarding and consumption behavior.
+#[cfg(feature = "evdev")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyEventDisposition {
     /// Event matched a binding and was consumed (not forwarded).
@@ -34,6 +37,7 @@ pub(crate) enum KeyEventDisposition {
 ///
 /// Layer effects are handled by the `Matcher` — the engine only needs
 /// the match/no-match outcome and passthrough setting.
+#[cfg(feature = "evdev")]
 pub(super) enum MatchOutcome {
     Matched { passthrough: Passthrough },
     Swallowed,

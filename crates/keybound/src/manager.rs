@@ -27,25 +27,26 @@ use std::fmt;
 use std::sync::Mutex;
 use std::sync::mpsc;
 
+use kbd_core::Key;
+use kbd_core::Modifier;
+use kbd_core::action::Action;
+use kbd_core::action::LayerName;
+use kbd_core::binding::BindingId;
+use kbd_core::binding::BindingOptions;
+use kbd_core::binding::RegisteredBinding;
+use kbd_core::introspection::ActiveLayerInfo;
+use kbd_core::introspection::BindingInfo;
+use kbd_core::introspection::ConflictInfo;
+use kbd_core::key::Hotkey;
+use kbd_core::layer::Layer;
+
 use crate::Error;
-use crate::action::Action;
-use crate::action::LayerName;
 use crate::backend::Backend;
-use crate::binding::BindingId;
-use crate::binding::BindingOptions;
-use crate::binding::RegisteredBinding;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
 use crate::handle::Handle;
-use crate::introspection::ActiveLayerInfo;
-use crate::introspection::BindingInfo;
-use crate::introspection::ConflictInfo;
-use crate::key::Hotkey;
-use crate::key::Key;
-use crate::key::Modifier;
-use crate::layer::Layer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackendSelection {
@@ -368,34 +369,49 @@ impl Drop for HotkeyManager {
 
 fn resolve_backend(selection: BackendSelection) -> Result<Backend, Error> {
     match selection {
-        BackendSelection::Auto => Ok(Backend::Evdev),
+        BackendSelection::Auto => auto_detect_backend(),
         BackendSelection::Explicit(backend) => validate_explicit_backend(backend),
     }
 }
 
-// Returns Err when the portal feature is enabled and Portal is selected.
-// Without portal, clippy sees a single arm that always returns Ok.
+// The `Result` wrapper is necessary when no backend features are enabled.
+// With `--all-features`, clippy sees only the `Ok` paths and reports
+// `unnecessary_wraps`.
 #[allow(clippy::unnecessary_wraps)]
+fn auto_detect_backend() -> Result<Backend, Error> {
+    // TODO: Try portal first (when compiled in), fall back to evdev.
+    // For now, pick the first available backend.
+    #[cfg(feature = "evdev")]
+    return Ok(Backend::Evdev);
+    #[cfg(all(not(feature = "evdev"), feature = "portal"))]
+    return Ok(Backend::Portal);
+    #[cfg(not(any(feature = "evdev", feature = "portal")))]
+    return Err(Error::BackendUnavailable);
+}
+
 fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
     match backend {
+        #[cfg(feature = "evdev")]
         Backend::Evdev => Ok(Backend::Evdev),
+        #[cfg(not(feature = "evdev"))]
+        Backend::Evdev => Err(Error::BackendUnavailable),
         #[cfg(feature = "portal")]
         Backend::Portal => Err(Error::BackendUnavailable),
     }
 }
 
-// Returns Err for portal+grab combinations when the portal feature is enabled.
-// Without portal, the check is dead and the function always returns Ok.
-#[allow(clippy::unnecessary_wraps)]
 fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Result<(), Error> {
     if matches!(grab, GrabConfiguration::Enabled) {
-        #[cfg(feature = "portal")]
-        if matches!(backend, Backend::Portal) {
-            return Err(Error::UnsupportedFeature);
+        match backend {
+            #[cfg(feature = "evdev")]
+            Backend::Evdev => {} // grab requires evdev — ok
+            #[cfg(not(feature = "evdev"))]
+            Backend::Evdev => return Err(Error::UnsupportedFeature),
+            #[cfg(feature = "portal")]
+            Backend::Portal => return Err(Error::UnsupportedFeature),
         }
     }
 
-    let _ = backend;
     Ok(())
 }
 
