@@ -12,9 +12,7 @@ readme = "../../README.md"
 
 [features]
 async-std = ["dep:async-std", "dep:async-channel"]
-default = ["evdev"]
-evdev = ["dep:kbd-evdev"]
-grab = ["evdev"]
+grab = []
 portal = ["dep:ashpd", "dep:async-std", "dep:kbd-portal"]
 serde = ["dep:serde", "kbd-core/serde"]
 tokio = ["dep:tokio", "dep:async-channel"]
@@ -25,7 +23,7 @@ async-channel = { workspace = true, optional = true }
 async-std = { workspace = true, optional = true }
 kbd-core = { workspace = true }
 kbd-derive = { workspace = true, optional = true }
-kbd-evdev = { workspace = true, optional = true }
+kbd-evdev = { workspace = true }
 kbd-portal = { workspace = true, optional = true }
 kbd-xkb = { workspace = true, optional = true }
 libc = { workspace = true }

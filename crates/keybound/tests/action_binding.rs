@@ -6,9 +6,7 @@ use std::sync::atomic::Ordering;
 use keybound::Action;
 use keybound::BindingId;
 use keybound::BindingOptions;
-#[cfg(feature = "evdev")]
 use keybound::DeviceFilter;
-#[cfg(feature = "evdev")]
 use keybound::HotkeyManager;
 use keybound::Key;
 use keybound::Modifier;
@@ -50,7 +48,6 @@ fn binding_options_default_to_consuming_events() {
     assert_eq!(options.passthrough(), Passthrough::Consume);
 }
 
-#[cfg(feature = "evdev")]
 #[test]
 fn device_filter_supports_name_pattern_and_usb_id() {
     let by_name = DeviceFilter::NamePattern("kbd-*".into());
@@ -122,7 +119,6 @@ fn binding_options_chains_all_metadata() {
 }
 
 #[test]
-#[cfg(feature = "evdev")]
 fn register_with_options_accepts_metadata() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 
@@ -135,7 +131,6 @@ fn register_with_options_accepts_metadata() {
 }
 
 #[test]
-#[cfg(feature = "evdev")]
 fn register_with_options_hidden_binding() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 

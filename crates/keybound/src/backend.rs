@@ -14,7 +14,6 @@
 //!
 //! Prior art: `archive/v0/src/backend.rs`
 
-#[cfg(feature = "evdev")]
 pub(crate) mod evdev;
 
 #[cfg(feature = "portal")]
@@ -27,7 +26,6 @@ pub(crate) mod portal;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     /// Direct evdev device access. Requires `input` group membership.
-    #[cfg(feature = "evdev")]
     Evdev,
     /// XDG `GlobalShortcuts` portal. No special permissions needed.
     #[cfg(feature = "portal")]

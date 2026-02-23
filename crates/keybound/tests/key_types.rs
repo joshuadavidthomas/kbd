@@ -1,5 +1,3 @@
-#![cfg(feature = "evdev")]
-
 use kbd_evdev::EvdevKeyExt;
 use kbd_evdev::KeyCodeExt;
 use keybound::Key;
