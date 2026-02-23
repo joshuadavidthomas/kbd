@@ -1,5 +1,3 @@
-use crate::action::Action;
-use crate::action::LayerName;
 use crate::binding::Passthrough;
 
 /// Whether the engine is running in grab mode.
@@ -32,37 +30,12 @@ pub(crate) enum KeyEventDisposition {
     Ignored,
 }
 
-/// Layer stack mutation extracted from a matched action.
+/// Intermediate result from matching, used for forwarding decisions.
 ///
-/// Used to defer layer modifications until after the matcher's borrow
-/// on engine state is released.
-pub(super) enum LayerEffect {
-    None,
-    Push(LayerName),
-    Pop,
-    Toggle(LayerName),
-}
-
-impl From<&Action> for LayerEffect {
-    fn from(action: &Action) -> Self {
-        match action {
-            Action::PushLayer(name) => Self::Push(name.clone()),
-            Action::PopLayer => Self::Pop,
-            Action::ToggleLayer(name) => Self::Toggle(name.clone()),
-            Action::Callback(_)
-            | Action::EmitKey(..)
-            | Action::EmitSequence(..)
-            | Action::Swallow => Self::None,
-        }
-    }
-}
-
-/// Intermediate result from Phase 1 (matching) used in Phase 2 (execution).
+/// Layer effects are handled by the `Matcher` — the engine only needs
+/// the match/no-match outcome and passthrough setting.
 pub(super) enum MatchOutcome {
-    Matched {
-        layer_effect: LayerEffect,
-        passthrough: Passthrough,
-    },
+    Matched { passthrough: Passthrough },
     Swallowed,
     NoMatch,
     Ignored,

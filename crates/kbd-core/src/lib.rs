@@ -21,11 +21,10 @@
 //! - Keyboard layout / xkbcommon (`kbd-xkb`)
 //! - Threaded manager, message passing, handles (`keybound`)
 
-// TODO: Phase 3.9 — expose public synchronous Matcher type
-
 pub mod action;
 pub mod binding;
 pub mod error;
+pub mod introspection;
 pub mod key;
 pub mod key_state;
 pub mod layer;
@@ -38,6 +37,11 @@ pub use crate::binding::BindingOptions;
 pub use crate::binding::OverlayVisibility;
 pub use crate::binding::Passthrough;
 pub use crate::error::Error;
+pub use crate::introspection::ActiveLayerInfo;
+pub use crate::introspection::BindingInfo;
+pub use crate::introspection::BindingLocation;
+pub use crate::introspection::ConflictInfo;
+pub use crate::introspection::ShadowedStatus;
 pub use crate::key::Hotkey;
 pub use crate::key::HotkeySequence;
 pub use crate::key::Key;
@@ -46,6 +50,7 @@ pub use crate::key::ParseHotkeyError;
 pub use crate::layer::Layer;
 pub use crate::layer::LayerOptions;
 pub use crate::layer::UnmatchedKeyBehavior;
+pub use crate::matcher::Matcher;
 
 #[cfg(test)]
 mod tests {

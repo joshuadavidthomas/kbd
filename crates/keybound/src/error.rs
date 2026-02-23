@@ -32,6 +32,18 @@ pub enum Error {
     EmptyLayerStack,
 }
 
+impl From<kbd_core::Error> for Error {
+    fn from(error: kbd_core::Error) -> Self {
+        match error {
+            kbd_core::Error::Parse(e) => Self::Parse(e),
+            kbd_core::Error::AlreadyRegistered => Self::AlreadyRegistered,
+            kbd_core::Error::LayerAlreadyDefined => Self::LayerAlreadyDefined,
+            kbd_core::Error::LayerNotDefined => Self::LayerNotDefined,
+            kbd_core::Error::EmptyLayerStack => Self::EmptyLayerStack,
+        }
+    }
+}
+
 impl From<kbd_evdev::error::Error> for Error {
     fn from(error: kbd_evdev::error::Error) -> Self {
         tracing::warn!(%error, "evdev backend error");
