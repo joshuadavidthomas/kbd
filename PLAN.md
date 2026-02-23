@@ -444,6 +444,119 @@ match matcher.process(hotkey, transition) {
 
 ---
 
+## Alternative: Adopt `keyboard-types` as the core key type
+
+**Status**: Under consideration. Would replace the hand-maintained `Key`
+enum with a newtype over `keyboard_types::Code`, the W3C standard for
+physical key positions. This decision should be made before Phase 4,
+since Phase 4 adds features (sequences, serde, XKB) that build heavily
+on the key type.
+
+### The problem
+
+keybound's `Key` enum is a curated subset of physical key positions.
+`keyboard_types::Code` is the same concept — a W3C-standardized enum of
+physical key positions, used by winit, iced, and most Rust windowing
+frameworks.
+
+We're maintaining ~145 variants that are a subset of `Code`'s ~250.
+Every time a user reports "key X doesn't work," we add a variant in
+three places (enum, `as_str`/parsing, evdev conversion) plus the winit
+conversion module. The winit conversion module (§3.11) is ~500 lines of
+boilerplate mapping between two enums that represent the same thing.
+
+The `Key` enum doesn't do anything special — no invariants, no
+domain-specific behavior, no validation beyond "is this a known key."
+It's just a vocabulary type with different names for the same concepts.
+
+### The approach: newtype over `Code`
+
+```rust
+/// A physical key on the keyboard.
+///
+/// Newtype over [`keyboard_types::Code`], the W3C standard for physical
+/// key positions. The inner value is public — convert freely with
+/// `.into()` / `Key::from(code)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[repr(transparent)]
+pub struct Key(pub keyboard_types::Code);
+```
+
+Associated constants provide the familiar API:
+
+```rust
+impl Key {
+    pub const A: Self = Self(Code::KeyA);
+    pub const ENTER: Self = Self(Code::Enter);
+    pub const VOLUME_UP: Self = Self(Code::AudioVolumeUp);
+    pub const LEFT_CTRL: Self = Self(Code::ControlLeft);
+    // ... one constant per Code variant
+}
+```
+
+### What changes
+
+| Concern | Before | After |
+|---------|--------|-------|
+| Key type | `enum Key { A, B, ... }` (our own) | `struct Key(pub Code)` (newtype) |
+| `keyboard-types` dep | optional, behind `winit` feature | required dep of `kbd-core` |
+| `kbd-core` deps | `thiserror` only | `thiserror` + `keyboard-types` |
+| winit/iced consumers | enable `winit` feature, use `From` | just call `.into()`, no feature flag |
+| `FromStr` / aliases | ✅ kept — our impl on our type | ✅ kept — our impl on our newtype |
+| `Display` | ✅ kept | ✅ kept |
+| Exhaustive `match` | ✅ compiler-enforced | ❌ always needs `_ =>` arm |
+| New keys in keyboard-types | must add variant + conversions | automatically available, optionally add constant + alias |
+| evdev conversions | `kbd-evdev` maps `KeyCode` ↔ `Key` | same, but `Key` is now a newtype |
+| winit conversion module | ~500 lines of match arms | deleted entirely |
+
+### Why newtype, not re-export or type alias
+
+A plain `pub use keyboard_types::Code as Key` hits the orphan rule — we
+can't impl `FromStr`, `Display`, or any trait on a foreign type. We
+lose `"Enter".parse::<Key>()` and all our aliases ("Esc", "Return",
+"PrtSc", "Ctrl", etc.). The newtype lets us own the type for trait
+impls while the inner `Code` is public for zero-cost access.
+
+### The tradeoff: no exhaustive matching
+
+With an enum, `match key { Key::A => ..., Key::B => ..., /* all variants */ }`
+is exhaustive — the compiler tells you if you miss one. With a newtype,
+every match needs a `_ =>` fallback.
+
+In practice this is acceptable because:
+
+- The matcher uses equality checks (`if key == binding.key`), not
+  pattern matching
+- `Modifier::from_key` checks a small fixed set of modifier keys
+- The evdev conversion in `kbd-evdev` already has a `_ => Unknown`
+  fallback
+- Exhaustive matching on 250+ key variants was never practical
+
+### What stays the same
+
+- **`Modifier` enum** — unchanged, it has different semantics
+  (canonicalization of left/right variants)
+- **`Hotkey`, `HotkeySequence`** — unchanged, they compose `Key` +
+  modifiers
+- **Parsing** — same aliases and behavior, just returns
+  `Key(Code::Enter)` instead of `Key::Enter`
+- **evdev conversions** — same extension traits in `kbd-evdev`, just the
+  target type changes
+- **Public API** — `Key::A`, `Key::ENTER`, etc. still work (associated
+  constants instead of enum variants)
+
+### Migration scope
+
+- `kbd-core`: replace `Key` enum with newtype, update `as_str` /
+  `parse_key_token` / `Display` / `FromStr`, delete `winit.rs` module
+  and `winit` feature flag
+- `kbd-evdev`: update conversion traits to use newtype
+- `keybound`: update re-exports, remove `winit` feature passthrough
+- All tests: `Key::Enter` → `Key::ENTER` (or keep the old names as
+  aliases if we want backward compat)
+
+---
+
 ## Phase 4: Sequences, tap-hold, device filtering, and polish
 
 **Goal**: All power features from v0 are reimplemented on the new
