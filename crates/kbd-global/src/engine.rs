@@ -607,7 +607,7 @@ mod tests {
         engine.matcher.register_binding(binding).unwrap();
 
         // Simulate: press Ctrl, then press C
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::C, 10);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
@@ -628,7 +628,7 @@ mod tests {
         engine.matcher.register_binding(binding).unwrap();
 
         // Press V instead of C (with Ctrl held)
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::V, 10);
 
         assert_eq!(counter.load(Ordering::Relaxed), 0);
@@ -649,8 +649,8 @@ mod tests {
         engine.matcher.register_binding(binding).unwrap();
 
         // Press Ctrl+Shift+C — binding only wants Ctrl+C
-        press_key(&mut engine, Key::LeftCtrl, 10);
-        press_key(&mut engine, Key::LeftShift, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
+        press_key(&mut engine, Key::SHIFT_LEFT, 10);
         press_key(&mut engine, Key::C, 10);
 
         assert_eq!(counter.load(Ordering::Relaxed), 0);
@@ -672,8 +672,8 @@ mod tests {
         let binding = RegisteredBinding::new(id, hotkey, action);
         engine.matcher.register_binding(binding).unwrap();
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
-        press_key(&mut engine, Key::LeftShift, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
+        press_key(&mut engine, Key::SHIFT_LEFT, 10);
         press_key(&mut engine, Key::A, 10);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
@@ -686,14 +686,14 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let id = BindingId::new();
-        let hotkey = Hotkey::new(Key::Escape);
+        let hotkey = Hotkey::new(Key::ESCAPE);
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
         engine.matcher.register_binding(binding).unwrap();
 
-        press_key(&mut engine, Key::Escape, 10);
+        press_key(&mut engine, Key::ESCAPE, 10);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
@@ -713,7 +713,7 @@ mod tests {
         engine.matcher.register_binding(binding).unwrap();
 
         // Press the hotkey so it fires once
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::C, 10);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
 
@@ -751,7 +751,7 @@ mod tests {
             .unwrap();
 
         // Trigger the panicking callback
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::P, 10);
         // Engine should still be alive
 
@@ -777,7 +777,7 @@ mod tests {
         engine.matcher.register_binding(binding).unwrap();
 
         // Use RightCtrl instead of LeftCtrl — should still match
-        press_key(&mut engine, Key::RightCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_RIGHT, 10);
         press_key(&mut engine, Key::C, 10);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
@@ -825,7 +825,7 @@ mod tests {
             .unwrap();
 
         // Press Ctrl+C — matches binding, should be consumed
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         let disposition = press_key(&mut engine, Key::C, 10);
 
         assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
@@ -854,7 +854,7 @@ mod tests {
         engine.matcher.register_binding(binding).unwrap();
 
         // Press Ctrl+C with passthrough — should fire AND forward
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         let disposition = press_key(&mut engine, Key::C, 10);
 
         assert_eq!(disposition, KeyEventDisposition::MatchedForwarded);
@@ -894,7 +894,7 @@ mod tests {
             RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
         engine.matcher.register_binding(binding).unwrap();
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         let disposition = press_key(&mut engine, Key::C, 10);
 
         // Without grab mode, passthrough is a no-op — event reaches apps
@@ -942,16 +942,16 @@ mod tests {
 
         assert!(engine.key_state.active_modifiers().is_empty());
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Ctrl]);
 
-        press_key(&mut engine, Key::LeftShift, 10);
+        press_key(&mut engine, Key::SHIFT_LEFT, 10);
         assert_eq!(
             engine.key_state.active_modifiers(),
             vec![Modifier::Ctrl, Modifier::Shift]
         );
 
-        release_key(&mut engine, Key::LeftCtrl, 10);
+        release_key(&mut engine, Key::CONTROL_LEFT, 10);
         assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
     }
 
@@ -998,8 +998,8 @@ mod tests {
     fn modifier_state_cleaned_on_device_disconnect() {
         let mut engine = test_engine();
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
-        press_key(&mut engine, Key::LeftShift, 11);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
+        press_key(&mut engine, Key::SHIFT_LEFT, 11);
 
         assert_eq!(
             engine.key_state.active_modifiers(),
@@ -1011,7 +1011,7 @@ mod tests {
 
         // Only modifiers from device 11 should remain
         assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
-        assert!(!engine.key_state.is_pressed(Key::LeftCtrl));
+        assert!(!engine.key_state.is_pressed(Key::CONTROL_LEFT));
     }
 
     // Layer storage tests
@@ -1442,7 +1442,7 @@ mod tests {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
             )
-            .bind(Key::Escape, Action::PopLayer);
+            .bind(Key::ESCAPE, Action::PopLayer);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
@@ -1455,8 +1455,8 @@ mod tests {
         assert_eq!(counter.load(Ordering::Relaxed), 1);
 
         // Escape pops the layer
-        press_key(&mut engine, Key::Escape, 10);
-        release_key(&mut engine, Key::Escape, 10);
+        press_key(&mut engine, Key::ESCAPE, 10);
+        release_key(&mut engine, Key::ESCAPE, 10);
 
         // H should no longer match
         press_key(&mut engine, Key::H, 10);
@@ -1881,7 +1881,7 @@ mod tests {
             ))
             .unwrap();
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::C, 10);
 
         let disposition = release_key(&mut engine, Key::C, 10);
@@ -1912,7 +1912,7 @@ mod tests {
             )
             .unwrap();
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         let press_disp = press_key(&mut engine, Key::C, 10);
         assert_eq!(press_disp, KeyEventDisposition::MatchedForwarded);
 
@@ -1975,7 +1975,7 @@ mod tests {
             ))
             .unwrap();
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::C, 10);
         let release_disp = release_key(&mut engine, Key::C, 10);
         assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
@@ -2031,7 +2031,7 @@ mod tests {
             ))
             .unwrap();
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::C, 10);
 
         let disposition = engine.process_key_event(DeviceKeyEvent {
@@ -2069,7 +2069,7 @@ mod tests {
             )
             .unwrap();
 
-        press_key(&mut engine, Key::LeftCtrl, 10);
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::C, 10);
 
         let disposition = engine.process_key_event(DeviceKeyEvent {
@@ -2627,12 +2627,14 @@ mod tests {
             .matcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
-                Hotkey::new(Key::LeftCtrl),
+                Hotkey::new(Key::CONTROL_LEFT),
                 Action::Swallow,
             ))
             .unwrap();
 
-        let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::LeftCtrl));
+        let result = engine
+            .matcher
+            .bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
         assert!(
             result.is_none(),
             "modifier-only key should not match, consistent with real matcher"

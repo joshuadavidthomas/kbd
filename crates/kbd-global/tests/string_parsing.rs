@@ -6,21 +6,21 @@ use kbd_global::Modifier;
 #[test]
 fn parses_hotkey_with_aliases_case_insensitive() {
     let hotkey = "ctrl+Win+return".parse::<Hotkey>().unwrap();
-    assert_eq!(hotkey.key(), Key::Enter);
+    assert_eq!(hotkey.key(), Key::ENTER);
     assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Super]);
 }
 
 #[test]
 fn parses_modifier_key_as_trigger_when_no_non_modifier_key_exists() {
     let hotkey = "Ctrl".parse::<Hotkey>().unwrap();
-    assert_eq!(hotkey.key(), Key::LeftCtrl);
+    assert_eq!(hotkey.key(), Key::CONTROL_LEFT);
     assert!(hotkey.modifiers().is_empty());
 }
 
 #[test]
 fn parses_all_modifier_combo_with_last_modifier_as_trigger() {
     let hotkey = "Ctrl+Shift".parse::<Hotkey>().unwrap();
-    assert_eq!(hotkey.key(), Key::LeftShift);
+    assert_eq!(hotkey.key(), Key::SHIFT_LEFT);
     assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl]);
 }
 
@@ -43,20 +43,20 @@ fn parses_hotkey_sequence() {
 fn parses_extended_key_ranges() {
     let cases = [
         ("F24", Key::F24),
-        ("Left", Key::Left),
-        ("Delete", Key::Delete),
-        ("Backspace", Key::Backspace),
-        ("Insert", Key::Insert),
-        ("Home", Key::Home),
-        ("End", Key::End),
-        ("PageUp", Key::PageUp),
-        ("PageDown", Key::PageDown),
-        ("Numpad1", Key::Numpad1),
-        ("NumpadEnter", Key::NumpadEnter),
-        ("Equal", Key::Equal),
-        ("Minus", Key::Minus),
-        ("Comma", Key::Comma),
-        ("Slash", Key::Slash),
+        ("Left", Key::ARROW_LEFT),
+        ("Delete", Key::DELETE),
+        ("Backspace", Key::BACKSPACE),
+        ("Insert", Key::INSERT),
+        ("Home", Key::HOME),
+        ("End", Key::END),
+        ("PageUp", Key::PAGE_UP),
+        ("PageDown", Key::PAGE_DOWN),
+        ("Numpad1", Key::NUMPAD1),
+        ("NumpadEnter", Key::NUMPAD_ENTER),
+        ("Equal", Key::EQUAL),
+        ("Minus", Key::MINUS),
+        ("Comma", Key::COMMA),
+        ("Slash", Key::SLASH),
     ];
 
     for (input, expected) in cases {

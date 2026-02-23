@@ -138,12 +138,12 @@ mod tests {
     fn disconnect_clears_pressed_keys_for_removed_device() {
         let mut key_state = KeyState::default();
 
-        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
         key_state.apply_device_event(11, Key::C, KeyTransition::Press);
 
         key_state.disconnect_device(10);
 
-        assert!(!key_state.is_pressed(Key::LeftCtrl));
+        assert!(!key_state.is_pressed(Key::CONTROL_LEFT));
         assert!(key_state.is_pressed(Key::C));
     }
 
@@ -153,16 +153,16 @@ mod tests {
 
         assert!(key_state.active_modifiers().is_empty());
 
-        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
         assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
 
-        key_state.apply_device_event(10, Key::LeftShift, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::SHIFT_LEFT, KeyTransition::Press);
         assert_eq!(
             key_state.active_modifiers(),
             vec![Modifier::Ctrl, Modifier::Shift]
         );
 
-        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Release);
+        key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Release);
         assert_eq!(key_state.active_modifiers(), vec![Modifier::Shift]);
     }
 
@@ -170,15 +170,15 @@ mod tests {
     fn active_modifiers_canonicalizes_left_and_right() {
         let mut key_state = KeyState::default();
 
-        key_state.apply_device_event(10, Key::RightCtrl, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::CONTROL_RIGHT, KeyTransition::Press);
         assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
 
         // Both left and right held still yields one modifier
-        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
         assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
 
         // Releasing one side keeps the modifier active
-        key_state.apply_device_event(10, Key::RightCtrl, KeyTransition::Release);
+        key_state.apply_device_event(10, Key::CONTROL_RIGHT, KeyTransition::Release);
         assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
     }
 
@@ -186,8 +186,8 @@ mod tests {
     fn active_modifiers_spans_devices() {
         let mut key_state = KeyState::default();
 
-        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
-        key_state.apply_device_event(11, Key::RightShift, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
+        key_state.apply_device_event(11, Key::SHIFT_RIGHT, KeyTransition::Press);
 
         assert_eq!(
             key_state.active_modifiers(),
@@ -218,8 +218,8 @@ mod tests {
     fn active_modifiers_for_device_isolates_per_device() {
         let mut key_state = KeyState::default();
 
-        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
-        key_state.apply_device_event(11, Key::LeftShift, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
+        key_state.apply_device_event(11, Key::SHIFT_LEFT, KeyTransition::Press);
 
         assert_eq!(
             key_state.active_modifiers_for_device(10),
@@ -236,9 +236,9 @@ mod tests {
     fn disconnect_clears_modifiers_for_device() {
         let mut key_state = KeyState::default();
 
-        key_state.apply_device_event(10, Key::LeftCtrl, KeyTransition::Press);
-        key_state.apply_device_event(10, Key::LeftShift, KeyTransition::Press);
-        key_state.apply_device_event(11, Key::LeftAlt, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
+        key_state.apply_device_event(10, Key::SHIFT_LEFT, KeyTransition::Press);
+        key_state.apply_device_event(11, Key::ALT_LEFT, KeyTransition::Press);
 
         key_state.disconnect_device(10);
 

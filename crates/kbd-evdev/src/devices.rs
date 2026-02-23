@@ -483,7 +483,7 @@ impl ObservedKeyEvent {
             EventSummary::Key(_, key_code, value) => {
                 let transition = key_transition(value)?;
                 let key = key_code.to_key();
-                if key == Key::Unknown {
+                if key == Key::UNIDENTIFIED {
                     return None;
                 }
                 Some(Self { key, transition })

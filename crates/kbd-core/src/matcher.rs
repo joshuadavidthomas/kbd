@@ -787,10 +787,10 @@ mod matcher_tests {
     fn process_ignores_modifier_only_presses() {
         let mut matcher = Matcher::new();
         matcher
-            .register(Hotkey::new(Key::LeftCtrl), Action::Swallow)
+            .register(Hotkey::new(Key::CONTROL_LEFT), Action::Swallow)
             .unwrap();
 
-        let result = matcher.process(&Hotkey::new(Key::LeftCtrl), KeyTransition::Press);
+        let result = matcher.process(&Hotkey::new(Key::CONTROL_LEFT), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Ignored));
     }
 
@@ -798,10 +798,10 @@ mod matcher_tests {
     fn process_matches_no_modifier_hotkey() {
         let mut matcher = Matcher::new();
         matcher
-            .register(Hotkey::new(Key::Escape), Action::Swallow)
+            .register(Hotkey::new(Key::ESCAPE), Action::Swallow)
             .unwrap();
 
-        let result = matcher.process(&Hotkey::new(Key::Escape), KeyTransition::Press);
+        let result = matcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
@@ -1021,12 +1021,12 @@ mod matcher_tests {
 
         let layer = Layer::new("nav")
             .bind(Key::H, Action::Swallow)
-            .bind(Key::Escape, Action::PopLayer);
+            .bind(Key::ESCAPE, Action::PopLayer);
         matcher.define_layer(layer).unwrap();
         matcher.push_layer("nav").unwrap();
 
         // Escape pops the layer
-        matcher.process(&Hotkey::new(Key::Escape), KeyTransition::Press);
+        matcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
 
         // H should no longer match
         let result = matcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
@@ -1296,10 +1296,10 @@ mod matcher_tests {
     fn bindings_for_key_returns_none_for_modifier_key() {
         let mut matcher = Matcher::new();
         matcher
-            .register(Hotkey::new(Key::LeftCtrl), Action::Swallow)
+            .register(Hotkey::new(Key::CONTROL_LEFT), Action::Swallow)
             .unwrap();
 
-        let result = matcher.bindings_for_key(&Hotkey::new(Key::LeftCtrl));
+        let result = matcher.bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
         assert!(result.is_none());
     }
 
@@ -1429,7 +1429,7 @@ mod matcher_tests {
             .define_layer(
                 Layer::new("nav")
                     .bind(Key::H, Action::Swallow)
-                    .bind(Key::Escape, Action::PopLayer),
+                    .bind(Key::ESCAPE, Action::PopLayer),
             )
             .unwrap();
         matcher.push_layer("nav").unwrap();
@@ -1453,7 +1453,7 @@ mod matcher_tests {
         assert_eq!(counter.load(Ordering::Relaxed), 1);
 
         // Pop layer via action
-        matcher.process(&Hotkey::new(Key::Escape), KeyTransition::Press);
+        matcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
 
         // Layer binding no longer matches
         let result = matcher.process(&Hotkey::new(Key::H), KeyTransition::Press);

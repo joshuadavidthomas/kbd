@@ -13,6 +13,7 @@ categories = ["data-structures"]
 serde = ["dep:serde"]
 
 [dependencies]
+keyboard-types = { workspace = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
 

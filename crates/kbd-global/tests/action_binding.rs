@@ -73,7 +73,7 @@ fn device_filter_supports_name_pattern_and_usb_id() {
 
 #[test]
 fn action_variants_exist_for_future_features() {
-    let _ = Action::EmitKey(Key::Escape, vec![Modifier::Ctrl]);
+    let _ = Action::EmitKey(Key::ESCAPE, vec![Modifier::Ctrl]);
     let _ = Action::PushLayer("nav".into());
     let _ = Action::ToggleLayer("nav".into());
     let _ = Action::PopLayer;

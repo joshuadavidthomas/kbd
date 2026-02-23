@@ -9,26 +9,26 @@ license = "MIT"
 repository = "https://github.com/joshuadavidthomas/kbd"
 
 [workspace.dependencies]
-# Internal crates
 kbd-core = { path = "crates/kbd-core" }
+kbd-derive = { path = "crates/kbd-derive" }
 kbd-evdev = { path = "crates/kbd-evdev" }
+kbd-global = { path = "crates/kbd-global" }
 kbd-portal = { path = "crates/kbd-portal" }
 kbd-xkb = { path = "crates/kbd-xkb" }
-kbd-derive = { path = "crates/kbd-derive" }
-kbd-global = { path = "crates/kbd-global" }
 
-# External dependencies
+# core
 ashpd = { version = "0.13", default-features = false, features = ["async-io"] }
 async-channel = { version = "2.3" }
 async-std = { version = "1.13" }
 evdev = "0.13"
+keyboard-types = "0.8"
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 tokio = { version = "1.44", default-features = false, features = ["rt"] }
 tracing = "0.1"
 
-# Dev dependencies
+# dev
 serde_json = "1.0"
 toml = "1.0"
 

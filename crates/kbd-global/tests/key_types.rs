@@ -7,13 +7,13 @@ use kbd_global::Modifier;
 fn key_round_trips_through_evdev_keycode() {
     for key in [
         Key::A,
-        Key::Num9,
+        Key::DIGIT9,
         Key::F24,
-        Key::Enter,
-        Key::Left,
-        Key::NumpadEnter,
-        Key::LeftCtrl,
-        Key::RightSuper,
+        Key::ENTER,
+        Key::ARROW_LEFT,
+        Key::NUMPAD_ENTER,
+        Key::CONTROL_LEFT,
+        Key::META_RIGHT,
     ] {
         let code = key.to_key_code();
         let reparsed = code.to_key();
@@ -22,20 +22,27 @@ fn key_round_trips_through_evdev_keycode() {
 }
 
 #[test]
-fn unknown_evdev_keycode_maps_to_unknown_key() {
+fn media_key_round_trips_through_evdev() {
     use evdev::KeyCode;
-    assert_eq!(KeyCode::KEY_VOLUMEUP.to_key(), Key::Unknown);
+    assert_eq!(KeyCode::KEY_VOLUMEUP.to_key(), Key::AUDIO_VOLUME_UP);
+    assert_eq!(Key::AUDIO_VOLUME_UP.to_key_code(), KeyCode::KEY_VOLUMEUP);
+}
+
+#[test]
+fn unmapped_evdev_keycode_maps_to_unknown_key() {
+    use evdev::KeyCode;
+    assert_eq!(KeyCode::KEY_PROG1.to_key(), Key::UNIDENTIFIED);
 }
 
 #[test]
 fn modifier_try_from_key_canonicalizes_left_and_right_variants() {
-    assert_eq!(Modifier::try_from(Key::LeftCtrl), Ok(Modifier::Ctrl));
-    assert_eq!(Modifier::try_from(Key::RightCtrl), Ok(Modifier::Ctrl));
-    assert_eq!(Modifier::try_from(Key::LeftShift), Ok(Modifier::Shift));
-    assert_eq!(Modifier::try_from(Key::RightShift), Ok(Modifier::Shift));
-    assert_eq!(Modifier::try_from(Key::LeftAlt), Ok(Modifier::Alt));
-    assert_eq!(Modifier::try_from(Key::RightAlt), Ok(Modifier::Alt));
-    assert_eq!(Modifier::try_from(Key::LeftSuper), Ok(Modifier::Super));
-    assert_eq!(Modifier::try_from(Key::RightSuper), Ok(Modifier::Super));
+    assert_eq!(Modifier::try_from(Key::CONTROL_LEFT), Ok(Modifier::Ctrl));
+    assert_eq!(Modifier::try_from(Key::CONTROL_RIGHT), Ok(Modifier::Ctrl));
+    assert_eq!(Modifier::try_from(Key::SHIFT_LEFT), Ok(Modifier::Shift));
+    assert_eq!(Modifier::try_from(Key::SHIFT_RIGHT), Ok(Modifier::Shift));
+    assert_eq!(Modifier::try_from(Key::ALT_LEFT), Ok(Modifier::Alt));
+    assert_eq!(Modifier::try_from(Key::ALT_RIGHT), Ok(Modifier::Alt));
+    assert_eq!(Modifier::try_from(Key::META_LEFT), Ok(Modifier::Super));
+    assert_eq!(Modifier::try_from(Key::META_RIGHT), Ok(Modifier::Super));
     assert_eq!(Modifier::try_from(Key::A), Err(Key::A));
 }
