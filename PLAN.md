@@ -271,7 +271,9 @@ keybound/                         workspace root
 │   ├── kbd-crossterm/            crossterm key event conversions
 │   ├── kbd-egui/                 egui key type conversions
 │   ├── kbd-evdev/                evdev backend
+│   ├── kbd-iced/                 iced key type conversions
 │   ├── kbd-portal/               XDG GlobalShortcuts portal backend
+│   ├── kbd-winit/                winit key type conversions
 │   ├── kbd-xkb/                  Keyboard layout awareness
 │   ├── kbd-derive/               #[derive(Bindings)] proc macro
 │   └── keybound/                 Facade — HotkeyManager, ties it all together
@@ -291,8 +293,10 @@ keybound/                         workspace root
 - Optional feature flag: `serde` (derives)
 - No evdev dependency — evdev conversions live in `kbd-evdev` via
   extension traits
-- winit/iced/Dioxus users get zero-cost key conversion natively since
-  they use `keyboard_types::Code`
+- Dioxus users get free key conversion (uses `keyboard_types::Code`
+  natively). winit and iced define their own key enums from the same
+  W3C spec — close variant names but different Rust types, so they
+  need conversion crates (`kbd-winit`, `kbd-iced`).
 
 **`kbd-crossterm`** — TUI bridge.
 
@@ -308,6 +312,21 @@ keybound/                         workspace root
 - Conversion traits between `egui::Key` / `Modifiers` and `kbd-core`
   types
 - Deps: `egui`, `kbd-core`
+
+**`kbd-winit`** — winit bridge.
+
+- Conversion traits between `winit::keyboard::KeyCode` /
+  `ModifiersState` and `kbd-core` types
+- Mechanical 1:1 mapping — winit's `KeyCode` derives from the same
+  W3C spec as `keyboard_types::Code`, just a different Rust type
+- Deps: `winit`, `kbd-core`
+
+**`kbd-iced`** — iced bridge.
+
+- Conversion traits between `iced::keyboard::Key` / `Modifiers` and
+  `kbd-core` types
+- iced independently mirrors winit's key types from the W3C spec
+- Deps: `iced_core`, `kbd-core`
 
 **`kbd-evdev`** — Linux input device layer.
 
@@ -355,6 +374,8 @@ Each boundary is a **dependency boundary**:
 |-------|-----------------|--------------|
 | `kbd-core` | `keyboard-types` | Platform-agnostic, minimal deps |
 | `kbd-crossterm` | `crossterm` | TUI apps only, different key model (logical) |
+| `kbd-winit` | `winit` | winit apps only, own W3C-derived key enum |
+| `kbd-iced` | `iced_core` | iced apps only, mirrors winit's key types |
 | `kbd-egui` | `egui` | egui apps only, custom key types |
 | `kbd-evdev` | `evdev` | Linux C library, needs `/dev/input` access |
 | `kbd-portal` | `ashpd` (async DBus) | Pulls in async runtime, different paradigm |
@@ -368,16 +389,20 @@ Things that stay as feature flags, not crates:
 - **Async event streams** — thin wrappers in `keybound`, feature-gated
   on `tokio` / `async-std`
 
-No conversion crate is needed for **winit, iced, or Dioxus** — they use
-`keyboard_types::Code` natively, which is what `kbd-core`'s `Key`
-wraps.
+Only **Dioxus** uses `keyboard_types::Code` directly — no conversion
+crate needed. **winit** and **iced** derive their key enums from the
+same W3C spec but define their own Rust types, so they need thin
+conversion crates (`kbd-winit`, `kbd-iced`). The conversions are
+mechanical 1:1 mappings since the variant names match.
 
 ### Consumer matrix
 
 | Consumer | Depends on |
 |----------|-----------|
 | TUI app (ratatui / crossterm) | `kbd-core` + `kbd-crossterm` |
-| winit / iced / Dioxus app | `kbd-core` (key type is native) |
+| winit app | `kbd-core` + `kbd-winit` |
+| iced app | `kbd-core` + `kbd-iced` |
+| Dioxus app | `kbd-core` (uses `keyboard_types::Code` natively) |
 | egui app | `kbd-core` + `kbd-egui` |
 | Compositor (Niri-like) | `kbd-core` + `kbd-evdev` (direct, no manager) |
 | App + layout awareness | `kbd-core` + `kbd-xkb` |
@@ -463,7 +488,9 @@ DESIGN.md "The key type and `keyboard-types`" for full rationale.
 
 The newtype approach — `struct Key(pub keyboard_types::Code)` with
 associated constants — lets us keep `FromStr`/`Display` with our
-aliases while making conversions with winit/iced/Dioxus zero-cost.
+aliases while making conversions with Dioxus zero-cost (it uses
+`keyboard_types::Code` directly). winit and iced need thin conversion
+crates since they define their own key enums from the same W3C spec.
 
 - [ ] Add `keyboard-types` as a required dep of `kbd-core`.
 - [ ] Replace `Key` enum with `struct Key(pub keyboard_types::Code)`.
@@ -489,8 +516,9 @@ aliases while making conversions with winit/iced/Dioxus zero-cost.
 ### 3.12 Framework integration crates
 
 Create conversion crates for frameworks that don't use
-`keyboard_types::Code` natively. Frameworks that do (winit, iced,
-Dioxus) need no conversion crate.
+`keyboard_types::Code` natively. Only Dioxus uses it directly — winit
+and iced define their own key enums from the same W3C spec (close
+variant names, different Rust types).
 
 - [ ] Create `crates/kbd-crossterm/` with `Cargo.toml` (deps:
       `crossterm`, `kbd-core`).
@@ -501,6 +529,18 @@ Dioxus) need no conversion crate.
       modifier keys extracted from `KeyModifiers` bitflags.
 - [ ] Tests: round-trip for common keys, modifier extraction,
       full `KeyEvent → Hotkey` conversion.
+- [ ] Create `crates/kbd-winit/` with `Cargo.toml` (deps: `winit`,
+      `kbd-core`).
+- [ ] `WinitKeyExt` trait: `winit::keyboard::KeyCode → Key` and
+      reverse. Mechanical 1:1 mapping (same W3C spec, different type).
+- [ ] `WinitEventExt` trait: extract `Key` + `Vec<Modifier>` from
+      winit's `KeyEvent` + `ModifiersState`.
+- [ ] Tests: round-trip for all key categories.
+- [ ] Create `crates/kbd-iced/` with `Cargo.toml` (deps: `iced_core`,
+      `kbd-core`).
+- [ ] `IcedKeyExt` trait: `iced::keyboard::key::Code → Key` and
+      reverse. Same W3C mapping as winit.
+- [ ] Tests: round-trip for common keys, modifier conversion.
 - [ ] Create `crates/kbd-egui/` with `Cargo.toml` (deps: `egui`,
       `kbd-core`).
 - [ ] `EguiKeyExt` trait: `egui::Key → Key`.
@@ -518,7 +558,7 @@ Dioxus) need no conversion crate.
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire keybound facade | 7/7 |
 | 3.11 Adopt keyboard-types | 0/13 |
-| 3.12 Framework integration crates | 0/10 |
+| 3.12 Framework integration crates | 0/18 |
 
 ---
 
@@ -920,7 +960,7 @@ proc-macro2).
 | **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
 | **2** | Grab mode + key state | 13 |
 | **3** | Layers + metadata + introspection | 27 |
-| **3.5** | Workspace split, keyboard-types adoption, framework bridges | 57 |
+| **3.5** | Workspace split, keyboard-types adoption, framework bridges | 67 |
 | **4** | Sequences, tap-hold, device filtering, portal, async, serde, aliases, XKB, provenance | 61 |
 | **5** | Key remapping, transformation, lock/inhibitor, context hooks | 30 |
 | **6** | Stretch: chords, mouse, full keymaps | 11+ |

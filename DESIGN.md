@@ -36,9 +36,10 @@ egui, or winit-based app with configurable shortcuts, multi-step key
 sequences (Ctrl+K → Ctrl+C), or context-dependent bindings. GUI
 frameworks expose raw key events but don't provide shortcut
 infrastructure — no layers, no sequences, no conflict detection. Use
-`kbd-core`'s `Matcher` in your event loop. winit and iced apps get
-zero-cost key conversion since `kbd-core` uses `keyboard_types::Code`
-natively. egui apps use `kbd-egui` for the bridge.
+`kbd-core`'s `Matcher` in your event loop. Conversion crates
+(`kbd-winit`, `kbd-iced`, `kbd-egui`) bridge each framework's key
+types to `kbd-core`'s — the conversions are mechanical since everyone
+derives from the same W3C spec.
 
 **You're building a compositor, editor, or framework that needs shortcut
 matching.** Niri, COSMIC, Zed, Helix, and every tiling WM independently
@@ -71,7 +72,9 @@ portal, mediated by the compositor.
 | You're building... | Use | Why |
 |---|---|---|
 | TUI app (ratatui/crossterm) | `kbd-core` + `kbd-crossterm` | Layers, sequences, configurable bindings |
-| winit / iced app | `kbd-core` | Key type is native (`keyboard_types::Code`) |
+| winit app | `kbd-core` + `kbd-winit` | Mechanical conversion, same W3C key names |
+| iced app | `kbd-core` + `kbd-iced` | Mechanical conversion, same W3C key names |
+| Dioxus app | `kbd-core` | Uses `keyboard_types::Code` natively |
 | egui app | `kbd-core` + `kbd-egui` | Bridge for egui's custom key types |
 | Compositor / tiling WM | `kbd-core` + `kbd-evdev` | Your own event loop and device access |
 | App with global hotkeys (Linux) | `keybound` | Full stack: devices, matching, callbacks |
@@ -87,6 +90,14 @@ event loop.
 
 **`kbd-crossterm`**: Conversion traits between crossterm's key events
 and `kbd-core` types. The bridge for TUI apps.
+
+**`kbd-winit`**: Conversion traits between winit's key types and
+`kbd-core` types. winit defines its own `KeyCode` enum (not a
+re-export of `keyboard-types`), but the variants are W3C-derived so
+conversions are mechanical 1:1 mappings.
+
+**`kbd-iced`**: Conversion traits between iced's key types and
+`kbd-core` types. iced independently mirrors winit's key types.
 
 **`kbd-egui`**: Conversion traits between egui's key types and
 `kbd-core` types.
@@ -123,10 +134,10 @@ Smithay input ───────┘      │                    ├─ Matche
                          key state
 ```
 
-Conversion crates (`kbd-crossterm`, `kbd-egui`) and backend crates
-(`kbd-evdev`, `kbd-portal`) handle the translation from each event
-source to `kbd-core` types. Frameworks that use `keyboard_types::Code`
-natively (winit, iced, Dioxus) need no conversion at all.
+Conversion crates (`kbd-crossterm`, `kbd-winit`, `kbd-iced`,
+`kbd-egui`) and backend crates (`kbd-evdev`, `kbd-portal`) handle the
+translation from each event source to `kbd-core` types. Dioxus uses
+`keyboard_types::Code` directly and needs no conversion crate.
 
 ## The Linux global hotkey backend
 
@@ -206,8 +217,7 @@ resolving keysyms via xkbcommon.
 
 `kbd-core`'s `Key` type is a newtype over
 [`keyboard_types::Code`](https://crates.io/crates/keyboard-types),
-the W3C standard for physical key positions. This crate is used by
-winit, iced, Dioxus, and most of the Rust windowing ecosystem.
+the W3C standard for physical key positions.
 
 ```rust
 #[repr(transparent)]
@@ -215,19 +225,31 @@ pub struct Key(pub keyboard_types::Code);
 ```
 
 Associated constants provide a clean API: `Key::A`, `Key::ENTER`,
-`Key::VOLUME_UP`. The inner `Code` is public, so conversions with
-frameworks that use `keyboard_types` natively are zero-cost.
+`Key::VOLUME_UP`. The inner `Code` is public.
 
-This means:
+Why `keyboard-types` instead of maintaining our own enum:
 
-- **winit / iced / Dioxus users**: `Key::from(code)` or `code.into()`
-  — no feature flags, no conversion crate.
-- **crossterm users**: `kbd-crossterm` provides conversion traits
-  between crossterm's `KeyCode`/`KeyModifiers` and `Key`/`Modifier`.
-- **egui users**: `kbd-egui` provides the same for egui's custom key
-  types.
-- **evdev users**: `kbd-evdev` provides extension traits, same as
-  before.
+- **We don't maintain 250+ key variants** — new keys in the crate
+  are automatically available.
+- **It's the W3C standard** — the same spec that winit, iced, and
+  every other framework derives their key types from.
+- **It's lightweight** — zero transitive deps (only optional serde).
+
+An important nuance: **winit and iced do not depend on
+`keyboard-types`**. They each define their own key enums from the
+same W3C spec. The variant names match closely, so conversions are
+mechanical 1:1 mappings, but they're not the same Rust type. Only
+Dioxus directly uses `keyboard_types::Code`.
+
+This means every framework needs a conversion crate:
+
+- **Dioxus**: free — same type
+- **winit**: `kbd-winit` (mechanical mapping, same W3C names)
+- **iced**: `kbd-iced` (mirrors winit, same story)
+- **egui**: `kbd-egui` (custom key enum)
+- **crossterm**: `kbd-crossterm` (logical key model, different
+  paradigm)
+- **evdev**: `kbd-evdev` (extension traits, already exists)
 
 `keyboard-types` is a required dependency of `kbd-core` (zero-dep
 itself, platform-agnostic).
