@@ -1,35 +1,35 @@
-//! Tests that `keybound` re-exports all kbd-core public types
+//! Tests that `kbd-global` re-exports all kbd-core public types
 //! and that the public API surface is correct after the facade rewire.
 
-// All these imports should work through `keybound::` — they come from kbd-core.
-use keybound::Action;
-use keybound::ActiveLayerInfo;
-use keybound::BindingId;
-use keybound::BindingInfo;
-use keybound::BindingLocation;
-use keybound::BindingOptions;
-use keybound::ConflictInfo;
-use keybound::DeviceFilter;
-use keybound::Error;
-use keybound::Hotkey;
-use keybound::HotkeySequence;
-use keybound::Key;
-use keybound::KeyTransition;
-use keybound::Layer;
-use keybound::LayerName;
-use keybound::LayerOptions;
-use keybound::MatchResult;
-use keybound::Matcher;
-use keybound::Modifier;
-use keybound::OverlayVisibility;
-use keybound::ParseHotkeyError;
-use keybound::Passthrough;
-use keybound::RegisteredBinding;
-use keybound::ShadowedStatus;
-use keybound::UnmatchedKeyBehavior;
+// All these imports should work through `kbd_global::` — they come from kbd-core.
+use kbd_global::Action;
+use kbd_global::ActiveLayerInfo;
+use kbd_global::BindingId;
+use kbd_global::BindingInfo;
+use kbd_global::BindingLocation;
+use kbd_global::BindingOptions;
+use kbd_global::ConflictInfo;
+use kbd_global::DeviceFilter;
+use kbd_global::Error;
+use kbd_global::Hotkey;
+use kbd_global::HotkeySequence;
+use kbd_global::Key;
+use kbd_global::KeyTransition;
+use kbd_global::Layer;
+use kbd_global::LayerName;
+use kbd_global::LayerOptions;
+use kbd_global::MatchResult;
+use kbd_global::Matcher;
+use kbd_global::Modifier;
+use kbd_global::OverlayVisibility;
+use kbd_global::ParseHotkeyError;
+use kbd_global::Passthrough;
+use kbd_global::RegisteredBinding;
+use kbd_global::ShadowedStatus;
+use kbd_global::UnmatchedKeyBehavior;
 
 #[test]
-fn core_types_reexported_through_keybound() {
+fn core_types_reexported_through_kbd_global() {
     // Key types
     let hotkey: Hotkey = "Ctrl+C".parse().unwrap();
     assert_eq!(hotkey.key(), Key::C);
@@ -72,7 +72,7 @@ fn core_types_reexported_through_keybound() {
 }
 
 #[test]
-fn matcher_reexported_through_keybound() {
+fn matcher_reexported_through_kbd_global() {
     let mut matcher = Matcher::new();
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
     matcher

@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Keyboard layout awareness for keybound — xkbcommon integration for keycode-to-keysym resolution and layout change detection."
+description = "Keyboard layout awareness for kbd — xkbcommon integration for keycode-to-keysym resolution and layout change detection."
 keywords = ["xkb", "keyboard", "layout", "keysym"]
 categories = ["os::linux-apis"]
 

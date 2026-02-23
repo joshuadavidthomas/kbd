@@ -1,6 +1,6 @@
 # Attribution and Licensing Notes
 
-keybound is licensed under MIT. This document tracks projects we studied
+kbd is licensed under MIT. This document tracks projects we studied
 during design and their license compatibility, to ensure we stay clean.
 
 ## Reference implementations (code adaptation permitted)

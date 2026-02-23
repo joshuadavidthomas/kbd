@@ -1,42 +1,56 @@
-# keybound
+# kbd
 
-Global hotkey library for Linux — works on Wayland, X11, and TTY.
+Keyboard shortcut engine for Rust.
 
-[API docs](https://docs.rs/keybound) · [Examples](examples/)
+The core (`kbd-core`) is platform-agnostic — it handles key types,
+modifier tracking, binding matching, layer stacks, and sequence
+resolution. It works anywhere you have key events: GUI apps, TUI apps,
+compositors, game engines.
+
+The facade (`kbd-global`) adds a Linux global hotkey backend on top,
+with evdev device access, grab mode, and XDG portal support.
 
 ## Features
 
 - **Dual backend** — XDG GlobalShortcuts portal (no root) with evdev fallback
 - **Key sequences** — multi-step combos like `Ctrl+K, Ctrl+C`
-- **Modes / layers** — stack-based groups of hotkeys (oneshot, swallow, timeout)
+- **Layers** — stack-based groups of hotkeys (oneshot, swallow, timeout)
 - **Event grabbing** — exclusive capture via `EVIOCGRAB` with uinput re-emission
 - **Tap vs. hold** — dual-function keys (e.g. CapsLock → tap Escape / hold Ctrl)
 - **Device filtering** — bind hotkeys to specific keyboards by name or USB ID
 - **Press / release / hold** — separate callbacks, min-hold, debounce, rate limiting
 - **String parsing** — `"Ctrl+Shift+A".parse::<Hotkey>()`
 - **Async streams** — optional tokio / async-std event streams
-- **Config files** — load bindings from TOML/JSON/YAML via serde
+- **Embeddable matcher** — `kbd-core`'s `Matcher` works in any event loop (winit, ratatui, Smithay, etc.)
 
 ## Installation
 
+For global hotkeys on Linux:
+
 ```toml
 [dependencies]
-keybound = "0.1"
+kbd-global = "0.1"
 ```
 
-Optional features: `grab`, `portal`, `tokio`, `async-std`, `serde`. See the [API docs](https://docs.rs/keybound) for the full feature flag table.
+For in-app shortcut matching (any platform):
+
+```toml
+[dependencies]
+kbd-core = "0.1"
+```
+
+Optional features on `kbd-global`: `grab`, `portal`, `tokio`, `async-std`, `serde`.
 
 ## Quick start
 
 ```rust
-use keybound::{HotkeyManager, Key, Modifier};
+use kbd_global::{HotkeyManager, Hotkey, Key, Modifier};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = HotkeyManager::new()?;
 
     let _handle = manager.register(
-        Key::C,
-        &[Modifier::Ctrl, Modifier::Shift],
+        Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
         || println!("Ctrl+Shift+C pressed!"),
     )?;
 
@@ -46,8 +60,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
-
-See the [`examples/`](examples/) directory for sequences, modes, grab mode, tap-hold, config files, async streams, and more.
 
 ## Permissions
 
@@ -76,7 +88,7 @@ The XDG GlobalShortcuts portal requires no special permissions.
 
 ## How it works
 
-`keybound` auto-selects the best available backend:
+`kbd-global` auto-selects the best available backend:
 
 1. **XDG GlobalShortcuts portal** — tried first when the `portal` feature is enabled. Works without root on compositors that support it (KDE Plasma, GNOME, Hyprland).
 2. **evdev** — reads `/dev/input/event*` directly. Works everywhere on Linux but requires `input` group membership.

@@ -1,4 +1,4 @@
-//! Derive macros for keybound.
+//! Derive macros for kbd.
 //!
 //! This crate will provide `#[derive(Bindings)]` for declarative hotkey
 //! registration, `#[hotkey(...)]` attributes, `#[flatten]` for composition,

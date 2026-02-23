@@ -753,7 +753,7 @@ mod tests {
             .as_nanos();
 
         std::env::temp_dir().join(format!(
-            "keybound-discovery-test-{}-{}",
+            "kbd-discovery-test-{}-{}",
             std::process::id(),
             nanos
         ))

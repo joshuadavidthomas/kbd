@@ -19,7 +19,7 @@
 //! - evdev types or Linux-specific I/O (`kbd-evdev`)
 //! - Portal / D-Bus integration (`kbd-portal`)
 //! - Keyboard layout / xkbcommon (`kbd-xkb`)
-//! - Threaded manager, message passing, handles (`keybound`)
+//! - Threaded manager, message passing, handles (`kbd-global`)
 
 pub mod action;
 pub mod binding;

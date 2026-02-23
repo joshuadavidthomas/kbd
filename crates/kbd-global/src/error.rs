@@ -1,4 +1,4 @@
-//! Error types for the keybound library.
+//! Error types for the kbd-global facade.
 //!
 //! Extends the core error types from `kbd-core` with platform-specific
 //! errors for backend initialization, device access, and permissions.

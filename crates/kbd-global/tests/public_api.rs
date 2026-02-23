@@ -6,12 +6,12 @@
 //! errors) lives in their own test files (`action_binding.rs`,
 //! `error_type.rs`, `key_types.rs`, `string_parsing.rs`, `manager_handle.rs`).
 
-use keybound::Backend;
-use keybound::Handle;
-use keybound::Hotkey;
-use keybound::HotkeyManager;
-use keybound::Key;
-use keybound::Modifier;
+use kbd_global::Backend;
+use kbd_global::Handle;
+use kbd_global::Hotkey;
+use kbd_global::HotkeyManager;
+use kbd_global::Key;
+use kbd_global::Modifier;
 
 #[test]
 fn design_md_simple_example() {

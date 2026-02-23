@@ -3,15 +3,15 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use keybound::Action;
-use keybound::BindingId;
-use keybound::BindingOptions;
-use keybound::DeviceFilter;
-use keybound::HotkeyManager;
-use keybound::Key;
-use keybound::Modifier;
-use keybound::OverlayVisibility;
-use keybound::Passthrough;
+use kbd_global::Action;
+use kbd_global::BindingId;
+use kbd_global::BindingOptions;
+use kbd_global::DeviceFilter;
+use kbd_global::HotkeyManager;
+use kbd_global::Key;
+use kbd_global::Modifier;
+use kbd_global::OverlayVisibility;
+use kbd_global::Passthrough;
 
 #[test]
 fn action_from_closure_runs_callback() {

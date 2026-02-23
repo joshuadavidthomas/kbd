@@ -1,8 +1,8 @@
-use keybound::Error;
-use keybound::Hotkey;
-use keybound::HotkeyManager;
-use keybound::Key;
-use keybound::Modifier;
+use kbd_global::Error;
+use kbd_global::Hotkey;
+use kbd_global::HotkeyManager;
+use kbd_global::Key;
+use kbd_global::Modifier;
 
 #[test]
 fn register_and_drop_handle_unregisters_hotkey() {

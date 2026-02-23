@@ -1,7 +1,7 @@
 use std::error::Error as StdError;
 
-use keybound::Error;
-use keybound::Hotkey;
+use kbd_global::Error;
+use kbd_global::Hotkey;
 
 #[test]
 fn error_display_messages_are_actionable() {

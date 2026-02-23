@@ -1,4 +1,4 @@
-//! XDG `GlobalShortcuts` portal backend for keybound.
+//! XDG `GlobalShortcuts` portal backend for kbd.
 //!
 //! This crate provides Wayland-friendly global shortcut registration via the
 //! XDG `GlobalShortcuts` portal (D-Bus, mediated by `ashpd`). No root access

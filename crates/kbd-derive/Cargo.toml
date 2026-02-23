@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Derive macros for keybound — #[derive(Bindings)] for declarative hotkey registration."
+description = "Derive macros for kbd — #[derive(Bindings)] for declarative hotkey registration."
 keywords = ["keyboard", "hotkey", "derive", "macro"]
 categories = ["development-tools::procedural-macro-helpers"]
 

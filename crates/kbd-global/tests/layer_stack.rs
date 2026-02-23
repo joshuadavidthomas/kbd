@@ -1,9 +1,9 @@
-use keybound::Action;
-use keybound::Error;
-use keybound::HotkeyManager;
-use keybound::Key;
-use keybound::Layer;
-use keybound::LayerName;
+use kbd_global::Action;
+use kbd_global::Error;
+use kbd_global::HotkeyManager;
+use kbd_global::Key;
+use kbd_global::Layer;
+use kbd_global::LayerName;
 
 #[test]
 fn push_layer_succeeds_for_defined_layer() {

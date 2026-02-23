@@ -1,4 +1,4 @@
-//! Keyboard layout awareness for keybound.
+//! Keyboard layout awareness for kbd.
 //!
 //! This crate will provide xkbcommon integration:
 //!
