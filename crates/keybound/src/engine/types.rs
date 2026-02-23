@@ -1,4 +1,4 @@
-use crate::binding::Passthrough;
+use kbd_core::binding::Passthrough;
 
 /// Whether the engine is running in grab mode.
 ///

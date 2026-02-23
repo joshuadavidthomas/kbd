@@ -12,8 +12,9 @@
 
 use std::fmt;
 
+use kbd_core::binding::BindingId;
+
 use crate::Error;
-use crate::binding::BindingId;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 

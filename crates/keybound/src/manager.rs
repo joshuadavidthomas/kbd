@@ -27,25 +27,26 @@ use std::fmt;
 use std::sync::Mutex;
 use std::sync::mpsc;
 
+use kbd_core::Key;
+use kbd_core::Modifier;
+use kbd_core::action::Action;
+use kbd_core::action::LayerName;
+use kbd_core::binding::BindingId;
+use kbd_core::binding::BindingOptions;
+use kbd_core::binding::RegisteredBinding;
+use kbd_core::introspection::ActiveLayerInfo;
+use kbd_core::introspection::BindingInfo;
+use kbd_core::introspection::ConflictInfo;
+use kbd_core::key::Hotkey;
+use kbd_core::layer::Layer;
+
 use crate::Error;
-use crate::action::Action;
-use crate::action::LayerName;
 use crate::backend::Backend;
-use crate::binding::BindingId;
-use crate::binding::BindingOptions;
-use crate::binding::RegisteredBinding;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
 use crate::handle::Handle;
-use crate::introspection::ActiveLayerInfo;
-use crate::introspection::BindingInfo;
-use crate::introspection::ConflictInfo;
-use crate::key::Hotkey;
-use crate::key::Key;
-use crate::key::Modifier;
-use crate::layer::Layer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackendSelection {

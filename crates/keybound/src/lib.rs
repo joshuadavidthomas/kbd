@@ -28,45 +28,44 @@
 //! - **Layers** — named groups of bindings, stackable ([`Layer`], [`LayerOptions`])
 //! - **Grab mode** — exclusive device capture for interception and remapping
 
-mod action;
 mod backend;
-mod binding;
 mod engine;
 mod error;
 mod handle;
-mod introspection;
-mod key;
-mod layer;
 mod manager;
 
 #[cfg(any(feature = "tokio", feature = "async-std"))]
 mod events;
 
-// Public API surface — curated re-exports only.
-// Keep this small. `pub(crate)` for internal sharing.
+// Re-exports from kbd-core — all domain types live there.
+// keybound re-exports them so consumers use a single `keybound::` import path.
+pub use kbd_core::action::Action;
+pub use kbd_core::action::LayerName;
+pub use kbd_core::binding::BindingId;
+pub use kbd_core::binding::BindingOptions;
+pub use kbd_core::binding::DeviceFilter;
+pub use kbd_core::binding::OverlayVisibility;
+pub use kbd_core::binding::Passthrough;
+pub use kbd_core::binding::RegisteredBinding;
+pub use kbd_core::introspection::ActiveLayerInfo;
+pub use kbd_core::introspection::BindingInfo;
+pub use kbd_core::introspection::BindingLocation;
+pub use kbd_core::introspection::ConflictInfo;
+pub use kbd_core::introspection::ShadowedStatus;
+pub use kbd_core::key::Hotkey;
+pub use kbd_core::key::HotkeySequence;
+pub use kbd_core::key::Key;
+pub use kbd_core::key::Modifier;
+pub use kbd_core::key::ParseHotkeyError;
+pub use kbd_core::key_state::KeyTransition;
+pub use kbd_core::layer::Layer;
+pub use kbd_core::layer::LayerOptions;
+pub use kbd_core::layer::UnmatchedKeyBehavior;
+pub use kbd_core::matcher::MatchResult;
+pub use kbd_core::matcher::Matcher;
 
-pub use crate::action::Action;
-pub use crate::action::LayerName;
 pub use crate::backend::Backend;
-pub use crate::binding::BindingId;
-pub use crate::binding::BindingOptions;
-pub use crate::binding::DeviceFilter;
-pub use crate::binding::OverlayVisibility;
-pub use crate::binding::Passthrough;
 pub use crate::error::Error;
 pub use crate::handle::Handle;
-pub use crate::introspection::ActiveLayerInfo;
-pub use crate::introspection::BindingInfo;
-pub use crate::introspection::BindingLocation;
-pub use crate::introspection::ConflictInfo;
-pub use crate::introspection::ShadowedStatus;
-pub use crate::key::Hotkey;
-pub use crate::key::HotkeySequence;
-pub use crate::key::Key;
-pub use crate::key::Modifier;
-pub use crate::key::ParseHotkeyError;
-pub use crate::layer::Layer;
-pub use crate::layer::LayerOptions;
-pub use crate::layer::UnmatchedKeyBehavior;
 pub use crate::manager::HotkeyManager;
 pub use crate::manager::HotkeyManagerBuilder;

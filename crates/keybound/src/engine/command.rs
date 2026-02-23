@@ -1,18 +1,19 @@
 use std::sync::Arc;
 use std::sync::mpsc;
 
+use kbd_core::Key;
+use kbd_core::Modifier;
+use kbd_core::action::LayerName;
+use kbd_core::binding::BindingId;
+use kbd_core::binding::RegisteredBinding;
+use kbd_core::introspection::ActiveLayerInfo;
+use kbd_core::introspection::BindingInfo;
+use kbd_core::introspection::ConflictInfo;
+use kbd_core::key::Hotkey;
+use kbd_core::layer::Layer;
+
 use super::wake::WakeFd;
 use crate::Error;
-use crate::Key;
-use crate::Modifier;
-use crate::action::LayerName;
-use crate::binding::BindingId;
-use crate::binding::RegisteredBinding;
-use crate::introspection::ActiveLayerInfo;
-use crate::introspection::BindingInfo;
-use crate::introspection::ConflictInfo;
-use crate::key::Hotkey;
-use crate::layer::Layer;
 
 pub(crate) enum Command {
     Register {
