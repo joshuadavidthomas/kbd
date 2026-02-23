@@ -1,19 +1,16 @@
 //! Iced key event conversions for `kbd-core`.
 //!
 //! This crate bridges iced's keyboard types to `kbd-core`'s key types.
-//! iced defines its own W3C-derived key types: [`Code`] for physical key
-//! positions, [`Physical`] wrapping `Code` with an unidentified fallback,
-//! and [`Key`] for logical key identity (named keys, characters).
-//!
-//! For shortcut matching, physical key position ([`Code`]) is preferred —
-//! it's layout-independent and matches `kbd-core`'s model. The logical
-//! [`Key`] conversion handles named keys (Enter, Escape, function keys,
-//! media keys) but not character input.
+//! iced defines its own W3C-derived key types: [`key::Code`] for physical
+//! key positions and [`key::Physical`] wrapping `Code` with an unidentified
+//! fallback. iced also has a logical key type for character/named key
+//! identity, but this crate only converts physical keys — they are
+//! layout-independent and match `kbd-core`'s model.
 //!
 //! # Extension traits
 //!
-//! - [`IcedKeyExt`] — converts an iced [`Code`] or [`Physical`] to a
-//!   [`kbd_core::Key`].
+//! - [`IcedKeyExt`] — converts an iced [`key::Code`] or [`key::Physical`]
+//!   to a [`kbd_core::Key`].
 //! - [`IcedModifiersExt`] — converts iced [`Modifiers`] to a
 //!   `Vec<Modifier>`.
 //! - [`IcedEventExt`] — converts an iced keyboard [`Event`] to a
@@ -23,7 +20,7 @@
 //!
 //! ```
 //! use iced_core::keyboard::{key::Code, Modifiers};
-//! use kbd_core::{Hotkey, Key, Modifier};
+//! use kbd_core::{Key, Modifier};
 //! use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 //!
 //! // Code conversion
@@ -35,9 +32,9 @@
 //! assert_eq!(mods, vec![Modifier::Ctrl]);
 //! ```
 
-use iced_core::keyboard::key;
 use iced_core::keyboard::Event;
 use iced_core::keyboard::Modifiers;
+use iced_core::keyboard::key;
 use kbd_core::Hotkey;
 use kbd_core::Key;
 use kbd_core::Modifier;
@@ -283,10 +280,10 @@ impl IcedEventExt for Event {
 
 #[cfg(test)]
 mod tests {
-    use iced_core::keyboard::key;
     use iced_core::keyboard::Event;
     use iced_core::keyboard::Location;
     use iced_core::keyboard::Modifiers;
+    use iced_core::keyboard::key;
     use kbd_core::Hotkey;
     use kbd_core::Key;
     use kbd_core::Modifier;
@@ -503,17 +500,13 @@ mod tests {
 
     #[test]
     fn simple_key_press_to_hotkey() {
-        let event = make_key_pressed(
-            key::Physical::Code(key::Code::KeyC),
-            Modifiers::empty(),
-        );
+        let event = make_key_pressed(key::Physical::Code(key::Code::KeyC), Modifiers::empty());
         assert_eq!(event.to_hotkey(), Some(Hotkey::new(Key::C)));
     }
 
     #[test]
     fn key_press_with_ctrl_to_hotkey() {
-        let event =
-            make_key_pressed(key::Physical::Code(key::Code::KeyC), Modifiers::CTRL);
+        let event = make_key_pressed(key::Physical::Code(key::Code::KeyC), Modifiers::CTRL);
         assert_eq!(
             event.to_hotkey(),
             Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl))
@@ -538,10 +531,7 @@ mod tests {
 
     #[test]
     fn key_release_to_hotkey() {
-        let event = make_key_released(
-            key::Physical::Code(key::Code::KeyC),
-            Modifiers::CTRL,
-        );
+        let event = make_key_released(key::Physical::Code(key::Code::KeyC), Modifiers::CTRL);
         assert_eq!(
             event.to_hotkey(),
             Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl))
@@ -567,10 +557,7 @@ mod tests {
     fn modifier_key_strips_self() {
         // Pressing ShiftLeft — iced includes SHIFT in modifiers.
         // Hotkey should be just "ShiftLeft", not "Shift+ShiftLeft".
-        let event = make_key_pressed(
-            key::Physical::Code(key::Code::ShiftLeft),
-            Modifiers::SHIFT,
-        );
+        let event = make_key_pressed(key::Physical::Code(key::Code::ShiftLeft), Modifiers::SHIFT);
         assert_eq!(event.to_hotkey(), Some(Hotkey::new(Key::SHIFT_LEFT)));
     }
 
@@ -605,20 +592,14 @@ mod tests {
 
     #[test]
     fn space_to_hotkey() {
-        let event = make_key_pressed(
-            key::Physical::Code(key::Code::Space),
-            Modifiers::empty(),
-        );
+        let event = make_key_pressed(key::Physical::Code(key::Code::Space), Modifiers::empty());
         assert_eq!(event.to_hotkey(), Some(Hotkey::new(Key::SPACE)));
     }
 
     #[test]
     fn super_key_strips_self() {
         // Pressing SuperLeft — iced includes LOGO in modifiers.
-        let event = make_key_pressed(
-            key::Physical::Code(key::Code::SuperLeft),
-            Modifiers::LOGO,
-        );
+        let event = make_key_pressed(key::Physical::Code(key::Code::SuperLeft), Modifiers::LOGO);
         assert_eq!(event.to_hotkey(), Some(Hotkey::new(Key::META_LEFT)));
     }
 }
