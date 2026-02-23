@@ -611,12 +611,12 @@ adding new bridge crates straightforward: extension traits with
 
 `kbd-iced` — iced bridge:
 
-- [ ] Create `crates/kbd-iced/` with `Cargo.toml` (deps: `iced_core`,
+- [x] Create `crates/kbd-iced/` with `Cargo.toml` (deps: `iced_core`,
       `kbd-core`).
-- [ ] `IcedKeyExt` trait: `iced::keyboard::Key → Option<Key>`. iced
+- [x] `IcedKeyExt` trait: `iced::keyboard::Key → Option<Key>`. iced
       defines its own W3C-derived key types.
-- [ ] `IcedEventExt` trait: `iced::keyboard::Event → Option<Hotkey>`.
-- [ ] Tests and `cargo build --workspace`.
+- [x] `IcedEventExt` trait: `iced::keyboard::Event → Option<Hotkey>`.
+- [x] Tests and `cargo build --workspace`.
 
 `kbd-egui` — egui bridge:
 
