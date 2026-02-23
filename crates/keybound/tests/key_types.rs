@@ -24,7 +24,8 @@ fn key_round_trips_through_evdev_keycode() {
 #[test]
 fn unknown_evdev_keycode_maps_to_unknown_key() {
     use evdev::KeyCode;
-    assert_eq!(KeyCode::KEY_VOLUMEUP.to_key(), Key::Unknown);
+    // KEY_PROG1 is an uncommon key with no mapping
+    assert_eq!(KeyCode::KEY_PROG1.to_key(), Key::Unknown);
 }
 
 #[test]

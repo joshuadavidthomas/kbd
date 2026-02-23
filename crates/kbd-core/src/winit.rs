@@ -139,6 +139,39 @@ impl From<Code> for Key {
             Code::AltRight => Self::RightAlt,
             Code::MetaLeft => Self::LeftSuper,
             Code::MetaRight => Self::RightSuper,
+            Code::PrintScreen => Self::PrintScreen,
+            Code::ScrollLock => Self::ScrollLock,
+            Code::Pause => Self::Pause,
+            Code::NumLock => Self::NumLock,
+            Code::ContextMenu => Self::ContextMenu,
+            Code::AudioVolumeMute => Self::VolumeMute,
+            Code::AudioVolumeDown => Self::VolumeDown,
+            Code::AudioVolumeUp => Self::VolumeUp,
+            Code::MediaPlayPause => Self::MediaPlayPause,
+            Code::MediaStop => Self::MediaStop,
+            Code::MediaTrackNext => Self::MediaNextTrack,
+            Code::MediaTrackPrevious => Self::MediaPrevTrack,
+            Code::MediaRecord => Self::MediaRecord,
+            Code::MediaFastForward => Self::MediaFastForward,
+            Code::MediaRewind => Self::MediaRewind,
+            Code::BrowserBack => Self::BrowserBack,
+            Code::BrowserForward => Self::BrowserForward,
+            Code::BrowserRefresh => Self::BrowserRefresh,
+            Code::BrowserHome => Self::BrowserHome,
+            Code::BrowserSearch => Self::BrowserSearch,
+            Code::BrowserFavorites => Self::BrowserFavorites,
+            Code::BrowserStop => Self::BrowserStop,
+            Code::LaunchMail => Self::LaunchMail,
+            Code::LaunchApp1 => Self::LaunchApp1,
+            Code::LaunchApp2 => Self::LaunchApp2,
+            Code::Power => Self::Power,
+            Code::Sleep => Self::Sleep,
+            Code::WakeUp => Self::WakeUp,
+            Code::Eject => Self::Eject,
+            Code::BrightnessDown => Self::BrightnessDown,
+            Code::BrightnessUp => Self::BrightnessUp,
+            Code::NumpadEqual => Self::NumpadEqual,
+            Code::NumpadComma => Self::NumpadComma,
             _ => Self::Unknown,
         }
     }
@@ -259,6 +292,39 @@ impl From<Key> for Code {
             Key::RightAlt => Self::AltRight,
             Key::LeftSuper => Self::MetaLeft,
             Key::RightSuper => Self::MetaRight,
+            Key::PrintScreen => Self::PrintScreen,
+            Key::ScrollLock => Self::ScrollLock,
+            Key::Pause => Self::Pause,
+            Key::NumLock => Self::NumLock,
+            Key::ContextMenu => Self::ContextMenu,
+            Key::VolumeMute => Self::AudioVolumeMute,
+            Key::VolumeDown => Self::AudioVolumeDown,
+            Key::VolumeUp => Self::AudioVolumeUp,
+            Key::MediaPlayPause => Self::MediaPlayPause,
+            Key::MediaStop => Self::MediaStop,
+            Key::MediaNextTrack => Self::MediaTrackNext,
+            Key::MediaPrevTrack => Self::MediaTrackPrevious,
+            Key::MediaRecord => Self::MediaRecord,
+            Key::MediaFastForward => Self::MediaFastForward,
+            Key::MediaRewind => Self::MediaRewind,
+            Key::BrowserBack => Self::BrowserBack,
+            Key::BrowserForward => Self::BrowserForward,
+            Key::BrowserRefresh => Self::BrowserRefresh,
+            Key::BrowserHome => Self::BrowserHome,
+            Key::BrowserSearch => Self::BrowserSearch,
+            Key::BrowserFavorites => Self::BrowserFavorites,
+            Key::BrowserStop => Self::BrowserStop,
+            Key::LaunchMail => Self::LaunchMail,
+            Key::LaunchApp1 => Self::LaunchApp1,
+            Key::LaunchApp2 => Self::LaunchApp2,
+            Key::Power => Self::Power,
+            Key::Sleep => Self::Sleep,
+            Key::WakeUp => Self::WakeUp,
+            Key::Eject => Self::Eject,
+            Key::BrightnessDown => Self::BrightnessDown,
+            Key::BrightnessUp => Self::BrightnessUp,
+            Key::NumpadEqual => Self::NumpadEqual,
+            Key::NumpadComma => Self::NumpadComma,
             Key::Unknown => Self::Unidentified,
         }
     }
@@ -396,12 +462,88 @@ mod tests {
 
     #[test]
     fn unknown_code_maps_to_unknown_key() {
-        // keyboard_types::Code has many keys without a kbd-core equivalent
-        assert_eq!(Key::from(Code::PrintScreen), Key::Unknown);
-        assert_eq!(Key::from(Code::ScrollLock), Key::Unknown);
-        assert_eq!(Key::from(Code::Pause), Key::Unknown);
-        assert_eq!(Key::from(Code::NumLock), Key::Unknown);
-        assert_eq!(Key::from(Code::ContextMenu), Key::Unknown);
+        // keyboard_types::Code has some keys without a kbd-core equivalent
+        assert_eq!(Key::from(Code::Fn), Key::Unknown);
+        assert_eq!(Key::from(Code::FnLock), Key::Unknown);
+        assert_eq!(Key::from(Code::Abort), Key::Unknown);
+    }
+
+    #[test]
+    fn lock_keys_round_trip() {
+        for (code, key) in [
+            (Code::PrintScreen, Key::PrintScreen),
+            (Code::ScrollLock, Key::ScrollLock),
+            (Code::Pause, Key::Pause),
+            (Code::NumLock, Key::NumLock),
+            (Code::ContextMenu, Key::ContextMenu),
+        ] {
+            assert_eq!(Key::from(code), key, "Code→Key failed for {code:?}");
+            assert_eq!(Code::from(key), code, "Key→Code failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn media_keys_round_trip() {
+        for (code, key) in [
+            (Code::AudioVolumeMute, Key::VolumeMute),
+            (Code::AudioVolumeDown, Key::VolumeDown),
+            (Code::AudioVolumeUp, Key::VolumeUp),
+            (Code::MediaPlayPause, Key::MediaPlayPause),
+            (Code::MediaStop, Key::MediaStop),
+            (Code::MediaTrackNext, Key::MediaNextTrack),
+            (Code::MediaTrackPrevious, Key::MediaPrevTrack),
+            (Code::MediaRecord, Key::MediaRecord),
+            (Code::MediaFastForward, Key::MediaFastForward),
+            (Code::MediaRewind, Key::MediaRewind),
+        ] {
+            assert_eq!(Key::from(code), key, "Code→Key failed for {code:?}");
+            assert_eq!(Code::from(key), code, "Key→Code failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn browser_keys_round_trip() {
+        for (code, key) in [
+            (Code::BrowserBack, Key::BrowserBack),
+            (Code::BrowserForward, Key::BrowserForward),
+            (Code::BrowserRefresh, Key::BrowserRefresh),
+            (Code::BrowserHome, Key::BrowserHome),
+            (Code::BrowserSearch, Key::BrowserSearch),
+            (Code::BrowserFavorites, Key::BrowserFavorites),
+            (Code::BrowserStop, Key::BrowserStop),
+        ] {
+            assert_eq!(Key::from(code), key, "Code→Key failed for {code:?}");
+            assert_eq!(Code::from(key), code, "Key→Code failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn system_keys_round_trip() {
+        for (code, key) in [
+            (Code::Power, Key::Power),
+            (Code::Sleep, Key::Sleep),
+            (Code::WakeUp, Key::WakeUp),
+            (Code::Eject, Key::Eject),
+            (Code::BrightnessDown, Key::BrightnessDown),
+            (Code::BrightnessUp, Key::BrightnessUp),
+            (Code::LaunchMail, Key::LaunchMail),
+            (Code::LaunchApp1, Key::LaunchApp1),
+            (Code::LaunchApp2, Key::LaunchApp2),
+        ] {
+            assert_eq!(Key::from(code), key, "Code→Key failed for {code:?}");
+            assert_eq!(Code::from(key), code, "Key→Code failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn extra_numpad_keys_round_trip() {
+        for (code, key) in [
+            (Code::NumpadEqual, Key::NumpadEqual),
+            (Code::NumpadComma, Key::NumpadComma),
+        ] {
+            assert_eq!(Key::from(code), key, "Code→Key failed for {code:?}");
+            assert_eq!(Code::from(key), code, "Key→Code failed for {key:?}");
+        }
     }
 
     #[test]
