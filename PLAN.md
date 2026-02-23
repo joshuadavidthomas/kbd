@@ -325,8 +325,9 @@ kbd/                              workspace root
 
 - Conversion traits between `winit::keyboard::KeyCode` /
   `ModifiersState` and `kbd-core` types
-- Near-trivial — winit re-exports `keyboard_types::Code`, the same
-  type `kbd-core`'s `Key` wraps
+- Near-trivial — winit defines its own W3C-derived `KeyCode` enum
+  with the same variant names as `keyboard_types::Code`, so the
+  mapping is mechanical
 - Deps: `winit`, `kbd-core`
 
 **`kbd-tao`** — tao bridge.
@@ -590,13 +591,14 @@ adding new bridge crates straightforward: extension traits with
 
 `kbd-winit` — winit bridge:
 
-- [ ] Create `crates/kbd-winit/` with `Cargo.toml` (deps: `winit`,
+- [x] Create `crates/kbd-winit/` with `Cargo.toml` (deps: `winit`,
       `kbd-core`).
-- [ ] `WinitKeyExt` trait: `winit::keyboard::KeyCode → Key`. winit
-      re-exports `keyboard_types::Code`, so this is near-trivial.
-- [ ] `WinitEventExt` trait: `winit::event::KeyEvent → Hotkey`
+- [x] `WinitKeyExt` trait: `winit::keyboard::KeyCode → Key`. winit
+      defines its own W3C-derived `KeyCode` enum — same variant names
+      as `keyboard_types::Code`, so the mapping is mechanical.
+- [x] `WinitEventExt` trait: `winit::event::KeyEvent → Hotkey`
       (key + modifiers in one step).
-- [ ] Tests and `cargo build --workspace`.
+- [x] Tests and `cargo build --workspace`.
 
 `kbd-tao` — tao bridge (Tauri's winit fork):
 
@@ -647,7 +649,7 @@ Build on demand (niche):
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 11/11 |
-| 3.12 Framework integration crates | 6/23 (build now) + 3 on-demand |
+| 3.12 Framework integration crates | 10/23 (build now) + 3 on-demand |
 | 3.13 Examples | 0/11 |
 
 ### 3.13 Examples
