@@ -35,8 +35,14 @@
 //! assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
 //! ```
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MediaKeyCode, ModifierKeyCode};
-use kbd_core::{Hotkey, Key, Modifier};
+use crossterm::event::KeyCode;
+use crossterm::event::KeyEvent;
+use crossterm::event::KeyModifiers;
+use crossterm::event::MediaKeyCode;
+use crossterm::event::ModifierKeyCode;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::Modifier;
 
 /// Convert a crossterm [`KeyCode`] to a `kbd-core` [`Key`].
 ///
@@ -125,7 +131,7 @@ impl CrosstermEventExt for KeyEvent {
         // Strip the modifier that corresponds to the key itself.
         // When pressing LeftShift, crossterm reports SHIFT in the modifiers,
         // but we want the hotkey to be just "ShiftLeft", not "Shift+ShiftLeft".
-        if let Some(self_modifier) = modifier_keycode_flag(&self.code) {
+        if let Some(self_modifier) = modifier_keycode_flag(self.code) {
             flags.remove(self_modifier);
         }
 
@@ -184,7 +190,6 @@ fn char_to_key(ch: char) -> Option<Key> {
         ',' => Some(Key::COMMA),
         '.' => Some(Key::PERIOD),
         '/' => Some(Key::SLASH),
-        _ if !ch.is_ascii() => None,
         _ => None,
     }
 }
@@ -258,28 +263,34 @@ fn modifier_keycode_to_key(modifier: ModifierKeyCode) -> Option<Key> {
 
 /// Returns the `KeyModifiers` flag that corresponds to a modifier `KeyCode`,
 /// so we can strip it when the key itself IS the modifier.
-fn modifier_keycode_flag(code: &KeyCode) -> Option<KeyModifiers> {
+fn modifier_keycode_flag(code: KeyCode) -> Option<KeyModifiers> {
     match code {
-        KeyCode::Modifier(
-            ModifierKeyCode::LeftControl | ModifierKeyCode::RightControl,
-        ) => Some(KeyModifiers::CONTROL),
-        KeyCode::Modifier(
-            ModifierKeyCode::LeftShift | ModifierKeyCode::RightShift,
-        ) => Some(KeyModifiers::SHIFT),
-        KeyCode::Modifier(
-            ModifierKeyCode::LeftAlt | ModifierKeyCode::RightAlt,
-        ) => Some(KeyModifiers::ALT),
-        KeyCode::Modifier(
-            ModifierKeyCode::LeftSuper | ModifierKeyCode::RightSuper,
-        ) => Some(KeyModifiers::SUPER),
+        KeyCode::Modifier(ModifierKeyCode::LeftControl | ModifierKeyCode::RightControl) => {
+            Some(KeyModifiers::CONTROL)
+        }
+        KeyCode::Modifier(ModifierKeyCode::LeftShift | ModifierKeyCode::RightShift) => {
+            Some(KeyModifiers::SHIFT)
+        }
+        KeyCode::Modifier(ModifierKeyCode::LeftAlt | ModifierKeyCode::RightAlt) => {
+            Some(KeyModifiers::ALT)
+        }
+        KeyCode::Modifier(ModifierKeyCode::LeftSuper | ModifierKeyCode::RightSuper) => {
+            Some(KeyModifiers::SUPER)
+        }
         _ => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MediaKeyCode, ModifierKeyCode};
-    use kbd_core::{Hotkey, Key, Modifier};
+    use crossterm::event::KeyCode;
+    use crossterm::event::KeyEvent;
+    use crossterm::event::KeyModifiers;
+    use crossterm::event::MediaKeyCode;
+    use crossterm::event::ModifierKeyCode;
+    use kbd_core::Hotkey;
+    use kbd_core::Key;
+    use kbd_core::Modifier;
 
     use super::*;
 
@@ -548,10 +559,7 @@ mod tests {
         // physical key as 'a', just with Shift modifier
         let event = KeyEvent::new(KeyCode::Char('A'), KeyModifiers::SHIFT);
         let hotkey = event.to_hotkey();
-        assert_eq!(
-            hotkey,
-            Some(Hotkey::new(Key::A).modifier(Modifier::Shift))
-        );
+        assert_eq!(hotkey, Some(Hotkey::new(Key::A).modifier(Modifier::Shift)));
     }
 
     #[test]
@@ -563,10 +571,7 @@ mod tests {
 
     #[test]
     fn ctrl_shift_f5() {
-        let event = KeyEvent::new(
-            KeyCode::F(5),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        );
+        let event = KeyEvent::new(KeyCode::F(5), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
         let hotkey = event.to_hotkey();
         assert_eq!(
             hotkey,
