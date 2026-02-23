@@ -82,7 +82,7 @@ portal, mediated by the compositor.
 |---|---|---|
 | TUI app (ratatui/crossterm) | `kbd-core` + `kbd-crossterm` | Layers, sequences, configurable bindings |
 | TUI app (termion) | `kbd-core` + `kbd-termion` | Same, for termion-based apps |
-| winit app | `kbd-core` + `kbd-winit` | Thin bridge — winit re-exports `keyboard_types::Code` |
+| winit app | `kbd-core` + `kbd-winit` | Thin bridge — winit's W3C-derived `KeyCode` maps mechanically |
 | tao app | `kbd-core` + `kbd-tao` | tao (Tauri's winit fork) has its own `KeyCode` |
 | Tauri app (global hotkeys) | `kbd-global` | Replaces Tauri's X11-only global-shortcut plugin |
 | iced app | `kbd-core` + `kbd-iced` | Bridge for iced's own W3C-derived key types |
@@ -111,7 +111,7 @@ framework and `kbd-core` as its only dependencies.
 | Crate | Bridges | Notes |
 |---|---|---|
 | `kbd-crossterm` | crossterm | TUI apps (ratatui). Logical key model (`Char('a')`) |
-| `kbd-winit` | winit | winit re-exports `keyboard_types::Code`, so conversion is near-trivial |
+| `kbd-winit` | winit | Own W3C-derived `KeyCode` enum, same variant names — mechanical mapping |
 | `kbd-tao` | tao | Tauri's winit fork. Own `KeyCode` enum, same W3C variants |
 | `kbd-iced` | iced | Own W3C-derived key types |
 | `kbd-egui` | egui | Custom key enum, not 1:1 |
@@ -244,7 +244,7 @@ labeled A on a US QWERTY layout." Shortcuts defined by position
 The source of the event determines the semantics:
 
 - **evdev** — physical position (scancode-based)
-- **winit / iced** — physical position (`keyboard_types::Code`)
+- **winit / iced** — physical position (W3C-derived key codes)
 - **crossterm** — logical character (terminal resolves the layout)
 
 `kbd-core` doesn't distinguish between these. `Key::A` from evdev and
@@ -286,10 +286,10 @@ Why `keyboard-types` instead of maintaining our own enum:
   breaks.
 
 An important nuance: **most frameworks do not depend on
-`keyboard-types`**. winit re-exports it, and floem uses it via
-`ui_events`, but iced, egui, tao, and Makepad each define their own
-key types. Only Dioxus and floem can use `kbd-core` directly without
-a bridge crate.
+`keyboard-types`**. Floem uses it via `ui_events`, but winit, iced,
+egui, tao, and Makepad each define their own key types derived from
+the same W3C spec. Only Dioxus and floem can use `kbd-core` directly
+without a bridge crate.
 
 The Rust GUI/TUI keyboard type landscape:
 
@@ -297,7 +297,7 @@ The Rust GUI/TUI keyboard type landscape:
 |---|---|---|
 | Dioxus | `keyboard_types::Code` | `Key::from(code)` (no bridge crate) |
 | floem | `keyboard_types::Code` via `ui_events` | No bridge crate needed (like Dioxus) |
-| winit | Re-exports `keyboard_types::Code` as `KeyCode` | `kbd-winit` (near-trivial, same underlying type) |
+| winit | Own `KeyCode` enum (W3C-derived, same variant names) | `kbd-winit` (mechanical 1:1 mapping) |
 | tao | Own `KeyCode` (W3C-derived, winit fork) | `kbd-tao` (1:1 mapping) |
 | iced | Own `Code` (W3C-derived) | `kbd-iced` (1:1 mapping) |
 | egui | Own `Key` enum (smaller, not 1:1) | `kbd-egui` |
