@@ -1,5 +1,5 @@
 //! Tests that `kbd-global` re-exports all kbd-core public types
-//! and that the public API surface is correct after the facade rewire.
+//! and that the public API surface is correct after the runtime rewire.
 
 // All these imports should work through `kbd_global::` — they come from kbd-core.
 use kbd_global::Action;

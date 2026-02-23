@@ -1,4 +1,4 @@
-//! Global hotkey facade for kbd — threaded engine, device management,
+//! Global hotkey runtime for kbd — threaded engine, device management,
 //! and backend selection for Linux.
 //!
 //! When a specific pattern of keys happens on a Linux input device, do
