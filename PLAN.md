@@ -268,6 +268,8 @@ pulling heavy deps into a monolith.
 keybound/                         workspace root
 ├── crates/
 │   ├── kbd-core/                 Pure types + matcher + layers
+│   ├── kbd-crossterm/            crossterm key event conversions
+│   ├── kbd-egui/                 egui key type conversions
 │   ├── kbd-evdev/                evdev backend
 │   ├── kbd-portal/               XDG GlobalShortcuts portal backend
 │   ├── kbd-xkb/                  Keyboard layout awareness
@@ -277,16 +279,35 @@ keybound/                         workspace root
 
 ### What goes where
 
-**`kbd-core`** — zero platform deps, the thing everyone can use.
+**`kbd-core`** — platform-agnostic, the thing everyone can use.
 
-- `Key`, `Modifier`, `Hotkey`, `HotkeySequence` (types + parsing)
+- `Key` (newtype over `keyboard_types::Code`), `Modifier`, `Hotkey`,
+  `HotkeySequence` (types + parsing)
 - `Action`, `Binding`, `BindingOptions`, `BindingId`
 - `Layer`, `LayerOptions`, `LayerName`
 - `Matcher`, `MatchResult`, `KeyState` (the synchronous engine)
 - Core error types (parse, conflict, layer)
-- Only external dep: `thiserror`
-- Optional feature flags: `serde` (derives), `winit` (key conversions)
-- No evdev dependency — evdev conversions live in `kbd-evdev` via extension traits
+- External deps: `thiserror`, `keyboard-types`
+- Optional feature flag: `serde` (derives)
+- No evdev dependency — evdev conversions live in `kbd-evdev` via
+  extension traits
+- winit/iced/Dioxus users get zero-cost key conversion natively since
+  they use `keyboard_types::Code`
+
+**`kbd-crossterm`** — TUI bridge.
+
+- Conversion traits between `crossterm::event::KeyCode` /
+  `KeyModifiers` / `KeyEvent` and `kbd-core` types (`Key`, `Modifier`,
+  `Hotkey`)
+- `CrosstermEventExt::to_hotkey()` for direct `KeyEvent → Hotkey`
+  conversion
+- Deps: `crossterm`, `kbd-core`
+
+**`kbd-egui`** — egui bridge.
+
+- Conversion traits between `egui::Key` / `Modifiers` and `kbd-core`
+  types
+- Deps: `egui`, `kbd-core`
 
 **`kbd-evdev`** — Linux input device layer.
 
@@ -332,7 +353,9 @@ Each boundary is a **dependency boundary**:
 
 | Crate | Key external dep | Why separate |
 |-------|-----------------|--------------|
-| `kbd-core` | none | The whole point — zero deps, anyone can use it |
+| `kbd-core` | `keyboard-types` | Platform-agnostic, minimal deps |
+| `kbd-crossterm` | `crossterm` | TUI apps only, different key model (logical) |
+| `kbd-egui` | `egui` | egui apps only, custom key types |
 | `kbd-evdev` | `evdev` | Linux C library, needs `/dev/input` access |
 | `kbd-portal` | `ashpd` (async DBus) | Pulls in async runtime, different paradigm |
 | `kbd-xkb` | `xkbcommon` | Optional C library, not everyone needs layouts |
@@ -342,18 +365,23 @@ Each boundary is a **dependency boundary**:
 Things that stay as feature flags, not crates:
 
 - **Serde** — just derives on `kbd-core` types, not a dep boundary
-- **Winit conversions** — small `From` impls in `kbd-core`, feature-gated
 - **Async event streams** — thin wrappers in `keybound`, feature-gated
   on `tokio` / `async-std`
+
+No conversion crate is needed for **winit, iced, or Dioxus** — they use
+`keyboard_types::Code` natively, which is what `kbd-core`'s `Key`
+wraps.
 
 ### Consumer matrix
 
 | Consumer | Depends on |
 |----------|-----------|
-| Iced/Dioxus app with own shortcuts | `kbd-core` |
-| Iced app + layout awareness | `kbd-core` + `kbd-xkb` |
-| Tauri-style app needing global hotkeys | `keybound` |
+| TUI app (ratatui / crossterm) | `kbd-core` + `kbd-crossterm` |
+| winit / iced / Dioxus app | `kbd-core` (key type is native) |
+| egui app | `kbd-core` + `kbd-egui` |
 | Compositor (Niri-like) | `kbd-core` + `kbd-evdev` (direct, no manager) |
+| App + layout awareness | `kbd-core` + `kbd-xkb` |
+| Tauri-style app needing global hotkeys | `keybound` |
 | Flatpak sandboxed app | `keybound` with `kbd-portal` |
 | Declarative bindings | `keybound` + `kbd-derive` |
 
@@ -361,7 +389,8 @@ Things that stay as feature flags, not crates:
 
 - [x] Create `crates/` directory with all six crate dirs and `Cargo.toml` for each.
 - [x] Root `Cargo.toml` becomes workspace manifest with `members = ["crates/*"]`.
-- [x] `kbd-core/Cargo.toml`: only `thiserror`, optional `serde` feature.
+- [x] `kbd-core/Cargo.toml`: `thiserror`, optional `serde` feature.
+      (Note: `keyboard-types` added as required dep in §3.11.)
 - [x] `kbd-evdev/Cargo.toml`: `evdev`, `kbd-core`.
 - [x] `kbd-portal/Cargo.toml`: `ashpd`, `kbd-core`. Starts as stub with `unimplemented!()` entry points and a doc comment.
 - [x] `kbd-xkb/Cargo.toml`: placeholder, no deps yet. Doc comment explains Phase 4.9.
@@ -418,18 +447,66 @@ match matcher.process(hotkey, transition) {
 
 - [x] `keybound` re-exports all `kbd-core` public types — existing public API unchanged.
 - [x] Remove stub re-export files (`key.rs`, `action.rs`, `binding.rs`, `layer.rs`, `engine/key_state.rs`) — collapse into direct `pub use kbd_core::` re-exports in `lib.rs` and direct `use kbd_core::` imports internally.
-- [x] Remove `evdev` feature flag and `evdev` dependency from `kbd-core`. All evdev conversions live in `kbd-evdev` behind extension traits (§3.8). `kbd-core` is truly zero platform deps (`thiserror` only).
+- [x] Remove `evdev` feature flag and `evdev` dependency from `kbd-core`. All evdev conversions live in `kbd-evdev` behind extension traits (§3.8). `kbd-core` has no platform deps (`thiserror` + `keyboard-types` only, both platform-agnostic).
 - [x] `HotkeyManager` uses `kbd-evdev` for device management. `kbd-evdev` is a hard dependency — evdev is fundamental to this Linux library. Consumers who want pure types without platform code use `kbd-core` directly.
 - [x] `HotkeyManager` uses `kbd-portal` for portal backend (behind `portal` feature).
 - [x] Existing integration tests pass against the `keybound` crate: `cargo test -p keybound`.
 - [x] `cargo test --workspace` passes.
 
-### 3.11 Windowing library conversions
+### 3.11 Adopt `keyboard-types` as the core key type
 
-- [x] Feature-gated `From<winit::keyboard::KeyCode> for Key` in `kbd-core` behind `winit` feature flag.
-- [x] Conversion coverage: all keys that have equivalents in both enums, others map to `Key::Unknown`.
-- [x] Other frameworks (Smithay keysyms, etc.) added on demand via additional feature flags.
-- [x] Tests: round-trip conversion for common keys.
+Replace the hand-maintained `Key` enum with a newtype over
+`keyboard_types::Code`, the W3C standard for physical key positions.
+This eliminates the parallel enum, the winit conversion module, and
+the ongoing maintenance of adding key variants in three places. See
+DESIGN.md "The key type and `keyboard-types`" for full rationale.
+
+The newtype approach — `struct Key(pub keyboard_types::Code)` with
+associated constants — lets us keep `FromStr`/`Display` with our
+aliases while making conversions with winit/iced/Dioxus zero-cost.
+
+- [ ] Add `keyboard-types` as a required dep of `kbd-core`.
+- [ ] Replace `Key` enum with `struct Key(pub keyboard_types::Code)`.
+- [ ] Define associated constants for all `Code` variants (`Key::A`,
+      `Key::ENTER`, `Key::VOLUME_UP`, etc.).
+- [ ] Implement `From<Code> for Key` and `From<Key> for Code`.
+- [ ] Update `as_str()` to use associated-constant matching with
+      `_ =>` fallback to `Code`'s `Display`.
+- [ ] Update `parse_key_token()` — same aliases, returns
+      `Key(Code::Enter)` instead of `Key::Enter`.
+- [ ] Update `FromStr` and `Display` impls on the newtype.
+- [ ] Update `Modifier::from_key()` and `Modifier::keys()` for the
+      new type.
+- [ ] Delete `winit.rs` module and `winit` feature flag from
+      `kbd-core` — winit/iced/Dioxus get conversion for free.
+- [ ] Remove `keyboard-types` and `winit` optional deps; add
+      `keyboard-types` as required.
+- [ ] Update `kbd-evdev` conversion traits to use newtype.
+- [ ] Update `keybound` re-exports, remove `winit` feature
+      passthrough.
+- [ ] All tests updated and passing. `cargo test --workspace`.
+
+### 3.12 Framework integration crates
+
+Create conversion crates for frameworks that don't use
+`keyboard_types::Code` natively. Frameworks that do (winit, iced,
+Dioxus) need no conversion crate.
+
+- [ ] Create `crates/kbd-crossterm/` with `Cargo.toml` (deps:
+      `crossterm`, `kbd-core`).
+- [ ] `CrosstermKeyExt` trait: `crossterm::event::KeyCode → Key`.
+- [ ] `CrosstermEventExt` trait: `crossterm::event::KeyEvent → Hotkey`
+      (converts key + modifiers in one step).
+- [ ] Handle crossterm's logical key model: `Char('a')` → `Key::A`,
+      modifier keys extracted from `KeyModifiers` bitflags.
+- [ ] Tests: round-trip for common keys, modifier extraction,
+      full `KeyEvent → Hotkey` conversion.
+- [ ] Create `crates/kbd-egui/` with `Cargo.toml` (deps: `egui`,
+      `kbd-core`).
+- [ ] `EguiKeyExt` trait: `egui::Key → Key`.
+- [ ] `EguiModifiersExt` trait: `egui::Modifiers → Vec<Modifier>`.
+- [ ] Tests: round-trip for common keys, modifier conversion.
+- [ ] All crates compile. `cargo build --workspace` succeeds.
 
 ### Phase 3.5 gate
 
@@ -440,120 +517,8 @@ match matcher.process(hotkey, transition) {
 | 3.8 Move evdev to kbd-evdev | 5/5 |
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire keybound facade | 7/7 |
-| 3.11 Windowing conversions | 4/4 |
-
----
-
-## Alternative: Adopt `keyboard-types` as the core key type
-
-**Status**: Under consideration. Would replace the hand-maintained `Key`
-enum with a newtype over `keyboard_types::Code`, the W3C standard for
-physical key positions. This decision should be made before Phase 4,
-since Phase 4 adds features (sequences, serde, XKB) that build heavily
-on the key type.
-
-### The problem
-
-keybound's `Key` enum is a curated subset of physical key positions.
-`keyboard_types::Code` is the same concept — a W3C-standardized enum of
-physical key positions, used by winit, iced, and most Rust windowing
-frameworks.
-
-We're maintaining ~145 variants that are a subset of `Code`'s ~250.
-Every time a user reports "key X doesn't work," we add a variant in
-three places (enum, `as_str`/parsing, evdev conversion) plus the winit
-conversion module. The winit conversion module (§3.11) is ~500 lines of
-boilerplate mapping between two enums that represent the same thing.
-
-The `Key` enum doesn't do anything special — no invariants, no
-domain-specific behavior, no validation beyond "is this a known key."
-It's just a vocabulary type with different names for the same concepts.
-
-### The approach: newtype over `Code`
-
-```rust
-/// A physical key on the keyboard.
-///
-/// Newtype over [`keyboard_types::Code`], the W3C standard for physical
-/// key positions. The inner value is public — convert freely with
-/// `.into()` / `Key::from(code)`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[repr(transparent)]
-pub struct Key(pub keyboard_types::Code);
-```
-
-Associated constants provide the familiar API:
-
-```rust
-impl Key {
-    pub const A: Self = Self(Code::KeyA);
-    pub const ENTER: Self = Self(Code::Enter);
-    pub const VOLUME_UP: Self = Self(Code::AudioVolumeUp);
-    pub const LEFT_CTRL: Self = Self(Code::ControlLeft);
-    // ... one constant per Code variant
-}
-```
-
-### What changes
-
-| Concern | Before | After |
-|---------|--------|-------|
-| Key type | `enum Key { A, B, ... }` (our own) | `struct Key(pub Code)` (newtype) |
-| `keyboard-types` dep | optional, behind `winit` feature | required dep of `kbd-core` |
-| `kbd-core` deps | `thiserror` only | `thiserror` + `keyboard-types` |
-| winit/iced consumers | enable `winit` feature, use `From` | just call `.into()`, no feature flag |
-| `FromStr` / aliases | ✅ kept — our impl on our type | ✅ kept — our impl on our newtype |
-| `Display` | ✅ kept | ✅ kept |
-| Exhaustive `match` | ✅ compiler-enforced | ❌ always needs `_ =>` arm |
-| New keys in keyboard-types | must add variant + conversions | automatically available, optionally add constant + alias |
-| evdev conversions | `kbd-evdev` maps `KeyCode` ↔ `Key` | same, but `Key` is now a newtype |
-| winit conversion module | ~500 lines of match arms | deleted entirely |
-
-### Why newtype, not re-export or type alias
-
-A plain `pub use keyboard_types::Code as Key` hits the orphan rule — we
-can't impl `FromStr`, `Display`, or any trait on a foreign type. We
-lose `"Enter".parse::<Key>()` and all our aliases ("Esc", "Return",
-"PrtSc", "Ctrl", etc.). The newtype lets us own the type for trait
-impls while the inner `Code` is public for zero-cost access.
-
-### The tradeoff: no exhaustive matching
-
-With an enum, `match key { Key::A => ..., Key::B => ..., /* all variants */ }`
-is exhaustive — the compiler tells you if you miss one. With a newtype,
-every match needs a `_ =>` fallback.
-
-In practice this is acceptable because:
-
-- The matcher uses equality checks (`if key == binding.key`), not
-  pattern matching
-- `Modifier::from_key` checks a small fixed set of modifier keys
-- The evdev conversion in `kbd-evdev` already has a `_ => Unknown`
-  fallback
-- Exhaustive matching on 250+ key variants was never practical
-
-### What stays the same
-
-- **`Modifier` enum** — unchanged, it has different semantics
-  (canonicalization of left/right variants)
-- **`Hotkey`, `HotkeySequence`** — unchanged, they compose `Key` +
-  modifiers
-- **Parsing** — same aliases and behavior, just returns
-  `Key(Code::Enter)` instead of `Key::Enter`
-- **evdev conversions** — same extension traits in `kbd-evdev`, just the
-  target type changes
-- **Public API** — `Key::A`, `Key::ENTER`, etc. still work (associated
-  constants instead of enum variants)
-
-### Migration scope
-
-- `kbd-core`: replace `Key` enum with newtype, update `as_str` /
-  `parse_key_token` / `Display` / `FromStr`, delete `winit.rs` module
-  and `winit` feature flag
-- `kbd-evdev`: update conversion traits to use newtype
-- `keybound`: update re-exports, remove `winit` feature passthrough
-- All tests: `Key::Enter` → `Key::ENTER` (or keep the old names as
-  aliases if we want backward compat)
+| 3.11 Adopt keyboard-types | 0/13 |
+| 3.12 Framework integration crates | 0/10 |
 
 ---
 
@@ -803,11 +768,14 @@ Reference: `reference/keyd/src/keyboard.c` (chord state machine)
 
 ---
 
-## Phase 7: Cross-platform expansion (not committed)
+## Phase 7: Cross-platform backends (not committed)
+
+`kbd-core` is already platform-agnostic. This phase adds non-Linux
+backends to the `keybound` facade for global hotkey support on other
+platforms.
 
 - [ ] macOS backend (CGEventTap / IOKit).
 - [ ] Windows backend (low-level keyboard hooks).
-- [ ] Platform-neutral crate rename if not already done.
 
 ---
 
@@ -952,7 +920,7 @@ proc-macro2).
 | **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
 | **2** | Grab mode + key state | 13 |
 | **3** | Layers + metadata + introspection | 27 |
-| **3.5** | Workspace split (`kbd-core`, `kbd-evdev`, `kbd-portal`, `kbd-xkb`, `kbd-derive`, `keybound`) | 34 |
+| **3.5** | Workspace split, keyboard-types adoption, framework bridges | 57 |
 | **4** | Sequences, tap-hold, device filtering, portal, async, serde, aliases, XKB, provenance | 61 |
 | **5** | Key remapping, transformation, lock/inhibitor, context hooks | 30 |
 | **6** | Stretch: chords, mouse, full keymaps | 11+ |
@@ -960,10 +928,12 @@ proc-macro2).
 
 Phase 1 makes it work. Phase 2 makes it intercept. Phase 3 makes it
 modal and introspectable. Phase 3.5 splits the workspace — `kbd-core`
-becomes an embeddable engine any Rust app can use, backends get their
-own crates, deps stay isolated. Phase 4 makes it feature-complete
-and layout-aware. Phase 5 makes it a transformation engine that's
-context-aware.
+adopts `keyboard-types` and becomes a platform-agnostic shortcut engine
+usable from any Rust event loop. Framework bridge crates (`kbd-crossterm`,
+`kbd-egui`) make `kbd-core` accessible to TUI and GUI apps. Backends
+(`kbd-evdev`, `kbd-portal`) get their own crates. Phase 4 makes it
+feature-complete and layout-aware. Phase 5 makes it a transformation
+engine that's context-aware.
 
 ---
 

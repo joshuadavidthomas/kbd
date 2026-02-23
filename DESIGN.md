@@ -10,24 +10,48 @@ inspiration-only (GPL).
 
 ## What is this library?
 
-keybound is a keyboard shortcut engine for Rust on Linux.
+keybound is a keyboard shortcut engine for Rust.
+
+The core (`kbd-core`) is platform-agnostic — it handles key types,
+modifier tracking, binding matching, layer stacks, and sequence
+resolution. It works anywhere you have key events: GUI apps, TUI apps,
+compositors, game engines.
+
+The facade (`keybound`) adds a Linux global hotkey backend on top,
+with evdev device access, grab mode, and XDG portal support.
 
 ### When to use it
 
-**You're building an app that needs system-wide hotkeys.** A launcher
-triggered by Super+Space, a screenshot tool on PrintScreen, push-to-talk
-on a media key, a clipboard manager on Ctrl+Shift+V — shortcuts that
-work regardless of which window has focus. Use the `keybound` facade
-crate. It handles device access, backend selection, grab mode, and
-hotplug so you just describe patterns and actions.
+**You're building a TUI app with modal keybindings.** A file manager,
+editor, or dashboard with vim-style modes — normal, insert, command,
+search — where different keys do different things depending on context.
+Every ratatui app hand-rolls this with nested match statements. Use
+`kbd-core`'s `Matcher` with layers instead. It handles mode switching,
+key sequences, configurable bindings from strings, and introspection
+(list all bindings for a help screen). Add `kbd-crossterm` for
+crossterm key event conversion.
+
+**You're building a GUI app that needs shortcut matching.** An iced,
+egui, or winit-based app with configurable shortcuts, multi-step key
+sequences (Ctrl+K → Ctrl+C), or context-dependent bindings. GUI
+frameworks expose raw key events but don't provide shortcut
+infrastructure — no layers, no sequences, no conflict detection. Use
+`kbd-core`'s `Matcher` in your event loop. winit and iced apps get
+zero-cost key conversion since `kbd-core` uses `keyboard_types::Code`
+natively. egui apps use `kbd-egui` for the bridge.
 
 **You're building a compositor, editor, or framework that needs shortcut
-matching.** Niri, COSMIC, Zed, and every tiling WM independently build
-the same inner engine: key types, modifier tracking, binding tables,
-layer stacks, sequence resolution. Use `kbd-core` directly. It's a
-synchronous `Matcher` you drive from your own event loop — no threads,
-no device access, no platform dependencies. You bring the events, it
-tells you what matched.
+matching.** Niri, COSMIC, Zed, Helix, and every tiling WM independently
+build the same inner engine: key types, modifier tracking, binding
+tables, layer stacks, sequence resolution. Use `kbd-core` directly.
+It's a synchronous `Matcher` you drive from your own event loop — no
+threads, no device access, no platform dependencies.
+
+**You're building an app that needs system-wide hotkeys on Linux.** A
+launcher triggered by Super+Space, a screenshot tool on PrintScreen,
+push-to-talk on a media key — shortcuts that work regardless of which
+window has focus. Use the `keybound` facade crate. It handles device
+access, backend selection, grab mode, and hotplug.
 
 **You're building a key remapper or input transformation tool.** A tool
 that remaps CapsLock to Escape, implements vim-style layers (hjkl as
@@ -37,26 +61,35 @@ via evdev, matches them, and can emit different keys through a virtual
 uinput device.
 
 **You're building a sandboxed Wayland app that wants shortcuts.** A
-Flatpak-packaged media player or communication tool that needs a
-push-to-talk key or media controls without requiring device access. Use
-`keybound` with the portal backend — it requests shortcuts through the
-XDG GlobalShortcuts portal, mediated by the compositor.
+Flatpak-packaged media player that needs push-to-talk or media
+controls without requiring device access. Use `keybound` with the
+portal backend — it requests shortcuts through the XDG GlobalShortcuts
+portal, mediated by the compositor.
 
 ### Who should use what
 
 | You're building... | Use | Why |
 |---|---|---|
-| App with global hotkeys | `keybound` | Full stack: devices, matching, callbacks |
-| Compositor / tiling WM | `kbd-core` + `kbd-evdev` | You have your own event loop and device access |
-| GUI framework shortcuts | `kbd-core` | Embed the `Matcher` in your framework's event loop |
+| TUI app (ratatui/crossterm) | `kbd-core` + `kbd-crossterm` | Layers, sequences, configurable bindings |
+| winit / iced app | `kbd-core` | Key type is native (`keyboard_types::Code`) |
+| egui app | `kbd-core` + `kbd-egui` | Bridge for egui's custom key types |
+| Compositor / tiling WM | `kbd-core` + `kbd-evdev` | Your own event loop and device access |
+| App with global hotkeys (Linux) | `keybound` | Full stack: devices, matching, callbacks |
 | Key remapper / macro tool | `keybound` (grab mode) | Intercept + transform + re-emit keys |
 | Sandboxed Wayland app | `keybound` + `kbd-portal` | Desktop-mediated shortcuts, no root needed |
 
 ### The crate split
 
-**`kbd-core`**: Pure-logic shortcut engine. Key types, modifier
-tracking, binding matching, layer stacks, sequence resolution. No
-platform dependencies. Embeddable in any event loop.
+**`kbd-core`**: Pure-logic shortcut engine. Key types (built on
+`keyboard_types::Code`), modifier tracking, binding matching, layer
+stacks, sequence resolution. Platform-agnostic. Embeddable in any
+event loop.
+
+**`kbd-crossterm`**: Conversion traits between crossterm's key events
+and `kbd-core` types. The bridge for TUI apps.
+
+**`kbd-egui`**: Conversion traits between egui's key types and
+`kbd-core` types.
 
 **`kbd-evdev`**: Linux evdev backend. Device discovery, hotplug, grab,
 uinput forwarding.
@@ -67,12 +100,40 @@ compositor-mediated, sandboxed.
 **`kbd-xkb`**: Keyboard layout awareness via xkbcommon.
 
 **`keybound`**: The facade. Threaded manager, backend selection, the
-works. Most users start here.
+works. Linux global hotkey users start here.
 
-## Where keybound sits in the Linux input stack
+## Where kbd-core fits
 
-Linux keyboard input is layered. Each layer serves different consumers
-and provides different capabilities:
+`kbd-core` is the matching engine. It has no opinion about where key
+events come from. You give it a key + modifiers + press/release, it
+tells you which binding matched. The `Matcher` is synchronous and
+single-threaded — it fits inside any event loop.
+
+```
+Your event source          kbd-core              Your app
+─────────────────          ────────              ────────
+crossterm KeyEvent ──┐
+winit KeyCode ───────┤
+evdev key event ─────┼──▶ Matcher.process() ──▶ MatchResult
+Wayland wl_keyboard ─┤      │                    │
+Smithay input ───────┘      │                    ├─ Matched { action }
+                            │                    ├─ Pending { sequence }
+                         layers                  ├─ Swallowed
+                         bindings                └─ NoMatch
+                         key state
+```
+
+Conversion crates (`kbd-crossterm`, `kbd-egui`) and backend crates
+(`kbd-evdev`, `kbd-portal`) handle the translation from each event
+source to `kbd-core` types. Frameworks that use `keyboard_types::Code`
+natively (winit, iced, Dioxus) need no conversion at all.
+
+## The Linux global hotkey backend
+
+The `keybound` facade adds Linux-specific plumbing on top of `kbd-core`:
+a threaded engine, device management, and two backends.
+
+Linux keyboard input is layered:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -92,90 +153,84 @@ and provides different capabilities:
 └─────────────────────────────────────────────┘
 ```
 
-**keybound operates at two levels:**
+The `keybound` facade operates at two levels:
 
-1. **evdev** (primary backend) — reads raw key events from kernel
-   device nodes. This is the privileged path: it sees all keys
-   regardless of which application has focus, can grab devices for
-   exclusive access, and can inject remapped keys through uinput.
-   Requires read access to `/dev/input/` (typically via the `input`
-   group or seat management).
+1. **evdev** (primary) — reads raw key events from kernel device nodes.
+   Sees all keys regardless of focus, can grab devices for exclusive
+   access, and can inject remapped keys through uinput. Requires read
+   access to `/dev/input/` (typically via the `input` group or seat
+   management).
 
-2. **XDG GlobalShortcuts portal** (secondary backend) — the
-   unprivileged, desktop-mediated path for Wayland. Applications
-   request shortcuts through D-Bus; the compositor decides whether
-   to grant them. No device access needed, works in sandboxes
-   (Flatpak), but limited to shortcut activation signals — no grab,
-   no remapping, no raw key state.
-
-**`kbd-core` operates at no platform level.** It's a pure-logic engine:
-given a key event and some state, which binding matches? Consumers at
-*any* layer — compositors processing libinput events, GUI apps
-handling winit key events, even terminal tools — can drive the
-`Matcher` from their own event loop.
+2. **XDG GlobalShortcuts portal** (secondary) — the unprivileged,
+   desktop-mediated path for Wayland. Applications request shortcuts
+   through D-Bus; the compositor decides whether to grant them. No
+   device access needed, works in sandboxes (Flatpak), but limited to
+   shortcut activation signals — no grab, no remapping, no raw key
+   state.
 
 ### What keybound is not
 
 **Not a text input library.** Text input (IME composition, dead keys,
-Unicode output) is fundamentally different from key binding. A key press
-is a physical event; text is the result of layout resolution, compose
-sequences, and input method state. keybound deals in physical key
-events. Text input belongs in xkbcommon, the toolkit's text input API,
-or the compositor's text-input protocol.
+Unicode output) is fundamentally different from key binding. keybound
+deals in key identities and modifier combinations, not composed text.
 
-**Not a terminal input handler.** Terminal apps receive keyboard input
-through the TTY layer (termios), which encodes keys as byte sequences.
-That's a different world with different constraints (no key release
-events, escape sequence ambiguity). Libraries like crossterm handle
-this. keybound's `kbd-core` *could* be useful if a terminal app maps
-decoded key events to `Key` values and feeds them to the `Matcher`,
-but keybound doesn't handle the terminal decoding itself.
+**Not a terminal or GUI framework.** keybound doesn't decode terminal
+escape sequences (that's crossterm) or manage widget focus (that's your
+toolkit). `kbd-crossterm` and `kbd-egui` bridge the key types;
+`kbd-core`'s `Matcher` handles the shortcut logic. The framework
+handles everything else.
 
-**Not a GUI toolkit integration.** Toolkits (GTK, Qt) have their own
-keyboard event systems with widget focus, accelerators, and input
-method support. keybound doesn't replace those. The sweet spot is
-global shortcuts (system-wide, outside any toolkit) or shared binding
-logic (the `Matcher` used alongside toolkit events, not instead of
-them).
+## Key identity: physical position, logical character, or both
 
-## Physical keys vs logical keys
+`Key` in `kbd-core` is a **key identity** — which key was pressed. Most
+of the time this is a physical key position: `Key::A` means "the key
+labeled A on a US QWERTY layout." Shortcuts defined by position
+(Ctrl+C) work across keyboard layouts without re-mapping.
 
-keybound works at the **physical key** level. `Key::A` means "the key
-in the A position on a US QWERTY layout" — it's a position on the
-keyboard, not the character it produces. On a Dvorak layout, that same
-physical key produces "A" but is in a different position than you'd
-expect from the label.
+The source of the event determines the semantics:
 
-This is the right default for a hotkey library: most shortcuts are
-defined by position (Ctrl+C means "the key where C is on QWERTY"),
-and position-based bindings work across layouts without re-mapping.
+- **evdev** — physical position (scancode-based)
+- **winit / iced** — physical position (`keyboard_types::Code`)
+- **crossterm** — logical character (terminal resolves the layout)
 
-The **logical key** level — "what character does this key produce
-given the current layout?" — is a separate concern, handled by
-xkbcommon and planned for `kbd-xkb` (Phase 4.9 in the plan). The
-plan's `KeyReference` enum (`ByCode` / `BySymbol`) will support both
-modes when needed.
+`kbd-core` doesn't distinguish between these. `Key::A` from evdev and
+`Key::A` from crossterm match the same bindings. This is correct for
+shortcuts — "Ctrl+A" means the same thing regardless of which layer
+reported it.
+
+For **layout-aware binding** — "bind the key that produces `/` on the
+current layout" — `kbd-xkb` (Phase 4.9) will add `KeyReference::BySymbol`,
+resolving keysyms via xkbcommon.
 
 ### The key type and `keyboard-types`
 
-The W3C UI Events specification defines two key concepts that map
-directly to the physical/logical split:
+`kbd-core`'s `Key` type is a newtype over
+[`keyboard_types::Code`](https://crates.io/crates/keyboard-types),
+the W3C standard for physical key positions. This crate is used by
+winit, iced, Dioxus, and most of the Rust windowing ecosystem.
 
-- **`Code`** — physical key position (what keybound's `Key` represents)
-- **`Key`** — logical key value, layout-aware (what `kbd-xkb` will add)
+```rust
+#[repr(transparent)]
+pub struct Key(pub keyboard_types::Code);
+```
 
-The [`keyboard-types`](https://crates.io/crates/keyboard-types) crate
-implements these W3C types and is used by winit, iced, and most of the
-Rust windowing ecosystem. Since keybound's `Key` represents the same
-concept as `keyboard_types::Code`, there is an open question about
-whether to adopt `Code` as the foundation for `Key` rather than
-maintaining a parallel enum. See the "Alternative: Adopt
-`keyboard-types` as the core key type" section in PLAN.md for the
-detailed tradeoff analysis.
+Associated constants provide a clean API: `Key::A`, `Key::ENTER`,
+`Key::VOLUME_UP`. The inner `Code` is public, so conversions with
+frameworks that use `keyboard_types` natively are zero-cost.
 
-Regardless of that decision, the physical/logical distinction is
-foundational: keybound binds physical key positions by default, with
-layout-aware binding as an opt-in extension.
+This means:
+
+- **winit / iced / Dioxus users**: `Key::from(code)` or `code.into()`
+  — no feature flags, no conversion crate.
+- **crossterm users**: `kbd-crossterm` provides conversion traits
+  between crossterm's `KeyCode`/`KeyModifiers` and `Key`/`Modifier`.
+- **egui users**: `kbd-egui` provides the same for egui's custom key
+  types.
+- **evdev users**: `kbd-evdev` provides extension traits, same as
+  before.
+
+`keyboard-types` is a required dependency of `kbd-core` (zero-dep
+itself, platform-agnostic).
 
 ## What concepts does a user need?
 
@@ -207,6 +262,12 @@ distinction between "modifier" and "key" is about *role in a combination*,
 not about the key itself. In Ctrl+C, Ctrl is the modifier and C is the
 trigger — but that's a property of the combination, not of Ctrl.
 
+`Key` is a newtype over `keyboard_types::Code` — the W3C standard enum
+of physical key positions. This gives `kbd-core` the full key vocabulary
+(250+ keys including media, browser, system keys) without maintaining a
+parallel enum. Associated constants (`Key::A`, `Key::ENTER`,
+`Key::VOLUME_UP`) provide the API surface.
+
 For the API, the Ctrl/Shift/Alt/Super abstraction is genuinely useful.
 Users think in terms of "Ctrl+C", not "KEY_LEFTCTRL + KEY_C". And modifiers
 need left/right canonicalization. So:
@@ -215,12 +276,6 @@ need left/right canonicalization. So:
 - `Modifier` is a convenience type for the four common modifiers, handling
   left/right equivalence
 - Internally, everything resolves to key codes
-
-These two types share almost all their behavior: parsing from strings,
-converting to/from evdev key codes, display formatting. The current code
-duplicates all of this across two separate implementations. That duplication
-goes away — either through a shared trait, a macro, or by deriving Modifier
-from Key.
 
 A `Hotkey` is a trigger key plus a set of modifiers: the parsed form of
 `"Ctrl+Shift+A"`. A `HotkeySequence` is a series of hotkeys performed in
