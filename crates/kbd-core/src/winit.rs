@@ -1,4 +1,4 @@
-//! Conversions between [`Key`] and [`winit::keyboard::KeyCode`] (`keyboard_types::Code`).
+//! Conversions between [`Key`] and `winit::keyboard::KeyCode` (`keyboard_types::Code`).
 //!
 //! Enabled by the `winit` feature flag. Since winit re-exports `keyboard_types::Code`
 //! as `winit::keyboard::KeyCode`, these conversions work transparently for winit users.

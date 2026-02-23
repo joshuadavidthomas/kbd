@@ -426,10 +426,10 @@ match matcher.process(hotkey, transition) {
 
 ### 3.11 Windowing library conversions
 
-- [ ] Feature-gated `From<winit::keyboard::KeyCode> for Key` in `kbd-core` behind `winit` feature flag.
-- [ ] Conversion coverage: all keys that have equivalents in both enums, others map to `Key::Unknown`.
-- [ ] Other frameworks (Smithay keysyms, etc.) added on demand via additional feature flags.
-- [ ] Tests: round-trip conversion for common keys.
+- [x] Feature-gated `From<winit::keyboard::KeyCode> for Key` in `kbd-core` behind `winit` feature flag.
+- [x] Conversion coverage: all keys that have equivalents in both enums, others map to `Key::Unknown`.
+- [x] Other frameworks (Smithay keysyms, etc.) added on demand via additional feature flags.
+- [x] Tests: round-trip conversion for common keys.
 
 ### Phase 3.5 gate
 
@@ -440,7 +440,7 @@ match matcher.process(hotkey, transition) {
 | 3.8 Move evdev to kbd-evdev | 5/5 |
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire keybound facade | 7/7 |
-| 3.11 Windowing conversions | 0/4 |
+| 3.11 Windowing conversions | 4/4 |
 
 ---
 
