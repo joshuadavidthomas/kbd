@@ -553,16 +553,16 @@ straightforward.
 
 Build now:
 
-- [ ] Create `crates/kbd-crossterm/` with `Cargo.toml` (deps:
+- [x] Create `crates/kbd-crossterm/` with `Cargo.toml` (deps:
       `crossterm`, `kbd-core`).
-- [ ] `CrosstermKeyExt` trait: `crossterm::event::KeyCode → Key`.
-- [ ] `CrosstermEventExt` trait: `crossterm::event::KeyEvent → Hotkey`
+- [x] `CrosstermKeyExt` trait: `crossterm::event::KeyCode → Key`.
+- [x] `CrosstermEventExt` trait: `crossterm::event::KeyEvent → Hotkey`
       (converts key + modifiers in one step).
-- [ ] Handle crossterm's logical key model: `Char('a')` → `Key::A`,
+- [x] Handle crossterm's logical key model: `Char('a')` → `Key::A`,
       modifier keys extracted from `KeyModifiers` bitflags.
-- [ ] Tests: round-trip for common keys, modifier extraction,
+- [x] Tests: round-trip for common keys, modifier extraction,
       full `KeyEvent → Hotkey` conversion.
-- [ ] `cargo build --workspace` succeeds with `kbd-crossterm`.
+- [x] `cargo build --workspace` succeeds with `kbd-crossterm`.
 
 Build when a downstream project needs them (GUI bridges):
 
@@ -594,7 +594,7 @@ Build on demand (niche):
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 11/11 |
-| 3.12 Framework integration crates | 0/6 (build now) + 6 on-demand |
+| 3.12 Framework integration crates | 6/6 (build now) + 6 on-demand |
 
 ---
 
