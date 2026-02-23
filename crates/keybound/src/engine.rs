@@ -506,11 +506,13 @@ impl Engine {
     }
 
     fn process_polled_events(&mut self, poll_fds: &[libc::pollfd]) {
-        let events = self
-            .devices
-            .process_polled_events(&poll_fds[1..], &mut self.key_state);
+        let result = self.devices.process_polled_events(&poll_fds[1..]);
 
-        for event in events {
+        for fd in result.disconnected_devices {
+            self.key_state.disconnect_device(fd);
+        }
+
+        for event in result.key_events {
             let _ = self.process_key_event(event);
         }
     }

@@ -31,3 +31,11 @@ pub enum Error {
     #[error("no active layer to pop")]
     EmptyLayerStack,
 }
+
+#[cfg(feature = "evdev")]
+impl From<kbd_evdev::error::Error> for Error {
+    fn from(error: kbd_evdev::error::Error) -> Self {
+        tracing::warn!(%error, "evdev backend error");
+        Self::DeviceError
+    }
+}

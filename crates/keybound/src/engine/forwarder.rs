@@ -1,129 +1,14 @@
-//! uinput virtual device for event forwarding and emission.
-//!
-//! In grab mode, unmatched key events are re-emitted through a virtual
-//! device so they reach applications normally. Also used for `Action::EmitKey`
-//! to produce synthetic key events.
-//!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/listener/forwarding.rs`,
-//! `reference/keyd/src/vkbd/uinput.c`
-//!
-//! Note: keyd creates two virtual devices (keyboard + pointer). For now
-//! we only need one (keyboard). Pointer device is a future stretch goal.
+//! Re-exports forwarder types from [`kbd_evdev::forwarder`].
 
-use crate::Error;
-use crate::Key;
-use crate::engine::key_state::KeyTransition;
-
-/// Name of the virtual device we create, used for self-detection.
-pub(crate) const VIRTUAL_DEVICE_NAME: &str = "keybound-virtual-keyboard";
-
-/// Sink for forwarding key events through a virtual device.
-///
-/// The engine uses this trait to forward unmatched events (in grab mode)
-/// and to emit synthetic key events (for remapping actions).
-pub(crate) trait ForwardSink: Send {
-    fn forward_key(&mut self, key: Key, transition: KeyTransition) -> Result<(), Error>;
-}
-
-/// Maximum key code we register with uinput.
-#[cfg(feature = "grab")]
-const MAX_FORWARDABLE_KEY_CODE: u16 = 767;
-
-/// Virtual uinput device for forwarding unmatched key events in grab mode.
-///
-/// Creates a virtual keyboard device via `/dev/uinput`. Unmatched events
-/// are re-emitted through this device so they reach applications normally.
-#[cfg(feature = "grab")]
-pub(crate) struct UinputForwarder {
-    device: evdev::uinput::VirtualDevice,
-}
-
-#[cfg(feature = "grab")]
-impl UinputForwarder {
-    pub(crate) fn new() -> Result<Self, Error> {
-        let mut keys = evdev::AttributeSet::<evdev::KeyCode>::new();
-        for code in 0..=MAX_FORWARDABLE_KEY_CODE {
-            keys.insert(evdev::KeyCode::new(code));
-        }
-
-        let device = evdev::uinput::VirtualDevice::builder()
-            .map_err(|error| {
-                tracing::warn!(%error, "failed to open /dev/uinput");
-                Error::DeviceError
-            })?
-            .name(VIRTUAL_DEVICE_NAME)
-            .with_keys(&keys)
-            .map_err(|error| {
-                tracing::warn!(%error, "failed to configure uinput key capabilities");
-                Error::DeviceError
-            })?
-            .build()
-            .map_err(|error| {
-                tracing::warn!(%error, "failed to create uinput virtual device");
-                Error::DeviceError
-            })?;
-
-        Ok(Self { device })
-    }
-}
-
-#[cfg(feature = "grab")]
-impl ForwardSink for UinputForwarder {
-    fn forward_key(&mut self, key: Key, transition: KeyTransition) -> Result<(), Error> {
-        let key_code: evdev::KeyCode = key.into();
-        let value = match transition {
-            KeyTransition::Press => 1,
-            KeyTransition::Release => 0,
-            KeyTransition::Repeat => 2,
-        };
-
-        let event = evdev::InputEvent::new(evdev::EventType::KEY.0, key_code.code(), value);
-        self.device.emit(&[event]).map_err(|error| {
-            tracing::warn!(%error, ?key, ?transition, "failed to emit key event via uinput");
-            Error::DeviceError
-        })
-    }
-}
-
-// TODO: emit_key() — produce a synthetic key event (for remapping/actions)
+#[allow(unused_imports)]
+pub(crate) use kbd_evdev::forwarder::ForwardSink;
+#[allow(unused_imports)]
+pub(crate) use kbd_evdev::forwarder::UinputForwarder;
+#[allow(unused_imports)]
+pub(crate) use kbd_evdev::forwarder::VIRTUAL_DEVICE_NAME;
 
 #[cfg(test)]
 pub(super) mod testing {
-    use std::sync::Arc;
-    use std::sync::Mutex;
-
-    use super::ForwardSink;
-    use crate::Error;
-    use crate::Key;
-    use crate::engine::key_state::KeyTransition;
-
-    /// Shared buffer for inspecting forwarded events in tests.
-    pub(in crate::engine) type ForwardedEvents = Arc<Mutex<Vec<(Key, KeyTransition)>>>;
-
-    /// A forwarder that records forwarded events for test assertions.
-    pub(in crate::engine) struct RecordingForwarder {
-        events: ForwardedEvents,
-    }
-
-    impl RecordingForwarder {
-        /// Create a new recording forwarder and return the shared event buffer.
-        pub(in crate::engine) fn new() -> (Self, ForwardedEvents) {
-            let events = Arc::new(Mutex::new(Vec::new()));
-            (
-                Self {
-                    events: Arc::clone(&events),
-                },
-                events,
-            )
-        }
-    }
-
-    impl ForwardSink for RecordingForwarder {
-        fn forward_key(&mut self, key: Key, transition: KeyTransition) -> Result<(), Error> {
-            self.events.lock().unwrap().push((key, transition));
-            Ok(())
-        }
-    }
+    pub(in crate::engine) use kbd_evdev::forwarder::testing::ForwardedEvents;
+    pub(in crate::engine) use kbd_evdev::forwarder::testing::RecordingForwarder;
 }
