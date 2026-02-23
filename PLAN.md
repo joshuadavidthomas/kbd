@@ -329,12 +329,16 @@ kbd/                              workspace root
   type `kbd-core`'s `Key` wraps
 - Deps: `winit`, `kbd-core`
 
-**`kbd-tao`** — tao bridge (Tauri's winit fork).
+**`kbd-tao`** — tao bridge.
 
 - Conversion traits between `tao::keyboard::KeyCode` /
   `ModifiersState` and `kbd-core` types
-- Own `KeyCode` enum with same W3C variant names — mechanical 1:1
-  mapping
+- tao is Tauri's winit fork with its own `KeyCode` enum — same W3C
+  variant names, mechanical 1:1 mapping
+- Note: Tauri apps handle in-app keybindings in JS (the frontend is
+  a webview). `kbd-tao` serves apps that use tao directly as a
+  windowing library, not Tauri apps. Tauri's kbd use case is
+  `kbd-global` for Linux global hotkeys.
 - Deps: `tao`, `kbd-core`
 
 **`kbd-iced`** — iced bridge.
@@ -350,13 +354,6 @@ kbd/                              workspace root
   types
 - egui's smaller key enum, not 1:1 with W3C
 - Deps: `egui`, `kbd-core`
-
-**`kbd-gpui`** — GPUI bridge (Zed).
-
-- Conversion trait from `gpui::Keystroke` to `Hotkey`
-- GPUI uses string-based key names and boolean `Modifiers` — requires
-  string-to-enum mapping rather than enum-to-enum
-- Deps: `gpui`, `kbd-core`
 
 **Built on demand** — created when a downstream project needs them:
 
@@ -417,7 +414,6 @@ Each boundary is a **dependency boundary**:
 | `kbd-tao` | `tao` | Tauri apps, winit fork with own `KeyCode` |
 | `kbd-iced` | `iced_core` | iced apps, own W3C-derived key types |
 | `kbd-egui` | `egui` | egui apps, custom key types |
-| `kbd-gpui` | `gpui` | Zed apps, string-based `Keystroke` type |
 | `kbd-evdev` | `evdev` | Linux C library, needs `/dev/input` access |
 | `kbd-portal` | `ashpd` (async DBus) | Pulls in async runtime, different paradigm |
 | `kbd-xkb` | `xkbcommon` | Optional C library, not everyone needs layouts |
@@ -435,10 +431,15 @@ Things that stay as feature flags, not crates:
 
 **Dioxus** and **floem** use `keyboard_types::Code` directly — no
 conversion crate needed. **winit** re-exports it but wraps it in its
-own types. **tao**, **iced**, **egui**, and **GPUI** each define their
-own key types, so they need bridge crates. The W3C-based ones (tao,
-iced) are mechanical 1:1 mappings; egui is smaller and not 1:1; GPUI
-uses string-based key names.
+own types. **tao**, **iced**, and **egui** each define their own key
+types, so they need bridge crates. The W3C-based ones (tao, iced)
+are mechanical 1:1 mappings; egui is smaller and not 1:1.
+
+**GPUI** has its own comprehensive keybinding system (action dispatch,
+context-aware keymap, multi-keystroke sequences) — a bridge crate
+would compete with the framework's core design, not complement it.
+**Tauri** handles in-app keybindings in JavaScript (the frontend is a
+webview); its kbd use case is `kbd-global` for Linux global hotkeys.
 
 ### Consumer matrix
 
@@ -447,11 +448,10 @@ uses string-based key names.
 | TUI app (ratatui / crossterm) | `kbd-core` + `kbd-crossterm` |
 | TUI app (termion) | `kbd-core` + `kbd-termion` |
 | winit app | `kbd-core` + `kbd-winit` |
-| Tauri app (in-app keys) | `kbd-core` + `kbd-tao` |
+| tao app | `kbd-core` + `kbd-tao` |
 | Tauri app (global hotkeys) | `kbd-global` (replaces Tauri's X11-only global-shortcut plugin) |
 | iced app | `kbd-core` + `kbd-iced` |
 | egui app | `kbd-core` + `kbd-egui` |
-| GPUI (Zed) app | `kbd-core` + `kbd-gpui` |
 | Dioxus app | `kbd-core` (uses `keyboard_types::Code` directly) |
 | Floem app | `kbd-core` (uses `keyboard_types::Code` via `ui_events`) |
 | Makepad app | `kbd-core` + `kbd-makepad` |
@@ -626,15 +626,6 @@ adding new bridge crates straightforward: extension traits with
 - [ ] `EguiEventExt` trait: full event conversion.
 - [ ] Tests and `cargo build --workspace`.
 
-`kbd-gpui` — GPUI bridge (Zed):
-
-- [ ] Create `crates/kbd-gpui/` with `Cargo.toml` (deps: `gpui`,
-      `kbd-core`).
-- [ ] `GpuiKeystrokeExt` trait: `gpui::Keystroke → Option<Hotkey>`.
-      GPUI uses string-based key names (`key: String`) and boolean
-      `Modifiers` — requires string-to-enum mapping.
-- [ ] Tests and `cargo build --workspace`.
-
 Build on demand (niche):
 
 - [ ] `kbd-termion`: termion's `Key` enum bakes modifiers into
@@ -656,8 +647,8 @@ Build on demand (niche):
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 11/11 |
-| 3.12 Framework integration crates | 6/26 (build now) + 3 on-demand |
-| 3.13 Examples | 0/12 |
+| 3.12 Framework integration crates | 6/23 (build now) + 3 on-demand |
+| 3.13 Examples | 0/11 |
 
 ### 3.13 Examples
 
@@ -697,8 +688,6 @@ demonstrate, but rewrite against the new API.
       handling via `kbd-iced`. `cargo run --example iced`.
 - [ ] `examples/egui.rs`: Minimal eframe/egui app with keyboard
       event handling via `kbd-egui`. `cargo run --example egui`.
-- [ ] `examples/gpui.rs`: Minimal GPUI app with Keystroke conversion
-      via `kbd-gpui`. `cargo run --example gpui`.
 - [ ] `examples/evdev.rs`: Read evdev key events, convert to kbd-core
       types, feed to `Matcher`. Requires a keyboard device (prints
       usage if no permission). `cargo run --example evdev`.
@@ -1112,7 +1101,7 @@ proc-macro2).
 | **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
 | **2** | Grab mode + key state | 13 |
 | **3** | Layers + metadata + introspection | 27 |
-| **3.5** | Workspace split, keyboard-types adoption, framework bridges, examples | 84 |
+| **3.5** | Workspace split, keyboard-types adoption, framework bridges, examples | 80 |
 | **4** | Sequences, tap-hold, device filtering, portal, async, serde, aliases, XKB, provenance | 61 |
 | **5** | Key remapping, transformation, lock/inhibitor, context hooks | 30 |
 | **6** | Stretch: chords, mouse, full keymaps | 14 |
@@ -1122,8 +1111,8 @@ Phase 1 makes it work. Phase 2 makes it intercept. Phase 3 makes it
 modal and introspectable. Phase 3.5 splits the workspace — `kbd-core`
 adopts `keyboard-types` and becomes a platform-agnostic shortcut engine
 usable from any Rust event loop. Bridge crates (`kbd-crossterm`,
-`kbd-winit`, `kbd-tao`, `kbd-iced`, `kbd-egui`, `kbd-gpui`) connect
-each framework's key types to `kbd-core`. Backends (`kbd-evdev`,
+`kbd-winit`, `kbd-tao`, `kbd-iced`, `kbd-egui`) connect each
+framework's key types to `kbd-core`. Backends (`kbd-evdev`,
 `kbd-portal`) get their own crates. Phase 4 makes it feature-complete
 and layout-aware. Phase 5 makes it a transformation engine that's
 context-aware.
