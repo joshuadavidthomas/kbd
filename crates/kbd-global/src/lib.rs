@@ -53,6 +53,7 @@ pub use kbd_core::introspection::BindingInfo;
 pub use kbd_core::introspection::BindingLocation;
 pub use kbd_core::introspection::ConflictInfo;
 pub use kbd_core::introspection::ShadowedStatus;
+pub use kbd_core::key::Code;
 pub use kbd_core::key::Hotkey;
 pub use kbd_core::key::HotkeySequence;
 pub use kbd_core::key::Key;

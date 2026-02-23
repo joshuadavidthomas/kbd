@@ -19,6 +19,7 @@ kbd-global = { path = "crates/kbd-global" }
 
 # External dependencies
 ashpd = { version = "0.13", default-features = false, features = ["async-io"] }
+keyboard-types = "0.7"
 async-channel = { version = "2.3" }
 async-std = { version = "1.13" }
 evdev = "0.13"
