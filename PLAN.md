@@ -278,7 +278,7 @@ kbd/                              workspace root
 │   ├── kbd-winit/                winit key type conversions
 │   ├── kbd-xkb/                  Keyboard layout awareness
 │   ├── kbd-derive/               #[derive(Bindings)] proc macro
-│   └── kbd-global/               Facade — HotkeyManager, ties it all together
+│   └── kbd-global/               Runtime — HotkeyManager, ties it all together
 │
 │  Built on demand:
 │   ├── kbd-termion/              termion key event conversions
@@ -374,7 +374,7 @@ kbd/                              workspace root
 - Deps: `syn`, `quote`, `proc-macro2`, `kbd-core`
 - Starts as an empty crate with a doc comment explaining intent
 
-**`kbd-global`** — the facade, what most global-hotkey users depend on.
+**`kbd-global`** — the runtime, what most global-hotkey users depend on.
 
 - `HotkeyManager`, `Handle` — threaded engine + message passing
 - `ConsumePreference`, backend selection logic
@@ -491,7 +491,7 @@ match matcher.process(hotkey, transition) {
 - [x] `HotkeyManager` in `kbd-global` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
 - [x] Tests: `Matcher` used standalone without any `HotkeyManager` or engine thread.
 
-### 3.10 Rewire `kbd-global` facade
+### 3.10 Rewire `kbd-global` runtime
 
 - [x] `kbd-global` re-exports all `kbd-core` public types — existing public API unchanged.
 - [x] Remove stub re-export files (`key.rs`, `action.rs`, `binding.rs`, `layer.rs`, `engine/key_state.rs`) — collapse into direct `pub use kbd_core::` re-exports in `lib.rs` and direct `use kbd_core::` imports internally.
@@ -587,7 +587,7 @@ Build on demand (niche):
 | 3.7 Move types to kbd-core | 5/5 |
 | 3.8 Move evdev to kbd-evdev | 5/5 |
 | 3.9 Public Matcher | 6/6 |
-| 3.10 Rewire kbd-global facade | 7/7 |
+| 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 0/11 |
 | 3.12 Framework integration crates | 0/6 (build now) + 6 on-demand |
 
@@ -686,7 +686,7 @@ parsing hotkeys.
 
 ### 4.9 Keyboard layout awareness (`kbd-xkb`)
 
-The global hotkey facade works at the evdev keycode level, which is position-based. On a
+The global hotkey runtime works at the evdev keycode level, which is position-based. On a
 Dvorak layout, `Key::S` is still physical position S (which types "O").
 COSMIC and Niri both solved this with xkbcommon because real users
 switch layouts. This is the difference between "works for QWERTY
@@ -696,7 +696,7 @@ Americans" and "works for everyone."
 - [ ] xkbcommon integration in `kbd-xkb`: resolve keycodes → keysyms based on active XKB layout.
 - [ ] Hotkey parsing disambiguation: `"Ctrl+a"` (character) vs `"Ctrl+KeyA"` (position), or equivalent scheme.
 - [ ] Layout change detection in `kbd-xkb`: subscribe to xkb layout change events, re-resolve symbol-based bindings.
-- [ ] `kbd-global` facade integrates `kbd-xkb` when the `xkb` feature is enabled.
+- [ ] `kbd-global` runtime integrates `kbd-xkb` when the `xkb` feature is enabled.
 - [ ] `kbd-core` `Matcher` handles `KeyReference` natively — symbol resolution provided by `kbd-xkb`, but matching logic is in core.
 - [ ] Tests: QWERTY vs Dvorak binding resolution, layout switch mid-session, mixed code/symbol bindings.
 
@@ -842,7 +842,7 @@ Reference: `reference/keyd/src/keyboard.c` (chord state machine)
 ## Phase 7: Cross-platform backends (not committed)
 
 `kbd-core` is already platform-agnostic. This phase adds non-Linux
-backends to the `kbd-global` facade for global hotkey support on other
+backends to the `kbd-global` runtime for global hotkey support on other
 platforms.
 
 - [ ] macOS backend (CGEventTap / IOKit).

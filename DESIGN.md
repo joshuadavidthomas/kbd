@@ -20,7 +20,7 @@ modifier tracking, binding matching, layer stacks, and sequence
 resolution. It works anywhere you have key events: GUI apps, TUI apps,
 compositors, game engines.
 
-The facade (`kbd-global`) adds a Linux global hotkey backend on top,
+The runtime (`kbd-global`) adds a Linux global hotkey backend on top,
 with evdev device access, grab mode, and XDG portal support.
 
 ### When to use it
@@ -54,7 +54,7 @@ threads, no device access, no platform dependencies.
 **You're building an app that needs system-wide hotkeys on Linux.** A
 launcher triggered by Super+Space, a screenshot tool on PrintScreen,
 push-to-talk on a media key — shortcuts that work regardless of which
-window has focus. Use the `kbd-global` facade crate. It handles device
+window has focus. Use the `kbd-global` runtime crate. It handles device
 access, backend selection, grab mode, and hotplug.
 
 **You're building a key remapper or input transformation tool.** A tool
@@ -137,7 +137,7 @@ compositor-mediated, sandboxed.
 
 **`kbd-xkb`**: Keyboard layout awareness via xkbcommon.
 
-**`kbd-global`**: The facade. Threaded manager, backend selection, the
+**`kbd-global`**: The runtime. Threaded manager, backend selection, the
 works. Linux global hotkey users start here. Also a potential
 backend for Tauri apps on Linux — Tauri's `global-shortcut` plugin
 uses X11 grabs that don't work on Wayland; kbd-global's evdev and
@@ -175,7 +175,7 @@ crate.
 
 ## The Linux global hotkey backend
 
-The `kbd-global` facade adds Linux-specific plumbing on top of `kbd-core`:
+The `kbd-global` runtime adds Linux-specific plumbing on top of `kbd-core`:
 a threaded engine, device management, and two backends.
 
 Linux keyboard input is layered:
@@ -198,7 +198,7 @@ Linux keyboard input is layered:
 └─────────────────────────────────────────────┘
 ```
 
-The `kbd-global` facade operates at two levels:
+The `kbd-global` runtime operates at two levels:
 
 1. **evdev** (primary) — reads raw key events from kernel device nodes.
    Sees all keys regardless of focus, can grab devices for exclusive
@@ -312,7 +312,7 @@ serves, it probably shouldn't exist.
 
 In-app consumers use concepts 1–3 through the `Matcher` in `kbd-core`
 directly. Global consumers get all four through `HotkeyManager` in the
-`kbd-global` facade, which drives a `Matcher` on an engine thread with
+`kbd-global` runtime, which drives a `Matcher` on an engine thread with
 `kbd-evdev`/`kbd-portal` plumbing.
 
 ## The domain model
@@ -663,7 +663,7 @@ crates/
     lib.rs              #[derive(Bindings)] proc macro (future).
 
   kbd-global/src/
-    lib.rs              Facade. Re-exports kbd-core types.
+    lib.rs              Runtime entry point. Re-exports kbd-core types.
     manager.rs          HotkeyManager — thin command sender.
     handle.rs           Handle — RAII unregistration via command.
     engine/
@@ -704,7 +704,7 @@ What types does a user need to know? Roughly:
 - `BindingOptions` — per-binding configuration
 - `Error` — what went wrong
 
-**`kbd-global` facade types (global hotkey consumers):**
+**`kbd-global` runtime types (global hotkey consumers):**
 - `HotkeyManager` — entry point for global hotkeys
 - `Handle` — keeps a binding alive (RAII unregistration)
 - `DeviceFilter` — restrict to specific devices
@@ -863,7 +863,7 @@ the library selects or validates the backend accordingly. This is
 modeled after livesplit-hotkey's approach, which solved the same
 problem across multiple platforms.
 
-The facade (`kbd-global`) handles backend selection. The core (`kbd-core`)
+The runtime (`kbd-global`) handles backend selection. The core (`kbd-core`)
 doesn't know backends exist — it's the pure matching engine that both
 backends feed into.
 

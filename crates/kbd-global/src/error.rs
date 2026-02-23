@@ -1,4 +1,4 @@
-//! Error types for the kbd-global facade.
+//! Error types for the kbd-global runtime.
 //!
 //! Extends the core error types from `kbd-core` with platform-specific
 //! errors for backend initialization, device access, and permissions.

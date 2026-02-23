@@ -2,7 +2,7 @@
 //!
 //! These cover domain-level errors: parsing failures, binding conflicts,
 //! and layer operations. Platform-specific errors (backend init, device
-//! access, permissions) belong in the facade crate (`kbd-global`).
+//! access, permissions) belong in the runtime crate (`kbd-global`).
 
 /// Core error type for keyboard shortcut operations.
 #[derive(Debug, thiserror::Error)]

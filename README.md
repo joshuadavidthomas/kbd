@@ -7,7 +7,7 @@ modifier tracking, binding matching, layer stacks, and sequence
 resolution. It works anywhere you have key events: GUI apps, TUI apps,
 compositors, game engines.
 
-The facade (`kbd-global`) adds a Linux global hotkey backend on top,
+The runtime (`kbd-global`) adds a Linux global hotkey backend on top,
 with evdev device access, grab mode, and XDG portal support.
 
 ## Features
