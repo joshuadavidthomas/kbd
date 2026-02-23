@@ -20,8 +20,7 @@ pub use keyboard_types::Code;
 /// directly:
 ///
 /// ```
-/// use kbd_core::Key;
-/// use keyboard_types::Code;
+/// use kbd_core::{Code, Key};
 ///
 /// let key = Key(Code::AudioVolumeUp);
 /// ```

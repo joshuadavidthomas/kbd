@@ -44,6 +44,7 @@ pub use crate::introspection::BindingInfo;
 pub use crate::introspection::BindingLocation;
 pub use crate::introspection::ConflictInfo;
 pub use crate::introspection::ShadowedStatus;
+pub use crate::key::Code;
 pub use crate::key::Hotkey;
 pub use crate::key::HotkeySequence;
 pub use crate::key::Key;
