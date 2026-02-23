@@ -501,7 +501,7 @@ impl Matcher {
             if let ShadowedStatus::ShadowedBy(ref shadowing_layer) = shadowed.shadowed
                 && let Some(shadowing) = all_bindings.iter().find(|b| {
                     b.hotkey == shadowed.hotkey
-                        && b.location == BindingLocation::Layer(shadowing_layer.clone())
+                        && matches!(&b.location, BindingLocation::Layer(name) if name == shadowing_layer)
                         && matches!(b.shadowed, ShadowedStatus::Active)
                 })
             {
@@ -555,13 +555,12 @@ impl Matcher {
 
         // Fall through to global bindings
         if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey)
-            && self.bindings_by_id.contains_key(&id)
+            && let Some(binding) = self.bindings_by_id.get(&id)
         {
-            let action = self.bindings_by_id[&id].action();
             return InternalOutcome::Matched {
                 binding_ref: MatchedBindingRef::Global(id),
-                layer_effect: LayerEffect::from_action(action),
-                passthrough: self.bindings_by_id[&id].passthrough(),
+                layer_effect: LayerEffect::from_action(binding.action()),
+                passthrough: binding.passthrough(),
             };
         }
 
