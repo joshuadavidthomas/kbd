@@ -269,9 +269,9 @@ impl EvdevKeyExt for Key {
             Key::ALT_RIGHT => KeyCode::KEY_RIGHTALT,
             Key::META_LEFT => KeyCode::KEY_LEFTMETA,
             Key::META_RIGHT => KeyCode::KEY_RIGHTMETA,
-            Key::UNIDENTIFIED => KeyCode::KEY_UNKNOWN,
             // Key wraps keyboard_types::Code which is #[non_exhaustive].
-            // Codes without a known evdev mapping fall back to KEY_UNKNOWN.
+            // Codes without a known evdev mapping (including Key::UNIDENTIFIED)
+            // fall back to KEY_UNKNOWN.
             _ => KeyCode::KEY_UNKNOWN,
         }
     }

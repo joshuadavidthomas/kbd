@@ -180,10 +180,11 @@ impl Key {
 
     /// Human-readable name for this key.
     ///
-    /// Known keys return short canonical names ("A", "Enter", "LeftCtrl").
+    /// Known keys return short canonical names ("A", "Enter", "`LeftCtrl`").
     /// Unknown or uncommon keys fall back to the W3C code name via
     /// `Code::Display`.
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn as_str(&self) -> &'static str {
         match self.0 {
             Code::KeyA => "A",
@@ -305,13 +306,16 @@ impl Key {
             // via a bounded cache (~170 variants max, ~3.4 KB total).
             _ => {
                 use std::collections::HashMap;
-                use std::sync::{LazyLock, Mutex};
+                use std::sync::LazyLock;
+                use std::sync::Mutex;
 
                 static CACHE: LazyLock<Mutex<HashMap<Code, &'static str>>> =
                     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-                let mut cache = CACHE.lock().expect("fallback cache poisoned");
-                *cache
+                let mut cache = CACHE
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                cache
                     .entry(self.0)
                     .or_insert_with(|| Box::leak(self.0.to_string().into_boxed_str()))
             }
@@ -757,8 +761,9 @@ pub enum ParseHotkeyError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use keyboard_types::Code;
+
+    use super::*;
 
     #[test]
     fn parses_aliases_case_insensitive() {
@@ -776,14 +781,8 @@ mod tests {
 
     #[test]
     fn modifier_canonicalizes_left_and_right_keys() {
-        assert_eq!(
-            Modifier::from_key(Key::CONTROL_LEFT),
-            Some(Modifier::Ctrl)
-        );
-        assert_eq!(
-            Modifier::from_key(Key::CONTROL_RIGHT),
-            Some(Modifier::Ctrl)
-        );
+        assert_eq!(Modifier::from_key(Key::CONTROL_LEFT), Some(Modifier::Ctrl));
+        assert_eq!(Modifier::from_key(Key::CONTROL_RIGHT), Some(Modifier::Ctrl));
         assert_eq!(Modifier::from_key(Key::SHIFT_LEFT), Some(Modifier::Shift));
         assert_eq!(Modifier::from_key(Key::SHIFT_RIGHT), Some(Modifier::Shift));
         assert_eq!(Modifier::from_key(Key::A), None);
