@@ -1,3 +1,5 @@
+#![cfg(feature = "evdev")]
+
 use std::time::Duration;
 
 use keybound::Action;

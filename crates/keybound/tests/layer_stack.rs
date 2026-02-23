@@ -1,3 +1,5 @@
+#![cfg(feature = "evdev")]
+
 use keybound::Action;
 use keybound::Error;
 use keybound::HotkeyManager;

@@ -7,6 +7,7 @@ use keybound::Action;
 use keybound::BindingId;
 use keybound::BindingOptions;
 use keybound::DeviceFilter;
+#[cfg(feature = "evdev")]
 use keybound::HotkeyManager;
 use keybound::Key;
 use keybound::Modifier;
@@ -118,6 +119,7 @@ fn binding_options_chains_all_metadata() {
     assert_eq!(options.passthrough(), Passthrough::Enabled);
 }
 
+#[cfg(feature = "evdev")]
 #[test]
 fn register_with_options_accepts_metadata() {
     let manager = HotkeyManager::new().expect("manager should initialize");
@@ -130,6 +132,7 @@ fn register_with_options_accepts_metadata() {
     assert!(handle.is_ok());
 }
 
+#[cfg(feature = "evdev")]
 #[test]
 fn register_with_options_hidden_binding() {
     let manager = HotkeyManager::new().expect("manager should initialize");

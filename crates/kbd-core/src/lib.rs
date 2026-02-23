@@ -34,6 +34,7 @@ pub use crate::action::Action;
 pub use crate::action::LayerName;
 pub use crate::binding::BindingId;
 pub use crate::binding::BindingOptions;
+pub use crate::binding::DeviceFilter;
 pub use crate::binding::OverlayVisibility;
 pub use crate::binding::Passthrough;
 pub use crate::binding::RegisteredBinding;
