@@ -379,11 +379,11 @@ Things that stay as feature flags, not crates:
 
 ### 3.8 Move evdev code into `kbd-evdev`
 
-- [ ] Move `engine/devices.rs` into `kbd-evdev/src/`.
-- [ ] Move `engine/forwarder.rs` into `kbd-evdev/src/`.
-- [ ] Move evdev↔Key conversions from `kbd-core` into `kbd-evdev` as an extension trait (e.g., `KeyCodeExt` on `evdev::KeyCode` and/or `EvdevKeyExt` on `Key`). Remove the `evdev` feature flag from `kbd-core` — core stays truly zero-dep.
-- [ ] `kbd-evdev` exposes a backend trait or struct that `keybound` consumes.
-- [ ] `kbd-evdev` builds and tests pass: `cargo test -p kbd-evdev`.
+- [x] Move `engine/devices.rs` into `kbd-evdev/src/`.
+- [x] Move `engine/forwarder.rs` into `kbd-evdev/src/`.
+- [x] Move evdev↔Key conversions from `kbd-core` into `kbd-evdev` as an extension trait (e.g., `KeyCodeExt` on `evdev::KeyCode` and/or `EvdevKeyExt` on `Key`). Remove the `evdev` feature flag from `kbd-core` — core stays truly zero-dep.
+- [x] `kbd-evdev` exposes a backend trait or struct that `keybound` consumes.
+- [x] `kbd-evdev` builds and tests pass: `cargo test -p kbd-evdev`.
 
 ### 3.9 Public synchronous `Matcher` in `kbd-core`
 
@@ -437,7 +437,7 @@ match matcher.process(hotkey, transition) {
 |---------|-------|
 | 3.6 Workspace scaffolding | 9/9 |
 | 3.7 Move types to kbd-core | 5/5 |
-| 3.8 Move evdev to kbd-evdev | 0/5 |
+| 3.8 Move evdev to kbd-evdev | 5/5 |
 | 3.9 Public Matcher | 0/6 |
 | 3.10 Rewire keybound facade | 0/7 |
 | 3.11 Windowing conversions | 0/4 |
