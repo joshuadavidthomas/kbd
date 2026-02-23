@@ -1,8 +1,13 @@
 # keybound: Redesign
 
 This document captures the core ideas, domain model, and architectural
-direction for restructuring keybound. It's not a task list — it's the
+direction for the keybound project. It's not a task list — it's the
 conceptual foundation that the task list should serve.
+
+**Naming**: The workspace is `keybound`. All crates use the `kbd-`
+prefix — short for both "keybound" (the project) and "keyboard" (the
+domain). The global hotkey facade is `kbd-global` (was `keybound` in
+the monolith era).
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) for licensing constraints on
 reference projects. Some can be adapted (MIT), others are
@@ -17,7 +22,7 @@ modifier tracking, binding matching, layer stacks, and sequence
 resolution. It works anywhere you have key events: GUI apps, TUI apps,
 compositors, game engines.
 
-The facade (`keybound`) adds a Linux global hotkey backend on top,
+The facade (`kbd-global`) adds a Linux global hotkey backend on top,
 with evdev device access, grab mode, and XDG portal support.
 
 ### When to use it
@@ -51,25 +56,25 @@ threads, no device access, no platform dependencies.
 **You're building an app that needs system-wide hotkeys on Linux.** A
 launcher triggered by Super+Space, a screenshot tool on PrintScreen,
 push-to-talk on a media key — shortcuts that work regardless of which
-window has focus. Use the `keybound` facade crate. It handles device
+window has focus. Use the `kbd-global` facade crate. It handles device
 access, backend selection, grab mode, and hotplug.
 
 **You're building a key remapper or input transformation tool.** A tool
 that remaps CapsLock to Escape, implements vim-style layers (hjkl as
 arrows), or adds tap-hold behavior (tap CapsLock = Esc, hold = Ctrl).
-Use `keybound` with grab mode enabled. The library intercepts events
+Use `kbd-global` with grab mode enabled. The library intercepts events
 via evdev, matches them, and can emit different keys through a virtual
 uinput device.
 
 **You're building a Tauri app that needs global hotkeys on Linux.**
 Tauri's `tauri-plugin-global-shortcut` (backed by the `global-hotkey`
 crate) uses X11 `XGrabKey`, which doesn't work on Wayland. Use
-`keybound` as your Linux backend — evdev works on both X11 and
+`kbd-global` as your Linux backend — evdev works on both X11 and
 Wayland, and the portal backend handles sandboxed environments.
 
 **You're building a sandboxed Wayland app that wants shortcuts.** A
 Flatpak-packaged media player that needs push-to-talk or media
-controls without requiring device access. Use `keybound` with the
+controls without requiring device access. Use `kbd-global` with the
 portal backend — it requests shortcuts through the XDG GlobalShortcuts
 portal, mediated by the compositor.
 
@@ -86,11 +91,11 @@ portal, mediated by the compositor.
 | Floem / GPUI app | `kbd-core` + `kbd-winit` | Built on winit, key events come from there |
 | Makepad app | `kbd-core` + `kbd-makepad` | Custom key types, conversion needed |
 | GTK app (gtk-rs) | `kbd-core` + `kbd-gtk` | Bridge for GTK native key events |
-| Tauri app (Linux) | `keybound` | Tauri's global-shortcut plugin uses X11 grabs that fail on Wayland; keybound's evdev+portal backends cover all Linux |
+| Tauri app (Linux) | `kbd-global` | Tauri's global-shortcut plugin uses X11 grabs that fail on Wayland; kbd-global's evdev+portal backends cover all Linux |
 | Compositor / tiling WM | `kbd-core` + `kbd-evdev` | Your own event loop and device access |
-| App with global hotkeys (Linux) | `keybound` | Full stack: devices, matching, callbacks |
-| Key remapper / macro tool | `keybound` (grab mode) | Intercept + transform + re-emit keys |
-| Sandboxed Wayland app | `keybound` + `kbd-portal` | Desktop-mediated shortcuts, no root needed |
+| App with global hotkeys (Linux) | `kbd-global` | Full stack: devices, matching, callbacks |
+| Key remapper / macro tool | `kbd-global` (grab mode) | Intercept + transform + re-emit keys |
+| Sandboxed Wayland app | `kbd-global` + `kbd-portal` | Desktop-mediated shortcuts, no root needed |
 
 ### The crate split
 
@@ -134,10 +139,10 @@ compositor-mediated, sandboxed.
 
 **`kbd-xkb`**: Keyboard layout awareness via xkbcommon.
 
-**`keybound`**: The facade. Threaded manager, backend selection, the
+**`kbd-global`**: The facade. Threaded manager, backend selection, the
 works. Linux global hotkey users start here. Also a potential
 backend for Tauri apps on Linux — Tauri's `global-shortcut` plugin
-uses X11 grabs that don't work on Wayland; keybound's evdev and
+uses X11 grabs that don't work on Wayland; kbd-global's evdev and
 portal backends cover all Linux configurations.
 
 ## Where kbd-core fits
@@ -172,7 +177,7 @@ crate.
 
 ## The Linux global hotkey backend
 
-The `keybound` facade adds Linux-specific plumbing on top of `kbd-core`:
+The `kbd-global` facade adds Linux-specific plumbing on top of `kbd-core`:
 a threaded engine, device management, and two backends.
 
 Linux keyboard input is layered:
@@ -195,7 +200,7 @@ Linux keyboard input is layered:
 └─────────────────────────────────────────────┘
 ```
 
-The `keybound` facade operates at two levels:
+The `kbd-global` facade operates at two levels:
 
 1. **evdev** (primary) — reads raw key events from kernel device nodes.
    Sees all keys regardless of focus, can grab devices for exclusive
@@ -213,10 +218,11 @@ The `keybound` facade operates at two levels:
 ### What keybound is not
 
 **Not a text input library.** Text input (IME composition, dead keys,
-Unicode output) is fundamentally different from key binding. keybound
-deals in key identities and modifier combinations, not composed text.
+Unicode output) is fundamentally different from key binding. The
+keybound project deals in key identities and modifier combinations,
+not composed text.
 
-**Not a terminal or GUI framework.** keybound doesn't decode terminal
+**Not a terminal or GUI framework.** The library doesn't decode terminal
 escape sequences (that's crossterm) or manage widget focus (that's your
 toolkit). `kbd-crossterm` and `kbd-egui` bridge the key types;
 `kbd-core`'s `Matcher` handles the shortcut logic. The framework
@@ -286,7 +292,7 @@ The Rust GUI/TUI keyboard type landscape:
 | gtk-rs | GTK native events | `kbd-gtk` |
 | crossterm | `KeyCode::Char('a')` (logical) | `kbd-crossterm` |
 | termion | `Key::Char('a')` (logical, mods baked in) | `kbd-termion` |
-| Tauri | JS `KeyboardEvent` via webview | Use `keybound` as backend |
+| Tauri | JS `KeyboardEvent` via webview | Use `kbd-global` as backend |
 
 `keyboard-types` is a required dependency of `kbd-core` (zero-dep
 itself, platform-agnostic).
@@ -309,7 +315,7 @@ serves, it probably shouldn't exist.
 
 In-app consumers use concepts 1–3 through the `Matcher` in `kbd-core`
 directly. Global consumers get all four through `HotkeyManager` in the
-`keybound` facade, which drives a `Matcher` on an engine thread with
+`kbd-global` facade, which drives a `Matcher` on an engine thread with
 `kbd-evdev`/`kbd-portal` plumbing.
 
 ## The domain model
@@ -659,7 +665,7 @@ crates/
   kbd-derive/src/
     lib.rs              #[derive(Bindings)] proc macro (future).
 
-  keybound/src/
+  kbd-global/src/
     lib.rs              Facade. Re-exports kbd-core types.
     manager.rs          HotkeyManager — thin command sender.
     handle.rs           Handle — RAII unregistration via command.
@@ -701,7 +707,7 @@ What types does a user need to know? Roughly:
 - `BindingOptions` — per-binding configuration
 - `Error` — what went wrong
 
-**`keybound` facade types (global hotkey consumers):**
+**`kbd-global` facade types (global hotkey consumers):**
 - `HotkeyManager` — entry point for global hotkeys
 - `Handle` — keeps a binding alive (RAII unregistration)
 - `DeviceFilter` — restrict to specific devices
@@ -713,7 +719,7 @@ What types does a user need to know? Roughly:
 - `HotkeyEventStream` — async stream
 
 In-app consumers (TUI, GUI) use `kbd-core` types directly with the
-`Matcher`. Global hotkey consumers use `keybound`'s `HotkeyManager`,
+`Matcher`. Global hotkey consumers use `kbd-global`'s `HotkeyManager`,
 which drives a `Matcher` on an engine thread internally.
 
 ## What the simple API looks like
@@ -721,7 +727,7 @@ which drives a `Matcher` on an engine thread internally.
 The simple case must stay simple:
 
 ```rust
-use keybound::{HotkeyManager, Key, Modifier};
+use kbd_global::{HotkeyManager, Key, Modifier};
 
 let manager = HotkeyManager::new()?;
 
@@ -738,7 +744,7 @@ wrapped in `Action::Callback`. The user never sees `Action`, `Binding`,
 The power case is composable:
 
 ```rust
-use keybound::{Action, HotkeyManager, Key, Layer, Modifier, TapHoldOptions};
+use kbd_global::{Action, HotkeyManager, Key, Layer, Modifier, TapHoldOptions};
 
 let manager = HotkeyManager::builder().grab().build()?;
 
@@ -860,7 +866,7 @@ the library selects or validates the backend accordingly. This is
 modeled after livesplit-hotkey's approach, which solved the same
 problem across multiple platforms.
 
-The facade (`keybound`) handles backend selection. The core (`kbd-core`)
+The facade (`kbd-global`) handles backend selection. The core (`kbd-core`)
 doesn't know backends exist — it's the pure matching engine that both
 backends feed into.
 

@@ -1,6 +1,8 @@
 # keybound: Implementation Plan
 
-Ground-up rebuild based on [DESIGN.md](DESIGN.md).
+Ground-up rebuild based on [DESIGN.md](DESIGN.md). The workspace is
+`keybound`; all crates use the `kbd-` prefix. The global hotkey facade
+is `kbd-global`.
 
 Prior implementation archived in `archive/v0/` and tagged `v0-archive` in git.
 Reference implementation (keyd) in `reference/keyd/`.
@@ -245,7 +247,7 @@ only matters once a layer stack exists.
 
 ## Phase 3.5: Workspace split and core extraction
 
-**Goal**: Split keybound into a multi-crate workspace. Each crate
+**Goal**: Split the keybound project into a multi-crate workspace. Each crate
 boundary is a dependency boundary — consumers pull in only what they
 need.
 
@@ -253,7 +255,7 @@ Every project we studied — Zed, COSMIC, Niri, every tiling WM — builds
 the same inner engine: key types, modifier tracking, layer/context
 stack, binding matching, sequence resolution. The only difference
 between global and in-app is where events come from and what "context"
-means. This phase recognizes that keybound already has that engine and
+means. This phase recognizes that the project already has that engine and
 makes it independently usable.
 
 This happens before Phase 4 because Phase 4 adds many features
@@ -276,7 +278,7 @@ keybound/                         workspace root
 │   ├── kbd-winit/                winit key type conversions
 │   ├── kbd-xkb/                  Keyboard layout awareness
 │   ├── kbd-derive/               #[derive(Bindings)] proc macro
-│   └── keybound/                 Facade — HotkeyManager, ties it all together
+│   └── kbd-global/               Facade — HotkeyManager, ties it all together
 │
 │  Built on demand:
 │   ├── kbd-termion/              termion key event conversions
@@ -372,7 +374,7 @@ keybound/                         workspace root
 - Deps: `syn`, `quote`, `proc-macro2`, `kbd-core`
 - Starts as an empty crate with a doc comment explaining intent
 
-**`keybound`** — the facade, what most global-hotkey users depend on.
+**`kbd-global`** — the facade, what most global-hotkey users depend on.
 
 - `HotkeyManager`, `Handle` — threaded engine + message passing
 - `ConsumePreference`, backend selection logic
@@ -396,7 +398,7 @@ Each boundary is a **dependency boundary**:
 | `kbd-portal` | `ashpd` (async DBus) | Pulls in async runtime, different paradigm |
 | `kbd-xkb` | `xkbcommon` | Optional C library, not everyone needs layouts |
 | `kbd-derive` | `syn`/`quote` | Proc macros must be separate crates (Rust req) |
-| `keybound` | all of the above | Glue + the threaded manager |
+| `kbd-global` | all of the above | Glue + the threaded manager |
 | `kbd-termion` | `termion` | On demand: legacy TUI, mods baked into keys |
 | `kbd-makepad` | `makepad-platform` | On demand: custom platform bindings |
 | `kbd-gtk` | `gtk4` | On demand: GTK native key events |
@@ -404,7 +406,7 @@ Each boundary is a **dependency boundary**:
 Things that stay as feature flags, not crates:
 
 - **Serde** — just derives on `kbd-core` types, not a dep boundary
-- **Async event streams** — thin wrappers in `keybound`, feature-gated
+- **Async event streams** — thin wrappers in `kbd-global`, feature-gated
   on `tokio` / `async-std`
 
 Only **Dioxus** uses `keyboard_types::Code` directly — no conversion
@@ -427,9 +429,9 @@ mechanical 1:1 mappings since the variant names match.
 | GTK app (gtk-rs) | `kbd-core` + `kbd-gtk` |
 | Compositor (Niri-like) | `kbd-core` + `kbd-evdev` (direct, no manager) |
 | App + layout awareness | `kbd-core` + `kbd-xkb` |
-| Tauri app (Linux) | `keybound` (replaces Tauri's X11-only global-shortcut plugin) |
-| Flatpak sandboxed app | `keybound` with `kbd-portal` |
-| Declarative bindings | `keybound` + `kbd-derive` |
+| Tauri app (Linux) | `kbd-global` (replaces Tauri's X11-only global-shortcut plugin) |
+| Flatpak sandboxed app | `kbd-global` with `kbd-portal` |
+| Declarative bindings | `kbd-global` + `kbd-derive` |
 
 ### 3.6 Workspace scaffolding
 
@@ -441,7 +443,7 @@ mechanical 1:1 mappings since the variant names match.
 - [x] `kbd-portal/Cargo.toml`: `ashpd`, `kbd-core`. Starts as stub with `unimplemented!()` entry points and a doc comment.
 - [x] `kbd-xkb/Cargo.toml`: placeholder, no deps yet. Doc comment explains Phase 4.9.
 - [x] `kbd-derive/Cargo.toml`: placeholder `proc-macro` crate. Doc comment explains future intent.
-- [x] `keybound/Cargo.toml`: depends on `kbd-core`, optional deps on `kbd-evdev`, `kbd-portal`, `kbd-xkb`, `kbd-derive`.
+- [x] `kbd-global/Cargo.toml`: depends on `kbd-core`, optional deps on `kbd-evdev`, `kbd-portal`, `kbd-xkb`, `kbd-derive`.
 - [x] All crates compile. `cargo build --workspace` succeeds.
 
 ### 3.7 Move types into `kbd-core`
@@ -457,7 +459,7 @@ mechanical 1:1 mappings since the variant names match.
 - [x] Move `engine/devices.rs` into `kbd-evdev/src/`.
 - [x] Move `engine/forwarder.rs` into `kbd-evdev/src/`.
 - [x] Move evdev↔Key conversions from `kbd-core` into `kbd-evdev` as an extension trait (e.g., `KeyCodeExt` on `evdev::KeyCode` and/or `EvdevKeyExt` on `Key`). Remove the `evdev` feature flag from `kbd-core` — core stays truly zero-dep.
-- [x] `kbd-evdev` exposes a backend trait or struct that `keybound` consumes.
+- [x] `kbd-evdev` exposes a backend trait or struct that `kbd-global` consumes.
 - [x] `kbd-evdev` builds and tests pass: `cargo test -p kbd-evdev`.
 
 ### 3.9 Public synchronous `Matcher` in `kbd-core`
@@ -486,17 +488,17 @@ match matcher.process(hotkey, transition) {
 - [x] `MatchResult::Pending` variant for mid-sequence state — consumers need this for UI feedback ("waiting for next key…").
 - [x] `Matcher` exposes layer operations directly: `push_layer()`, `pop_layer()`, `toggle_layer()`, `define_layer()`.
 - [x] `Matcher` exposes introspection: `list_bindings()`, `bindings_for_key()`, `active_layers()`, `conflicts()`.
-- [x] `HotkeyManager` in `keybound` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
+- [x] `HotkeyManager` in `kbd-global` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
 - [x] Tests: `Matcher` used standalone without any `HotkeyManager` or engine thread.
 
-### 3.10 Rewire `keybound` facade
+### 3.10 Rewire `kbd-global` facade
 
-- [x] `keybound` re-exports all `kbd-core` public types — existing public API unchanged.
+- [x] `kbd-global` re-exports all `kbd-core` public types — existing public API unchanged.
 - [x] Remove stub re-export files (`key.rs`, `action.rs`, `binding.rs`, `layer.rs`, `engine/key_state.rs`) — collapse into direct `pub use kbd_core::` re-exports in `lib.rs` and direct `use kbd_core::` imports internally.
 - [x] Remove `evdev` feature flag and `evdev` dependency from `kbd-core`. All evdev conversions live in `kbd-evdev` behind extension traits (§3.8). `kbd-core` has no platform deps (`thiserror` + `keyboard-types` only, both platform-agnostic).
 - [x] `HotkeyManager` uses `kbd-evdev` for device management. `kbd-evdev` is a hard dependency — evdev is fundamental to this Linux library. Consumers who want pure types without platform code use `kbd-core` directly.
 - [x] `HotkeyManager` uses `kbd-portal` for portal backend (behind `portal` feature).
-- [x] Existing integration tests pass against the `keybound` crate: `cargo test -p keybound`.
+- [x] Existing integration tests pass against the `kbd-global` crate: `cargo test -p kbd-global`.
 - [x] `cargo test --workspace` passes.
 
 ### 3.11 Adopt `keyboard-types` as the core key type
@@ -526,7 +528,7 @@ crates since they define their own key enums from the same W3C spec.
 - [ ] Update `Modifier::from_key()` and `Modifier::keys()` for the
       new type.
 - [ ] Update `kbd-evdev` conversion traits to use newtype.
-- [ ] Update `keybound` re-exports.
+- [ ] Update `kbd-global` re-exports.
 - [ ] All tests updated and passing. `cargo test --workspace`.
 
 ### 3.12 Framework integration crates
@@ -585,7 +587,7 @@ Build on demand (niche):
 | 3.7 Move types to kbd-core | 5/5 |
 | 3.8 Move evdev to kbd-evdev | 5/5 |
 | 3.9 Public Matcher | 6/6 |
-| 3.10 Rewire keybound facade | 7/7 |
+| 3.10 Rewire kbd-global facade | 7/7 |
 | 3.11 Adopt keyboard-types | 0/11 |
 | 3.12 Framework integration crates | 0/6 (build now) + 6 on-demand |
 
@@ -612,7 +614,7 @@ architecture. Library is feature-complete relative to v0.
 
 Reference: `archive/v0/src/listener/sequence.rs`
 
-### 4.2 Tap-hold (`kbd-core` matcher + `keybound` engine)
+### 4.2 Tap-hold (`kbd-core` matcher + `kbd-global` engine)
 
 - [ ] Tap resolves on release before threshold.
 - [ ] Hold resolves on threshold expiry.
@@ -644,7 +646,7 @@ Reference: `archive/v0/src/listener/dispatch.rs` (device-specific dispatch)
 ### 4.5 Portal backend and consume preference (`kbd-portal`)
 
 - [ ] XDG GlobalShortcuts portal implementation in `kbd-portal` crate.
-- [ ] Auto-detection in `keybound`: try portal, fall back to evdev.
+- [ ] Auto-detection in `kbd-global`: try portal, fall back to evdev.
 - [ ] Explicit backend selection via `HotkeyManager::builder()`.
 - [ ] Clear errors when portal unavailable or `kbd-portal` not compiled.
 - [ ] `ConsumePreference` enum in `kbd-core`: `NoPreference`, `PreferConsume`, `PreferNoConsume`, `MustConsume`, `MustNotConsume` (proven model from livesplit-hotkey — real users have different permission levels and sandbox constraints).
@@ -684,7 +686,7 @@ parsing hotkeys.
 
 ### 4.9 Keyboard layout awareness (`kbd-xkb`)
 
-keybound works at the evdev keycode level, which is position-based. On a
+The global hotkey facade works at the evdev keycode level, which is position-based. On a
 Dvorak layout, `Key::S` is still physical position S (which types "O").
 COSMIC and Niri both solved this with xkbcommon because real users
 switch layouts. This is the difference between "works for QWERTY
@@ -694,7 +696,7 @@ Americans" and "works for everyone."
 - [ ] xkbcommon integration in `kbd-xkb`: resolve keycodes → keysyms based on active XKB layout.
 - [ ] Hotkey parsing disambiguation: `"Ctrl+a"` (character) vs `"Ctrl+KeyA"` (position), or equivalent scheme.
 - [ ] Layout change detection in `kbd-xkb`: subscribe to xkb layout change events, re-resolve symbol-based bindings.
-- [ ] `keybound` facade integrates `kbd-xkb` when the `xkb` feature is enabled.
+- [ ] `kbd-global` facade integrates `kbd-xkb` when the `xkb` feature is enabled.
 - [ ] `kbd-core` `Matcher` handles `KeyReference` natively — symbol resolution provided by `kbd-xkb`, but matching logic is in core.
 - [ ] Tests: QWERTY vs Dvorak binding resolution, layout switch mid-session, mixed code/symbol bindings.
 
@@ -731,7 +733,7 @@ when loading defaults + user overrides from config files (§4.7 serde).
 ## Phase 5: Key remapping and event transformation
 
 **Goal**: The library can emit different keys than what was pressed.
-`Action::EmitKey` works. This is the phase that makes keybound a
+`Action::EmitKey` works. This is the phase that makes the library a
 transformation engine, not just a detection library.
 
 ### 5.1 Key emission
@@ -789,7 +791,7 @@ rather than leaving consumers to reinvent it.
 - [ ] `manager.send_context(event)` — inject external context change into the engine.
 - [ ] Layer definitions can declare `activate_on` context predicates — simple string matching (e.g., `activate_on: "app_id == firefox"`), not a full expression language.
 - [ ] Automatic layer push/pop when context predicates match/unmatch.
-- [ ] Pattern documentation: "subscribe to your compositor's focus-change signal, send `ContextEvent::FocusChanged` — keybound handles the layer transitions."
+- [ ] Pattern documentation: "subscribe to your compositor's focus-change signal, send `ContextEvent::FocusChanged` — kbd-global handles the layer transitions."
 - [ ] Tests: external event triggers layer push, predicate matching, auto-pop on context change.
 
 ### Phase 5 gate
@@ -840,7 +842,7 @@ Reference: `reference/keyd/src/keyboard.c` (chord state machine)
 ## Phase 7: Cross-platform backends (not committed)
 
 `kbd-core` is already platform-agnostic. This phase adds non-Linux
-backends to the `keybound` facade for global hotkey support on other
+backends to the `kbd-global` facade for global hotkey support on other
 platforms.
 
 - [ ] macOS backend (CGEventTap / IOKit).
@@ -977,7 +979,7 @@ keybinding-heavy apps and catching typos at build time is valuable.
 
 After Phase 4, when the full action vocabulary exists (sequences,
 tap-hold, emit). The derive should generate against a settled builder
-API. Adds a `keybound-derive` proc-macro crate dependency (syn, quote,
+API. Adds a `kbd-derive` proc-macro crate dependency (syn, quote,
 proc-macro2).
 
 ---
