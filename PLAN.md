@@ -325,17 +325,38 @@ kbd/                              workspace root
 
 - Conversion traits between `winit::keyboard::KeyCode` /
   `ModifiersState` and `kbd-core` types
-- Mechanical 1:1 mapping — winit's `KeyCode` derives from the same
-  W3C spec as `keyboard_types::Code`, just a different Rust type
-- Also covers frameworks built on winit (floem, GPUI)
+- Near-trivial — winit re-exports `keyboard_types::Code`, the same
+  type `kbd-core`'s `Key` wraps
 - Deps: `winit`, `kbd-core`
+
+**`kbd-tao`** — tao bridge (Tauri's winit fork).
+
+- Conversion traits between `tao::keyboard::KeyCode` /
+  `ModifiersState` and `kbd-core` types
+- Own `KeyCode` enum with same W3C variant names — mechanical 1:1
+  mapping
+- Deps: `tao`, `kbd-core`
 
 **`kbd-iced`** — iced bridge.
 
 - Conversion traits between `iced::keyboard::Key` / `Modifiers` and
   `kbd-core` types
-- iced independently mirrors winit's key types from the W3C spec
+- iced defines its own W3C-derived key types
 - Deps: `iced_core`, `kbd-core`
+
+**`kbd-egui`** — egui bridge.
+
+- Conversion traits between `egui::Key` / `Modifiers` and `kbd-core`
+  types
+- egui's smaller key enum, not 1:1 with W3C
+- Deps: `egui`, `kbd-core`
+
+**`kbd-gpui`** — GPUI bridge (Zed).
+
+- Conversion trait from `gpui::Keystroke` to `Hotkey`
+- GPUI uses string-based key names and boolean `Modifiers` — requires
+  string-to-enum mapping rather than enum-to-enum
+- Deps: `gpui`, `kbd-core`
 
 **Built on demand** — created when a downstream project needs them:
 
@@ -392,9 +413,11 @@ Each boundary is a **dependency boundary**:
 |-------|-----------------|--------------|
 | `kbd-core` | `keyboard-types` | Platform-agnostic, minimal deps |
 | `kbd-crossterm` | `crossterm` | TUI apps, logical key model |
-| `kbd-winit` | `winit` | winit/floem/GPUI apps, own W3C key enum |
-| `kbd-iced` | `iced_core` | iced apps, mirrors winit's types |
+| `kbd-winit` | `winit` | winit apps, re-exports `keyboard_types::Code` |
+| `kbd-tao` | `tao` | Tauri apps, winit fork with own `KeyCode` |
+| `kbd-iced` | `iced_core` | iced apps, own W3C-derived key types |
 | `kbd-egui` | `egui` | egui apps, custom key types |
+| `kbd-gpui` | `gpui` | Zed apps, string-based `Keystroke` type |
 | `kbd-evdev` | `evdev` | Linux C library, needs `/dev/input` access |
 | `kbd-portal` | `ashpd` (async DBus) | Pulls in async runtime, different paradigm |
 | `kbd-xkb` | `xkbcommon` | Optional C library, not everyone needs layouts |
@@ -410,11 +433,12 @@ Things that stay as feature flags, not crates:
 - **Async event streams** — thin wrappers in `kbd-global`, feature-gated
   on `tokio` / `async-std`
 
-Only **Dioxus** uses `keyboard_types::Code` directly — no conversion
-crate needed. **winit** and **iced** derive their key enums from the
-same W3C spec but define their own Rust types, so they need thin
-conversion crates (`kbd-winit`, `kbd-iced`). The conversions are
-mechanical 1:1 mappings since the variant names match.
+**Dioxus** and **floem** use `keyboard_types::Code` directly — no
+conversion crate needed. **winit** re-exports it but wraps it in its
+own types. **tao**, **iced**, **egui**, and **GPUI** each define their
+own key types, so they need bridge crates. The W3C-based ones (tao,
+iced) are mechanical 1:1 mappings; egui is smaller and not 1:1; GPUI
+uses string-based key names.
 
 ### Consumer matrix
 
@@ -422,15 +446,18 @@ mechanical 1:1 mappings since the variant names match.
 |----------|-----------|
 | TUI app (ratatui / crossterm) | `kbd-core` + `kbd-crossterm` |
 | TUI app (termion) | `kbd-core` + `kbd-termion` |
-| winit / floem / GPUI app | `kbd-core` + `kbd-winit` |
+| winit app | `kbd-core` + `kbd-winit` |
+| Tauri app (in-app keys) | `kbd-core` + `kbd-tao` |
+| Tauri app (global hotkeys) | `kbd-global` (replaces Tauri's X11-only global-shortcut plugin) |
 | iced app | `kbd-core` + `kbd-iced` |
-| Dioxus app | `kbd-core` (uses `keyboard_types::Code` directly) |
 | egui app | `kbd-core` + `kbd-egui` |
+| GPUI (Zed) app | `kbd-core` + `kbd-gpui` |
+| Dioxus app | `kbd-core` (uses `keyboard_types::Code` directly) |
+| Floem app | `kbd-core` (uses `keyboard_types::Code` via `ui_events`) |
 | Makepad app | `kbd-core` + `kbd-makepad` |
 | GTK app (gtk-rs) | `kbd-core` + `kbd-gtk` |
 | Compositor (Niri-like) | `kbd-core` + `kbd-evdev` (direct, no manager) |
 | App + layout awareness | `kbd-core` + `kbd-xkb` |
-| Tauri app (Linux) | `kbd-global` (replaces Tauri's X11-only global-shortcut plugin) |
 | Flatpak sandboxed app | `kbd-global` with `kbd-portal` |
 | Declarative bindings | `kbd-global` + `kbd-derive` |
 
@@ -539,19 +566,16 @@ for internal use within `kbd-core`.
 ### 3.12 Framework integration crates
 
 Create conversion crates for frameworks that don't use
-`keyboard_types::Code` natively. Only Dioxus uses it directly — every
-other framework defines its own key types (from the same W3C spec for
-GUI frameworks, or logical character models for TUI).
+`keyboard_types::Code` natively. Dioxus and floem use it directly
+(floem via `ui_events`) — every other framework defines its own key
+types.
 
-`kbd-crossterm` is the immediate priority — it proves the conversion
-pattern and serves the TUI ecosystem (ratatui), which is the most
-likely first consumer of `kbd-core` outside global hotkeys. The GUI
-bridge crates (`kbd-winit`, `kbd-iced`, `kbd-egui`) are built when
-a downstream project needs them. The conversion trait pattern
-established by `kbd-crossterm` makes adding new bridge crates
-straightforward.
+The conversion trait pattern established by `kbd-crossterm` makes
+adding new bridge crates straightforward: extension traits with
+`to_key()` / `to_hotkey()` methods, exhaustive variant matching,
+`Option` returns for unmappable keys.
 
-Build now:
+`kbd-crossterm` (done):
 
 - [x] Create `crates/kbd-crossterm/` with `Cargo.toml` (deps:
       `crossterm`, `kbd-core`).
@@ -564,14 +588,52 @@ Build now:
       full `KeyEvent → Hotkey` conversion.
 - [x] `cargo build --workspace` succeeds with `kbd-crossterm`.
 
-Build when a downstream project needs them (GUI bridges):
+`kbd-winit` — winit bridge:
 
-- [ ] `kbd-winit`: `winit::keyboard::KeyCode` ↔ `Key`. Mechanical 1:1
-      W3C mapping. Also covers floem and GPUI (both built on winit).
-- [ ] `kbd-iced`: `iced::keyboard::key::Code` ↔ `Key`. Same W3C
-      mapping as winit (iced mirrors winit's types independently).
-- [ ] `kbd-egui`: `egui::Key` → `Key`, `egui::Modifiers` →
-      `Vec<Modifier>`. egui's smaller key enum, not 1:1.
+- [ ] Create `crates/kbd-winit/` with `Cargo.toml` (deps: `winit`,
+      `kbd-core`).
+- [ ] `WinitKeyExt` trait: `winit::keyboard::KeyCode → Key`. winit
+      re-exports `keyboard_types::Code`, so this is near-trivial.
+- [ ] `WinitEventExt` trait: `winit::event::KeyEvent → Hotkey`
+      (key + modifiers in one step).
+- [ ] Tests and `cargo build --workspace`.
+
+`kbd-tao` — tao bridge (Tauri's winit fork):
+
+- [ ] Create `crates/kbd-tao/` with `Cargo.toml` (deps: `tao`,
+      `kbd-core`).
+- [ ] `TaoKeyExt` trait: `tao::keyboard::KeyCode → Key`. Own W3C
+      enum, same variant names — mechanical 1:1 mapping.
+- [ ] `TaoEventExt` trait: `tao::event::KeyEvent → Hotkey`.
+- [ ] Tests and `cargo build --workspace`.
+
+`kbd-iced` — iced bridge:
+
+- [ ] Create `crates/kbd-iced/` with `Cargo.toml` (deps: `iced_core`,
+      `kbd-core`).
+- [ ] `IcedKeyExt` trait: `iced::keyboard::Key → Option<Key>`. iced
+      defines its own W3C-derived key types.
+- [ ] `IcedEventExt` trait: `iced::keyboard::Event → Option<Hotkey>`.
+- [ ] Tests and `cargo build --workspace`.
+
+`kbd-egui` — egui bridge:
+
+- [ ] Create `crates/kbd-egui/` with `Cargo.toml` (deps: `egui`,
+      `kbd-core`).
+- [ ] `EguiKeyExt` trait: `egui::Key → Option<Key>`. egui's smaller
+      key enum, not 1:1 with W3C.
+- [ ] `EguiModifiersExt` trait: `egui::Modifiers → Vec<Modifier>`.
+- [ ] `EguiEventExt` trait: full event conversion.
+- [ ] Tests and `cargo build --workspace`.
+
+`kbd-gpui` — GPUI bridge (Zed):
+
+- [ ] Create `crates/kbd-gpui/` with `Cargo.toml` (deps: `gpui`,
+      `kbd-core`).
+- [ ] `GpuiKeystrokeExt` trait: `gpui::Keystroke → Option<Hotkey>`.
+      GPUI uses string-based key names (`key: String`) and boolean
+      `Modifiers` — requires string-to-enum mapping.
+- [ ] Tests and `cargo build --workspace`.
 
 Build on demand (niche):
 
@@ -594,8 +656,8 @@ Build on demand (niche):
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 11/11 |
-| 3.12 Framework integration crates | 6/6 (build now) + 6 on-demand |
-| 3.13 Examples | 0/7 |
+| 3.12 Framework integration crates | 6/26 (build now) + 3 on-demand |
+| 3.13 Examples | 0/12 |
 
 ### 3.13 Examples
 
@@ -626,6 +688,17 @@ demonstrate, but rewrite against the new API.
       + `kbd-core`. Reads real terminal key events, converts via
       extension traits, feeds to `Matcher`, prints match results.
       `cargo run --example crossterm`.
+- [ ] `examples/winit.rs`: Minimal winit window that converts key
+      events via `kbd-winit`, feeds to `Matcher`, prints matches.
+      `cargo run --example winit`.
+- [ ] `examples/tao.rs`: Same as winit but using tao (Tauri's fork).
+      `cargo run --example tao`.
+- [ ] `examples/iced.rs`: Minimal iced app with keyboard event
+      handling via `kbd-iced`. `cargo run --example iced`.
+- [ ] `examples/egui.rs`: Minimal eframe/egui app with keyboard
+      event handling via `kbd-egui`. `cargo run --example egui`.
+- [ ] `examples/gpui.rs`: Minimal GPUI app with Keystroke conversion
+      via `kbd-gpui`. `cargo run --example gpui`.
 - [ ] `examples/evdev.rs`: Read evdev key events, convert to kbd-core
       types, feed to `Matcher`. Requires a keyboard device (prints
       usage if no permission). `cargo run --example evdev`.
@@ -1039,7 +1112,7 @@ proc-macro2).
 | **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
 | **2** | Grab mode + key state | 13 |
 | **3** | Layers + metadata + introspection | 27 |
-| **3.5** | Workspace split, keyboard-types adoption, framework bridges, examples | 62 |
+| **3.5** | Workspace split, keyboard-types adoption, framework bridges, examples | 84 |
 | **4** | Sequences, tap-hold, device filtering, portal, async, serde, aliases, XKB, provenance | 61 |
 | **5** | Key remapping, transformation, lock/inhibitor, context hooks | 30 |
 | **6** | Stretch: chords, mouse, full keymaps | 14 |
@@ -1048,12 +1121,12 @@ proc-macro2).
 Phase 1 makes it work. Phase 2 makes it intercept. Phase 3 makes it
 modal and introspectable. Phase 3.5 splits the workspace — `kbd-core`
 adopts `keyboard-types` and becomes a platform-agnostic shortcut engine
-usable from any Rust event loop. `kbd-crossterm` proves the bridge
-pattern for TUI apps; GUI bridges (`kbd-winit`, `kbd-iced`, `kbd-egui`)
-are built on demand as downstream projects adopt `kbd-core`. Backends
-(`kbd-evdev`, `kbd-portal`) get their own crates. Phase 4 makes it
-feature-complete and layout-aware. Phase 5 makes it a transformation
-engine that's context-aware.
+usable from any Rust event loop. Bridge crates (`kbd-crossterm`,
+`kbd-winit`, `kbd-tao`, `kbd-iced`, `kbd-egui`, `kbd-gpui`) connect
+each framework's key types to `kbd-core`. Backends (`kbd-evdev`,
+`kbd-portal`) get their own crates. Phase 4 makes it feature-complete
+and layout-aware. Phase 5 makes it a transformation engine that's
+context-aware.
 
 ---
 
