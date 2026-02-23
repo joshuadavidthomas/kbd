@@ -42,9 +42,17 @@ mod events;
 // use a single `keybound::` import path.
 
 // Key types
+pub use kbd_core::key::Hotkey;
+pub use kbd_core::key::HotkeySequence;
+pub use kbd_core::key::Key;
+pub use kbd_core::key::Modifier;
+pub use kbd_core::key::ParseHotkeyError;
+pub use kbd_core::key_state::KeyTransition;
+
 // Action types
 pub use kbd_core::action::Action;
 pub use kbd_core::action::LayerName;
+
 // Binding types
 pub use kbd_core::binding::BindingId;
 pub use kbd_core::binding::BindingOptions;
@@ -52,29 +60,25 @@ pub use kbd_core::binding::DeviceFilter;
 pub use kbd_core::binding::OverlayVisibility;
 pub use kbd_core::binding::Passthrough;
 pub use kbd_core::binding::RegisteredBinding;
+
+// Layer types
+pub use kbd_core::layer::Layer;
+pub use kbd_core::layer::LayerOptions;
+pub use kbd_core::layer::UnmatchedKeyBehavior;
+
+// Matcher — the embeddable synchronous engine from kbd-core
+pub use kbd_core::matcher::MatchResult;
+pub use kbd_core::matcher::Matcher;
+
 // Introspection types
 pub use kbd_core::introspection::ActiveLayerInfo;
 pub use kbd_core::introspection::BindingInfo;
 pub use kbd_core::introspection::BindingLocation;
 pub use kbd_core::introspection::ConflictInfo;
 pub use kbd_core::introspection::ShadowedStatus;
-pub use kbd_core::key::Hotkey;
-pub use kbd_core::key::HotkeySequence;
-pub use kbd_core::key::Key;
-pub use kbd_core::key::Modifier;
-pub use kbd_core::key::ParseHotkeyError;
-// Matcher types — the embeddable synchronous engine from kbd-core
-pub use kbd_core::key_state::KeyTransition;
-// Layer types
-pub use kbd_core::layer::Layer;
-pub use kbd_core::layer::LayerOptions;
-pub use kbd_core::layer::UnmatchedKeyBehavior;
-pub use kbd_core::matcher::MatchResult;
-pub use kbd_core::matcher::Matcher;
 
 // Manager and handle (keybound-specific, not in kbd-core)
 pub use crate::backend::Backend;
-// Error type (keybound's own, wraps kbd-core errors)
 pub use crate::error::Error;
 pub use crate::handle::Handle;
 pub use crate::manager::HotkeyManager;

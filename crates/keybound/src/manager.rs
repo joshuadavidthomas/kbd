@@ -389,6 +389,9 @@ fn auto_detect_backend() -> Result<Backend, Error> {
     return Err(Error::BackendUnavailable);
 }
 
+// With only evdev enabled (default), clippy sees a single Ok arm and reports
+// unnecessary_wraps. The Err arms appear when portal is enabled or evdev is disabled.
+#[allow(clippy::unnecessary_wraps)]
 fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
     match backend {
         #[cfg(feature = "evdev")]
@@ -400,6 +403,8 @@ fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
     }
 }
 
+// Same rationale as validate_explicit_backend — Err arms are feature-gated.
+#[allow(clippy::unnecessary_wraps)]
 fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Result<(), Error> {
     if matches!(grab, GrabConfiguration::Enabled) {
         match backend {

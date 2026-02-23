@@ -26,16 +26,15 @@
 //!
 //! # Modules
 //!
-//! - [`key_state`] — tracks what's currently pressed, derives modifier state
-//! - [`matcher`] — finds matching bindings for a key event
 //! - [`sequence`] — sequence pattern state machine
 //! - [`tap_hold`] — tap-hold pattern state machine
-//! - [`devices`] — device discovery, hotplug, capability detection
-//! - [`forwarder`] — uinput virtual device for event forwarding/emission
+//! - [`devices`] — device discovery, hotplug, capability detection (evdev feature)
+//! - [`forwarder`] — uinput virtual device for event forwarding/emission (evdev feature)
 //! - [`types`] — shared engine types (grab state, dispositions, layer stack entries)
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
-//! - [`wake`] — eventfd-based wake mechanism and loop control
+//!
+//! Key state and matching logic live in `kbd-core` (`KeyState`, `Matcher`).
 //!
 //! # Reference
 //!

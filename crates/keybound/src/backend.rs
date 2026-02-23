@@ -25,9 +25,11 @@ pub(crate) mod portal;
 
 /// Backend selection for explicit configuration.
 ///
-/// All variants exist regardless of feature flags so user code can name
-/// them. Attempting to *build* a manager with an unavailable backend
-/// returns [`Error::BackendUnavailable`](crate::Error::BackendUnavailable).
+/// `Evdev` is always available as a variant. Attempting to *build* a
+/// manager with it when the `evdev` feature is disabled returns
+/// [`Error::BackendUnavailable`](crate::Error::BackendUnavailable).
+///
+/// `Portal` only exists when the `portal` feature is enabled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     /// Direct evdev device access. Requires `input` group membership.
