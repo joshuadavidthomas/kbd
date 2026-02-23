@@ -86,18 +86,18 @@ fn layer_builder_produces_correct_state() {
 
     assert_eq!(layer.name().as_str(), "test");
     assert_eq!(layer.binding_count(), 2);
-    assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
-    assert_eq!(layer.options().oneshot, Some(2));
-    assert_eq!(layer.options().timeout, Some(Duration::from_millis(500)));
+    assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+    assert_eq!(layer.options().oneshot(), Some(2));
+    assert_eq!(layer.options().timeout(), Some(Duration::from_millis(500)));
 }
 
 #[test]
 fn layer_default_options() {
     let options = LayerOptions::default();
-    assert_eq!(options.oneshot, None);
-    assert_eq!(options.unmatched, UnmatchedKeyBehavior::Fallthrough);
-    assert_eq!(options.timeout, None);
-    assert_eq!(options.description, None);
+    assert_eq!(options.oneshot(), None);
+    assert_eq!(options.unmatched(), UnmatchedKeyBehavior::Fallthrough);
+    assert_eq!(options.timeout(), None);
+    assert_eq!(options.description(), None);
 }
 
 // Phase 3.4: Binding metadata on layers
@@ -105,16 +105,13 @@ fn layer_default_options() {
 #[test]
 fn layer_options_description_defaults_to_none() {
     let options = LayerOptions::default();
-    assert_eq!(options.description, None);
+    assert_eq!(options.description(), None);
 }
 
 #[test]
 fn layer_description_sets_label() {
     let layer = Layer::new("nav").description("Navigation keys");
-    assert_eq!(
-        layer.options().description.as_deref(),
-        Some("Navigation keys")
-    );
+    assert_eq!(layer.options().description(), Some("Navigation keys"));
 }
 
 #[test]
@@ -126,12 +123,9 @@ fn layer_description_chains_with_other_options() {
         .oneshot(1)
         .timeout(Duration::from_secs(5));
 
-    assert_eq!(
-        layer.options().description.as_deref(),
-        Some("Navigation keys")
-    );
-    assert_eq!(layer.options().unmatched, UnmatchedKeyBehavior::Swallow);
-    assert_eq!(layer.options().oneshot, Some(1));
+    assert_eq!(layer.options().description(), Some("Navigation keys"));
+    assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+    assert_eq!(layer.options().oneshot(), Some(1));
     assert_eq!(layer.binding_count(), 1);
 }
 

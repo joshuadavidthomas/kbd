@@ -12,7 +12,6 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::ffi::CStr;
 use std::ffi::CString;
 use std::io;
 use std::mem::size_of;
@@ -576,22 +575,12 @@ pub(crate) fn parse_hotplug_events(buffer: &[u8], bytes_read: usize) -> Vec<Hotp
 }
 
 fn parse_hotplug_name(name_bytes: &[u8]) -> String {
-    let cstr_end = name_bytes
+    let name_end = name_bytes
         .iter()
-        .position(|byte| *byte == 0)
+        .position(|&byte| byte == 0)
         .unwrap_or(name_bytes.len());
 
-    if cstr_end == 0 {
-        return String::new();
-    }
-
-    CStr::from_bytes_with_nul(&name_bytes[..=cstr_end.min(name_bytes.len() - 1)])
-        .ok()
-        .and_then(|value| value.to_str().ok())
-        .map_or_else(
-            || String::from_utf8_lossy(&name_bytes[..cstr_end]).to_string(),
-            std::string::ToString::to_string,
-        )
+    String::from_utf8_lossy(&name_bytes[..name_end]).into_owned()
 }
 
 #[cfg(test)]

@@ -5,30 +5,25 @@
 //! sequences) are checked before immediate patterns (hotkeys).
 //!
 //! Returns the matched binding's action (or "no match" for forwarding).
-//!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/listener/dispatch.rs` (scattered across
-//! `collect_non_modifier_dispatch`, `collect_device_specific_dispatch`,
-//! `dispatch_mode_key_event`). This module unifies all matching into one path.
 
 use std::collections::HashMap;
+use std::time::Duration;
+use std::time::Instant;
 
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::BindingId;
 use crate::binding::Passthrough;
-use crate::engine::LayerStackEntry;
-use crate::engine::RegisteredBinding;
-use crate::engine::StoredLayer;
-use crate::engine::key_state::KeyTransition;
+use crate::binding::RegisteredBinding;
 use crate::key::Hotkey;
 use crate::key::Modifier;
+use crate::key_state::KeyTransition;
+use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeyBehavior;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
-pub(crate) enum MatchResult<'a> {
+pub enum MatchResult<'a> {
     /// A binding matched. Contains the action and passthrough setting.
     Matched {
         action: &'a Action,
@@ -40,6 +35,21 @@ pub(crate) enum MatchResult<'a> {
     Swallowed,
     /// The event was not eligible for matching (modifier-only press, release, repeat).
     Ignored,
+}
+
+/// An entry in the layer stack, pairing the layer name with runtime state.
+pub struct LayerStackEntry {
+    pub name: LayerName,
+    /// Remaining keypress count for oneshot layers. `None` means not oneshot.
+    pub oneshot_remaining: Option<usize>,
+    /// Timeout configuration and last activity timestamp.
+    /// If set, the layer auto-pops when `Instant::now() - last_activity > timeout`.
+    pub timeout: Option<LayerTimeout>,
+}
+
+pub struct LayerTimeout {
+    pub duration: Duration,
+    pub last_activity: Instant,
 }
 
 /// Attempt to find a binding that matches the given key event.
@@ -54,8 +64,10 @@ pub(crate) enum MatchResult<'a> {
 /// 3. If nothing matched, the event is unmatched
 ///
 /// Only key press events trigger matching — release events use the press
-/// cache (see `Engine::process_key_event`), repeat events are ignored.
-pub(crate) fn match_key_event<'a>(
+/// cache (see engine's `process_key_event`), repeat events are ignored.
+#[must_use]
+#[allow(clippy::implicit_hasher)]
+pub fn match_key_event<'a>(
     transition: KeyTransition,
     candidate: &Hotkey,
     layer_stack: &[LayerStackEntry],
@@ -89,7 +101,7 @@ pub(crate) fn match_key_event<'a>(
 
             // No match in this layer — check swallow behavior
             if matches!(
-                stored_layer.options.unmatched,
+                stored_layer.options.unmatched(),
                 UnmatchedKeyBehavior::Swallow
             ) {
                 return MatchResult::Swallowed;
@@ -120,6 +132,7 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
+    use super::LayerStackEntry;
     use super::MatchResult;
     use super::match_key_event;
     use crate::Key;
@@ -127,14 +140,13 @@ mod tests {
     use crate::action::LayerName;
     use crate::binding::BindingId;
     use crate::binding::Passthrough;
-    use crate::engine::LayerStackEntry;
-    use crate::engine::RegisteredBinding;
-    use crate::engine::StoredLayer;
-    use crate::engine::key_state::KeyTransition;
+    use crate::binding::RegisteredBinding;
     use crate::key::Hotkey;
     use crate::key::Modifier;
+    use crate::key_state::KeyTransition;
     use crate::layer::LayerBinding;
     use crate::layer::LayerOptions;
+    use crate::layer::StoredLayer;
     use crate::layer::UnmatchedKeyBehavior;
 
     struct TestBindings {
@@ -562,10 +574,7 @@ mod tests {
         bindings.add_layer(
             "modal",
             vec![layer_binding(Key::H, &[], Action::Swallow)],
-            LayerOptions {
-                unmatched: UnmatchedKeyBehavior::Swallow,
-                ..Default::default()
-            },
+            LayerOptions::default().with_unmatched(UnmatchedKeyBehavior::Swallow),
         );
         bindings.push_layer("modal");
 

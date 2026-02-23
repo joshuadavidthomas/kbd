@@ -1,3 +1,5 @@
+#![cfg(feature = "evdev")]
+
 use evdev::KeyCode;
 use keybound::Key;
 use keybound::Modifier;

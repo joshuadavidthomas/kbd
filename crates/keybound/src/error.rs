@@ -1,12 +1,13 @@
 //! Error types for the keybound library.
 //!
-//! Single error enum covering all failure modes.
+//! Extends the core error types from `kbd-core` with platform-specific
+//! errors for backend initialization, device access, and permissions.
 
 /// Library-wide error type.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("parse error: {0}")]
-    Parse(#[from] crate::key::ParseHotkeyError),
+    Parse(#[from] kbd_core::key::ParseHotkeyError),
     #[error("hotkey registration conflicts with an existing binding")]
     AlreadyRegistered,
     #[error("failed to initialize the selected backend")]

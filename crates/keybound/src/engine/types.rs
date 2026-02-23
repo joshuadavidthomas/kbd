@@ -1,6 +1,3 @@
-use std::time::Duration;
-use std::time::Instant;
-
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::Passthrough;
@@ -13,6 +10,7 @@ use crate::binding::Passthrough;
 /// mode without a forwarder.
 pub(crate) enum GrabState {
     Disabled,
+    #[cfg_attr(not(feature = "grab"), allow(dead_code))]
     Enabled {
         forwarder: Box<dyn super::forwarder::ForwardSink>,
     },
@@ -68,19 +66,4 @@ pub(super) enum MatchOutcome {
     Swallowed,
     NoMatch,
     Ignored,
-}
-
-/// An entry in the layer stack, pairing the layer name with runtime state.
-pub(crate) struct LayerStackEntry {
-    pub(super) name: LayerName,
-    /// Remaining keypress count for oneshot layers. `None` means not oneshot.
-    pub(super) oneshot_remaining: Option<usize>,
-    /// Timeout configuration and last activity timestamp.
-    /// If set, the layer auto-pops when `Instant::now() - last_activity > timeout`.
-    pub(super) timeout: Option<LayerTimeout>,
-}
-
-pub(super) struct LayerTimeout {
-    pub(super) duration: Duration,
-    pub(super) last_activity: Instant,
 }

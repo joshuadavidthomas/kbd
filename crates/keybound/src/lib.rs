@@ -31,7 +31,6 @@
 mod action;
 mod backend;
 mod binding;
-#[allow(dead_code)]
 mod engine;
 mod error;
 mod handle;
@@ -57,10 +56,6 @@ pub use crate::binding::DeviceFilter;
 pub use crate::binding::OverlayVisibility;
 pub use crate::binding::Passthrough;
 pub use crate::error::Error;
-// #[cfg(any(feature = "tokio", feature = "async-std"))]
-// pub use crate::events::HotkeyEvent;
-// #[cfg(any(feature = "tokio", feature = "async-std"))]
-// pub use crate::events::HotkeyEventStream;
 pub use crate::handle::Handle;
 pub use crate::introspection::ActiveLayerInfo;
 pub use crate::introspection::BindingInfo;

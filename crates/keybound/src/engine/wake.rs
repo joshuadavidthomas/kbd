@@ -80,7 +80,9 @@ impl WakeFd {
             };
 
             if result == 8 {
-                continue;
+                // Non-semaphore eventfd: one read returns the full counter
+                // and resets it to 0. No need to read again.
+                return Ok(());
             }
 
             if result < 0 {

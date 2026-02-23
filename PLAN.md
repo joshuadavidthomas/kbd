@@ -286,12 +286,13 @@ keybound/                         workspace root
 - Core error types (parse, conflict, layer)
 - Only external dep: `thiserror`
 - Optional feature flags: `serde` (derives), `winit` (key conversions)
+- No evdev dependency — evdev conversions live in `kbd-evdev` via extension traits
 
 **`kbd-evdev`** — Linux input device layer.
 
 - Device discovery, hotplug (inotify), `EVIOCGRAB`
 - `Forwarder` (uinput virtual device)
-- `From<evdev::KeyCode> for Key` and reverse — the evdev↔core bridge
+- Extension traits for evdev↔core conversions (`KeyCodeExt`, etc.)
 - Device filtering, self-detection
 - Deps: `evdev`, `kbd-core`
 
@@ -370,17 +371,17 @@ Things that stay as feature flags, not crates:
 
 ### 3.7 Move types into `kbd-core`
 
-- [ ] Move `key.rs`, `action.rs`, `binding.rs`, `layer.rs` into `kbd-core/src/`.
-- [ ] Move `engine/matcher.rs`, `engine/key_state.rs` into `kbd-core/src/` (these are pure logic).
-- [ ] Move core error variants into `kbd-core/src/error.rs`.
-- [ ] `evdev::KeyCode` conversions move from `key.rs` to `kbd-evdev` — `kbd-core` Key has no evdev dependency.
-- [ ] `kbd-core` builds and tests pass independently: `cargo test -p kbd-core`.
+- [x] Move `key.rs`, `action.rs`, `binding.rs`, `layer.rs` into `kbd-core/src/`.
+- [x] Move `engine/matcher.rs`, `engine/key_state.rs` into `kbd-core/src/` (these are pure logic).
+- [x] Move core error variants into `kbd-core/src/error.rs`.
+- [x] `evdev::KeyCode` conversions temporarily in `kbd-core` behind `evdev` feature flag. Will move to `kbd-evdev` as an extension trait in §3.8/§3.10.
+- [x] `kbd-core` builds and tests pass independently: `cargo test -p kbd-core`.
 
 ### 3.8 Move evdev code into `kbd-evdev`
 
 - [ ] Move `engine/devices.rs` into `kbd-evdev/src/`.
 - [ ] Move `engine/forwarder.rs` into `kbd-evdev/src/`.
-- [ ] Move `From<evdev::KeyCode>` / `Into<evdev::KeyCode>` impls into `kbd-evdev`.
+- [ ] Move evdev↔Key conversions from `kbd-core` into `kbd-evdev` as an extension trait (e.g., `KeyCodeExt` on `evdev::KeyCode` and/or `EvdevKeyExt` on `Key`). Remove the `evdev` feature flag from `kbd-core` — core stays truly zero-dep.
 - [ ] `kbd-evdev` exposes a backend trait or struct that `keybound` consumes.
 - [ ] `kbd-evdev` builds and tests pass: `cargo test -p kbd-evdev`.
 
@@ -416,6 +417,8 @@ match matcher.process(hotkey, transition) {
 ### 3.10 Rewire `keybound` facade
 
 - [ ] `keybound` re-exports all `kbd-core` public types — existing public API unchanged.
+- [ ] Remove stub re-export files (`key.rs`, `action.rs`, `binding.rs`, `layer.rs`, `engine/key_state.rs`) — collapse into direct `pub use kbd_core::` re-exports in `lib.rs` and direct `use kbd_core::` imports internally.
+- [ ] Remove `evdev` feature flag and `evdev` dependency from `kbd-core`. All evdev conversions live in `kbd-evdev` behind extension traits (§3.8). `kbd-core` is truly zero platform deps (`thiserror` only).
 - [ ] `HotkeyManager` uses `kbd-evdev` for device management (behind `evdev` feature).
 - [ ] `HotkeyManager` uses `kbd-portal` for portal backend (behind `portal` feature).
 - [ ] Existing integration tests pass against the `keybound` crate: `cargo test -p keybound`.
@@ -433,10 +436,10 @@ match matcher.process(hotkey, transition) {
 | Section | Items |
 |---------|-------|
 | 3.6 Workspace scaffolding | 9/9 |
-| 3.7 Move types to kbd-core | 0/5 |
+| 3.7 Move types to kbd-core | 5/5 |
 | 3.8 Move evdev to kbd-evdev | 0/5 |
 | 3.9 Public Matcher | 0/6 |
-| 3.10 Rewire keybound facade | 0/5 |
+| 3.10 Rewire keybound facade | 0/7 |
 | 3.11 Windowing conversions | 0/4 |
 
 ---
