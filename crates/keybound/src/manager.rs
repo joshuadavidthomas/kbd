@@ -369,54 +369,34 @@ impl Drop for HotkeyManager {
 
 fn resolve_backend(selection: BackendSelection) -> Result<Backend, Error> {
     match selection {
-        BackendSelection::Auto => auto_detect_backend(),
+        BackendSelection::Auto => Ok(Backend::Evdev),
         BackendSelection::Explicit(backend) => validate_explicit_backend(backend),
     }
 }
 
-// The `Result` wrapper is necessary when no backend features are enabled.
-// With `--all-features`, clippy sees only the `Ok` paths and reports
-// `unnecessary_wraps`.
-#[allow(clippy::unnecessary_wraps)]
-fn auto_detect_backend() -> Result<Backend, Error> {
-    // TODO: Try portal first (when compiled in), fall back to evdev.
-    // For now, pick the first available backend.
-    #[cfg(feature = "evdev")]
-    return Ok(Backend::Evdev);
-    #[cfg(all(not(feature = "evdev"), feature = "portal"))]
-    return Ok(Backend::Portal);
-    #[cfg(not(any(feature = "evdev", feature = "portal")))]
-    return Err(Error::BackendUnavailable);
-}
-
-// With only evdev enabled (default), clippy sees a single Ok arm and reports
-// unnecessary_wraps. The Err arms appear when portal is enabled or evdev is disabled.
+// Returns Err when the portal feature is enabled and Portal is selected.
+// Without portal, clippy sees a single arm that always returns Ok.
 #[allow(clippy::unnecessary_wraps)]
 fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
     match backend {
-        #[cfg(feature = "evdev")]
         Backend::Evdev => Ok(Backend::Evdev),
-        #[cfg(not(feature = "evdev"))]
-        Backend::Evdev => Err(Error::BackendUnavailable),
         #[cfg(feature = "portal")]
         Backend::Portal => Err(Error::BackendUnavailable),
     }
 }
 
-// Same rationale as validate_explicit_backend — Err arms are feature-gated.
+// Returns Err for portal+grab combinations when the portal feature is enabled.
+// Without portal, the check is dead and the function always returns Ok.
 #[allow(clippy::unnecessary_wraps)]
 fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Result<(), Error> {
     if matches!(grab, GrabConfiguration::Enabled) {
-        match backend {
-            #[cfg(feature = "evdev")]
-            Backend::Evdev => {} // grab requires evdev — ok
-            #[cfg(not(feature = "evdev"))]
-            Backend::Evdev => return Err(Error::UnsupportedFeature),
-            #[cfg(feature = "portal")]
-            Backend::Portal => return Err(Error::UnsupportedFeature),
+        #[cfg(feature = "portal")]
+        if matches!(backend, Backend::Portal) {
+            return Err(Error::UnsupportedFeature);
         }
     }
 
+    let _ = backend;
     Ok(())
 }
 

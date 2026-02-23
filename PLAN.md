@@ -419,7 +419,7 @@ match matcher.process(hotkey, transition) {
 - [x] `keybound` re-exports all `kbd-core` public types — existing public API unchanged.
 - [x] Remove stub re-export files (`key.rs`, `action.rs`, `binding.rs`, `layer.rs`, `engine/key_state.rs`) — collapse into direct `pub use kbd_core::` re-exports in `lib.rs` and direct `use kbd_core::` imports internally.
 - [x] Remove `evdev` feature flag and `evdev` dependency from `kbd-core`. All evdev conversions live in `kbd-evdev` behind extension traits (§3.8). `kbd-core` is truly zero platform deps (`thiserror` only).
-- [x] `HotkeyManager` uses `kbd-evdev` for device management (behind `evdev` feature).
+- [x] `HotkeyManager` uses `kbd-evdev` for device management. `kbd-evdev` is a hard dependency — evdev is fundamental to this Linux library. Consumers who want pure types without platform code use `kbd-core` directly.
 - [x] `HotkeyManager` uses `kbd-portal` for portal backend (behind `portal` feature).
 - [x] Existing integration tests pass against the `keybound` crate: `cargo test -p keybound`.
 - [x] `cargo test --workspace` passes.

@@ -4,7 +4,7 @@
 //! - **evdev** — direct `/dev/input/event*` access (universal Linux)
 //! - **portal** — XDG `GlobalShortcuts` D-Bus portal (no root needed)
 //!
-//! Auto-detection: try evdev first (when compiled in), fall back to portal.
+//! Auto-detection: try portal first (when compiled in), fall back to evdev.
 //! Explicit selection via `HotkeyManager::builder().backend(Backend::Evdev)`.
 //!
 //! The backend trait is minimal — it provides device access and capability
@@ -14,7 +14,6 @@
 //!
 //! Prior art: `archive/v0/src/backend.rs`
 
-#[cfg(feature = "evdev")]
 pub(crate) mod evdev;
 
 #[cfg(feature = "portal")]
@@ -24,21 +23,11 @@ pub(crate) mod portal;
 // TODO: Auto-detection logic (portal probe → evdev fallback)
 
 /// Backend selection for explicit configuration.
-///
-/// `Evdev` is always available as a variant. Attempting to *build* a
-/// manager with it when the `evdev` feature is disabled returns
-/// [`Error::BackendUnavailable`](crate::Error::BackendUnavailable).
-///
-/// `Portal` only exists when the `portal` feature is enabled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     /// Direct evdev device access. Requires `input` group membership.
-    ///
-    /// Available when the `evdev` feature is enabled (default).
     Evdev,
     /// XDG `GlobalShortcuts` portal. No special permissions needed.
-    ///
-    /// Available when the `portal` feature is enabled.
     #[cfg(feature = "portal")]
     Portal,
 }

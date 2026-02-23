@@ -28,8 +28,8 @@
 //!
 //! - [`sequence`] — sequence pattern state machine
 //! - [`tap_hold`] — tap-hold pattern state machine
-//! - [`devices`] — device discovery, hotplug, capability detection (evdev feature)
-//! - [`forwarder`] — uinput virtual device for event forwarding/emission (evdev feature)
+//! - [`devices`] — device discovery, hotplug, capability detection
+//! - [`forwarder`] — uinput virtual device for event forwarding/emission
 //! - [`types`] — shared engine types (grab state, dispositions, layer stack entries)
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
@@ -42,38 +42,26 @@
 //! `archive/v0/src/listener/` (dispatch, io, sequence, hotplug, forwarding, state).
 //! The engine replaces all of this.
 
-#[cfg(feature = "evdev")]
 use std::collections::HashMap;
 use std::io;
-#[cfg(feature = "evdev")]
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 
-#[cfg(feature = "evdev")]
 use kbd_core::Key;
 use kbd_core::Matcher;
-#[cfg(feature = "evdev")]
 use kbd_core::action::Action;
-#[cfg(feature = "evdev")]
 use kbd_core::binding::Passthrough;
-#[cfg(feature = "evdev")]
 use kbd_core::key::Hotkey;
-#[cfg(feature = "evdev")]
 use kbd_core::key_state::KeyState;
-#[cfg(feature = "evdev")]
 use kbd_core::key_state::KeyTransition;
-#[cfg(feature = "evdev")]
 use kbd_core::matcher::MatchResult;
 
 use crate::Error;
-#[cfg(feature = "evdev")]
 use crate::engine::devices::DeviceKeyEvent;
 
 pub(crate) mod command;
-#[cfg(feature = "evdev")]
 pub(crate) mod devices;
-#[cfg(feature = "evdev")]
 pub(crate) mod forwarder;
 pub(crate) mod runtime;
 pub(crate) mod sequence;
@@ -85,9 +73,7 @@ pub(crate) use self::command::Command;
 pub(crate) use self::command::CommandSender;
 pub(crate) use self::runtime::EngineRuntime;
 pub(crate) use self::types::GrabState;
-#[cfg(feature = "evdev")]
 pub(crate) use self::types::KeyEventDisposition;
-#[cfg(feature = "evdev")]
 use self::types::MatchOutcome;
 use self::wake::LoopControl;
 use self::wake::WakeFd;
@@ -102,22 +88,15 @@ pub(crate) struct Engine {
     /// was popped in between (oneshot, `PopLayer` action, etc.).
     ///
     /// Reference: keyd's `cache_entry` system in `reference/keyd/src/keyboard.c`.
-    #[cfg(feature = "evdev")]
     press_cache: HashMap<Key, KeyEventDisposition>,
-    #[cfg(feature = "evdev")]
     devices: devices::DeviceManager,
-    #[cfg(feature = "evdev")]
     key_state: KeyState,
-    // Used by the evdev event processing path. Stored on the Engine so it's
-    // available when portal backend support lands (Phase 4.5).
-    #[cfg_attr(not(feature = "evdev"), allow(dead_code))]
     grab_state: GrabState,
     command_rx: mpsc::Receiver<Command>,
     wake_fd: Arc<WakeFd>,
 }
 
 impl Engine {
-    #[cfg(feature = "evdev")]
     fn new(
         command_rx: mpsc::Receiver<Command>,
         wake_fd: Arc<WakeFd>,
@@ -141,21 +120,6 @@ impl Engine {
         }
     }
 
-    #[cfg(not(feature = "evdev"))]
-    fn new(
-        command_rx: mpsc::Receiver<Command>,
-        wake_fd: Arc<WakeFd>,
-        grab_state: GrabState,
-    ) -> Self {
-        Self {
-            matcher: Matcher::new(),
-            grab_state,
-            command_rx,
-            wake_fd,
-        }
-    }
-
-    #[cfg(feature = "evdev")]
     fn poll_sources(&mut self) -> Result<Vec<libc::pollfd>, Error> {
         let device_fds = self.devices.poll_fds();
 
@@ -197,7 +161,6 @@ impl Engine {
 
     /// Returns the poll timeout in milliseconds based on the nearest layer timeout.
     /// Returns -1 (infinite) if no timeouts are pending.
-    #[cfg(feature = "evdev")]
     fn next_timer_deadline_ms(&self) -> i32 {
         match self.matcher.next_timeout_deadline() {
             Some(remaining) => {
@@ -259,22 +222,11 @@ impl Engine {
                 LoopControl::Continue
             }
             Command::IsKeyPressed { key, reply } => {
-                #[cfg(feature = "evdev")]
-                let pressed = self.key_state.is_pressed(key);
-                #[cfg(not(feature = "evdev"))]
-                let pressed = {
-                    let _ = key;
-                    false
-                };
-                let _ = reply.send(pressed);
+                let _ = reply.send(self.key_state.is_pressed(key));
                 LoopControl::Continue
             }
             Command::ActiveModifiers { reply } => {
-                #[cfg(feature = "evdev")]
-                let modifiers = self.key_state.active_modifiers();
-                #[cfg(not(feature = "evdev"))]
-                let modifiers = vec![];
-                let _ = reply.send(modifiers);
+                let _ = reply.send(self.key_state.active_modifiers());
                 LoopControl::Continue
             }
             Command::ListBindings { reply } => {
@@ -297,7 +249,6 @@ impl Engine {
         }
     }
 
-    #[cfg(feature = "evdev")]
     fn process_polled_events(&mut self, poll_fds: &[libc::pollfd]) {
         let result = self.devices.process_polled_events(&poll_fds[1..]);
 
@@ -310,7 +261,6 @@ impl Engine {
         }
     }
 
-    #[cfg(feature = "evdev")]
     fn process_key_event(&mut self, event: DeviceKeyEvent) -> KeyEventDisposition {
         self.key_state
             .apply_device_event(event.device_fd, event.key, event.transition);
@@ -399,7 +349,6 @@ impl Engine {
         disposition
     }
 
-    #[cfg(feature = "evdev")]
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {
         if let GrabState::Enabled { forwarder } = &mut self.grab_state
             && let Err(error) = forwarder.forward_key(key, transition)
@@ -414,7 +363,6 @@ impl Engine {
 ///
 /// Only handles `Action::Callback`. Layer-control actions (`PushLayer`,
 /// `PopLayer`, `ToggleLayer`) are handled by `Matcher::process()` internally.
-#[cfg(feature = "evdev")]
 fn execute_action(action: &Action) {
     if let Action::Callback(callback) = action
         && let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -428,7 +376,6 @@ fn execute_action(action: &Action) {
     }
 }
 
-#[cfg(feature = "evdev")]
 pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
     loop {
         let poll_fds = engine.poll_sources()?;
@@ -442,51 +389,7 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
     }
 }
 
-/// Event loop without device I/O — only processes commands.
-///
-/// Used when no evdev backend is available (e.g. portal-only mode).
-/// The engine waits on the wake fd for incoming commands.
-#[cfg(not(feature = "evdev"))]
-pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
-    loop {
-        // Poll only the wake fd — no device fds to watch.
-        let mut poll_fds = [libc::pollfd {
-            fd: engine.wake_fd.raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
-        }];
-
-        let timeout_ms = match engine.matcher.next_timeout_deadline() {
-            Some(remaining) => {
-                let ms = remaining.as_millis();
-                i32::try_from(ms.saturating_add(1)).unwrap_or(i32::MAX)
-            }
-            None => -1,
-        };
-
-        // SAFETY: `poll_fds` is a valid mutable buffer of `pollfd` values.
-        let result = unsafe { libc::poll(poll_fds.as_mut_ptr(), 1, timeout_ms) };
-
-        if result < 0 {
-            let error = io::Error::last_os_error();
-            if error.kind() != io::ErrorKind::Interrupted {
-                return Err(Error::EngineError);
-            }
-        }
-
-        if (poll_fds[0].revents & libc::POLLIN) != 0 {
-            engine.wake_fd.clear().map_err(|_| Error::EngineError)?;
-        }
-
-        if matches!(engine.drain_commands(), LoopControl::Shutdown) {
-            return Ok(());
-        }
-
-        engine.matcher.check_timeouts();
-    }
-}
-
-#[cfg(all(test, feature = "evdev"))]
+#[cfg(test)]
 mod tests {
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
@@ -1966,8 +1869,6 @@ mod tests {
 
     #[test]
     fn press_cache_release_consumed_when_press_was_consumed() {
-        // In grab mode, if a press matched a binding and was consumed,
-        // the release should also be consumed (not forwarded).
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -1980,15 +1881,12 @@ mod tests {
             ))
             .unwrap();
 
-        // Press Ctrl, then press C (matched, consumed)
         press_key(&mut engine, Key::LeftCtrl, 10);
         press_key(&mut engine, Key::C, 10);
 
-        // Release C — should be consumed, NOT forwarded
         let disposition = release_key(&mut engine, Key::C, 10);
         assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
 
-        // Verify no C events were forwarded
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
         assert!(
@@ -1999,8 +1897,6 @@ mod tests {
 
     #[test]
     fn press_cache_release_forwarded_when_press_had_passthrough() {
-        // In grab mode, if a press matched with passthrough, the release
-        // should also be forwarded (with MatchedForwarded disposition).
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2016,16 +1912,13 @@ mod tests {
             )
             .unwrap();
 
-        // Press Ctrl+C with passthrough — matched, forwarded
         press_key(&mut engine, Key::LeftCtrl, 10);
         let press_disp = press_key(&mut engine, Key::C, 10);
         assert_eq!(press_disp, KeyEventDisposition::MatchedForwarded);
 
-        // Release C — should also be forwarded as MatchedForwarded
         let release_disp = release_key(&mut engine, Key::C, 10);
         assert_eq!(release_disp, KeyEventDisposition::MatchedForwarded);
 
-        // Verify C was forwarded on both press and release
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
         assert_eq!(
@@ -2037,8 +1930,6 @@ mod tests {
 
     #[test]
     fn press_cache_release_consumed_when_swallowed() {
-        // In grab mode, if a press was swallowed by a layer, the release
-        // should also be consumed (not forwarded).
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2051,15 +1942,12 @@ mod tests {
             .push_layer(kbd_core::action::LayerName::from("modal"))
             .unwrap();
 
-        // Press X — unmatched but swallowed by the modal layer
         let press_disp = press_key(&mut engine, Key::X, 10);
         assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
 
-        // Release X — should also be consumed
         let release_disp = release_key(&mut engine, Key::X, 10);
         assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
 
-        // Verify X was NOT forwarded
         let events = forwarded.lock().unwrap();
         let x_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::X).collect();
         assert!(
@@ -2070,8 +1958,6 @@ mod tests {
 
     #[test]
     fn press_cache_cleared_after_release() {
-        // After releasing a cached key, the second press+release cycle
-        // should match normally, not use stale cache data.
         let (grab_state, _forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2089,13 +1975,11 @@ mod tests {
             ))
             .unwrap();
 
-        // First press+release cycle
         press_key(&mut engine, Key::LeftCtrl, 10);
         press_key(&mut engine, Key::C, 10);
         let release_disp = release_key(&mut engine, Key::C, 10);
         assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
 
-        // Second press should match normally (cache was cleared on release)
         let second_press_disp = press_key(&mut engine, Key::C, 10);
         assert_eq!(second_press_disp, KeyEventDisposition::MatchedConsumed);
         assert_eq!(counter.load(Ordering::Relaxed), 2);
@@ -2103,9 +1987,6 @@ mod tests {
 
     #[test]
     fn press_cache_layer_pop_during_press_release_correct() {
-        // Press H in a layer that has H → PopLayer. The press matches,
-        // pops the layer, and is consumed. The release should still be
-        // consumed via press cache even though the layer is now gone.
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2118,7 +1999,6 @@ mod tests {
             .push_layer(kbd_core::action::LayerName::from("nav"))
             .unwrap();
 
-        // Press H — matches PopLayer, layer is popped, event consumed
         let press_disp = press_key(&mut engine, Key::H, 10);
         assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
         assert!(
@@ -2126,11 +2006,9 @@ mod tests {
             "layer should have been popped"
         );
 
-        // Release H — should be consumed via cache
         let release_disp = release_key(&mut engine, Key::H, 10);
         assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
 
-        // Verify H was not forwarded
         let events = forwarded.lock().unwrap();
         let h_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::H).collect();
         assert!(
@@ -2141,8 +2019,6 @@ mod tests {
 
     #[test]
     fn press_cache_repeat_consumed_when_press_was_consumed() {
-        // In grab mode, if a press matched a binding and was consumed,
-        // repeat events should also be consumed (not forwarded).
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2155,11 +2031,9 @@ mod tests {
             ))
             .unwrap();
 
-        // Press Ctrl, then press C (matched, consumed)
         press_key(&mut engine, Key::LeftCtrl, 10);
         press_key(&mut engine, Key::C, 10);
 
-        // Repeat C — should be consumed, NOT forwarded
         let disposition = engine.process_key_event(DeviceKeyEvent {
             device_fd: 10,
             key: Key::C,
@@ -2167,11 +2041,9 @@ mod tests {
         });
         assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
 
-        // Release C — should also be consumed
         let release_disposition = release_key(&mut engine, Key::C, 10);
         assert_eq!(release_disposition, KeyEventDisposition::MatchedConsumed);
 
-        // Verify no C events were forwarded
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
         assert!(
@@ -2182,8 +2054,6 @@ mod tests {
 
     #[test]
     fn press_cache_repeat_forwarded_when_press_had_passthrough() {
-        // In grab mode, if a press matched with passthrough,
-        // repeat events should also be forwarded.
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2199,11 +2069,9 @@ mod tests {
             )
             .unwrap();
 
-        // Press Ctrl+C with passthrough — matched, forwarded
         press_key(&mut engine, Key::LeftCtrl, 10);
         press_key(&mut engine, Key::C, 10);
 
-        // Repeat C — should be forwarded (passthrough)
         let disposition = engine.process_key_event(DeviceKeyEvent {
             device_fd: 10,
             key: Key::C,
@@ -2211,7 +2079,6 @@ mod tests {
         });
         assert_eq!(disposition, KeyEventDisposition::MatchedForwarded);
 
-        // Verify C was forwarded on press and repeat
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
         assert_eq!(
@@ -2285,7 +2152,6 @@ mod tests {
 
         let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
-        // Don't push the layer
 
         let bindings = engine.matcher.list_bindings();
         let nav_binding = bindings
@@ -2302,7 +2168,6 @@ mod tests {
     fn list_bindings_detects_shadowed_global_binding() {
         let mut engine = test_engine();
 
-        // Global binding for H
         engine
             .matcher
             .register_binding(RegisteredBinding::new(
@@ -2312,7 +2177,6 @@ mod tests {
             ))
             .unwrap();
 
-        // Layer binding for H
         let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
         engine
@@ -2322,7 +2186,6 @@ mod tests {
 
         let bindings = engine.matcher.list_bindings();
 
-        // Global H should be shadowed by nav layer
         let global_h = bindings
             .iter()
             .find(|b| {
@@ -2337,7 +2200,6 @@ mod tests {
             ))
         );
 
-        // Layer H should be active
         let layer_h = bindings
             .iter()
             .find(|b| {
@@ -2463,7 +2325,6 @@ mod tests {
     fn binding_for_key_respects_layer_stack() {
         let mut engine = test_engine();
 
-        // Global binding for H
         engine
             .matcher
             .register_binding(
@@ -2474,7 +2335,6 @@ mod tests {
             )
             .unwrap();
 
-        // Layer binding for H
         let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
         engine
@@ -2528,7 +2388,6 @@ mod tests {
         let active = engine.matcher.active_layers();
         assert_eq!(active.len(), 2);
 
-        // Bottom to top order
         assert_eq!(active[0].name.as_str(), "layer1");
         assert_eq!(active[0].description.as_deref(), Some("First layer"));
         assert_eq!(active[0].binding_count, 1);
@@ -2559,7 +2418,6 @@ mod tests {
     fn conflicts_detects_layer_shadowing_global() {
         let mut engine = test_engine();
 
-        // Global binding for H
         engine
             .matcher
             .register_binding(RegisteredBinding::new(
@@ -2569,7 +2427,6 @@ mod tests {
             ))
             .unwrap();
 
-        // Layer binding for H
         let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
         engine
@@ -2636,7 +2493,6 @@ mod tests {
     fn introspection_via_runtime_commands() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
-        // Register a global binding
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -2657,7 +2513,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // list_bindings
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -2669,7 +2524,6 @@ mod tests {
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].description.as_deref(), Some("Copy"));
 
-        // bindings_for_key
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -2683,7 +2537,6 @@ mod tests {
             .expect("should receive reply");
         assert!(result.is_some());
 
-        // active_layers (empty)
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -2694,7 +2547,6 @@ mod tests {
             .expect("should receive reply");
         assert!(layers.is_empty());
 
-        // conflicts (empty)
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -2739,7 +2591,6 @@ mod tests {
     fn binding_for_key_respects_swallow_layer() {
         let mut engine = test_engine();
 
-        // Global binding for X
         engine
             .matcher
             .register_binding(RegisteredBinding::new(
@@ -2749,7 +2600,6 @@ mod tests {
             ))
             .unwrap();
 
-        // Swallow layer with only H bound
         let layer = kbd_core::Layer::new("modal")
             .bind(Key::H, Action::Swallow)
             .swallow();
@@ -2759,15 +2609,12 @@ mod tests {
             .push_layer(kbd_core::action::LayerName::from("modal"))
             .unwrap();
 
-        // X is not in the swallow layer — the real matcher would
-        // return Swallowed, so binding_for_key should return None.
         let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::X));
         assert!(
             result.is_none(),
             "swallow layer should block fallthrough to global binding"
         );
 
-        // H IS in the swallow layer — should still resolve
         let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::H));
         assert!(result.is_some());
     }
@@ -2776,8 +2623,6 @@ mod tests {
     fn binding_for_key_returns_none_for_modifier_key() {
         let mut engine = test_engine();
 
-        // Even if someone registers a bare modifier key, the real matcher
-        // ignores modifier-only presses. binding_for_key should agree.
         engine
             .matcher
             .register_binding(RegisteredBinding::new(
