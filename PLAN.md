@@ -595,7 +595,7 @@ Build on demand (niche):
 | 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 11/11 |
 | 3.12 Framework integration crates | 6/6 (build now) + 6 on-demand |
-| 3.13 Examples | 0/5 |
+| 3.13 Examples | 0/7 |
 
 ### 3.13 Examples
 
@@ -603,9 +603,25 @@ Runnable examples in `examples/` that exercise each crate's public API.
 These are sanity checks — proof that the pieces connect. They also
 serve as living documentation for downstream consumers.
 
+Reference: `archive/v0/examples/` has 14 examples from the old
+architecture (`simple.rs`, `modes.rs`, `sequences.rs`, `grab.rs`,
+`config_file.rs`, etc.). Use these for inspiration on what to
+demonstrate, but rewrite against the new API.
+
 - [ ] `examples/matcher.rs`: Standalone `Matcher` usage — register
-      bindings, define layers, process key events, query introspection.
-      No platform deps, no async. Shows kbd-core works on its own.
+      bindings, process key events, print match results. No platform
+      deps, no async. Shows kbd-core works on its own.
+      (Reference: `archive/v0/examples/simple.rs`,
+      `archive/v0/examples/multi.rs`)
+- [ ] `examples/layers.rs`: Layer stack walkthrough — define layers,
+      push/pop/toggle, show how bindings shadow and fall through.
+      Builds on the matcher example with richer layer scenarios.
+      (Reference: `archive/v0/examples/modes.rs`)
+- [ ] `examples/introspection.rs`: Query matcher state —
+      `list_bindings()`, `bindings_for_key()`, `active_layers()`,
+      `conflicts()`. Print a formatted summary of what's registered,
+      what's shadowed, what would fire for a given key.
+      (Reference: `archive/v0/examples/conflict_detection.rs`)
 - [ ] `examples/crossterm.rs`: Minimal TUI loop using `kbd-crossterm`
       + `kbd-core`. Reads real terminal key events, converts via
       extension traits, feeds to `Matcher`, prints match results.
@@ -616,9 +632,12 @@ serve as living documentation for downstream consumers.
 - [ ] `examples/global.rs`: Full `HotkeyManager` lifecycle — register
       a few hotkeys, run the engine, print when they fire. Shows the
       threaded runtime. `cargo run --example global`.
-- [ ] `examples/layers.rs`: Layer stack walkthrough — define layers,
-      push/pop/toggle, show how bindings shadow and fall through.
-      Builds on the matcher example with richer layer scenarios.
+      (Reference: `archive/v0/examples/simple.rs`,
+      `archive/v0/examples/grab.rs`)
+- [ ] `examples/string_parsing.rs`: Parse hotkeys from strings,
+      display them back. Round-trip `"Ctrl+Shift+S"` through
+      `Hotkey::from_str` / `Display`.
+      (Reference: `archive/v0/examples/string_parsing.rs`)
 
 ---
 
@@ -1020,7 +1039,7 @@ proc-macro2).
 | **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
 | **2** | Grab mode + key state | 13 |
 | **3** | Layers + metadata + introspection | 27 |
-| **3.5** | Workspace split, keyboard-types adoption, framework bridges, examples | 60 |
+| **3.5** | Workspace split, keyboard-types adoption, framework bridges, examples | 62 |
 | **4** | Sequences, tap-hold, device filtering, portal, async, serde, aliases, XKB, provenance | 61 |
 | **5** | Key remapping, transformation, lock/inhibitor, context hooks | 30 |
 | **6** | Stretch: chords, mouse, full keymaps | 14 |
