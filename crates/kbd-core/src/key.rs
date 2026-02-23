@@ -1,9 +1,10 @@
 //! Key types: [`Key`], [`Modifier`], [`Hotkey`], [`HotkeySequence`].
 //!
-//! `Key` is a newtype over [`keyboard_types::Code`], the W3C standard for
-//! physical key positions. Associated constants (`Key::A`, `Key::ENTER`,
-//! `Key::CONTROL_LEFT`) provide a clean API while the inner `Code` is public
-//! for direct construction with any variant.
+//! `Key` is a newtype wrapping a W3C physical key code. Associated constants
+//! (`Key::A`, `Key::ENTER`, `Key::CONTROL_LEFT`) are the primary API for
+//! referring to specific keys. The inner representation is private — `Key`
+//! is a domain boundary that insulates the rest of the crate from the
+//! upstream `keyboard_types` dependency.
 //!
 //! Platform-specific conversions (e.g., evdev key codes) live in their
 //! respective backend crates (`kbd-evdev`) as extension traits.
@@ -11,25 +12,24 @@
 use std::fmt;
 use std::str::FromStr;
 
-pub use keyboard_types::Code;
+use keyboard_types::Code;
 
 /// A physical key on the keyboard.
 ///
-/// Newtype over [`keyboard_types::Code`] (the W3C standard for physical key
-/// positions). The inner `Code` is public — any `Code` variant can be used
-/// directly:
+/// Use the associated constants to refer to specific keys:
 ///
 /// ```
-/// use kbd_core::{Code, Key};
+/// use kbd_core::Key;
 ///
-/// let key = Key(Code::AudioVolumeUp);
+/// let key = Key::A;
+/// assert_eq!(key.to_string(), "A");
 /// ```
 ///
-/// Associated constants cover common keys: `Key::A`, `Key::ENTER`,
-/// `Key::CONTROL_LEFT`, etc.
+/// The inner representation is private. `Key` is a domain boundary — the
+/// rest of the crate works with `Key` values, not raw key codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct Key(pub Code);
+pub struct Key(Code);
 
 impl Key {
     // Letters
@@ -821,30 +821,21 @@ mod tests {
     }
 
     #[test]
-    fn key_wraps_keyboard_types_code() {
-        assert_eq!(Key::A.0, Code::KeyA);
-        assert_eq!(Key::ENTER.0, Code::Enter);
-        assert_eq!(Key::CONTROL_LEFT.0, Code::ControlLeft);
-        assert_eq!(Key::DIGIT0.0, Code::Digit0);
-        assert_eq!(Key::ARROW_UP.0, Code::ArrowUp);
+    fn key_constants_map_to_expected_codes() {
+        assert_eq!(Key::A, Key(Code::KeyA));
+        assert_eq!(Key::ENTER, Key(Code::Enter));
+        assert_eq!(Key::CONTROL_LEFT, Key(Code::ControlLeft));
+        assert_eq!(Key::DIGIT0, Key(Code::Digit0));
+        assert_eq!(Key::ARROW_UP, Key(Code::ArrowUp));
     }
 
     #[test]
-    fn key_from_code_and_code_from_key() {
+    fn key_from_code_round_trips() {
         let key = Key::from(Code::KeyA);
         assert_eq!(key, Key::A);
 
-        let code = Code::from(Key::A);
+        let code = Code::from(key);
         assert_eq!(code, Code::KeyA);
-    }
-
-    #[test]
-    fn key_supports_codes_beyond_original_enum() {
-        let volume_up = Key(Code::AudioVolumeUp);
-        assert_eq!(volume_up.0, Code::AudioVolumeUp);
-
-        let print_screen = Key(Code::PrintScreen);
-        assert_eq!(print_screen.0, Code::PrintScreen);
     }
 
     #[test]
@@ -868,7 +859,7 @@ mod tests {
     #[test]
     fn key_display_falls_back_to_code_for_unmapped_variant() {
         // Use a Code variant that has no Key:: constant or as_str() mapping
-        let key = Key(Code::Again);
+        let key = Key::from(Code::Again);
         // Falls through to the leak-cache path, gets Code's Display name
         assert!(!key.to_string().is_empty());
     }

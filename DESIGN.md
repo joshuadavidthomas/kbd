@@ -85,7 +85,7 @@ portal, mediated by the compositor.
 | winit app | `kbd-core` + `kbd-winit` | Mechanical conversion, same W3C key names |
 | iced app | `kbd-core` + `kbd-iced` | Mechanical conversion, same W3C key names |
 | egui app | `kbd-core` + `kbd-egui` | Bridge for egui's custom key types |
-| Dioxus app | `kbd-core` | Uses `keyboard_types::Code` natively |
+| Dioxus app | `kbd-core` | `Key::from(code)`, no bridge crate needed |
 | Floem / GPUI app | `kbd-core` + `kbd-winit` | Built on winit, key events come from there |
 | Makepad app | `kbd-core` + `kbd-makepad` | Custom key types, conversion needed |
 | GTK app (gtk-rs) | `kbd-core` + `kbd-gtk` | Bridge for GTK native key events |
@@ -97,10 +97,10 @@ portal, mediated by the compositor.
 
 ### The crate split
 
-**`kbd-core`**: Pure-logic shortcut engine. Key types (built on
-`keyboard_types::Code`), modifier tracking, binding matching, layer
-stacks, sequence resolution. Platform-agnostic. Embeddable in any
-event loop.
+**`kbd-core`**: Pure-logic shortcut engine. Key types (newtype over
+`keyboard_types::Code` with private inner field), modifier tracking,
+binding matching, layer stacks, sequence resolution. Platform-agnostic.
+Embeddable in any event loop.
 
 **Framework bridge crates** — conversion traits between each
 framework's key types and `kbd-core`. Each is a thin crate with the
@@ -255,11 +255,15 @@ the W3C standard for physical key positions.
 
 ```rust
 #[repr(transparent)]
-pub struct Key(pub keyboard_types::Code);
+pub struct Key(keyboard_types::Code);
 ```
 
-Associated constants provide a clean API: `Key::A`, `Key::ENTER`,
-`Key::VOLUME_UP`. The inner `Code` is public.
+Associated constants are the public API: `Key::A`, `Key::ENTER`,
+`Key::AUDIO_VOLUME_UP`. The inner field is **private** — `Key` is a
+domain boundary that insulates consumers from the upstream
+`keyboard_types` dependency. `Code` is not re-exported from
+`kbd-core`; backend crates like `kbd-evdev` use `Key` constants for
+their conversion tables and never touch `Code` directly.
 
 Why `keyboard-types` instead of maintaining our own enum:
 
@@ -268,6 +272,9 @@ Why `keyboard-types` instead of maintaining our own enum:
 - **It's the W3C standard** — the same spec that winit, iced, and
   every other framework derives their key types from.
 - **It's lightweight** — zero transitive deps (only optional serde).
+- **It's an implementation detail** — consumers work with `Key`,
+  not `Code`. If the backing type changes, nothing outside `kbd-core`
+  breaks.
 
 An important nuance: **most frameworks do not depend on
 `keyboard-types`**. winit, iced, egui, floem, and Makepad each
@@ -279,7 +286,7 @@ The Rust GUI/TUI keyboard type landscape:
 
 | Framework | Key type source | Conversion to kbd-core |
 |---|---|---|
-| Dioxus | `keyboard_types::Code` | Free (same type) |
+| Dioxus | `keyboard_types::Code` | `Key::from(code)` (no bridge crate) |
 | winit | Own `KeyCode` (W3C-derived) | `kbd-winit` (1:1 mapping) |
 | iced | Own `Code` (mirrors winit) | `kbd-iced` (1:1 mapping) |
 | floem | Via winit | `kbd-winit` covers it |
@@ -327,8 +334,8 @@ trigger — but that's a property of the combination, not of Ctrl.
 `Key` is a newtype over `keyboard_types::Code` — the W3C standard enum
 of physical key positions. This gives `kbd-core` the full key vocabulary
 (250+ keys including media, browser, system keys) without maintaining a
-parallel enum. Associated constants (`Key::A`, `Key::ENTER`,
-`Key::VOLUME_UP`) provide the API surface.
+parallel enum. The inner field is private; associated constants (`Key::A`,
+`Key::ENTER`, `Key::AUDIO_VOLUME_UP`) are the public API surface.
 
 For the API, the Ctrl/Shift/Alt/Super abstraction is genuinely useful.
 Users think in terms of "Ctrl+C", not "KEY_LEFTCTRL + KEY_C". And modifiers
@@ -693,7 +700,7 @@ crates/
 What types does a user need to know? Roughly:
 
 **`kbd-core` types (any consumer):**
-- `Key` — a key (newtype over `keyboard_types::Code`)
+- `Key` — a key (newtype over `keyboard_types::Code`, private inner)
 - `Modifier` — Ctrl/Shift/Alt/Super
 - `Hotkey` — key + modifiers, parseable from strings
 - `Matcher` — synchronous binding engine, the core of everything

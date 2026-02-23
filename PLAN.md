@@ -290,8 +290,8 @@ kbd/                              workspace root
 
 **`kbd-core`** — platform-agnostic, the thing everyone can use.
 
-- `Key` (newtype over `keyboard_types::Code`), `Modifier`, `Hotkey`,
-  `HotkeySequence` (types + parsing)
+- `Key` (newtype over `keyboard_types::Code`, private inner),
+  `Modifier`, `Hotkey`, `HotkeySequence` (types + parsing)
 - `Action`, `Binding`, `BindingOptions`, `BindingId`
 - `Layer`, `LayerOptions`, `LayerName`
 - `Matcher`, `MatchResult`, `KeyState` (the synchronous engine)
@@ -300,10 +300,11 @@ kbd/                              workspace root
 - Optional feature flag: `serde` (derives)
 - No evdev dependency — evdev conversions live in `kbd-evdev` via
   extension traits
-- Dioxus users get free key conversion (uses `keyboard_types::Code`
-  natively). winit and iced define their own key enums from the same
-  W3C spec — close variant names but different Rust types, so they
-  need conversion crates (`kbd-winit`, `kbd-iced`).
+- Dioxus users get trivial key conversion via `Key::from(code)` (uses
+  `keyboard_types::Code` natively, no bridge crate needed). winit and
+  iced define their own key enums from the same W3C spec — close
+  variant names but different Rust types, so they need conversion
+  crates (`kbd-winit`, `kbd-iced`).
 
 **`kbd-crossterm`** — TUI bridge.
 
@@ -437,8 +438,8 @@ mechanical 1:1 mappings since the variant names match.
 
 - [x] Create `crates/` directory with all six crate dirs and `Cargo.toml` for each.
 - [x] Root `Cargo.toml` becomes workspace manifest with `members = ["crates/*"]`.
-- [x] `kbd-core/Cargo.toml`: `thiserror`, optional `serde` feature.
-      (Note: `keyboard-types` added as required dep in §3.11.)
+- [x] `kbd-core/Cargo.toml`: `thiserror`, `keyboard-types` (required,
+      added in §3.11), optional `serde` feature.
 - [x] `kbd-evdev/Cargo.toml`: `evdev`, `kbd-core`.
 - [x] `kbd-portal/Cargo.toml`: `ashpd`, `kbd-core`. Starts as stub with `unimplemented!()` entry points and a doc comment.
 - [x] `kbd-xkb/Cargo.toml`: placeholder, no deps yet. Doc comment explains Phase 4.9.
@@ -509,27 +510,31 @@ This eliminates the parallel enum, the winit conversion module, and
 the ongoing maintenance of adding key variants in three places. See
 DESIGN.md "The key type and `keyboard-types`" for full rationale.
 
-The newtype approach — `struct Key(pub keyboard_types::Code)` with
-associated constants — lets us keep `FromStr`/`Display` with our
-aliases while making conversions with Dioxus zero-cost (it uses
-`keyboard_types::Code` directly). winit and iced need thin conversion
-crates since they define their own key enums from the same W3C spec.
+The newtype approach — `struct Key(keyboard_types::Code)` with a
+private inner field and associated constants — lets us keep
+`FromStr`/`Display` with our aliases while making `Key` a proper
+domain boundary. `Code` is not re-exported; consumers use `Key`
+constants (`Key::A`, `Key::ENTER`) and never touch `keyboard_types`
+directly. Backend crates like `kbd-evdev` use `Key` constants for
+their conversion tables. `From<Code>` / `From<Key>` impls exist
+for internal use within `kbd-core`.
 
-- [ ] Add `keyboard-types` as a required dep of `kbd-core`.
-- [ ] Replace `Key` enum with `struct Key(pub keyboard_types::Code)`.
-- [ ] Define associated constants for all `Code` variants (`Key::A`,
-      `Key::ENTER`, `Key::VOLUME_UP`, etc.).
-- [ ] Implement `From<Code> for Key` and `From<Key> for Code`.
-- [ ] Update `as_str()` to use associated-constant matching with
+- [x] Add `keyboard-types` as a required dep of `kbd-core`.
+- [x] Replace `Key` enum with `struct Key(keyboard_types::Code)`
+      (private inner field — `Key` is a domain boundary).
+- [x] Define associated constants for all `Code` variants (`Key::A`,
+      `Key::ENTER`, `Key::AUDIO_VOLUME_UP`, etc.).
+- [x] Implement `From<Code> for Key` and `From<Key> for Code`.
+- [x] Update `as_str()` to use associated-constant matching with
       `_ =>` fallback to `Code`'s `Display`.
-- [ ] Update `parse_key_token()` — same aliases, returns
-      `Key(Code::Enter)` instead of `Key::Enter`.
-- [ ] Update `FromStr` and `Display` impls on the newtype.
-- [ ] Update `Modifier::from_key()` and `Modifier::keys()` for the
+- [x] Update `parse_key_token()` — same aliases, returns constants.
+- [x] Update `FromStr` and `Display` impls on the newtype.
+- [x] Update `Modifier::from_key()` and `Modifier::keys()` for the
       new type.
-- [ ] Update `kbd-evdev` conversion traits to use newtype.
-- [ ] Update `kbd-global` re-exports.
-- [ ] All tests updated and passing. `cargo test --workspace`.
+- [x] Update `kbd-evdev` conversion traits to use newtype.
+- [x] Update `kbd-global` re-exports (removed `Code` re-export —
+      `keyboard_types` is an internal dependency).
+- [x] All tests updated and passing. `cargo test --workspace`.
 
 ### 3.12 Framework integration crates
 
@@ -588,7 +593,7 @@ Build on demand (niche):
 | 3.8 Move evdev to kbd-evdev | 5/5 |
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire kbd-global runtime | 7/7 |
-| 3.11 Adopt keyboard-types | 0/11 |
+| 3.11 Adopt keyboard-types | 11/11 |
 | 3.12 Framework integration crates | 0/6 (build now) + 6 on-demand |
 
 ---
