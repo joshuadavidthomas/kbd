@@ -17,9 +17,11 @@ kbd-portal = { path = "crates/kbd-portal" }
 kbd-crossterm = { path = "crates/kbd-crossterm" }
 kbd-tao = { path = "crates/kbd-tao" }
 kbd-winit = { path = "crates/kbd-winit" }
+kbd-iced = { path = "crates/kbd-iced" }
 kbd-xkb = { path = "crates/kbd-xkb" }
 
 crossterm = { version = "0.29", default-features = false, features = ["events"] }
+iced_core = { version = "0.14", default-features = false }
 tao = { version = "0.34", default-features = false }
 winit = { version = "0.30", default-features = false, features = ["x11"] }
 ashpd = { version = "0.13", default-features = false, features = ["async-io"] }
