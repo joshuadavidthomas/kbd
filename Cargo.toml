@@ -14,9 +14,11 @@ kbd-derive = { path = "crates/kbd-derive" }
 kbd-evdev = { path = "crates/kbd-evdev" }
 kbd-global = { path = "crates/kbd-global" }
 kbd-portal = { path = "crates/kbd-portal" }
+kbd-crossterm = { path = "crates/kbd-crossterm" }
 kbd-xkb = { path = "crates/kbd-xkb" }
 
 # core
+crossterm = { version = "0.28", default-features = false, features = ["events"] }
 ashpd = { version = "0.13", default-features = false, features = ["async-io"] }
 async-channel = { version = "2.3" }
 async-std = { version = "1.13" }

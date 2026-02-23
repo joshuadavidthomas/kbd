@@ -1,0 +1,15 @@
+[package]
+name = "kbd-crossterm"
+version = "0.1.0"
+description = "crossterm key event conversions for kbd-core"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+crossterm.workspace = true
+kbd-core.workspace = true
+
+[lints]
+workspace = true
