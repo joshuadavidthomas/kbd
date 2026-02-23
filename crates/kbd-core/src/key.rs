@@ -9,8 +9,11 @@
 //! Platform-specific conversions (e.g., evdev key codes) live in their
 //! respective backend crates (`kbd-evdev`) as extension traits.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
+use std::sync::LazyLock;
+use std::sync::Mutex;
 
 use keyboard_types::Code;
 
@@ -177,14 +180,20 @@ impl Key {
     pub const CONTEXT_MENU: Self = Self(Code::ContextMenu);
     pub const POWER: Self = Self(Code::Power);
 
-    /// Human-readable name for this key.
+    /// Human-friendly name for this key.
     ///
-    /// Known keys return short canonical names ("A", "Enter", "`LeftCtrl`").
-    /// Unknown or uncommon keys fall back to the W3C code name via
-    /// `Code::Display`.
+    /// Most keys use the W3C standard name (`"Enter"`, `"Space"`,
+    /// `"ShiftLeft"`, `"PrintScreen"`). A small set of keys that have
+    /// verbose W3C names get short overrides for config-file readability:
+    ///
+    /// - Letters: `"A"` not `"KeyA"`
+    /// - Digits: `"0"` not `"Digit0"`
+    /// - Arrows: `"Up"` not `"ArrowUp"`
+    ///
+    /// Parsing accepts both forms — `"A"` and `"KeyA"` both work.
     #[must_use]
-    #[allow(clippy::too_many_lines)]
     pub fn as_str(&self) -> &'static str {
+        // Short overrides for keys whose W3C names are too verbose.
         match self.0 {
             Code::KeyA => "A",
             Code::KeyB => "B",
@@ -222,105 +231,12 @@ impl Key {
             Code::Digit7 => "7",
             Code::Digit8 => "8",
             Code::Digit9 => "9",
-            Code::F1 => "F1",
-            Code::F2 => "F2",
-            Code::F3 => "F3",
-            Code::F4 => "F4",
-            Code::F5 => "F5",
-            Code::F6 => "F6",
-            Code::F7 => "F7",
-            Code::F8 => "F8",
-            Code::F9 => "F9",
-            Code::F10 => "F10",
-            Code::F11 => "F11",
-            Code::F12 => "F12",
-            Code::F13 => "F13",
-            Code::F14 => "F14",
-            Code::F15 => "F15",
-            Code::F16 => "F16",
-            Code::F17 => "F17",
-            Code::F18 => "F18",
-            Code::F19 => "F19",
-            Code::F20 => "F20",
-            Code::F21 => "F21",
-            Code::F22 => "F22",
-            Code::F23 => "F23",
-            Code::F24 => "F24",
-            Code::Enter => "Enter",
-            Code::Escape => "Escape",
-            Code::Space => "Space",
-            Code::Tab => "Tab",
-            Code::Delete => "Delete",
-            Code::Backspace => "Backspace",
-            Code::Insert => "Insert",
-            Code::CapsLock => "CapsLock",
-            Code::Home => "Home",
-            Code::End => "End",
-            Code::PageUp => "PageUp",
-            Code::PageDown => "PageDown",
             Code::ArrowUp => "Up",
             Code::ArrowDown => "Down",
             Code::ArrowLeft => "Left",
             Code::ArrowRight => "Right",
-            Code::Minus => "Minus",
-            Code::Equal => "Equal",
-            Code::BracketLeft => "LeftBracket",
-            Code::BracketRight => "RightBracket",
-            Code::Backslash => "Backslash",
-            Code::Semicolon => "Semicolon",
-            Code::Quote => "Apostrophe",
-            Code::Backquote => "Grave",
-            Code::Comma => "Comma",
-            Code::Period => "Period",
-            Code::Slash => "Slash",
-            Code::Numpad0 => "Numpad0",
-            Code::Numpad1 => "Numpad1",
-            Code::Numpad2 => "Numpad2",
-            Code::Numpad3 => "Numpad3",
-            Code::Numpad4 => "Numpad4",
-            Code::Numpad5 => "Numpad5",
-            Code::Numpad6 => "Numpad6",
-            Code::Numpad7 => "Numpad7",
-            Code::Numpad8 => "Numpad8",
-            Code::Numpad9 => "Numpad9",
-            Code::NumpadDecimal => "NumpadDot",
-            Code::NumpadAdd => "NumpadPlus",
-            Code::NumpadSubtract => "NumpadMinus",
-            Code::NumpadMultiply => "NumpadMultiply",
-            Code::NumpadDivide => "NumpadDivide",
-            Code::NumpadEnter => "NumpadEnter",
-            Code::ControlLeft => "LeftCtrl",
-            Code::ControlRight => "RightCtrl",
-            Code::ShiftLeft => "LeftShift",
-            Code::ShiftRight => "RightShift",
-            Code::AltLeft => "LeftAlt",
-            Code::AltRight => "RightAlt",
-            Code::MetaLeft => "LeftSuper",
-            Code::MetaRight => "RightSuper",
-            Code::AudioVolumeUp => "VolumeUp",
-            Code::AudioVolumeDown => "VolumeDown",
-            Code::AudioVolumeMute => "VolumeMute",
-            Code::MediaPlayPause => "MediaPlayPause",
-            Code::MediaStop => "MediaStop",
-            Code::MediaTrackNext => "MediaNext",
-            Code::MediaTrackPrevious => "MediaPrevious",
-            Code::PrintScreen => "PrintScreen",
-            Code::ScrollLock => "ScrollLock",
-            Code::Pause => "Pause",
-            Code::NumLock => "NumLock",
-            Code::ContextMenu => "ContextMenu",
-            Code::Power => "Power",
-            Code::Unidentified => "Unknown",
-            // Fallback: use the Code's own Display for keys we haven't
-            // assigned a short name to. This leaks the variant name
-            // which is still human-readable. Each unique Code variant
-            // leaks one allocation (~20 bytes) via a bounded cache
-            // (~170 variants max, ~3.4 KB total).
+            // Everything else: delegate to Code's Display (W3C standard name).
             _ => {
-                use std::collections::HashMap;
-                use std::sync::LazyLock;
-                use std::sync::Mutex;
-
                 static CACHE: LazyLock<Mutex<HashMap<Code, &'static str>>> =
                     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -523,7 +439,9 @@ fn parse_key_token(token: &str) -> Option<Key> {
         "NUMLOCK" => Some(Key::NUM_LOCK),
         "CONTEXTMENU" | "MENU" | "APPS" => Some(Key::CONTEXT_MENU),
         "POWER" => Some(Key::POWER),
-        _ => None,
+        // Fallback: try the W3C standard name (PascalCase, case-sensitive).
+        // This ensures round-tripping: as_str() outputs "KeyA", parse accepts "KeyA".
+        _ => Code::from_str(trimmed).ok().map(Key::from),
     }
 }
 
@@ -839,29 +757,34 @@ mod tests {
     }
 
     #[test]
-    fn key_display_for_known_keys() {
+    fn key_display_short_overrides() {
+        // Letters, digits, arrows get short names
         assert_eq!(Key::A.to_string(), "A");
-        assert_eq!(Key::ENTER.to_string(), "Enter");
-        assert_eq!(Key::ESCAPE.to_string(), "Escape");
-        assert_eq!(Key::CONTROL_LEFT.to_string(), "LeftCtrl");
+        assert_eq!(Key::Z.to_string(), "Z");
         assert_eq!(Key::DIGIT0.to_string(), "0");
+        assert_eq!(Key::DIGIT9.to_string(), "9");
         assert_eq!(Key::ARROW_UP.to_string(), "Up");
+        assert_eq!(Key::ARROW_LEFT.to_string(), "Left");
     }
 
     #[test]
-    fn key_display_for_media_and_system_keys() {
-        assert_eq!(Key::AUDIO_VOLUME_UP.to_string(), "VolumeUp");
+    fn key_display_delegates_to_w3c_for_rest() {
+        // These use Code's Display directly — W3C standard names
+        assert_eq!(Key::ENTER.to_string(), "Enter");
+        assert_eq!(Key::ESCAPE.to_string(), "Escape");
+        assert_eq!(Key::CONTROL_LEFT.to_string(), "ControlLeft");
+        assert_eq!(Key::SHIFT_LEFT.to_string(), "ShiftLeft");
+        assert_eq!(Key::META_LEFT.to_string(), "MetaLeft");
+        assert_eq!(Key::AUDIO_VOLUME_UP.to_string(), "AudioVolumeUp");
         assert_eq!(Key::PRINT_SCREEN.to_string(), "PrintScreen");
         assert_eq!(Key::NUM_LOCK.to_string(), "NumLock");
         assert_eq!(Key::CONTEXT_MENU.to_string(), "ContextMenu");
     }
 
     #[test]
-    fn key_display_falls_back_to_code_for_unmapped_variant() {
-        // Use a Code variant that has no Key:: constant or as_str() mapping
+    fn key_display_for_code_without_constant() {
         let key = Key::from(Code::Again);
-        // Falls through to the leak-cache path, gets Code's Display name
-        assert!(!key.to_string().is_empty());
+        assert_eq!(key.to_string(), "Again");
     }
 
     #[test]
