@@ -1,13 +1,11 @@
-# keybound: Redesign
+# kbd: Redesign
 
 This document captures the core ideas, domain model, and architectural
-direction for the keybound project. It's not a task list — it's the
-conceptual foundation that the task list should serve.
+direction for kbd. It's not a task list — it's the conceptual
+foundation that the task list should serve.
 
-**Naming**: The workspace is `keybound`. All crates use the `kbd-`
-prefix — short for both "keybound" (the project) and "keyboard" (the
-domain). The global hotkey facade is `kbd-global` (was `keybound` in
-the monolith era).
+**Naming**: The project is `kbd`. All crates use the `kbd-` prefix:
+`kbd-core`, `kbd-global`, `kbd-crossterm`, etc.
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) for licensing constraints on
 reference projects. Some can be adapted (MIT), others are
@@ -15,7 +13,7 @@ inspiration-only (GPL).
 
 ## What is this library?
 
-keybound is a keyboard shortcut engine for Rust.
+kbd is a keyboard shortcut engine for Rust.
 
 The core (`kbd-core`) is platform-agnostic — it handles key types,
 modifier tracking, binding matching, layer stacks, and sequence
@@ -215,12 +213,11 @@ The `kbd-global` facade operates at two levels:
    shortcut activation signals — no grab, no remapping, no raw key
    state.
 
-### What keybound is not
+### What kbd is not
 
 **Not a text input library.** Text input (IME composition, dead keys,
-Unicode output) is fundamentally different from key binding. The
-keybound project deals in key identities and modifier combinations,
-not composed text.
+Unicode output) is fundamentally different from key binding. kbd deals
+in key identities and modifier combinations, not composed text.
 
 **Not a terminal or GUI framework.** The library doesn't decode terminal
 escape sequences (that's crossterm) or manage widget focus (that's your

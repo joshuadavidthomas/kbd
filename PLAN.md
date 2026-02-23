@@ -1,8 +1,8 @@
-# keybound: Implementation Plan
+# kbd: Implementation Plan
 
-Ground-up rebuild based on [DESIGN.md](DESIGN.md). The workspace is
-`keybound`; all crates use the `kbd-` prefix. The global hotkey facade
-is `kbd-global`.
+Ground-up rebuild based on [DESIGN.md](DESIGN.md). The project is
+`kbd`; all crates use the `kbd-` prefix: `kbd-core`, `kbd-global`,
+`kbd-crossterm`, etc.
 
 Prior implementation archived in `archive/v0/` and tagged `v0-archive` in git.
 Reference implementation (keyd) in `reference/keyd/`.
@@ -247,7 +247,7 @@ only matters once a layer stack exists.
 
 ## Phase 3.5: Workspace split and core extraction
 
-**Goal**: Split the keybound project into a multi-crate workspace. Each crate
+**Goal**: Split kbd into a multi-crate workspace. Each crate
 boundary is a dependency boundary — consumers pull in only what they
 need.
 
@@ -255,7 +255,7 @@ Every project we studied — Zed, COSMIC, Niri, every tiling WM — builds
 the same inner engine: key types, modifier tracking, layer/context
 stack, binding matching, sequence resolution. The only difference
 between global and in-app is where events come from and what "context"
-means. This phase recognizes that the project already has that engine and
+means. This phase recognizes that kbd already has that engine and
 makes it independently usable.
 
 This happens before Phase 4 because Phase 4 adds many features
@@ -267,7 +267,7 @@ pulling heavy deps into a monolith.
 ### Crate layout
 
 ```
-keybound/                         workspace root
+kbd/                              workspace root
 ├── crates/
 │   ├── kbd-core/                 Pure types + matcher + layers
 │   ├── kbd-crossterm/            crossterm key event conversions
