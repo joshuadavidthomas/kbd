@@ -50,8 +50,6 @@ pub use crate::action::LayerName;
 pub use crate::backend::Backend;
 pub use crate::binding::BindingId;
 pub use crate::binding::BindingOptions;
-// Re-export device filter when evdev is available.
-#[cfg(feature = "evdev")]
 pub use crate::binding::DeviceFilter;
 pub use crate::binding::OverlayVisibility;
 pub use crate::binding::Passthrough;

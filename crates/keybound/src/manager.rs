@@ -368,44 +368,26 @@ impl Drop for HotkeyManager {
 
 fn resolve_backend(selection: BackendSelection) -> Result<Backend, Error> {
     match selection {
-        BackendSelection::Auto => auto_backend(),
+        BackendSelection::Auto => Ok(Backend::Evdev),
         BackendSelection::Explicit(backend) => validate_explicit_backend(backend),
     }
 }
 
-// With `--all-features` (evdev on), this always returns Ok. But under
-// portal-only or no-backend builds it genuinely fails, so the Result is needed.
-#[allow(clippy::unnecessary_wraps)]
-fn auto_backend() -> Result<Backend, Error> {
-    #[cfg(feature = "evdev")]
-    {
-        Ok(Backend::Evdev)
-    }
-    #[cfg(not(feature = "evdev"))]
-    {
-        Err(Error::BackendUnavailable)
-    }
-}
-
-// With all features enabled, this function can return both Ok and Err.
-// With only `evdev`, clippy sees a single arm that always returns Ok.
+// Returns Err when the portal feature is enabled and Portal is selected.
+// Without portal, clippy sees a single arm that always returns Ok.
 #[allow(clippy::unnecessary_wraps)]
 fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
     match backend {
-        #[cfg(feature = "evdev")]
         Backend::Evdev => Ok(Backend::Evdev),
         #[cfg(feature = "portal")]
         Backend::Portal => Err(Error::BackendUnavailable),
     }
 }
 
-// With the `portal` feature enabled, this function can return Err for
-// portal+grab combinations. Without `portal`, the inner check is dead
-// and the function always returns Ok.
+// Returns Err for portal+grab combinations when the portal feature is enabled.
+// Without portal, the check is dead and the function always returns Ok.
 #[allow(clippy::unnecessary_wraps)]
 fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Result<(), Error> {
-    let _ = backend;
-
     if matches!(grab, GrabConfiguration::Enabled) {
         #[cfg(feature = "portal")]
         if matches!(backend, Backend::Portal) {
@@ -413,6 +395,7 @@ fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Res
         }
     }
 
+    let _ = backend;
     Ok(())
 }
 
@@ -422,8 +405,10 @@ fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, Error> {
         GrabConfiguration::Enabled => {
             #[cfg(feature = "grab")]
             {
-                let forwarder = Box::new(crate::engine::forwarder::UinputForwarder::new()?);
-                Ok(GrabState::Enabled { forwarder })
+                let forwarder = crate::engine::forwarder::UinputForwarder::new()?;
+                Ok(GrabState::Enabled {
+                    forwarder: Box::new(forwarder),
+                })
             }
             #[cfg(not(feature = "grab"))]
             {

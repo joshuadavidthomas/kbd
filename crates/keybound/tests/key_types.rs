@@ -1,6 +1,5 @@
-#![cfg(feature = "evdev")]
-
-use evdev::KeyCode;
+use kbd_evdev::EvdevKeyExt;
+use kbd_evdev::KeyCodeExt;
 use keybound::Key;
 use keybound::Modifier;
 
@@ -16,15 +15,16 @@ fn key_round_trips_through_evdev_keycode() {
         Key::LeftCtrl,
         Key::RightSuper,
     ] {
-        let code: KeyCode = key.into();
-        let reparsed = Key::from(code);
+        let code = key.to_key_code();
+        let reparsed = code.to_key();
         assert_eq!(reparsed, key, "failed for {key:?}");
     }
 }
 
 #[test]
 fn unknown_evdev_keycode_maps_to_unknown_key() {
-    assert_eq!(Key::from(KeyCode::KEY_VOLUMEUP), Key::Unknown);
+    use evdev::KeyCode;
+    assert_eq!(KeyCode::KEY_VOLUMEUP.to_key(), Key::Unknown);
 }
 
 #[test]

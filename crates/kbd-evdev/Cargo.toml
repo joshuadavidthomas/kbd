@@ -11,7 +11,9 @@ categories = ["os::linux-apis"]
 
 [dependencies]
 evdev = { workspace = true }
-kbd-core = { workspace = true, features = ["evdev"] }
+kbd-core = { workspace = true }
+libc = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true

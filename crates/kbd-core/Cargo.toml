@@ -11,10 +11,8 @@ categories = ["data-structures"]
 
 [features]
 serde = ["dep:serde"]
-evdev = ["dep:evdev"]
 
 [dependencies]
-evdev = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
 

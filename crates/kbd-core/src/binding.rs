@@ -5,9 +5,8 @@
 //! holds per-binding configuration. [`RegisteredBinding`] pairs them with
 //! a hotkey and action for engine storage.
 //!
-//! Device filtering ([`DeviceFilter`]) is defined here behind the `evdev`
-//! feature flag — it's a pure data type describing device match criteria
-//! (name patterns, USB IDs).
+//! Device filtering ([`DeviceFilter`]) is a pure data type describing
+//! device match criteria (name patterns, USB IDs).
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -64,7 +63,6 @@ pub enum OverlayVisibility {
 }
 
 /// Device filter expression for restricting binding scope.
-#[cfg(feature = "evdev")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DeviceFilter {
     /// Match devices whose names fit a glob-like pattern.
@@ -81,7 +79,6 @@ pub struct BindingOptions {
     description: Option<Box<str>>,
     /// Whether this binding appears in hotkey overlays and help screens.
     overlay_visibility: OverlayVisibility,
-    #[cfg(feature = "evdev")]
     device_filter: Option<DeviceFilter>,
 }
 
@@ -123,14 +120,12 @@ impl BindingOptions {
         self
     }
 
-    #[cfg(feature = "evdev")]
     #[must_use]
     pub fn with_device_filter(mut self, device_filter: DeviceFilter) -> Self {
         self.device_filter = Some(device_filter);
         self
     }
 
-    #[cfg(feature = "evdev")]
     #[must_use]
     pub fn device_filter(&self) -> Option<&DeviceFilter> {
         self.device_filter.as_ref()
