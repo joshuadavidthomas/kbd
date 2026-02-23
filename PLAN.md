@@ -277,6 +277,11 @@ keybound/                         workspace root
 │   ├── kbd-xkb/                  Keyboard layout awareness
 │   ├── kbd-derive/               #[derive(Bindings)] proc macro
 │   └── keybound/                 Facade — HotkeyManager, ties it all together
+│
+│  Built on demand:
+│   ├── kbd-termion/              termion key event conversions
+│   ├── kbd-makepad/              Makepad key type conversions
+│   └── kbd-gtk/                  GTK native key event conversions
 ```
 
 ### What goes where
@@ -319,6 +324,7 @@ keybound/                         workspace root
   `ModifiersState` and `kbd-core` types
 - Mechanical 1:1 mapping — winit's `KeyCode` derives from the same
   W3C spec as `keyboard_types::Code`, just a different Rust type
+- Also covers frameworks built on winit (floem, GPUI)
 - Deps: `winit`, `kbd-core`
 
 **`kbd-iced`** — iced bridge.
@@ -327,6 +333,15 @@ keybound/                         workspace root
   `kbd-core` types
 - iced independently mirrors winit's key types from the W3C spec
 - Deps: `iced_core`, `kbd-core`
+
+**Built on demand** — created when a downstream project needs them:
+
+- **`kbd-termion`** — termion's `Key` enum bakes modifiers into
+  variants (`Ctrl(char)`, `Alt(char)`). Deps: `termion`, `kbd-core`.
+- **`kbd-makepad`** — Makepad has custom `KeyCode` with its own
+  platform bindings (no winit). Deps: `makepad-platform`, `kbd-core`.
+- **`kbd-gtk`** — Bridge for GTK native key events. Deps: `gtk4`,
+  `kbd-core`.
 
 **`kbd-evdev`** — Linux input device layer.
 
@@ -373,15 +388,18 @@ Each boundary is a **dependency boundary**:
 | Crate | Key external dep | Why separate |
 |-------|-----------------|--------------|
 | `kbd-core` | `keyboard-types` | Platform-agnostic, minimal deps |
-| `kbd-crossterm` | `crossterm` | TUI apps only, different key model (logical) |
-| `kbd-winit` | `winit` | winit apps only, own W3C-derived key enum |
-| `kbd-iced` | `iced_core` | iced apps only, mirrors winit's key types |
-| `kbd-egui` | `egui` | egui apps only, custom key types |
+| `kbd-crossterm` | `crossterm` | TUI apps, logical key model |
+| `kbd-winit` | `winit` | winit/floem/GPUI apps, own W3C key enum |
+| `kbd-iced` | `iced_core` | iced apps, mirrors winit's types |
+| `kbd-egui` | `egui` | egui apps, custom key types |
 | `kbd-evdev` | `evdev` | Linux C library, needs `/dev/input` access |
 | `kbd-portal` | `ashpd` (async DBus) | Pulls in async runtime, different paradigm |
 | `kbd-xkb` | `xkbcommon` | Optional C library, not everyone needs layouts |
 | `kbd-derive` | `syn`/`quote` | Proc macros must be separate crates (Rust req) |
 | `keybound` | all of the above | Glue + the threaded manager |
+| `kbd-termion` | `termion` | On demand: legacy TUI, mods baked into keys |
+| `kbd-makepad` | `makepad-platform` | On demand: custom platform bindings |
+| `kbd-gtk` | `gtk4` | On demand: GTK native key events |
 
 Things that stay as feature flags, not crates:
 
@@ -400,13 +418,16 @@ mechanical 1:1 mappings since the variant names match.
 | Consumer | Depends on |
 |----------|-----------|
 | TUI app (ratatui / crossterm) | `kbd-core` + `kbd-crossterm` |
-| winit app | `kbd-core` + `kbd-winit` |
+| TUI app (termion) | `kbd-core` + `kbd-termion` |
+| winit / floem / GPUI app | `kbd-core` + `kbd-winit` |
 | iced app | `kbd-core` + `kbd-iced` |
-| Dioxus app | `kbd-core` (uses `keyboard_types::Code` natively) |
+| Dioxus app | `kbd-core` (uses `keyboard_types::Code` directly) |
 | egui app | `kbd-core` + `kbd-egui` |
+| Makepad app | `kbd-core` + `kbd-makepad` |
+| GTK app (gtk-rs) | `kbd-core` + `kbd-gtk` |
 | Compositor (Niri-like) | `kbd-core` + `kbd-evdev` (direct, no manager) |
 | App + layout awareness | `kbd-core` + `kbd-xkb` |
-| Tauri-style app needing global hotkeys | `keybound` |
+| Tauri app (Linux) | `keybound` (replaces Tauri's X11-only global-shortcut plugin) |
 | Flatpak sandboxed app | `keybound` with `kbd-portal` |
 | Declarative bindings | `keybound` + `kbd-derive` |
 
@@ -516,9 +537,11 @@ crates since they define their own key enums from the same W3C spec.
 ### 3.12 Framework integration crates
 
 Create conversion crates for frameworks that don't use
-`keyboard_types::Code` natively. Only Dioxus uses it directly — winit
-and iced define their own key enums from the same W3C spec (close
-variant names, different Rust types).
+`keyboard_types::Code` natively. Only Dioxus uses it directly — every
+other framework defines its own key types (from the same W3C spec for
+GUI frameworks, or logical character models for TUI).
+
+Priority crates (build now):
 
 - [ ] Create `crates/kbd-crossterm/` with `Cargo.toml` (deps:
       `crossterm`, `kbd-core`).
@@ -535,6 +558,7 @@ variant names, different Rust types).
       reverse. Mechanical 1:1 mapping (same W3C spec, different type).
 - [ ] `WinitEventExt` trait: extract `Key` + `Vec<Modifier>` from
       winit's `KeyEvent` + `ModifiersState`.
+- [ ] Also covers floem and GPUI (both built on winit).
 - [ ] Tests: round-trip for all key categories.
 - [ ] Create `crates/kbd-iced/` with `Cargo.toml` (deps: `iced_core`,
       `kbd-core`).
@@ -546,7 +570,18 @@ variant names, different Rust types).
 - [ ] `EguiKeyExt` trait: `egui::Key → Key`.
 - [ ] `EguiModifiersExt` trait: `egui::Modifiers → Vec<Modifier>`.
 - [ ] Tests: round-trip for common keys, modifier conversion.
-- [ ] All crates compile. `cargo build --workspace` succeeds.
+- [ ] All priority crates compile. `cargo build --workspace` succeeds.
+
+On-demand crates (built when a downstream project needs them):
+
+- [ ] `kbd-termion`: termion's `Key` enum bakes modifiers into
+      variants (`Ctrl(char)`, `Alt(char)`, `ShiftLeft`). Needs
+      decomposition into `Key` + `Modifier`.
+- [ ] `kbd-makepad`: Makepad has custom `KeyCode` with its own
+      platform bindings (no winit). Conversion straightforward but
+      niche.
+- [ ] `kbd-gtk`: GTK native key events (`gdk4::Key`, `ModifierType`).
+      Different paradigm from W3C — GDK keysyms, not physical codes.
 
 ### Phase 3.5 gate
 
@@ -558,7 +593,7 @@ variant names, different Rust types).
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire keybound facade | 7/7 |
 | 3.11 Adopt keyboard-types | 0/13 |
-| 3.12 Framework integration crates | 0/18 |
+| 3.12 Framework integration crates | 0/20 (priority) |
 
 ---
 
