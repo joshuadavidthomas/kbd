@@ -61,6 +61,12 @@ Use `keybound` with grab mode enabled. The library intercepts events
 via evdev, matches them, and can emit different keys through a virtual
 uinput device.
 
+**You're building a Tauri app that needs global hotkeys on Linux.**
+Tauri's `tauri-plugin-global-shortcut` (backed by the `global-hotkey`
+crate) uses X11 `XGrabKey`, which doesn't work on Wayland. Use
+`keybound` as your Linux backend — evdev works on both X11 and
+Wayland, and the portal backend handles sandboxed environments.
+
 **You're building a sandboxed Wayland app that wants shortcuts.** A
 Flatpak-packaged media player that needs push-to-talk or media
 controls without requiring device access. Use `keybound` with the
@@ -112,8 +118,11 @@ key types from the same W3C spec, so conversions are mechanical 1:1
 mappings. crossterm and termion use logical key models (characters,
 not physical positions) — slightly different but straightforward.
 
-Not every crate needs to exist at launch. Priority is crossterm,
-winit, iced, and egui — the rest are built on demand.
+Not every crate needs to exist at launch. `kbd-crossterm` is the
+priority — it proves the conversion pattern and serves the TUI
+ecosystem (ratatui). The GUI bridges (`kbd-winit`, `kbd-iced`,
+`kbd-egui`) are built when downstream projects adopt `kbd-core`.
+The rest (`kbd-termion`, `kbd-makepad`, `kbd-gtk`) are niche.
 
 **Backend crates** — platform-specific input and device access:
 
@@ -606,100 +615,106 @@ eventfd is added to the engine's poll set alongside device fds.
 
 ## Module structure
 
+The workspace split (Phase 3.5) distributes code across crates. Each
+crate has a focused responsibility:
+
 ```
-src/
-  lib.rs              Public facade. Re-exports the curated API surface.
-  error.rs            Error type (thiserror).
+crates/
+  kbd-core/src/
+    lib.rs              Public API surface for the platform-agnostic engine.
+    key.rs              Key (newtype over keyboard_types::Code), Modifier,
+                        Hotkey, HotkeySequence. Parsing, display, aliases.
+    action.rs           Action enum (Callback, EmitKey, PushLayer, etc.).
+    binding.rs          Binding, BindingOptions, BindingId.
+    layer.rs            Layer, LayerOptions.
+    matcher.rs          Matcher — synchronous binding engine. Layers,
+                        sequences, key state, press cache.
+    key_state.rs        What's currently pressed. Modifier state derived here.
+    error.rs            Core error types (parse, conflict, layer).
 
-  key.rs              Key, Modifier, Hotkey, HotkeySequence.
-                      Parsing (FromStr), display, evdev conversions (From/Into).
-                      Single source of truth for all key-related logic.
+  kbd-crossterm/src/
+    lib.rs              CrosstermKeyExt, CrosstermEventExt traits.
+                        crossterm KeyCode/KeyEvent → Key/Hotkey conversion.
 
-  action.rs           Action enum.
-  binding.rs          Binding, BindingOptions. Pattern enum (or patterns
-                      are just Hotkey / HotkeySequence / TapHold config).
-  layer.rs            Layer, LayerOptions.
+  kbd-winit/src/        (on demand)
+    lib.rs              WinitKeyExt — winit KeyCode ↔ Key. 1:1 W3C mapping.
 
-  manager.rs          HotkeyManager. Thin public API.
-                      Sends commands, returns handles.
-  handle.rs           Handle (RAII unregistration via command).
+  kbd-iced/src/         (on demand)
+    lib.rs              IcedKeyExt — iced key::Code ↔ Key.
 
-  engine/
-    mod.rs            Engine struct, event loop, core matching/dispatch.
-    types.rs          GrabState, KeyEventDisposition, LayerEffect, MatchOutcome,
-                      LayerStackEntry, LayerTimeout.
-    binding.rs        RegisteredBinding (engine-internal binding storage).
-    command.rs        Command enum, CommandSender (manager→engine channel).
-    runtime.rs        EngineRuntime (spawn, shutdown, join).
-    wake.rs           WakeFd (eventfd wrapper), LoopControl.
-    key_state.rs      What's currently pressed. Modifier state derived here.
-    matcher.rs        Binding lookup against current state.
-    sequence.rs       Sequence state machine (partial progress, timeouts).
-    tap_hold.rs       Tap-hold state machine (pending, resolved).
-    devices.rs        Device discovery, hotplug, capability detection.
-    forwarder.rs      uinput virtual device for event forwarding/emission.
+  kbd-egui/src/         (on demand)
+    lib.rs              EguiKeyExt, EguiModifiersExt — egui Key → Key.
 
-  backend/
-    mod.rs            Backend trait + selection logic.
-    evdev.rs          evdev backend.
-    portal.rs         XDG portal backend.
+  kbd-evdev/src/
+    lib.rs              Extension traits: evdev KeyCode ↔ Key.
+    devices.rs          Device discovery, hotplug (inotify), capability detection.
+    forwarder.rs        uinput virtual device for event forwarding/emission.
 
-  events.rs           HotkeyEvent, async event stream (feature-gated).
+  kbd-portal/src/
+    lib.rs              XDG GlobalShortcuts portal (DBus via ashpd).
+
+  kbd-xkb/src/
+    lib.rs              xkbcommon integration: keycode → keysym, layout detection.
+
+  kbd-derive/src/
+    lib.rs              #[derive(Bindings)] proc macro (future).
+
+  keybound/src/
+    lib.rs              Facade. Re-exports kbd-core types.
+    manager.rs          HotkeyManager — thin command sender.
+    handle.rs           Handle — RAII unregistration via command.
+    engine/
+      mod.rs            Engine struct, event loop, core matching/dispatch.
+      types.rs          GrabState, KeyEventDisposition, MatchOutcome, etc.
+      command.rs        Command enum, CommandSender (manager→engine channel).
+      runtime.rs        EngineRuntime (spawn, shutdown, join).
+      wake.rs           WakeFd (eventfd wrapper), LoopControl.
+    backend/
+      mod.rs            Backend trait + selection logic.
+      evdev.rs          evdev backend (delegates to kbd-evdev).
+      portal.rs         Portal backend (delegates to kbd-portal).
+    events.rs           HotkeyEvent, async event stream (feature-gated).
 ```
 
-**What's gone:**
+**What's gone from v0:**
 
-- `config.rs` — the `ActionMap` / `HotkeyConfig` / `RegisteredConfig`
-  application framework. Replaced by serde derives on the core types (`Key`,
-  `Modifier`, `Hotkey`, `Action`, `Layer`) so users compose them into their
-  own config structs.
-- `manager/callbacks.rs`, `manager/registration.rs`, `manager/handles.rs`,
-  `manager/options.rs` — the manager becomes thin enough to not need
-  submodules. Handle moves to its own file.
-- `listener/` (the entire directory) — replaced by `engine/`. The "listener"
-  concept is subsumed by the engine, which both listens for events and
-  processes commands.
-- `mode/` (six files) — replaced by `layer.rs`. One file. The layer stack
-  is managed by the engine, not a separate `ModeRegistry`.
-- `key_state.rs` — moves into the engine where it belongs.
-- `tap_hold.rs` (top-level) — moves into the engine.
-
-**What's new:**
-
-- `action.rs` — the `Action` enum, first-class output vocabulary.
-- `binding.rs` — the unified `Binding` type.
-- `engine/` — the engine that owns all state.
-- `engine/matcher.rs` — binding lookup (replaces the scattered dispatch
-  modules).
+- `config.rs` — the application framework (`ActionMap`, `HotkeyConfig`,
+  `RegisteredConfig`). Users compose their own config using serde on
+  the core types.
+- `listener/` — replaced by `engine/` with message passing.
+- `mode/` (six files) — replaced by `layer.rs` in `kbd-core`.
+- Duplicated key/modifier logic — shared via the type system.
 
 ## Type inventory
 
 What types does a user need to know? Roughly:
 
-**Always needed (core):**
-- `HotkeyManager` — entry point
-- `Key` — a key
+**`kbd-core` types (any consumer):**
+- `Key` — a key (newtype over `keyboard_types::Code`)
 - `Modifier` — Ctrl/Shift/Alt/Super
 - `Hotkey` — key + modifiers, parseable from strings
-- `Handle` — keeps a binding alive
+- `Matcher` — synchronous binding engine, the core of everything
+- `MatchResult` — what the matcher decided (matched, pending, swallowed, no match)
+- `Action` — what happens on match (callback, emit key, push layer, etc.)
+- `Layer` / `LayerOptions` — named binding groups
+- `HotkeySequence` — multi-step combos
+- `BindingOptions` — per-binding configuration
 - `Error` — what went wrong
 
-**When using power features:**
-- `Action` — what happens on match (callback is just one variant)
-- `Layer` / `LayerOptions` — named binding groups
-- `TapHoldOptions` — timing for dual-function keys
-- `HotkeySequence` — multi-step combos
-- `BindingOptions` — per-binding configuration (device filter, passthrough,
-  debounce)
+**`keybound` facade types (global hotkey consumers):**
+- `HotkeyManager` — entry point for global hotkeys
+- `Handle` — keeps a binding alive (RAII unregistration)
 - `DeviceFilter` — restrict to specific devices
 - `Backend` — explicit backend selection
+- `ConsumePreference` — observe vs intercept intent
 
-**When using async:**
+**When using async (feature-gated):**
 - `HotkeyEvent` — event notifications
 - `HotkeyEventStream` — async stream
 
-That's ~15 types, down from 22+, and with a clearer hierarchy. The core 6
-cover most use cases. The rest are opt-in for power users.
+In-app consumers (TUI, GUI) use `kbd-core` types directly with the
+`Matcher`. Global hotkey consumers use `keybound`'s `HotkeyManager`,
+which drives a `Matcher` on an engine thread internally.
 
 ## What the simple API looks like
 
