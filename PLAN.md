@@ -416,13 +416,13 @@ match matcher.process(hotkey, transition) {
 
 ### 3.10 Rewire `keybound` facade
 
-- [ ] `keybound` re-exports all `kbd-core` public types — existing public API unchanged.
-- [ ] Remove stub re-export files (`key.rs`, `action.rs`, `binding.rs`, `layer.rs`, `engine/key_state.rs`) — collapse into direct `pub use kbd_core::` re-exports in `lib.rs` and direct `use kbd_core::` imports internally.
-- [ ] Remove `evdev` feature flag and `evdev` dependency from `kbd-core`. All evdev conversions live in `kbd-evdev` behind extension traits (§3.8). `kbd-core` is truly zero platform deps (`thiserror` only).
-- [ ] `HotkeyManager` uses `kbd-evdev` for device management (behind `evdev` feature).
-- [ ] `HotkeyManager` uses `kbd-portal` for portal backend (behind `portal` feature).
-- [ ] Existing integration tests pass against the `keybound` crate: `cargo test -p keybound`.
-- [ ] `cargo test --workspace` passes.
+- [x] `keybound` re-exports all `kbd-core` public types — existing public API unchanged.
+- [x] Remove stub re-export files (`key.rs`, `action.rs`, `binding.rs`, `layer.rs`, `engine/key_state.rs`) — collapse into direct `pub use kbd_core::` re-exports in `lib.rs` and direct `use kbd_core::` imports internally.
+- [x] Remove `evdev` feature flag and `evdev` dependency from `kbd-core`. All evdev conversions live in `kbd-evdev` behind extension traits (§3.8). `kbd-core` is truly zero platform deps (`thiserror` only).
+- [x] `HotkeyManager` uses `kbd-evdev` for device management (behind `evdev` feature).
+- [x] `HotkeyManager` uses `kbd-portal` for portal backend (behind `portal` feature).
+- [x] Existing integration tests pass against the `keybound` crate: `cargo test -p keybound`.
+- [x] `cargo test --workspace` passes.
 
 ### 3.11 Windowing library conversions
 
@@ -439,7 +439,7 @@ match matcher.process(hotkey, transition) {
 | 3.7 Move types to kbd-core | 5/5 |
 | 3.8 Move evdev to kbd-evdev | 5/5 |
 | 3.9 Public Matcher | 6/6 |
-| 3.10 Rewire keybound facade | 0/7 |
+| 3.10 Rewire keybound facade | 7/7 |
 | 3.11 Windowing conversions | 0/4 |
 
 ---
