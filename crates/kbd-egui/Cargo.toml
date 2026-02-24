@@ -1,0 +1,15 @@
+[package]
+name = "kbd-egui"
+version = "0.1.0"
+description = "egui bridge for kbd — converts egui key events and modifiers to kbd types."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+egui.workspace = true
+kbd-core.workspace = true
+
+[lints]
+workspace = true
