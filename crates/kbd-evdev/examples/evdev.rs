@@ -17,7 +17,6 @@ use kbd_core::Key;
 use kbd_core::KeyTransition;
 use kbd_core::MatchResult;
 use kbd_core::Matcher;
-use kbd_core::Modifier;
 use kbd_evdev::KeyCodeExt;
 
 fn main() {
@@ -41,35 +40,32 @@ fn main() {
     }
     println!();
 
-    // Set up a matcher
+    // Set up a matcher with simple (non-modifier) bindings.
+    // evdev gives raw key events without modifier state tracking —
+    // for Ctrl+S style hotkeys, use kbd-global which handles that.
     let mut matcher = Matcher::new();
     matcher
         .register(
-            Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-            Action::from(|| println!("  → Save!")),
+            Hotkey::new(Key::A),
+            Action::from(|| println!("  → A pressed!")),
         )
-        .expect("register Ctrl+S");
+        .expect("register A");
     matcher
         .register(
-            Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
-            Action::from(|| println!("  → Quit!")),
+            Hotkey::new(Key::ESCAPE),
+            Action::from(|| println!("  → Escape!")),
         )
-        .expect("register Ctrl+Q");
+        .expect("register Escape");
 
     println!("2. Simulated event pipeline (no device access needed):");
-    // Simulate what the engine does: convert evdev key codes and feed to matcher
     let simulated_events = [
+        ("KEY_A press", KeyCode::KEY_A, KeyTransition::Press),
+        ("KEY_A release", KeyCode::KEY_A, KeyTransition::Release),
+        ("KEY_ESC press", KeyCode::KEY_ESC, KeyTransition::Press),
         (
-            "KEY_LEFTCTRL press",
-            KeyCode::KEY_LEFTCTRL,
+            "KEY_B press (no binding)",
+            KeyCode::KEY_B,
             KeyTransition::Press,
-        ),
-        ("KEY_S press", KeyCode::KEY_S, KeyTransition::Press),
-        ("KEY_S release", KeyCode::KEY_S, KeyTransition::Release),
-        (
-            "KEY_LEFTCTRL release",
-            KeyCode::KEY_LEFTCTRL,
-            KeyTransition::Release,
         ),
     ];
     for (label, evdev_key, transition) in simulated_events {

@@ -13,6 +13,7 @@
 use kbd_core::Action;
 use kbd_core::BindingId;
 use kbd_core::BindingInfo;
+use kbd_core::BindingLocation;
 use kbd_core::BindingOptions;
 use kbd_core::Hotkey;
 use kbd_core::Key;
@@ -115,7 +116,7 @@ fn print_bindings(bindings: &[BindingInfo]) {
 }
 
 fn format_binding(b: &BindingInfo) -> String {
-    let desc = b.description.as_deref().map_or("(no description)", |d| d);
+    let desc = b.description.as_deref().unwrap_or("(no description)");
     let shadow = match &b.shadowed {
         ShadowedStatus::Active => "active".to_string(),
         ShadowedStatus::ShadowedBy(name) => format!("shadowed by {name}"),
@@ -136,8 +137,8 @@ fn format_binding(b: &BindingInfo) -> String {
 
 fn format_location(b: &BindingInfo) -> String {
     match &b.location {
-        kbd_core::BindingLocation::Global => "global".to_string(),
-        kbd_core::BindingLocation::Layer(name) => format!("layer:{name}"),
+        BindingLocation::Global => "global".to_string(),
+        BindingLocation::Layer(name) => format!("layer:{name}"),
     }
 }
 
