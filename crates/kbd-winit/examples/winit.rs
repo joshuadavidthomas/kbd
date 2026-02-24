@@ -13,7 +13,6 @@ use kbd_core::MatchResult;
 use kbd_core::Matcher;
 use kbd_core::Modifier;
 use kbd_winit::WinitEventExt;
-use kbd_winit::WinitModifiersExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
@@ -84,20 +83,16 @@ impl ApplicationHandler for App {
             }
             WindowEvent::ModifiersChanged(mods) => {
                 self.modifiers = mods.state();
-                let kbd_mods: Vec<_> = self.modifiers.to_modifiers();
-                println!("Modifiers changed: {kbd_mods:?}");
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if !event.state.is_pressed() {
                     return;
                 }
 
-                // Convert to a kbd-core Hotkey
                 let Some(hotkey) = event.to_hotkey(self.modifiers) else {
                     return;
                 };
 
-                // Process through the matcher
                 match self.matcher.process(&hotkey, KeyTransition::Press) {
                     MatchResult::Matched { action, .. } => {
                         println!("{hotkey} → matched!");
