@@ -5,10 +5,20 @@
 //! cargo run -p kbd-tao --example tao
 //! ```
 
-use kbd_core::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
-use kbd_tao::{TaoEventExt, TaoKeyExt, TaoModifiersExt};
-use tao::event::{Event, WindowEvent};
-use tao::event_loop::{ControlFlow, EventLoop};
+use kbd_core::Action;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::KeyTransition;
+use kbd_core::MatchResult;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
+use kbd_tao::TaoEventExt;
+use kbd_tao::TaoKeyExt;
+use kbd_tao::TaoModifiersExt;
+use tao::event::Event;
+use tao::event::WindowEvent;
+use tao::event_loop::ControlFlow;
+use tao::event_loop::EventLoop;
 use tao::keyboard::ModifiersState;
 use tao::window::WindowBuilder;
 
@@ -51,8 +61,8 @@ fn main() {
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
-        match event {
-            Event::WindowEvent { event, .. } => match event {
+        if let Event::WindowEvent { event, .. } = event {
+            match event {
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
                 }
@@ -71,12 +81,9 @@ fn main() {
                     print!("tao: {:?} → kbd-core: {:?} → ", event.physical_key, key);
 
                     // Convert to a kbd-core Hotkey
-                    let hotkey = match event.to_hotkey(modifiers) {
-                        Some(hk) => hk,
-                        None => {
-                            println!("(unmappable)");
-                            return;
-                        }
+                    let Some(hotkey) = event.to_hotkey(modifiers) else {
+                        println!("(unmappable)");
+                        return;
                     };
 
                     // Process through the matcher
@@ -93,8 +100,7 @@ fn main() {
                     }
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
     });
 }

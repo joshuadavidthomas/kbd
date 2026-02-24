@@ -8,7 +8,10 @@
 //! cargo run -p kbd-core --example string_parsing
 //! ```
 
-use kbd_core::{Hotkey, HotkeySequence, Key, Modifier};
+use kbd_core::Hotkey;
+use kbd_core::HotkeySequence;
+use kbd_core::Key;
+use kbd_core::Modifier;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse single hotkeys from strings
@@ -75,10 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Constructed: {original}");
     println!("  As string:   {text}");
     println!("  Parsed back: {parsed}");
-    println!(
-        "  Equal: {}",
-        if original == parsed { "yes" } else { "no" }
-    );
+    println!("  Equal: {}", if original == parsed { "yes" } else { "no" });
     println!();
 
     // Error cases — these all fail gracefully

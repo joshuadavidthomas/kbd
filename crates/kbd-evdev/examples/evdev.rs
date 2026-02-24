@@ -11,7 +11,13 @@
 use std::path::Path;
 
 use evdev::KeyCode;
-use kbd_core::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
+use kbd_core::Action;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::KeyTransition;
+use kbd_core::MatchResult;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
 use kbd_evdev::KeyCodeExt;
 
 fn main() {
@@ -53,10 +59,18 @@ fn main() {
     println!("2. Simulated event pipeline (no device access needed):");
     // Simulate what the engine does: convert evdev key codes and feed to matcher
     let simulated_events = [
-        ("KEY_LEFTCTRL press", KeyCode::KEY_LEFTCTRL, KeyTransition::Press),
+        (
+            "KEY_LEFTCTRL press",
+            KeyCode::KEY_LEFTCTRL,
+            KeyTransition::Press,
+        ),
         ("KEY_S press", KeyCode::KEY_S, KeyTransition::Press),
         ("KEY_S release", KeyCode::KEY_S, KeyTransition::Release),
-        ("KEY_LEFTCTRL release", KeyCode::KEY_LEFTCTRL, KeyTransition::Release),
+        (
+            "KEY_LEFTCTRL release",
+            KeyCode::KEY_LEFTCTRL,
+            KeyTransition::Release,
+        ),
     ];
     for (label, evdev_key, transition) in simulated_events {
         let key: Key = evdev_key.to_key();
@@ -69,62 +83,70 @@ fn main() {
                 }
             }
             MatchResult::NoMatch => println!("no match"),
+            MatchResult::Swallowed => println!("swallowed"),
+            MatchResult::Pending { .. } => println!("pending..."),
             MatchResult::Ignored => println!("ignored"),
-            _ => println!("other"),
         }
     }
     println!();
 
     // Try to discover devices
     println!("3. Device discovery:");
+    discover_devices();
+}
+
+fn discover_devices() {
     let input_dir = Path::new("/dev/input");
     if !input_dir.exists() {
         println!("  /dev/input not found (not running on Linux?)");
         return;
     }
 
-    match std::fs::read_dir(input_dir) {
-        Ok(entries) => {
-            let mut found = false;
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.starts_with("event") {
-                        match evdev::Device::open(&path) {
-                            Ok(device) => {
-                                let dev_name = device.name().unwrap_or("(unknown)");
-                                let has_keys = device
-                                    .supported_keys()
-                                    .is_some_and(|keys| keys.contains(KeyCode::KEY_A));
-                                println!(
-                                    "  {} — {} {}",
-                                    path.display(),
-                                    dev_name,
-                                    if has_keys {
-                                        "(keyboard)"
-                                    } else {
-                                        "(not a keyboard)"
-                                    },
-                                );
-                                found = true;
-                            }
-                            Err(e) => {
-                                if e.kind() == std::io::ErrorKind::PermissionDenied {
-                                    println!("  {} — permission denied", path.display());
-                                    println!();
-                                    println!("  Tip: add your user to the 'input' group:");
-                                    println!("    sudo usermod -aG input $USER");
-                                    return;
-                                }
-                            }
-                        }
+    let entries = match std::fs::read_dir(input_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            println!("  Cannot read /dev/input: {e}");
+            return;
+        }
+    };
+
+    let mut found = false;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && name.starts_with("event")
+        {
+            match evdev::Device::open(&path) {
+                Ok(device) => {
+                    let dev_name = device.name().unwrap_or("(unknown)");
+                    let has_keys = device
+                        .supported_keys()
+                        .is_some_and(|keys| keys.contains(KeyCode::KEY_A));
+                    println!(
+                        "  {} — {} {}",
+                        path.display(),
+                        dev_name,
+                        if has_keys {
+                            "(keyboard)"
+                        } else {
+                            "(not a keyboard)"
+                        },
+                    );
+                    found = true;
+                }
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        println!("  {} — permission denied", path.display());
+                        println!();
+                        println!("  Tip: add your user to the 'input' group:");
+                        println!("    sudo usermod -aG input $USER");
+                        return;
                     }
                 }
             }
-            if !found {
-                println!("  No event devices found");
-            }
         }
-        Err(e) => println!("  Cannot read /dev/input: {e}"),
+    }
+    if !found {
+        println!("  No event devices found");
     }
 }

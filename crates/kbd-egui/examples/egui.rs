@@ -11,9 +11,18 @@
 //! cargo run -p kbd-egui --example egui
 //! ```
 
-use egui::{Key as EguiKey, Modifiers};
-use kbd_core::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
-use kbd_egui::{EguiEventExt, EguiKeyExt, EguiModifiersExt};
+use egui::Key as EguiKey;
+use egui::Modifiers;
+use kbd_core::Action;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::KeyTransition;
+use kbd_core::MatchResult;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
+use kbd_egui::EguiEventExt;
+use kbd_egui::EguiKeyExt;
+use kbd_egui::EguiModifiersExt;
 
 fn main() {
     let mut matcher = Matcher::new();
@@ -57,7 +66,14 @@ fn main() {
         ("SHIFT", Modifiers::SHIFT),
         ("ALT", Modifiers::ALT),
         ("COMMAND", Modifiers::COMMAND),
-        ("CTRL | SHIFT", Modifiers { ctrl: true, shift: true, ..Default::default() }),
+        (
+            "CTRL | SHIFT",
+            Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+        ),
     ];
     for (label, mods) in modifier_sets {
         let kbd_mods = mods.to_modifiers();
@@ -67,6 +83,17 @@ fn main() {
 
     // Full event conversion and matcher integration
     println!("3. Full event → Matcher pipeline:");
+    demo_event_pipeline(&mut matcher);
+
+    println!("In a real eframe/egui app, use this pattern:");
+    println!("  for event in &ctx.input(|i| i.events.clone()) {{");
+    println!("      if let Some(hotkey) = event.to_hotkey() {{");
+    println!("          match matcher.process(&hotkey, KeyTransition::Press) {{ ... }}");
+    println!("      }}");
+    println!("  }}");
+}
+
+fn demo_event_pipeline(matcher: &mut Matcher) {
     let events = [
         (
             "Ctrl+S",
@@ -112,18 +139,13 @@ fn main() {
                         }
                     }
                     MatchResult::NoMatch => println!("no match"),
-                    _ => println!("other"),
+                    MatchResult::Swallowed => println!("swallowed"),
+                    MatchResult::Pending { .. } => println!("pending..."),
+                    MatchResult::Ignored => println!("ignored"),
                 }
             }
             None => println!("(unmappable or not a key event)"),
         }
     }
     println!();
-
-    println!("In a real eframe/egui app, use this pattern:");
-    println!("  for event in &ctx.input(|i| i.events.clone()) {{");
-    println!("      if let Some(hotkey) = event.to_hotkey() {{");
-    println!("          match matcher.process(&hotkey, KeyTransition::Press) {{ ... }}");
-    println!("      }}");
-    println!("  }}");
 }

@@ -8,12 +8,26 @@
 //! cargo run -p kbd-crossterm --example crossterm
 //! ```
 
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{
+    self,
+};
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::Event;
+use crossterm::event::KeyCode;
+use crossterm::event::KeyEventKind;
+use crossterm::event::{
+    self,
+};
 use crossterm::terminal;
-use kbd_core::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
+use kbd_core::Action;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::KeyTransition;
+use kbd_core::MatchResult;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
 use kbd_crossterm::CrosstermEventExt;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,54 +69,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_event_loop(matcher: &mut Matcher) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         // Poll for events with a 100ms timeout
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key_event) = event::read()? {
-                // Only process key press events (not release/repeat)
-                if key_event.kind != KeyEventKind::Press {
-                    continue;
-                }
-
-                // Exit on Ctrl+C
-                if key_event.code == KeyCode::Char('c')
-                    && key_event.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
-                {
-                    print!("\r\nExiting...\r\n");
-                    io::stdout().flush()?;
-                    return Ok(());
-                }
-
-                // Convert crossterm event to kbd-core Hotkey
-                let hotkey = match key_event.to_hotkey() {
-                    Some(hk) => hk,
-                    None => {
-                        print!("  (unmappable key: {key_event:?})\r\n");
-                        io::stdout().flush()?;
-                        continue;
-                    }
-                };
-
-                // Process through the matcher
-                print!("{hotkey}: ");
-                match matcher.process(&hotkey, KeyTransition::Press) {
-                    MatchResult::Matched { action, .. } => {
-                        if let Action::Callback(cb) = action {
-                            cb();
-                        }
-
-                        // Exit on Ctrl+Q
-                        if hotkey == Hotkey::new(Key::Q).modifier(Modifier::Ctrl) {
-                            print!("\r\nExiting via Ctrl+Q...\r\n");
-                            io::stdout().flush()?;
-                            return Ok(());
-                        }
-                    }
-                    MatchResult::NoMatch => print!("no match\r\n"),
-                    MatchResult::Swallowed => print!("swallowed\r\n"),
-                    MatchResult::Pending { .. } => print!("pending...\r\n"),
-                    MatchResult::Ignored => print!("ignored\r\n"),
-                }
-                io::stdout().flush()?;
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key_event) = event::read()?
+        {
+            // Only process key press events (not release/repeat)
+            if key_event.kind != KeyEventKind::Press {
+                continue;
             }
+
+            // Exit on Ctrl+C
+            if key_event.code == KeyCode::Char('c')
+                && key_event
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL)
+            {
+                print!("\r\nExiting...\r\n");
+                io::stdout().flush()?;
+                return Ok(());
+            }
+
+            // Convert crossterm event to kbd-core Hotkey
+            let Some(hotkey) = key_event.to_hotkey() else {
+                print!("  (unmappable key: {key_event:?})\r\n");
+                io::stdout().flush()?;
+                continue;
+            };
+
+            // Process through the matcher
+            print!("{hotkey}: ");
+            match matcher.process(&hotkey, KeyTransition::Press) {
+                MatchResult::Matched { action, .. } => {
+                    if let Action::Callback(cb) = action {
+                        cb();
+                    }
+
+                    // Exit on Ctrl+Q
+                    if hotkey == Hotkey::new(Key::Q).modifier(Modifier::Ctrl) {
+                        print!("\r\nExiting via Ctrl+Q...\r\n");
+                        io::stdout().flush()?;
+                        return Ok(());
+                    }
+                }
+                MatchResult::NoMatch => print!("no match\r\n"),
+                MatchResult::Swallowed => print!("swallowed\r\n"),
+                MatchResult::Pending { .. } => print!("pending...\r\n"),
+                MatchResult::Ignored => print!("ignored\r\n"),
+            }
+            io::stdout().flush()?;
         }
     }
 }

@@ -8,12 +8,18 @@
 //! cargo run -p kbd-global --example global
 //! ```
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
-use kbd_global::{
-    Action, BindingOptions, Error, Hotkey, HotkeyManager, Key, Layer, Modifier,
-};
+use kbd_global::Action;
+use kbd_global::BindingOptions;
+use kbd_global::Error;
+use kbd_global::Hotkey;
+use kbd_global::HotkeyManager;
+use kbd_global::Key;
+use kbd_global::Layer;
+use kbd_global::Modifier;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match run() {
@@ -46,10 +52,9 @@ fn run() -> Result<(), Error> {
     println!();
 
     // Simple registration — closure auto-converts to Action::Callback
-    let _save = manager.register(
-        Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-        || println!("  → Save!"),
-    )?;
+    let _save = manager.register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), || {
+        println!("  → Save!");
+    })?;
 
     // Registration with options — add metadata for introspection
     let _quit = manager.register_with_options(
@@ -81,10 +86,9 @@ fn run() -> Result<(), Error> {
 
     // Conflict detection — duplicate registration returns an error
     println!("Conflict detection:");
-    match manager.register(
-        Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-        || println!("duplicate"),
-    ) {
+    match manager.register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), || {
+        println!("duplicate");
+    }) {
         Ok(_) => println!("  (unexpected success)"),
         Err(e) => println!("  Duplicate rejected: {e}"),
     }
@@ -129,10 +133,7 @@ fn run() -> Result<(), Error> {
     let bindings = manager.list_bindings()?;
     println!("  Total bindings: {}", bindings.len());
     for b in &bindings {
-        let desc = b
-            .description
-            .as_deref()
-            .unwrap_or("(no description)");
+        let desc = b.description.as_deref().unwrap_or("(no description)");
         println!("    {}: {} [{:?}]", b.hotkey, desc, b.shadowed);
     }
     println!();
@@ -140,13 +141,10 @@ fn run() -> Result<(), Error> {
     // Use shared state in callbacks via Arc
     let counter = Arc::new(AtomicBool::new(false));
     let counter_clone = Arc::clone(&counter);
-    let _counted = manager.register(
-        Hotkey::new(Key::F2),
-        move || {
-            counter_clone.store(true, Ordering::Relaxed);
-            println!("  → F2 pressed (shared state updated)");
-        },
-    )?;
+    let _counted = manager.register(Hotkey::new(Key::F2), move || {
+        counter_clone.store(true, Ordering::Relaxed);
+        println!("  → F2 pressed (shared state updated)");
+    })?;
 
     println!("Press registered hotkeys to test. Ctrl+C to exit.");
     println!("  Ctrl+S  → Save");

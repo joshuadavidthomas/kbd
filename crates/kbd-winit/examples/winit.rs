@@ -5,13 +5,23 @@
 //! cargo run -p kbd-winit --example winit
 //! ```
 
-use kbd_core::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
-use kbd_winit::{WinitEventExt, WinitKeyExt, WinitModifiersExt};
+use kbd_core::Action;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::KeyTransition;
+use kbd_core::MatchResult;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
+use kbd_winit::WinitEventExt;
+use kbd_winit::WinitKeyExt;
+use kbd_winit::WinitModifiersExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::ActiveEventLoop;
+use winit::event_loop::EventLoop;
 use winit::keyboard::ModifiersState;
-use winit::window::{Window, WindowId};
+use winit::window::Window;
+use winit::window::WindowId;
 
 struct App {
     matcher: Matcher,
@@ -88,12 +98,9 @@ impl ApplicationHandler for App {
                 print!("winit: {:?} → kbd-core: {:?} → ", event.physical_key, key);
 
                 // Convert to a kbd-core Hotkey
-                let hotkey = match event.to_hotkey(self.modifiers) {
-                    Some(hk) => hk,
-                    None => {
-                        println!("(unmappable)");
-                        return;
-                    }
+                let Some(hotkey) = event.to_hotkey(self.modifiers) else {
+                    println!("(unmappable)");
+                    return;
                 };
 
                 // Process through the matcher

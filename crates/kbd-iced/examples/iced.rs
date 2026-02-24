@@ -11,10 +11,20 @@
 //! cargo run -p kbd-iced --example iced
 //! ```
 
-use iced_core::keyboard::key::{Code, Physical};
-use iced_core::keyboard::{Event, Modifiers};
-use kbd_core::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
-use kbd_iced::{IcedEventExt, IcedKeyExt, IcedModifiersExt};
+use iced_core::keyboard::Event;
+use iced_core::keyboard::Modifiers;
+use iced_core::keyboard::key::Code;
+use iced_core::keyboard::key::Physical;
+use kbd_core::Action;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::KeyTransition;
+use kbd_core::MatchResult;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
+use kbd_iced::IcedEventExt;
+use kbd_iced::IcedKeyExt;
+use kbd_iced::IcedModifiersExt;
 
 fn main() {
     let mut matcher = Matcher::new();
@@ -47,7 +57,10 @@ fn main() {
     // Physical key conversion (wraps Code with unidentified fallback)
     println!("2. Physical key conversion:");
     let physical = Physical::Code(Code::Space);
-    println!("  iced Physical::{physical:?} → kbd-core Key: {:?}", physical.to_key());
+    println!(
+        "  iced Physical::{physical:?} → kbd-core Key: {:?}",
+        physical.to_key()
+    );
     println!();
 
     // Modifier conversion
@@ -106,7 +119,9 @@ fn main() {
                         }
                     }
                     MatchResult::NoMatch => println!("no match"),
-                    _ => println!("other"),
+                    MatchResult::Swallowed => println!("swallowed"),
+                    MatchResult::Pending { .. } => println!("pending..."),
+                    MatchResult::Ignored => println!("ignored"),
                 }
             }
             None => println!("(unmappable)"),

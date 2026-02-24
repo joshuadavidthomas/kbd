@@ -9,9 +9,13 @@
 //! cargo run -p kbd-core --example matcher
 //! ```
 
-use kbd_core::{
-    Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier,
-};
+use kbd_core::Action;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::KeyTransition;
+use kbd_core::MatchResult;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
 
 fn main() {
     let mut matcher = Matcher::new();
@@ -76,9 +80,7 @@ fn main() {
                 steps_matched,
                 steps_remaining,
             } => {
-                println!(
-                    "  → Pending (matched {steps_matched}, remaining {steps_remaining})"
-                );
+                println!("  → Pending (matched {steps_matched}, remaining {steps_remaining})");
             }
             MatchResult::NoMatch => println!("  → No match"),
             MatchResult::Swallowed => println!("  → Swallowed"),

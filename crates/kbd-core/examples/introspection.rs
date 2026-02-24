@@ -10,71 +10,21 @@
 //! cargo run -p kbd-core --example introspection
 //! ```
 
-use kbd_core::{
-    Action, BindingId, BindingInfo, BindingOptions, Hotkey, Key, Layer, Matcher, Modifier,
-    OverlayVisibility, RegisteredBinding, ShadowedStatus,
-};
+use kbd_core::Action;
+use kbd_core::BindingId;
+use kbd_core::BindingInfo;
+use kbd_core::BindingOptions;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::Layer;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
+use kbd_core::OverlayVisibility;
+use kbd_core::RegisteredBinding;
+use kbd_core::ShadowedStatus;
 
 fn main() {
-    let mut matcher = Matcher::new();
-
-    // Register global bindings with metadata
-    let copy_id = matcher
-        .register(
-            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-            Action::from(|| {}),
-        )
-        .expect("register Ctrl+C");
-
-    matcher
-        .register_binding(
-            RegisteredBinding::new(
-                BindingId::new(),
-                Hotkey::new(Key::V).modifier(Modifier::Ctrl),
-                Action::from(|| {}),
-            )
-            .with_options(
-                BindingOptions::default().with_description("Paste from clipboard"),
-            ),
-        )
-        .expect("register Ctrl+V");
-
-    matcher
-        .register_binding(
-            RegisteredBinding::new(
-                BindingId::new(),
-                Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-                Action::from(|| {}),
-            )
-            .with_options(BindingOptions::default().with_description("Save file")),
-        )
-        .expect("register Ctrl+S");
-
-    // A hidden binding — won't appear in overlay views
-    matcher
-        .register_binding(
-            RegisteredBinding::new(
-                BindingId::new(),
-                Hotkey::new(Key::F12),
-                Action::from(|| {}),
-            )
-            .with_options(
-                BindingOptions::default()
-                    .with_description("Debug panel (internal)")
-                    .with_overlay_visibility(OverlayVisibility::Hidden),
-            ),
-        )
-        .expect("register F12");
-
-    // Define a layer that shadows Ctrl+C
-    let vim_layer = Layer::new("vim-normal")
-        .bind(
-            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-            Action::from(|| {}),
-        )
-        .bind(Hotkey::new(Key::D), Action::from(|| {}))
-        .description("Vim normal mode");
-    matcher.define_layer(vim_layer).expect("define vim-normal");
+    let (mut matcher, copy_id) = setup_matcher();
 
     println!("=== Introspection demo ===");
     println!();
@@ -152,7 +102,10 @@ fn main() {
     // Clean up — demonstrate that unregister works
     matcher.unregister(copy_id);
     println!();
-    println!("After unregistering global Ctrl+C: {} total bindings", matcher.list_bindings().len());
+    println!(
+        "After unregistering global Ctrl+C: {} total bindings",
+        matcher.list_bindings().len()
+    );
 }
 
 fn print_bindings(bindings: &[BindingInfo]) {
@@ -162,10 +115,7 @@ fn print_bindings(bindings: &[BindingInfo]) {
 }
 
 fn format_binding(b: &BindingInfo) -> String {
-    let desc = b
-        .description
-        .as_deref()
-        .map_or("(no description)", |d| d);
+    let desc = b.description.as_deref().map_or("(no description)", |d| d);
     let shadow = match &b.shadowed {
         ShadowedStatus::Active => "active".to_string(),
         ShadowedStatus::ShadowedBy(name) => format!("shadowed by {name}"),
@@ -189,4 +139,62 @@ fn format_location(b: &BindingInfo) -> String {
         kbd_core::BindingLocation::Global => "global".to_string(),
         kbd_core::BindingLocation::Layer(name) => format!("layer:{name}"),
     }
+}
+
+fn setup_matcher() -> (Matcher, BindingId) {
+    let mut matcher = Matcher::new();
+
+    // Register global bindings with metadata
+    let copy_id = matcher
+        .register(
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            Action::from(|| {}),
+        )
+        .expect("register Ctrl+C");
+
+    matcher
+        .register_binding(
+            RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::V).modifier(Modifier::Ctrl),
+                Action::from(|| {}),
+            )
+            .with_options(BindingOptions::default().with_description("Paste from clipboard")),
+        )
+        .expect("register Ctrl+V");
+
+    matcher
+        .register_binding(
+            RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+                Action::from(|| {}),
+            )
+            .with_options(BindingOptions::default().with_description("Save file")),
+        )
+        .expect("register Ctrl+S");
+
+    // A hidden binding — won't appear in overlay views
+    matcher
+        .register_binding(
+            RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::F12), Action::from(|| {}))
+                .with_options(
+                    BindingOptions::default()
+                        .with_description("Debug panel (internal)")
+                        .with_overlay_visibility(OverlayVisibility::Hidden),
+                ),
+        )
+        .expect("register F12");
+
+    // Define a layer that shadows Ctrl+C
+    let vim_layer = Layer::new("vim-normal")
+        .bind(
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            Action::from(|| {}),
+        )
+        .bind(Hotkey::new(Key::D), Action::from(|| {}))
+        .description("Vim normal mode");
+    matcher.define_layer(vim_layer).expect("define vim-normal");
+
+    (matcher, copy_id)
 }

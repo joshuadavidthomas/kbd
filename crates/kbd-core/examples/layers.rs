@@ -11,9 +11,103 @@
 
 use std::time::Duration;
 
-use kbd_core::{Action, Hotkey, Key, KeyTransition, Layer, MatchResult, Matcher, Modifier};
+use kbd_core::Action;
+use kbd_core::Hotkey;
+use kbd_core::Key;
+use kbd_core::KeyTransition;
+use kbd_core::Layer;
+use kbd_core::MatchResult;
+use kbd_core::Matcher;
+use kbd_core::Modifier;
 
 fn main() {
+    let mut matcher = setup_matcher();
+
+    println!("=== Layer stack demo ===");
+    println!();
+
+    // Without any layers, global bindings fire
+    println!("1. Global bindings (no layers active):");
+    process(&mut matcher, "H", &Hotkey::new(Key::H));
+    process(
+        &mut matcher,
+        "Ctrl+Q",
+        &Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
+    );
+    println!();
+
+    // Push nav layer — H now fires nav binding instead of global
+    println!("2. Push 'nav' layer — H is shadowed:");
+    matcher.push_layer("nav").expect("push nav");
+    process(&mut matcher, "H", &Hotkey::new(Key::H));
+    process(&mut matcher, "J", &Hotkey::new(Key::J));
+    // Ctrl+Q falls through to global
+    process(
+        &mut matcher,
+        "Ctrl+Q",
+        &Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
+    );
+    // X has no binding in nav → falls through to global → no match
+    process(&mut matcher, "X", &Hotkey::new(Key::X));
+    matcher.pop_layer().expect("pop nav");
+    println!();
+
+    // Oneshot layer — auto-pops after one keypress
+    println!("3. Oneshot 'launcher' layer — pops after one key:");
+    matcher.push_layer("launcher").expect("push launcher");
+    println!("  Active layers: {:?}", layer_names(&matcher));
+    process(&mut matcher, "F", &Hotkey::new(Key::F));
+    println!(
+        "  Active layers after keypress: {:?}",
+        layer_names(&matcher),
+    );
+    println!();
+
+    // Swallow layer — unmatched keys are consumed
+    println!("4. Swallow 'confirm' layer — unmatched keys consumed:");
+    matcher.push_layer("confirm").expect("push confirm");
+    process(&mut matcher, "Y", &Hotkey::new(Key::Y));
+    process(&mut matcher, "X", &Hotkey::new(Key::X));
+    // Escape pops via Action::PopLayer
+    process(&mut matcher, "Escape", &Hotkey::new(Key::ESCAPE));
+    println!("  Active layers after Escape: {:?}", layer_names(&matcher),);
+    println!();
+
+    // Toggle layer
+    println!("5. Toggle 'nav' layer:");
+    println!("  Before toggle: {:?}", layer_names(&matcher));
+    matcher.toggle_layer("nav").expect("toggle nav on");
+    println!("  After toggle on: {:?}", layer_names(&matcher));
+    matcher.toggle_layer("nav").expect("toggle nav off");
+    println!("  After toggle off: {:?}", layer_names(&matcher));
+}
+
+fn process(matcher: &mut Matcher, label: &str, hotkey: &Hotkey) {
+    print!("  {label}: ");
+    match matcher.process(hotkey, KeyTransition::Press) {
+        MatchResult::Matched { action, .. } => {
+            if let Action::Callback(cb) = action {
+                cb();
+            } else {
+                println!("  → Action: {action:?}");
+            }
+        }
+        MatchResult::NoMatch => println!("  → No match"),
+        MatchResult::Swallowed => println!("  → Swallowed (consumed by layer)"),
+        MatchResult::Ignored => println!("  → Ignored"),
+        MatchResult::Pending { .. } => println!("  → Pending"),
+    }
+}
+
+fn layer_names(matcher: &Matcher) -> Vec<String> {
+    matcher
+        .active_layers()
+        .into_iter()
+        .map(|info| info.name.to_string())
+        .collect()
+}
+
+fn setup_matcher() -> Matcher {
     let mut matcher = Matcher::new();
 
     // Global bindings — always active, like a base layer
@@ -98,89 +192,5 @@ fn main() {
         .description("Quick workspace switcher — 3s timeout");
     matcher.define_layer(quick).expect("define quick");
 
-    println!("=== Layer stack demo ===");
-    println!();
-
-    // Without any layers, global bindings fire
-    println!("1. Global bindings (no layers active):");
-    process(&mut matcher, "H", &Hotkey::new(Key::H));
-    process(
-        &mut matcher,
-        "Ctrl+Q",
-        &Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
-    );
-    println!();
-
-    // Push nav layer — H now fires nav binding instead of global
-    println!("2. Push 'nav' layer — H is shadowed:");
-    matcher.push_layer("nav").expect("push nav");
-    process(&mut matcher, "H", &Hotkey::new(Key::H));
-    process(&mut matcher, "J", &Hotkey::new(Key::J));
-    // Ctrl+Q falls through to global
-    process(
-        &mut matcher,
-        "Ctrl+Q",
-        &Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
-    );
-    // X has no binding in nav → falls through to global → no match
-    process(&mut matcher, "X", &Hotkey::new(Key::X));
-    matcher.pop_layer().expect("pop nav");
-    println!();
-
-    // Oneshot layer — auto-pops after one keypress
-    println!("3. Oneshot 'launcher' layer — pops after one key:");
-    matcher.push_layer("launcher").expect("push launcher");
-    println!("  Active layers: {:?}", layer_names(&matcher));
-    process(&mut matcher, "F", &Hotkey::new(Key::F));
-    println!(
-        "  Active layers after keypress: {:?}",
-        layer_names(&matcher),
-    );
-    println!();
-
-    // Swallow layer — unmatched keys are consumed
-    println!("4. Swallow 'confirm' layer — unmatched keys consumed:");
-    matcher.push_layer("confirm").expect("push confirm");
-    process(&mut matcher, "Y", &Hotkey::new(Key::Y));
-    process(&mut matcher, "X", &Hotkey::new(Key::X));
-    // Escape pops via Action::PopLayer
-    process(&mut matcher, "Escape", &Hotkey::new(Key::ESCAPE));
-    println!(
-        "  Active layers after Escape: {:?}",
-        layer_names(&matcher),
-    );
-    println!();
-
-    // Toggle layer
-    println!("5. Toggle 'nav' layer:");
-    println!("  Before toggle: {:?}", layer_names(&matcher));
-    matcher.toggle_layer("nav").expect("toggle nav on");
-    println!("  After toggle on: {:?}", layer_names(&matcher));
-    matcher.toggle_layer("nav").expect("toggle nav off");
-    println!("  After toggle off: {:?}", layer_names(&matcher));
-}
-
-fn process(matcher: &mut Matcher, label: &str, hotkey: &Hotkey) {
-    print!("  {label}: ");
-    match matcher.process(hotkey, KeyTransition::Press) {
-        MatchResult::Matched { action, .. } => {
-            if let Action::Callback(cb) = action {
-                cb();
-            } else {
-                println!("  → Action: {action:?}");
-            }
-        }
-        MatchResult::NoMatch => println!("  → No match"),
-        MatchResult::Swallowed => println!("  → Swallowed (consumed by layer)"),
-        MatchResult::Ignored => println!("  → Ignored"),
-        MatchResult::Pending { .. } => println!("  → Pending"),
-    }
-}
-
-fn layer_names(matcher: &Matcher) -> Vec<String> {
     matcher
-        .active_layers()
-        .into_iter()
-        .map(|info| info.name.to_string())
-        .collect()
 }
