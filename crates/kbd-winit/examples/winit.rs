@@ -13,7 +13,6 @@ use kbd_core::MatchResult;
 use kbd_core::Matcher;
 use kbd_core::Modifier;
 use kbd_winit::WinitEventExt;
-use kbd_winit::WinitKeyExt;
 use kbd_winit::WinitModifiersExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -93,27 +92,22 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                // Show the raw winit key
-                let key = event.physical_key.to_key();
-                print!("winit: {:?} → kbd-core: {:?} → ", event.physical_key, key);
-
                 // Convert to a kbd-core Hotkey
                 let Some(hotkey) = event.to_hotkey(self.modifiers) else {
-                    println!("(unmappable)");
                     return;
                 };
 
                 // Process through the matcher
                 match self.matcher.process(&hotkey, KeyTransition::Press) {
                     MatchResult::Matched { action, .. } => {
+                        println!("{hotkey} → matched!");
                         if let Action::Callback(cb) = action {
                             cb();
                         }
                     }
-                    MatchResult::NoMatch => println!("no match for {hotkey}"),
-                    MatchResult::Swallowed => println!("swallowed"),
-                    MatchResult::Pending { .. } => println!("pending..."),
-                    MatchResult::Ignored => println!("ignored"),
+                    MatchResult::NoMatch => println!("{hotkey} → no match"),
+                    MatchResult::Pending { .. } => println!("{hotkey} → pending..."),
+                    MatchResult::Swallowed | MatchResult::Ignored => {}
                 }
             }
             _ => {}

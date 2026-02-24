@@ -13,7 +13,6 @@ use kbd_core::MatchResult;
 use kbd_core::Matcher;
 use kbd_core::Modifier;
 use kbd_tao::TaoEventExt;
-use kbd_tao::TaoKeyExt;
 use kbd_tao::TaoModifiersExt;
 use tao::event::Event;
 use tao::event::WindowEvent;
@@ -76,27 +75,22 @@ fn main() {
                         return;
                     }
 
-                    // Show the raw tao key
-                    let key = event.physical_key.to_key();
-                    print!("tao: {:?} → kbd-core: {:?} → ", event.physical_key, key);
-
                     // Convert to a kbd-core Hotkey
                     let Some(hotkey) = event.to_hotkey(modifiers) else {
-                        println!("(unmappable)");
                         return;
                     };
 
                     // Process through the matcher
                     match matcher.process(&hotkey, KeyTransition::Press) {
                         MatchResult::Matched { action, .. } => {
+                            println!("{hotkey} → matched!");
                             if let Action::Callback(cb) = action {
                                 cb();
                             }
                         }
-                        MatchResult::NoMatch => println!("no match for {hotkey}"),
-                        MatchResult::Swallowed => println!("swallowed"),
-                        MatchResult::Pending { .. } => println!("pending..."),
-                        MatchResult::Ignored => println!("ignored"),
+                        MatchResult::NoMatch => println!("{hotkey} → no match"),
+                        MatchResult::Pending { .. } => println!("{hotkey} → pending..."),
+                        MatchResult::Swallowed | MatchResult::Ignored => {}
                     }
                 }
                 _ => {}

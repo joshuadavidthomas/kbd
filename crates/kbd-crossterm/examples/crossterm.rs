@@ -90,15 +90,13 @@ fn run_event_loop(matcher: &mut Matcher) -> Result<(), Box<dyn std::error::Error
 
             // Convert crossterm event to kbd-core Hotkey
             let Some(hotkey) = key_event.to_hotkey() else {
-                print!("  (unmappable key: {key_event:?})\r\n");
-                io::stdout().flush()?;
                 continue;
             };
 
             // Process through the matcher
-            print!("{hotkey}: ");
             match matcher.process(&hotkey, KeyTransition::Press) {
                 MatchResult::Matched { action, .. } => {
+                    print!("{hotkey}: matched!\r\n");
                     if let Action::Callback(cb) = action {
                         cb();
                     }
@@ -110,10 +108,9 @@ fn run_event_loop(matcher: &mut Matcher) -> Result<(), Box<dyn std::error::Error
                         return Ok(());
                     }
                 }
-                MatchResult::NoMatch => print!("no match\r\n"),
-                MatchResult::Swallowed => print!("swallowed\r\n"),
-                MatchResult::Pending { .. } => print!("pending...\r\n"),
-                MatchResult::Ignored => print!("ignored\r\n"),
+                MatchResult::NoMatch => print!("{hotkey}: no match\r\n"),
+                MatchResult::Pending { .. } => print!("{hotkey}: pending...\r\n"),
+                MatchResult::Swallowed | MatchResult::Ignored => {}
             }
             io::stdout().flush()?;
         }

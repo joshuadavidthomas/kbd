@@ -77,16 +77,14 @@ impl eframe::App for App {
             };
 
             let Some(hotkey) = event.to_hotkey() else {
-                self.log.push("(unmappable key)".to_string());
                 continue;
             };
 
             let line = match self.matcher.process(&hotkey, KeyTransition::Press) {
                 MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                 MatchResult::NoMatch => format!("{hotkey} → no match"),
-                MatchResult::Swallowed => format!("{hotkey} → swallowed"),
                 MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
-                MatchResult::Ignored => format!("{hotkey} → ignored"),
+                MatchResult::Swallowed | MatchResult::Ignored => continue,
             };
             self.log.push(line);
         }
