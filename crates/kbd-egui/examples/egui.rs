@@ -1,19 +1,11 @@
-//! Egui keyboard event conversion via `kbd-egui`.
-//!
-//! Demonstrates converting egui key events to `kbd-core` types and feeding
-//! them to a `Matcher`. This example constructs events directly (no GUI
-//! window) to show the integration pattern.
-//!
-//! In a real eframe/egui app, you'd convert events from `egui::Context`'s
-//! input state in your `update()` method.
+//! Opens an eframe/egui window and feeds keyboard events through a
+//! `Matcher`. Press keys to see matches in the GUI.
 //!
 //! ```sh
 //! cargo run -p kbd-egui --example egui
 //! ```
 
-use egui::Key as EguiKey;
-use egui::Modifiers;
-use kbd_core::Action;
+use eframe::egui;
 use kbd_core::Hotkey;
 use kbd_core::Key;
 use kbd_core::KeyTransition;
@@ -21,131 +13,104 @@ use kbd_core::MatchResult;
 use kbd_core::Matcher;
 use kbd_core::Modifier;
 use kbd_egui::EguiEventExt;
-use kbd_egui::EguiKeyExt;
-use kbd_egui::EguiModifiersExt;
 
-fn main() {
-    let mut matcher = Matcher::new();
-
-    matcher
-        .register(
-            Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-            Action::from(|| println!("  → Save!")),
-        )
-        .expect("register Ctrl+S");
-    matcher
-        .register(
-            Hotkey::new(Key::ESCAPE),
-            Action::from(|| println!("  → Escape!")),
-        )
-        .expect("register Escape");
-
-    println!("=== kbd-egui conversion demo ===");
-    println!();
-
-    // Single key conversion
-    println!("1. Key conversion:");
-    let keys = [
-        EguiKey::A,
-        EguiKey::Enter,
-        EguiKey::Escape,
-        EguiKey::Space,
-        EguiKey::F1,
-        EguiKey::ArrowUp,
-    ];
-    for key in keys {
-        let kbd_key = key.to_key();
-        println!("  egui Key::{key:?} → kbd-core Key: {kbd_key:?}");
-    }
-    println!();
-
-    // Modifier conversion
-    println!("2. Modifier conversion:");
-    let modifier_sets = [
-        ("CTRL", Modifiers::CTRL),
-        ("SHIFT", Modifiers::SHIFT),
-        ("ALT", Modifiers::ALT),
-        ("COMMAND", Modifiers::COMMAND),
-        (
-            "CTRL | SHIFT",
-            Modifiers {
-                ctrl: true,
-                shift: true,
-                ..Default::default()
-            },
-        ),
-    ];
-    for (label, mods) in modifier_sets {
-        let kbd_mods = mods.to_modifiers();
-        println!("  egui {label:20} → kbd-core {kbd_mods:?}");
-    }
-    println!();
-
-    // Full event conversion and matcher integration
-    println!("3. Full event → Matcher pipeline:");
-    demo_event_pipeline(&mut matcher);
-
-    println!("In a real eframe/egui app, use this pattern:");
-    println!("  for event in &ctx.input(|i| i.events.clone()) {{");
-    println!("      if let Some(hotkey) = event.to_hotkey() {{");
-    println!("          match matcher.process(&hotkey, KeyTransition::Press) {{ ... }}");
-    println!("      }}");
-    println!("  }}");
+fn main() -> eframe::Result {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([480.0, 360.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "kbd-egui example",
+        options,
+        Box::new(|_cc| Ok(Box::new(App::new()))),
+    )
 }
 
-fn demo_event_pipeline(matcher: &mut Matcher) {
-    let events = [
-        (
-            "Ctrl+S",
-            egui::Event::Key {
-                key: EguiKey::S,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: Modifiers::CTRL,
-            },
-        ),
-        (
-            "Escape",
-            egui::Event::Key {
-                key: EguiKey::Escape,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: Modifiers::NONE,
-            },
-        ),
-        (
-            "A (no binding)",
-            egui::Event::Key {
-                key: EguiKey::A,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: Modifiers::NONE,
-            },
-        ),
-    ];
+struct App {
+    matcher: Matcher,
+    log: Vec<String>,
+}
 
-    for (label, event) in &events {
-        print!("  {label}: ");
-        match event.to_hotkey() {
-            Some(hotkey) => {
-                print!("{hotkey} → ");
-                match matcher.process(&hotkey, KeyTransition::Press) {
-                    MatchResult::Matched { action, .. } => {
-                        if let Action::Callback(cb) = action {
-                            cb();
-                        }
-                    }
-                    MatchResult::NoMatch => println!("no match"),
-                    MatchResult::Swallowed => println!("swallowed"),
-                    MatchResult::Pending { .. } => println!("pending..."),
-                    MatchResult::Ignored => println!("ignored"),
-                }
-            }
-            None => println!("(unmappable or not a key event)"),
+impl App {
+    fn new() -> Self {
+        let mut matcher = Matcher::new();
+
+        matcher
+            .register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), || {})
+            .expect("register Ctrl+S");
+        matcher
+            .register(Hotkey::new(Key::Z).modifier(Modifier::Ctrl), || {})
+            .expect("register Ctrl+Z");
+        matcher
+            .register(
+                Hotkey::new(Key::Z)
+                    .modifier(Modifier::Ctrl)
+                    .modifier(Modifier::Shift),
+                || {},
+            )
+            .expect("register Ctrl+Shift+Z");
+        matcher
+            .register(Hotkey::new(Key::SPACE), || {})
+            .expect("register Space");
+        matcher
+            .register(Hotkey::new(Key::ESCAPE), || {})
+            .expect("register Escape");
+
+        Self {
+            matcher,
+            log: Vec::new(),
         }
     }
-    println!();
+}
+
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Process keyboard events
+        for event in &ctx.input(|i| i.events.clone()) {
+            let egui::Event::Key {
+                pressed: true,
+                repeat: false,
+                ..
+            } = event
+            else {
+                continue;
+            };
+
+            let Some(hotkey) = event.to_hotkey() else {
+                self.log.push("(unmappable key)".to_string());
+                continue;
+            };
+
+            let line = match self.matcher.process(&hotkey, KeyTransition::Press) {
+                MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
+                MatchResult::NoMatch => format!("{hotkey} → no match"),
+                MatchResult::Swallowed => format!("{hotkey} → swallowed"),
+                MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
+                MatchResult::Ignored => format!("{hotkey} → ignored"),
+            };
+            self.log.push(line);
+        }
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("kbd-egui example");
+            ui.separator();
+
+            ui.label("Registered bindings:");
+            ui.monospace("  Ctrl+S        Save");
+            ui.monospace("  Ctrl+Z        Undo");
+            ui.monospace("  Ctrl+Shift+Z  Redo");
+            ui.monospace("  Space         Space");
+            ui.monospace("  Escape        Escape");
+            ui.separator();
+
+            ui.label("Press keys to see matches:");
+            egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    for line in &self.log {
+                        ui.monospace(line);
+                    }
+                });
+        });
+    }
 }

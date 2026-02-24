@@ -39,15 +39,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Register some bindings
     matcher.register(
         Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-        Action::from(|| println!("  → Save!")),
+        Action::from(|| print!("  → Save!\r\n")),
     )?;
     matcher.register(
         Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
-        Action::from(|| println!("  → Quit!")),
+        Action::from(|| print!("  → Quit!\r\n")),
     )?;
     matcher.register(
         Hotkey::new(Key::SPACE),
-        Action::from(|| println!("  → Space pressed!")),
+        Action::from(|| print!("  → Space pressed!\r\n")),
     )?;
 
     println!("Bindings:");
