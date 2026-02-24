@@ -5,6 +5,9 @@
 //! cargo run -p kbd-winit --example winit
 //! ```
 
+use std::num::NonZeroU32;
+use std::sync::Arc;
+
 use kbd_core::Action;
 use kbd_core::Hotkey;
 use kbd_core::Key;
@@ -24,7 +27,8 @@ use winit::window::WindowId;
 struct App {
     matcher: Matcher,
     modifiers: ModifiersState,
-    window: Option<Window>,
+    window: Option<Arc<Window>>,
+    surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
 }
 
 impl App {
@@ -61,6 +65,27 @@ impl App {
             matcher,
             modifiers: ModifiersState::empty(),
             window: None,
+            surface: None,
+        }
+    }
+
+    fn fill_window(&mut self) {
+        let (Some(surface), Some(window)) = (&mut self.surface, &self.window) else {
+            return;
+        };
+        let size = window.inner_size();
+        let (Some(width), Some(height)) =
+            (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+        else {
+            return;
+        };
+        let _ = surface.resize(width, height);
+        if let Ok(mut buffer) = surface.buffer_mut() {
+            // Dark gray background
+            for pixel in buffer.iter_mut() {
+                *pixel = 0xFF_2D_2D_2D;
+            }
+            let _ = buffer.present();
         }
     }
 }
@@ -70,7 +95,16 @@ impl ApplicationHandler for App {
         if self.window.is_none() {
             let attrs = Window::default_attributes().with_title("kbd-winit example");
             match event_loop.create_window(attrs) {
-                Ok(w) => self.window = Some(w),
+                Ok(window) => {
+                    let window = Arc::new(window);
+                    let context =
+                        softbuffer::Context::new(window.clone()).expect("softbuffer context");
+                    let surface = softbuffer::Surface::new(&context, window.clone())
+                        .expect("softbuffer surface");
+                    self.window = Some(window);
+                    self.surface = Some(surface);
+                    self.fill_window();
+                }
                 Err(e) => eprintln!("Failed to create window: {e}"),
             }
         }
@@ -80,6 +114,9 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
+            }
+            WindowEvent::RedrawRequested | WindowEvent::Resized(_) => {
+                self.fill_window();
             }
             WindowEvent::ModifiersChanged(mods) => {
                 self.modifiers = mods.state();

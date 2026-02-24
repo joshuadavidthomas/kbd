@@ -11,5 +11,8 @@ repository.workspace = true
 winit.workspace = true
 kbd-core.workspace = true
 
+[dev-dependencies]
+softbuffer = { workspace = true }
+
 [lints]
 workspace = true
