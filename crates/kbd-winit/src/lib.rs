@@ -197,14 +197,15 @@ impl WinitKeyExt for KeyCode {
             KeyCode::NumpadParenRight => Some(Key::NUMPAD_PAREN_RIGHT),
             KeyCode::NumpadStar => Some(Key::NUMPAD_STAR),
 
-            // Modifiers — winit uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight
+            // Modifiers — winit uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight.
+            // Meta is winit's legacy alias for the Super key (no left/right distinction).
             KeyCode::ControlLeft => Some(Key::CONTROL_LEFT),
             KeyCode::ControlRight => Some(Key::CONTROL_RIGHT),
             KeyCode::ShiftLeft => Some(Key::SHIFT_LEFT),
             KeyCode::ShiftRight => Some(Key::SHIFT_RIGHT),
             KeyCode::AltLeft => Some(Key::ALT_LEFT),
             KeyCode::AltRight => Some(Key::ALT_RIGHT),
-            KeyCode::SuperLeft => Some(Key::META_LEFT),
+            KeyCode::SuperLeft | KeyCode::Meta => Some(Key::META_LEFT),
             KeyCode::SuperRight => Some(Key::META_RIGHT),
 
             // Media keys
@@ -429,6 +430,8 @@ mod tests {
         // winit's SuperLeft/Right → kbd-core's MetaLeft/Right
         assert_eq!(KeyCode::SuperLeft.to_key(), Some(Key::META_LEFT));
         assert_eq!(KeyCode::SuperRight.to_key(), Some(Key::META_RIGHT));
+        // winit's legacy Meta (no left/right) → defaults to MetaLeft
+        assert_eq!(KeyCode::Meta.to_key(), Some(Key::META_LEFT));
     }
 
     #[test]

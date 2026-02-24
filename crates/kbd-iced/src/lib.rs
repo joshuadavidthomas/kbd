@@ -191,14 +191,15 @@ impl IcedKeyExt for key::Code {
             key::Code::NumpadParenRight => Some(Key::NUMPAD_PAREN_RIGHT),
             key::Code::NumpadStar => Some(Key::NUMPAD_STAR),
 
-            // Modifiers — iced uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight
+            // Modifiers — iced uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight.
+            // Meta is iced's legacy alias for the Super key (no left/right distinction).
             key::Code::ControlLeft => Some(Key::CONTROL_LEFT),
             key::Code::ControlRight => Some(Key::CONTROL_RIGHT),
             key::Code::ShiftLeft => Some(Key::SHIFT_LEFT),
             key::Code::ShiftRight => Some(Key::SHIFT_RIGHT),
             key::Code::AltLeft => Some(Key::ALT_LEFT),
             key::Code::AltRight => Some(Key::ALT_RIGHT),
-            key::Code::SuperLeft => Some(Key::META_LEFT),
+            key::Code::SuperLeft | key::Code::Meta => Some(Key::META_LEFT),
             key::Code::SuperRight => Some(Key::META_RIGHT),
 
             // Media keys
@@ -419,6 +420,8 @@ mod tests {
         // iced's SuperLeft/Right → kbd-core's MetaLeft/MetaRight
         assert_eq!(key::Code::SuperLeft.to_key(), Some(Key::META_LEFT));
         assert_eq!(key::Code::SuperRight.to_key(), Some(Key::META_RIGHT));
+        // iced's legacy Meta (no left/right) → defaults to MetaLeft
+        assert_eq!(key::Code::Meta.to_key(), Some(Key::META_LEFT));
     }
 
     #[test]
