@@ -15,5 +15,8 @@ kbd-core = { workspace = true }
 libc = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+evdev = { workspace = true }
+
 [lints]
 workspace = true

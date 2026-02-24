@@ -11,5 +11,8 @@ repository.workspace = true
 egui.workspace = true
 kbd-core.workspace = true
 
+[dev-dependencies]
+eframe = { workspace = true }
+
 [lints]
 workspace = true

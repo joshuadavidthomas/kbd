@@ -11,5 +11,8 @@ repository.workspace = true
 iced_core.workspace = true
 kbd-core.workspace = true
 
+[dev-dependencies]
+iced = { workspace = true }
+
 [lints]
 workspace = true
