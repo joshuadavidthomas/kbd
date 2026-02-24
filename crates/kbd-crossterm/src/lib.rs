@@ -263,9 +263,8 @@ fn modifier_keycode_to_key(modifier: ModifierKeyCode) -> Option<Key> {
         ModifierKeyCode::RightAlt => Some(Key::ALT_RIGHT),
         ModifierKeyCode::LeftSuper => Some(Key::META_LEFT),
         ModifierKeyCode::RightSuper => Some(Key::META_RIGHT),
-        ModifierKeyCode::LeftHyper
-        | ModifierKeyCode::RightHyper
-        | ModifierKeyCode::LeftMeta
+        ModifierKeyCode::LeftHyper | ModifierKeyCode::RightHyper => Some(Key::HYPER),
+        ModifierKeyCode::LeftMeta
         | ModifierKeyCode::RightMeta
         | ModifierKeyCode::IsoLevel3Shift
         | ModifierKeyCode::IsoLevel5Shift => None,
@@ -464,6 +463,18 @@ mod tests {
         assert_eq!(
             KeyCode::Modifier(ModifierKeyCode::RightSuper).to_key(),
             Some(Key::META_RIGHT)
+        );
+    }
+
+    #[test]
+    fn hyper_modifier_keys_to_key() {
+        assert_eq!(
+            KeyCode::Modifier(ModifierKeyCode::LeftHyper).to_key(),
+            Some(Key::HYPER)
+        );
+        assert_eq!(
+            KeyCode::Modifier(ModifierKeyCode::RightHyper).to_key(),
+            Some(Key::HYPER)
         );
     }
 

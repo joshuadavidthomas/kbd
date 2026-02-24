@@ -148,7 +148,7 @@ impl TaoKeyExt for KeyCode {
 
             // Punctuation
             KeyCode::Minus => Some(Key::MINUS),
-            KeyCode::Equal => Some(Key::EQUAL),
+            KeyCode::Equal | KeyCode::Plus => Some(Key::EQUAL),
             KeyCode::BracketLeft => Some(Key::BRACKET_LEFT),
             KeyCode::BracketRight => Some(Key::BRACKET_RIGHT),
             KeyCode::Backslash => Some(Key::BACKSLASH),
@@ -415,6 +415,7 @@ mod tests {
     fn keycode_punctuation() {
         assert_eq!(KeyCode::Minus.to_key(), Some(Key::MINUS));
         assert_eq!(KeyCode::Equal.to_key(), Some(Key::EQUAL));
+        assert_eq!(KeyCode::Plus.to_key(), Some(Key::EQUAL));
         assert_eq!(KeyCode::BracketLeft.to_key(), Some(Key::BRACKET_LEFT));
         assert_eq!(KeyCode::BracketRight.to_key(), Some(Key::BRACKET_RIGHT));
         assert_eq!(KeyCode::Backslash.to_key(), Some(Key::BACKSLASH));
