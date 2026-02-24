@@ -13,7 +13,6 @@ use kbd_core::MatchResult;
 use kbd_core::Matcher;
 use kbd_core::Modifier;
 use kbd_tao::TaoEventExt;
-use kbd_tao::TaoModifiersExt;
 use tao::event::Event;
 use tao::event::WindowEvent;
 use tao::event_loop::ControlFlow;
@@ -67,8 +66,6 @@ fn main() {
                 }
                 WindowEvent::ModifiersChanged(mods) => {
                     modifiers = mods;
-                    let kbd_mods: Vec<_> = modifiers.to_modifiers();
-                    println!("Modifiers changed: {kbd_mods:?}");
                 }
                 WindowEvent::KeyboardInput { event, .. } => {
                     if event.state != tao::event::ElementState::Pressed {
