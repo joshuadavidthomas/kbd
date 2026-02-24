@@ -172,6 +172,37 @@ impl Key {
     pub const MEDIA_TRACK_NEXT: Self = Self(Code::MediaTrackNext);
     pub const MEDIA_TRACK_PREVIOUS: Self = Self(Code::MediaTrackPrevious);
 
+    // Extended function keys
+    pub const F25: Self = Self(Code::F25);
+    pub const F26: Self = Self(Code::F26);
+    pub const F27: Self = Self(Code::F27);
+    pub const F28: Self = Self(Code::F28);
+    pub const F29: Self = Self(Code::F29);
+    pub const F30: Self = Self(Code::F30);
+    pub const F31: Self = Self(Code::F31);
+    pub const F32: Self = Self(Code::F32);
+    pub const F33: Self = Self(Code::F33);
+    pub const F34: Self = Self(Code::F34);
+    pub const F35: Self = Self(Code::F35);
+
+    // Browser keys
+    pub const BROWSER_BACK: Self = Self(Code::BrowserBack);
+    pub const BROWSER_FAVORITES: Self = Self(Code::BrowserFavorites);
+    pub const BROWSER_FORWARD: Self = Self(Code::BrowserForward);
+    pub const BROWSER_HOME: Self = Self(Code::BrowserHome);
+    pub const BROWSER_REFRESH: Self = Self(Code::BrowserRefresh);
+    pub const BROWSER_SEARCH: Self = Self(Code::BrowserSearch);
+    pub const BROWSER_STOP: Self = Self(Code::BrowserStop);
+
+    // Extended media keys
+    pub const MEDIA_FAST_FORWARD: Self = Self(Code::MediaFastForward);
+    pub const MEDIA_PAUSE: Self = Self(Code::MediaPause);
+    pub const MEDIA_PLAY: Self = Self(Code::MediaPlay);
+    pub const MEDIA_RECORD: Self = Self(Code::MediaRecord);
+    pub const MEDIA_REWIND: Self = Self(Code::MediaRewind);
+    pub const MEDIA_SELECT: Self = Self(Code::MediaSelect);
+    pub const MICROPHONE_MUTE_TOGGLE: Self = Self(Code::MicrophoneMuteToggle);
+
     // System keys
     pub const PRINT_SCREEN: Self = Self(Code::PrintScreen);
     pub const SCROLL_LOCK: Self = Self(Code::ScrollLock);
@@ -179,6 +210,98 @@ impl Key {
     pub const NUM_LOCK: Self = Self(Code::NumLock);
     pub const CONTEXT_MENU: Self = Self(Code::ContextMenu);
     pub const POWER: Self = Self(Code::Power);
+    pub const SLEEP: Self = Self(Code::Sleep);
+    pub const WAKE_UP: Self = Self(Code::WakeUp);
+    pub const EJECT: Self = Self(Code::Eject);
+    pub const BRIGHTNESS_DOWN: Self = Self(Code::BrightnessDown);
+    pub const BRIGHTNESS_UP: Self = Self(Code::BrightnessUp);
+    pub const DISPLAY_TOGGLE_INT_EXT: Self = Self(Code::DisplayToggleIntExt);
+    pub const PRIVACY_SCREEN_TOGGLE: Self = Self(Code::PrivacyScreenToggle);
+    pub const KEYBOARD_BACKLIGHT_TOGGLE: Self = Self(Code::KeyboardBacklightToggle);
+
+    // Fn keys
+    pub const FN: Self = Self(Code::Fn);
+    pub const FN_LOCK: Self = Self(Code::FnLock);
+
+    // Clipboard / editing keys
+    pub const COPY: Self = Self(Code::Copy);
+    pub const CUT: Self = Self(Code::Cut);
+    pub const PASTE: Self = Self(Code::Paste);
+    pub const UNDO: Self = Self(Code::Undo);
+    pub const FIND: Self = Self(Code::Find);
+    pub const HELP: Self = Self(Code::Help);
+    pub const OPEN: Self = Self(Code::Open);
+    pub const SELECT: Self = Self(Code::Select);
+    pub const AGAIN: Self = Self(Code::Again);
+    pub const PROPS: Self = Self(Code::Props);
+    pub const ABORT: Self = Self(Code::Abort);
+    pub const RESUME: Self = Self(Code::Resume);
+    pub const SUSPEND: Self = Self(Code::Suspend);
+
+    // Legacy / niche modifier keys (deprecated in W3C spec, but real hardware exists)
+    #[allow(deprecated)]
+    pub const HYPER: Self = Self(Code::Hyper);
+    /// The legacy `Super` key code in the W3C spec (distinct from `MetaLeft`/`MetaRight`).
+    /// Displays as `"SuperKey"` to avoid conflict with the `"Super"` modifier alias
+    /// which resolves to `MetaLeft`.
+    #[allow(deprecated)]
+    pub const SUPER_KEY: Self = Self(Code::Super);
+    #[allow(deprecated)]
+    pub const TURBO: Self = Self(Code::Turbo);
+
+    // CJK input keys
+    pub const CONVERT: Self = Self(Code::Convert);
+    pub const NON_CONVERT: Self = Self(Code::NonConvert);
+    pub const KANA_MODE: Self = Self(Code::KanaMode);
+    pub const HIRAGANA: Self = Self(Code::Hiragana);
+    pub const KATAKANA: Self = Self(Code::Katakana);
+    pub const KEYBOARD_LAYOUT_SELECT: Self = Self(Code::KeyboardLayoutSelect);
+
+    // Language keys
+    pub const LANG1: Self = Self(Code::Lang1);
+    pub const LANG2: Self = Self(Code::Lang2);
+    pub const LANG3: Self = Self(Code::Lang3);
+    pub const LANG4: Self = Self(Code::Lang4);
+    pub const LANG5: Self = Self(Code::Lang5);
+
+    // International keys
+    pub const INTL_BACKSLASH: Self = Self(Code::IntlBackslash);
+    pub const INTL_RO: Self = Self(Code::IntlRo);
+    pub const INTL_YEN: Self = Self(Code::IntlYen);
+
+    // App launch keys
+    pub const LAUNCH_APP1: Self = Self(Code::LaunchApp1);
+    pub const LAUNCH_APP2: Self = Self(Code::LaunchApp2);
+    pub const LAUNCH_ASSISTANT: Self = Self(Code::LaunchAssistant);
+    pub const LAUNCH_CONTROL_PANEL: Self = Self(Code::LaunchControlPanel);
+    pub const LAUNCH_MAIL: Self = Self(Code::LaunchMail);
+    pub const LAUNCH_SCREEN_SAVER: Self = Self(Code::LaunchScreenSaver);
+
+    // Mail keys
+    pub const MAIL_FORWARD: Self = Self(Code::MailForward);
+    pub const MAIL_REPLY: Self = Self(Code::MailReply);
+    pub const MAIL_SEND: Self = Self(Code::MailSend);
+
+    // Extended numpad
+    pub const NUMPAD_BACKSPACE: Self = Self(Code::NumpadBackspace);
+    pub const NUMPAD_CLEAR: Self = Self(Code::NumpadClear);
+    pub const NUMPAD_CLEAR_ENTRY: Self = Self(Code::NumpadClearEntry);
+    pub const NUMPAD_COMMA: Self = Self(Code::NumpadComma);
+    pub const NUMPAD_EQUAL: Self = Self(Code::NumpadEqual);
+    pub const NUMPAD_HASH: Self = Self(Code::NumpadHash);
+    pub const NUMPAD_MEMORY_ADD: Self = Self(Code::NumpadMemoryAdd);
+    pub const NUMPAD_MEMORY_CLEAR: Self = Self(Code::NumpadMemoryClear);
+    pub const NUMPAD_MEMORY_RECALL: Self = Self(Code::NumpadMemoryRecall);
+    pub const NUMPAD_MEMORY_STORE: Self = Self(Code::NumpadMemoryStore);
+    pub const NUMPAD_MEMORY_SUBTRACT: Self = Self(Code::NumpadMemorySubtract);
+    pub const NUMPAD_PAREN_LEFT: Self = Self(Code::NumpadParenLeft);
+    pub const NUMPAD_PAREN_RIGHT: Self = Self(Code::NumpadParenRight);
+    pub const NUMPAD_STAR: Self = Self(Code::NumpadStar);
+
+    // Misc system/app keys
+    pub const SELECT_TASK: Self = Self(Code::SelectTask);
+    pub const SHOW_ALL_WINDOWS: Self = Self(Code::ShowAllWindows);
+    pub const ZOOM_TOGGLE: Self = Self(Code::ZoomToggle);
 
     /// Human-friendly name for this key.
     ///
@@ -235,6 +358,9 @@ impl Key {
             Code::ArrowDown => "Down",
             Code::ArrowLeft => "Left",
             Code::ArrowRight => "Right",
+            // Disambiguate legacy Code::Super from MetaLeft "Super" modifier alias
+            #[allow(deprecated)]
+            Code::Super => "SuperKey",
             // Everything else: delegate to Code's Display (W3C standard name).
             _ => {
                 static CACHE: LazyLock<Mutex<HashMap<Code, &'static str>>> =
@@ -368,6 +494,17 @@ fn parse_key_token(token: &str) -> Option<Key> {
             22 => Some(Key::F22),
             23 => Some(Key::F23),
             24 => Some(Key::F24),
+            25 => Some(Key::F25),
+            26 => Some(Key::F26),
+            27 => Some(Key::F27),
+            28 => Some(Key::F28),
+            29 => Some(Key::F29),
+            30 => Some(Key::F30),
+            31 => Some(Key::F31),
+            32 => Some(Key::F32),
+            33 => Some(Key::F33),
+            34 => Some(Key::F34),
+            35 => Some(Key::F35),
             _ => None,
         };
     }
@@ -439,6 +576,98 @@ fn parse_key_token(token: &str) -> Option<Key> {
         "NUMLOCK" => Some(Key::NUM_LOCK),
         "CONTEXTMENU" | "MENU" | "APPS" => Some(Key::CONTEXT_MENU),
         "POWER" => Some(Key::POWER),
+        "SLEEP" => Some(Key::SLEEP),
+        "WAKEUP" => Some(Key::WAKE_UP),
+        "EJECT" => Some(Key::EJECT),
+        "BRIGHTNESSDOWN" | "BRIGHTDOWN" => Some(Key::BRIGHTNESS_DOWN),
+        "BRIGHTNESSUP" | "BRIGHTUP" => Some(Key::BRIGHTNESS_UP),
+        "DISPLAYTOGGLEINTEXT" => Some(Key::DISPLAY_TOGGLE_INT_EXT),
+        "PRIVACYSCREENTOGGLE" => Some(Key::PRIVACY_SCREEN_TOGGLE),
+        "KEYBOARDBACKLIGHTTOGGLE" | "KBDBACKLIGHT" => Some(Key::KEYBOARD_BACKLIGHT_TOGGLE),
+        // Browser keys
+        "BROWSERBACK" => Some(Key::BROWSER_BACK),
+        "BROWSERFAVORITES" | "BOOKMARKS" => Some(Key::BROWSER_FAVORITES),
+        "BROWSERFORWARD" => Some(Key::BROWSER_FORWARD),
+        "BROWSERHOME" => Some(Key::BROWSER_HOME),
+        "BROWSERREFRESH" => Some(Key::BROWSER_REFRESH),
+        "BROWSERSEARCH" => Some(Key::BROWSER_SEARCH),
+        "BROWSERSTOP" => Some(Key::BROWSER_STOP),
+        // Extended media keys
+        "MEDIAPLAY" => Some(Key::MEDIA_PLAY),
+        "MEDIAPAUSE" => Some(Key::MEDIA_PAUSE),
+        "MEDIAFASTFORWARD" | "MEDIAFF" => Some(Key::MEDIA_FAST_FORWARD),
+        "MEDIAREWIND" | "MEDIARW" => Some(Key::MEDIA_REWIND),
+        "MEDIARECORD" => Some(Key::MEDIA_RECORD),
+        "MEDIASELECT" => Some(Key::MEDIA_SELECT),
+        "MICROPHONEMUTETOGGLE" | "MICMUTE" => Some(Key::MICROPHONE_MUTE_TOGGLE),
+        // Fn keys
+        "FN" => Some(Key::FN),
+        "FNLOCK" => Some(Key::FN_LOCK),
+        // Clipboard / editing
+        "COPY" => Some(Key::COPY),
+        "CUT" => Some(Key::CUT),
+        "PASTE" => Some(Key::PASTE),
+        "UNDO" => Some(Key::UNDO),
+        "FIND" => Some(Key::FIND),
+        "HELP" => Some(Key::HELP),
+        "OPEN" => Some(Key::OPEN),
+        "SELECT" => Some(Key::SELECT),
+        "AGAIN" | "REDO" => Some(Key::AGAIN),
+        "PROPS" | "PROPERTIES" => Some(Key::PROPS),
+        "ABORT" | "CANCEL" => Some(Key::ABORT),
+        "RESUME" => Some(Key::RESUME),
+        "SUSPEND" => Some(Key::SUSPEND),
+        // Legacy / niche
+        "HYPER" => Some(Key::HYPER),
+        "SUPERKEY" => Some(Key::SUPER_KEY),
+        "TURBO" => Some(Key::TURBO),
+        // CJK input keys
+        "CONVERT" | "HENKAN" => Some(Key::CONVERT),
+        "NONCONVERT" | "MUHENKAN" => Some(Key::NON_CONVERT),
+        "KANAMODE" | "KANA" => Some(Key::KANA_MODE),
+        "HIRAGANA" => Some(Key::HIRAGANA),
+        "KATAKANA" => Some(Key::KATAKANA),
+        "KEYBOARDLAYOUTSELECT" => Some(Key::KEYBOARD_LAYOUT_SELECT),
+        // Language keys
+        "LANG1" | "HANGUL" => Some(Key::LANG1),
+        "LANG2" | "HANJA" => Some(Key::LANG2),
+        "LANG3" => Some(Key::LANG3),
+        "LANG4" => Some(Key::LANG4),
+        "LANG5" => Some(Key::LANG5),
+        // International keys
+        "INTLBACKSLASH" => Some(Key::INTL_BACKSLASH),
+        "INTLRO" => Some(Key::INTL_RO),
+        "INTLYEN" => Some(Key::INTL_YEN),
+        // App launch keys
+        "LAUNCHAPP1" => Some(Key::LAUNCH_APP1),
+        "LAUNCHAPP2" | "CALCULATOR" => Some(Key::LAUNCH_APP2),
+        "LAUNCHASSISTANT" => Some(Key::LAUNCH_ASSISTANT),
+        "LAUNCHCONTROLPANEL" => Some(Key::LAUNCH_CONTROL_PANEL),
+        "LAUNCHMAIL" | "MAIL" => Some(Key::LAUNCH_MAIL),
+        "LAUNCHSCREENSAVER" => Some(Key::LAUNCH_SCREEN_SAVER),
+        // Mail keys
+        "MAILFORWARD" => Some(Key::MAIL_FORWARD),
+        "MAILREPLY" => Some(Key::MAIL_REPLY),
+        "MAILSEND" => Some(Key::MAIL_SEND),
+        // Extended numpad
+        "NUMPADEQUAL" | "KPEQUAL" => Some(Key::NUMPAD_EQUAL),
+        "NUMPADCOMMA" | "KPCOMMA" => Some(Key::NUMPAD_COMMA),
+        "NUMPADBACKSPACE" | "KPBACKSPACE" => Some(Key::NUMPAD_BACKSPACE),
+        "NUMPADCLEAR" | "KPCLEAR" => Some(Key::NUMPAD_CLEAR),
+        "NUMPADCLEARENTRY" | "KPCLEARENTRY" => Some(Key::NUMPAD_CLEAR_ENTRY),
+        "NUMPADHASH" | "KPHASH" => Some(Key::NUMPAD_HASH),
+        "NUMPADMEMORYADD" | "KPMEMORYADD" => Some(Key::NUMPAD_MEMORY_ADD),
+        "NUMPADMEMORYCLEAR" | "KPMEMORYCLEAR" => Some(Key::NUMPAD_MEMORY_CLEAR),
+        "NUMPADMEMORYRECALL" | "KPMEMORYRECALL" => Some(Key::NUMPAD_MEMORY_RECALL),
+        "NUMPADMEMORYSTORE" | "KPMEMORYSTORE" => Some(Key::NUMPAD_MEMORY_STORE),
+        "NUMPADMEMORYSUBTRACT" | "KPMEMORYSUBTRACT" => Some(Key::NUMPAD_MEMORY_SUBTRACT),
+        "NUMPADPARENLEFT" | "KPPARENLEFT" => Some(Key::NUMPAD_PAREN_LEFT),
+        "NUMPADPARENRIGHT" | "KPPARENRIGHT" => Some(Key::NUMPAD_PAREN_RIGHT),
+        "NUMPADSTAR" | "KPSTAR" => Some(Key::NUMPAD_STAR),
+        // Misc system/app keys
+        "SELECTTASK" => Some(Key::SELECT_TASK),
+        "SHOWALLWINDOWS" | "EXPOSE" => Some(Key::SHOW_ALL_WINDOWS),
+        "ZOOMTOGGLE" => Some(Key::ZOOM_TOGGLE),
         // Fallback: try the W3C standard name (PascalCase, case-sensitive).
         // This ensures round-tripping: as_str() outputs "KeyA", parse accepts "KeyA".
         _ => Code::from_str(trimmed).ok().map(Key::from),
@@ -783,8 +1012,9 @@ mod tests {
 
     #[test]
     fn key_display_for_code_without_constant() {
-        let key = Key::from(Code::Again);
-        assert_eq!(key.to_string(), "Again");
+        // All Code variants now have Key constants, so test with Unidentified
+        let key = Key::UNIDENTIFIED;
+        assert_eq!(key.to_string(), "Unidentified");
     }
 
     #[test]
@@ -806,6 +1036,254 @@ mod tests {
             Key::CONTEXT_MENU,
             Key::POWER,
         ] {
+            let s = key.to_string();
+            let parsed: Key = s.parse().unwrap();
+            assert_eq!(parsed, key, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn extended_function_keys_exist() {
+        assert_eq!(Key::F25, Key(Code::F25));
+        assert_eq!(Key::F35, Key(Code::F35));
+    }
+
+    #[test]
+    fn extended_function_keys_parse() {
+        assert_eq!("F25".parse::<Key>().unwrap(), Key::F25);
+        assert_eq!("F30".parse::<Key>().unwrap(), Key::F30);
+        assert_eq!("F35".parse::<Key>().unwrap(), Key::F35);
+    }
+
+    #[test]
+    fn browser_keys_exist_and_round_trip() {
+        let browser_keys = [
+            Key::BROWSER_BACK,
+            Key::BROWSER_FORWARD,
+            Key::BROWSER_HOME,
+            Key::BROWSER_REFRESH,
+            Key::BROWSER_SEARCH,
+            Key::BROWSER_STOP,
+            Key::BROWSER_FAVORITES,
+        ];
+        for key in browser_keys {
+            let s = key.to_string();
+            let parsed: Key = s.parse().unwrap();
+            assert_eq!(parsed, key, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn extended_media_keys_exist_and_round_trip() {
+        let media_keys = [
+            Key::MEDIA_PLAY,
+            Key::MEDIA_PAUSE,
+            Key::MEDIA_FAST_FORWARD,
+            Key::MEDIA_REWIND,
+            Key::MEDIA_RECORD,
+            Key::MEDIA_SELECT,
+        ];
+        for key in media_keys {
+            let s = key.to_string();
+            let parsed: Key = s.parse().unwrap();
+            assert_eq!(parsed, key, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn system_keys_exist_and_round_trip() {
+        let system_keys = [
+            Key::SLEEP,
+            Key::WAKE_UP,
+            Key::EJECT,
+            Key::BRIGHTNESS_DOWN,
+            Key::BRIGHTNESS_UP,
+        ];
+        for key in system_keys {
+            let s = key.to_string();
+            let parsed: Key = s.parse().unwrap();
+            assert_eq!(parsed, key, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn clipboard_keys_exist_and_round_trip() {
+        let clipboard_keys = [Key::COPY, Key::CUT, Key::PASTE];
+        for key in clipboard_keys {
+            let s = key.to_string();
+            let parsed: Key = s.parse().unwrap();
+            assert_eq!(parsed, key, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn international_keys_exist_and_round_trip() {
+        let intl_keys = [Key::INTL_BACKSLASH, Key::INTL_RO, Key::INTL_YEN];
+        for key in intl_keys {
+            let s = key.to_string();
+            let parsed: Key = s.parse().unwrap();
+            assert_eq!(parsed, key, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn cjk_keys_exist() {
+        assert_eq!(Key::CONVERT, Key(Code::Convert));
+        assert_eq!(Key::NON_CONVERT, Key(Code::NonConvert));
+        assert_eq!(Key::KANA_MODE, Key(Code::KanaMode));
+        assert_eq!(Key::HIRAGANA, Key(Code::Hiragana));
+        assert_eq!(Key::KATAKANA, Key(Code::Katakana));
+    }
+
+    #[test]
+    fn extended_numpad_keys_exist() {
+        assert_eq!(Key::NUMPAD_EQUAL, Key(Code::NumpadEqual));
+        assert_eq!(Key::NUMPAD_COMMA, Key(Code::NumpadComma));
+        assert_eq!(Key::NUMPAD_BACKSPACE, Key(Code::NumpadBackspace));
+        assert_eq!(Key::NUMPAD_PAREN_LEFT, Key(Code::NumpadParenLeft));
+        assert_eq!(Key::NUMPAD_PAREN_RIGHT, Key(Code::NumpadParenRight));
+    }
+
+    #[test]
+    fn fn_keys_exist() {
+        assert_eq!(Key::FN, Key(Code::Fn));
+        assert_eq!(Key::FN_LOCK, Key(Code::FnLock));
+    }
+
+    #[test]
+    fn launch_keys_exist() {
+        assert_eq!(Key::LAUNCH_APP1, Key(Code::LaunchApp1));
+        assert_eq!(Key::LAUNCH_APP2, Key(Code::LaunchApp2));
+        assert_eq!(Key::LAUNCH_MAIL, Key(Code::LaunchMail));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn legacy_keys_exist() {
+        assert_eq!(Key::HYPER, Key(Code::Hyper));
+        assert_eq!(Key::AGAIN, Key(Code::Again));
+        assert_eq!(Key::PROPS, Key(Code::Props));
+        assert_eq!(Key::UNDO, Key(Code::Undo));
+        assert_eq!(Key::FIND, Key(Code::Find));
+        assert_eq!(Key::HELP, Key(Code::Help));
+    }
+
+    #[test]
+    fn parse_aliases_for_new_keys() {
+        // Browser keys
+        assert_eq!("BrowserBack".parse::<Key>().unwrap(), Key::BROWSER_BACK);
+        // Clipboard
+        assert_eq!("Copy".parse::<Key>().unwrap(), Key::COPY);
+        assert_eq!("Cut".parse::<Key>().unwrap(), Key::CUT);
+        assert_eq!("Paste".parse::<Key>().unwrap(), Key::PASTE);
+        // System
+        assert_eq!("Sleep".parse::<Key>().unwrap(), Key::SLEEP);
+        assert_eq!("WakeUp".parse::<Key>().unwrap(), Key::WAKE_UP);
+        assert_eq!("Eject".parse::<Key>().unwrap(), Key::EJECT);
+        // Media
+        assert_eq!("MediaPlay".parse::<Key>().unwrap(), Key::MEDIA_PLAY);
+        assert_eq!("MediaPause".parse::<Key>().unwrap(), Key::MEDIA_PAUSE);
+        // Fn
+        assert_eq!("Fn".parse::<Key>().unwrap(), Key::FN);
+        assert_eq!("FnLock".parse::<Key>().unwrap(), Key::FN_LOCK);
+    }
+
+    #[test]
+    fn all_new_constants_round_trip_display_parse() {
+        let new_keys = [
+            Key::F25,
+            Key::F26,
+            Key::F27,
+            Key::F28,
+            Key::F29,
+            Key::F30,
+            Key::F31,
+            Key::F32,
+            Key::F33,
+            Key::F34,
+            Key::F35,
+            Key::BROWSER_BACK,
+            Key::BROWSER_FORWARD,
+            Key::BROWSER_HOME,
+            Key::BROWSER_REFRESH,
+            Key::BROWSER_SEARCH,
+            Key::BROWSER_STOP,
+            Key::BROWSER_FAVORITES,
+            Key::MEDIA_PLAY,
+            Key::MEDIA_PAUSE,
+            Key::MEDIA_FAST_FORWARD,
+            Key::MEDIA_REWIND,
+            Key::MEDIA_RECORD,
+            Key::MEDIA_SELECT,
+            Key::MICROPHONE_MUTE_TOGGLE,
+            Key::SLEEP,
+            Key::WAKE_UP,
+            Key::EJECT,
+            Key::BRIGHTNESS_DOWN,
+            Key::BRIGHTNESS_UP,
+            Key::FN,
+            Key::FN_LOCK,
+            Key::COPY,
+            Key::CUT,
+            Key::PASTE,
+            Key::UNDO,
+            Key::FIND,
+            Key::HELP,
+            Key::OPEN,
+            Key::SELECT,
+            Key::AGAIN,
+            Key::PROPS,
+            Key::ABORT,
+            Key::RESUME,
+            Key::SUSPEND,
+            Key::HYPER,
+            Key::SUPER_KEY,
+            Key::TURBO,
+            Key::CONVERT,
+            Key::NON_CONVERT,
+            Key::KANA_MODE,
+            Key::HIRAGANA,
+            Key::KATAKANA,
+            Key::LANG1,
+            Key::LANG2,
+            Key::LANG3,
+            Key::LANG4,
+            Key::LANG5,
+            Key::INTL_BACKSLASH,
+            Key::INTL_RO,
+            Key::INTL_YEN,
+            Key::LAUNCH_APP1,
+            Key::LAUNCH_APP2,
+            Key::LAUNCH_MAIL,
+            Key::LAUNCH_ASSISTANT,
+            Key::LAUNCH_CONTROL_PANEL,
+            Key::LAUNCH_SCREEN_SAVER,
+            Key::MAIL_FORWARD,
+            Key::MAIL_REPLY,
+            Key::MAIL_SEND,
+            Key::NUMPAD_EQUAL,
+            Key::NUMPAD_COMMA,
+            Key::NUMPAD_BACKSPACE,
+            Key::NUMPAD_CLEAR,
+            Key::NUMPAD_CLEAR_ENTRY,
+            Key::NUMPAD_HASH,
+            Key::NUMPAD_MEMORY_ADD,
+            Key::NUMPAD_MEMORY_CLEAR,
+            Key::NUMPAD_MEMORY_RECALL,
+            Key::NUMPAD_MEMORY_STORE,
+            Key::NUMPAD_MEMORY_SUBTRACT,
+            Key::NUMPAD_PAREN_LEFT,
+            Key::NUMPAD_PAREN_RIGHT,
+            Key::NUMPAD_STAR,
+            Key::DISPLAY_TOGGLE_INT_EXT,
+            Key::KEYBOARD_BACKLIGHT_TOGGLE,
+            Key::KEYBOARD_LAYOUT_SELECT,
+            Key::PRIVACY_SCREEN_TOGGLE,
+            Key::SELECT_TASK,
+            Key::SHOW_ALL_WINDOWS,
+            Key::ZOOM_TOGGLE,
+        ];
+        for key in new_keys {
             let s = key.to_string();
             let parsed: Key = s.parse().unwrap();
             assert_eq!(parsed, key, "round-trip failed for {s}");

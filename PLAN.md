@@ -620,7 +620,7 @@ adding new bridge crates straightforward: extension traits with
 
 Expand `Key` constants — expose all `keyboard_types::Code` variants:
 
-- [ ] Add remaining ~91 `Key` constants to `kbd-core` for variants
+- [x] Add remaining ~91 `Key` constants to `kbd-core` for variants
       already in `keyboard_types::Code` but not yet exposed: browser
       keys (`BrowserBack`, `BrowserForward`, …), extended media
       (`MediaPlay`, `MediaPause`, `MediaFastForward`, …), system keys
@@ -629,10 +629,10 @@ Expand `Key` constants — expose all `keyboard_types::Code` variants:
       F25–F35, international keys (`IntlBackslash`, `IntlRo`,
       `IntlYen`), CJK input keys, extended numpad, and legacy/niche
       keys (`Hyper`, `Again`, `Props`, …).
-- [ ] Add parse aliases in `parse_key_token` for the new constants.
-- [ ] Update all bridge crates (`kbd-crossterm`, `kbd-winit`, `kbd-tao`,
+- [x] Add parse aliases in `parse_key_token` for the new constants.
+- [x] Update all bridge crates (`kbd-crossterm`, `kbd-winit`, `kbd-tao`,
       `kbd-iced`, `kbd-evdev`, `kbd-xkb`) to map newly-available keys.
-- [ ] Tests: round-trip `Display`/`FromStr` for new keys, bridge
+- [x] Tests: round-trip `Display`/`FromStr` for new keys, bridge
       mapping tests, `cargo test --workspace`.
 
 `kbd-egui` — egui bridge:

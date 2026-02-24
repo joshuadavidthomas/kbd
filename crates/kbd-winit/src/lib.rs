@@ -122,6 +122,17 @@ impl WinitKeyExt for KeyCode {
             KeyCode::F22 => Some(Key::F22),
             KeyCode::F23 => Some(Key::F23),
             KeyCode::F24 => Some(Key::F24),
+            KeyCode::F25 => Some(Key::F25),
+            KeyCode::F26 => Some(Key::F26),
+            KeyCode::F27 => Some(Key::F27),
+            KeyCode::F28 => Some(Key::F28),
+            KeyCode::F29 => Some(Key::F29),
+            KeyCode::F30 => Some(Key::F30),
+            KeyCode::F31 => Some(Key::F31),
+            KeyCode::F32 => Some(Key::F32),
+            KeyCode::F33 => Some(Key::F33),
+            KeyCode::F34 => Some(Key::F34),
+            KeyCode::F35 => Some(Key::F35),
 
             // Navigation and editing
             KeyCode::Enter => Some(Key::ENTER),
@@ -171,15 +182,30 @@ impl WinitKeyExt for KeyCode {
             KeyCode::NumpadMultiply => Some(Key::NUMPAD_MULTIPLY),
             KeyCode::NumpadDivide => Some(Key::NUMPAD_DIVIDE),
             KeyCode::NumpadEnter => Some(Key::NUMPAD_ENTER),
+            KeyCode::NumpadEqual => Some(Key::NUMPAD_EQUAL),
+            KeyCode::NumpadComma => Some(Key::NUMPAD_COMMA),
+            KeyCode::NumpadBackspace => Some(Key::NUMPAD_BACKSPACE),
+            KeyCode::NumpadClear => Some(Key::NUMPAD_CLEAR),
+            KeyCode::NumpadClearEntry => Some(Key::NUMPAD_CLEAR_ENTRY),
+            KeyCode::NumpadHash => Some(Key::NUMPAD_HASH),
+            KeyCode::NumpadMemoryAdd => Some(Key::NUMPAD_MEMORY_ADD),
+            KeyCode::NumpadMemoryClear => Some(Key::NUMPAD_MEMORY_CLEAR),
+            KeyCode::NumpadMemoryRecall => Some(Key::NUMPAD_MEMORY_RECALL),
+            KeyCode::NumpadMemoryStore => Some(Key::NUMPAD_MEMORY_STORE),
+            KeyCode::NumpadMemorySubtract => Some(Key::NUMPAD_MEMORY_SUBTRACT),
+            KeyCode::NumpadParenLeft => Some(Key::NUMPAD_PAREN_LEFT),
+            KeyCode::NumpadParenRight => Some(Key::NUMPAD_PAREN_RIGHT),
+            KeyCode::NumpadStar => Some(Key::NUMPAD_STAR),
 
-            // Modifiers — winit uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight
+            // Modifiers — winit uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight.
+            // Meta is winit's legacy alias for the Super key (no left/right distinction).
             KeyCode::ControlLeft => Some(Key::CONTROL_LEFT),
             KeyCode::ControlRight => Some(Key::CONTROL_RIGHT),
             KeyCode::ShiftLeft => Some(Key::SHIFT_LEFT),
             KeyCode::ShiftRight => Some(Key::SHIFT_RIGHT),
             KeyCode::AltLeft => Some(Key::ALT_LEFT),
             KeyCode::AltRight => Some(Key::ALT_RIGHT),
-            KeyCode::SuperLeft => Some(Key::META_LEFT),
+            KeyCode::SuperLeft | KeyCode::Meta => Some(Key::META_LEFT),
             KeyCode::SuperRight => Some(Key::META_RIGHT),
 
             // Media keys
@@ -190,6 +216,16 @@ impl WinitKeyExt for KeyCode {
             KeyCode::MediaStop => Some(Key::MEDIA_STOP),
             KeyCode::MediaTrackNext => Some(Key::MEDIA_TRACK_NEXT),
             KeyCode::MediaTrackPrevious => Some(Key::MEDIA_TRACK_PREVIOUS),
+            KeyCode::MediaSelect => Some(Key::MEDIA_SELECT),
+
+            // Browser keys
+            KeyCode::BrowserBack => Some(Key::BROWSER_BACK),
+            KeyCode::BrowserFavorites => Some(Key::BROWSER_FAVORITES),
+            KeyCode::BrowserForward => Some(Key::BROWSER_FORWARD),
+            KeyCode::BrowserHome => Some(Key::BROWSER_HOME),
+            KeyCode::BrowserRefresh => Some(Key::BROWSER_REFRESH),
+            KeyCode::BrowserSearch => Some(Key::BROWSER_SEARCH),
+            KeyCode::BrowserStop => Some(Key::BROWSER_STOP),
 
             // System keys
             KeyCode::PrintScreen => Some(Key::PRINT_SCREEN),
@@ -198,9 +234,51 @@ impl WinitKeyExt for KeyCode {
             KeyCode::NumLock => Some(Key::NUM_LOCK),
             KeyCode::ContextMenu => Some(Key::CONTEXT_MENU),
             KeyCode::Power => Some(Key::POWER),
+            KeyCode::Sleep => Some(Key::SLEEP),
+            KeyCode::WakeUp => Some(Key::WAKE_UP),
+            KeyCode::Eject => Some(Key::EJECT),
 
-            // Everything else — winit has many keys (TV remote, browser, etc.)
-            // that kbd-core doesn't define constants for.
+            // Clipboard / editing keys
+            KeyCode::Copy => Some(Key::COPY),
+            KeyCode::Cut => Some(Key::CUT),
+            KeyCode::Paste => Some(Key::PASTE),
+            KeyCode::Undo => Some(Key::UNDO),
+            KeyCode::Find => Some(Key::FIND),
+            KeyCode::Help => Some(Key::HELP),
+            KeyCode::Open => Some(Key::OPEN),
+            KeyCode::Select => Some(Key::SELECT),
+            KeyCode::Again => Some(Key::AGAIN),
+            KeyCode::Props => Some(Key::PROPS),
+            KeyCode::Abort => Some(Key::ABORT),
+            KeyCode::Resume => Some(Key::RESUME),
+            KeyCode::Suspend => Some(Key::SUSPEND),
+
+            // Fn and legacy
+            KeyCode::Fn => Some(Key::FN),
+            KeyCode::FnLock => Some(Key::FN_LOCK),
+            KeyCode::Hyper => Some(Key::HYPER),
+            KeyCode::Turbo => Some(Key::TURBO),
+
+            // CJK / international
+            KeyCode::Convert => Some(Key::CONVERT),
+            KeyCode::NonConvert => Some(Key::NON_CONVERT),
+            KeyCode::KanaMode => Some(Key::KANA_MODE),
+            KeyCode::Hiragana => Some(Key::HIRAGANA),
+            KeyCode::Katakana => Some(Key::KATAKANA),
+            KeyCode::Lang1 => Some(Key::LANG1),
+            KeyCode::Lang2 => Some(Key::LANG2),
+            KeyCode::Lang3 => Some(Key::LANG3),
+            KeyCode::Lang4 => Some(Key::LANG4),
+            KeyCode::Lang5 => Some(Key::LANG5),
+            KeyCode::IntlBackslash => Some(Key::INTL_BACKSLASH),
+            KeyCode::IntlRo => Some(Key::INTL_RO),
+            KeyCode::IntlYen => Some(Key::INTL_YEN),
+
+            // App launch keys
+            KeyCode::LaunchApp1 => Some(Key::LAUNCH_APP1),
+            KeyCode::LaunchApp2 => Some(Key::LAUNCH_APP2),
+            KeyCode::LaunchMail => Some(Key::LAUNCH_MAIL),
+
             _ => None,
         }
     }
@@ -319,8 +397,7 @@ mod tests {
         assert_eq!(KeyCode::F1.to_key(), Some(Key::F1));
         assert_eq!(KeyCode::F12.to_key(), Some(Key::F12));
         assert_eq!(KeyCode::F24.to_key(), Some(Key::F24));
-        // F25+ not in kbd-core
-        assert_eq!(KeyCode::F25.to_key(), None);
+        assert_eq!(KeyCode::F25.to_key(), Some(Key::F25));
     }
 
     #[test]
@@ -353,6 +430,8 @@ mod tests {
         // winit's SuperLeft/Right → kbd-core's MetaLeft/Right
         assert_eq!(KeyCode::SuperLeft.to_key(), Some(Key::META_LEFT));
         assert_eq!(KeyCode::SuperRight.to_key(), Some(Key::META_RIGHT));
+        // winit's legacy Meta (no left/right) → defaults to MetaLeft
+        assert_eq!(KeyCode::Meta.to_key(), Some(Key::META_LEFT));
     }
 
     #[test]
@@ -419,10 +498,105 @@ mod tests {
     }
 
     #[test]
-    fn keycode_unmappable_returns_none() {
-        // F25+ and TV remote keys have no kbd-core equivalent
-        assert_eq!(KeyCode::F25.to_key(), None);
-        assert_eq!(KeyCode::F35.to_key(), None);
+    fn keycode_extended_function_keys() {
+        assert_eq!(KeyCode::F25.to_key(), Some(Key::F25));
+        assert_eq!(KeyCode::F35.to_key(), Some(Key::F35));
+    }
+
+    #[test]
+    fn keycode_browser_keys() {
+        assert_eq!(KeyCode::BrowserBack.to_key(), Some(Key::BROWSER_BACK));
+        assert_eq!(KeyCode::BrowserForward.to_key(), Some(Key::BROWSER_FORWARD));
+        assert_eq!(KeyCode::BrowserHome.to_key(), Some(Key::BROWSER_HOME));
+        assert_eq!(KeyCode::BrowserRefresh.to_key(), Some(Key::BROWSER_REFRESH));
+        assert_eq!(KeyCode::BrowserSearch.to_key(), Some(Key::BROWSER_SEARCH));
+        assert_eq!(KeyCode::BrowserStop.to_key(), Some(Key::BROWSER_STOP));
+        assert_eq!(
+            KeyCode::BrowserFavorites.to_key(),
+            Some(Key::BROWSER_FAVORITES)
+        );
+    }
+
+    #[test]
+    fn keycode_clipboard_and_editing() {
+        assert_eq!(KeyCode::Copy.to_key(), Some(Key::COPY));
+        assert_eq!(KeyCode::Cut.to_key(), Some(Key::CUT));
+        assert_eq!(KeyCode::Paste.to_key(), Some(Key::PASTE));
+        assert_eq!(KeyCode::Undo.to_key(), Some(Key::UNDO));
+        assert_eq!(KeyCode::Find.to_key(), Some(Key::FIND));
+        assert_eq!(KeyCode::Help.to_key(), Some(Key::HELP));
+        assert_eq!(KeyCode::Open.to_key(), Some(Key::OPEN));
+        assert_eq!(KeyCode::Select.to_key(), Some(Key::SELECT));
+        assert_eq!(KeyCode::Again.to_key(), Some(Key::AGAIN));
+        assert_eq!(KeyCode::Props.to_key(), Some(Key::PROPS));
+        assert_eq!(KeyCode::Abort.to_key(), Some(Key::ABORT));
+    }
+
+    #[test]
+    fn keycode_system_keys_extended() {
+        assert_eq!(KeyCode::Sleep.to_key(), Some(Key::SLEEP));
+        assert_eq!(KeyCode::WakeUp.to_key(), Some(Key::WAKE_UP));
+        assert_eq!(KeyCode::Eject.to_key(), Some(Key::EJECT));
+        assert_eq!(KeyCode::Resume.to_key(), Some(Key::RESUME));
+        assert_eq!(KeyCode::Suspend.to_key(), Some(Key::SUSPEND));
+    }
+
+    #[test]
+    fn keycode_extended_numpad() {
+        assert_eq!(KeyCode::NumpadEqual.to_key(), Some(Key::NUMPAD_EQUAL));
+        assert_eq!(KeyCode::NumpadComma.to_key(), Some(Key::NUMPAD_COMMA));
+        assert_eq!(
+            KeyCode::NumpadBackspace.to_key(),
+            Some(Key::NUMPAD_BACKSPACE)
+        );
+        assert_eq!(KeyCode::NumpadClear.to_key(), Some(Key::NUMPAD_CLEAR));
+        assert_eq!(
+            KeyCode::NumpadClearEntry.to_key(),
+            Some(Key::NUMPAD_CLEAR_ENTRY)
+        );
+        assert_eq!(KeyCode::NumpadHash.to_key(), Some(Key::NUMPAD_HASH));
+        assert_eq!(
+            KeyCode::NumpadParenLeft.to_key(),
+            Some(Key::NUMPAD_PAREN_LEFT)
+        );
+        assert_eq!(
+            KeyCode::NumpadParenRight.to_key(),
+            Some(Key::NUMPAD_PAREN_RIGHT)
+        );
+        assert_eq!(KeyCode::NumpadStar.to_key(), Some(Key::NUMPAD_STAR));
+    }
+
+    #[test]
+    fn keycode_international_and_cjk() {
+        assert_eq!(KeyCode::IntlBackslash.to_key(), Some(Key::INTL_BACKSLASH));
+        assert_eq!(KeyCode::IntlRo.to_key(), Some(Key::INTL_RO));
+        assert_eq!(KeyCode::IntlYen.to_key(), Some(Key::INTL_YEN));
+        assert_eq!(KeyCode::Convert.to_key(), Some(Key::CONVERT));
+        assert_eq!(KeyCode::NonConvert.to_key(), Some(Key::NON_CONVERT));
+        assert_eq!(KeyCode::KanaMode.to_key(), Some(Key::KANA_MODE));
+        assert_eq!(KeyCode::Hiragana.to_key(), Some(Key::HIRAGANA));
+        assert_eq!(KeyCode::Katakana.to_key(), Some(Key::KATAKANA));
+        assert_eq!(KeyCode::Lang1.to_key(), Some(Key::LANG1));
+        assert_eq!(KeyCode::Lang2.to_key(), Some(Key::LANG2));
+        assert_eq!(KeyCode::Lang3.to_key(), Some(Key::LANG3));
+        assert_eq!(KeyCode::Lang4.to_key(), Some(Key::LANG4));
+        assert_eq!(KeyCode::Lang5.to_key(), Some(Key::LANG5));
+    }
+
+    #[test]
+    fn keycode_fn_and_legacy() {
+        assert_eq!(KeyCode::Fn.to_key(), Some(Key::FN));
+        assert_eq!(KeyCode::FnLock.to_key(), Some(Key::FN_LOCK));
+        assert_eq!(KeyCode::Hyper.to_key(), Some(Key::HYPER));
+        assert_eq!(KeyCode::Turbo.to_key(), Some(Key::TURBO));
+    }
+
+    #[test]
+    fn keycode_launch_keys() {
+        assert_eq!(KeyCode::LaunchApp1.to_key(), Some(Key::LAUNCH_APP1));
+        assert_eq!(KeyCode::LaunchApp2.to_key(), Some(Key::LAUNCH_APP2));
+        assert_eq!(KeyCode::LaunchMail.to_key(), Some(Key::LAUNCH_MAIL));
+        assert_eq!(KeyCode::MediaSelect.to_key(), Some(Key::MEDIA_SELECT));
     }
 
     // WinitKeyExt — PhysicalKey

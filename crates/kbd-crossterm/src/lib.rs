@@ -220,6 +220,17 @@ fn function_key(n: u8) -> Option<Key> {
         22 => Some(Key::F22),
         23 => Some(Key::F23),
         24 => Some(Key::F24),
+        25 => Some(Key::F25),
+        26 => Some(Key::F26),
+        27 => Some(Key::F27),
+        28 => Some(Key::F28),
+        29 => Some(Key::F29),
+        30 => Some(Key::F30),
+        31 => Some(Key::F31),
+        32 => Some(Key::F32),
+        33 => Some(Key::F33),
+        34 => Some(Key::F34),
+        35 => Some(Key::F35),
         _ => None,
     }
 }
@@ -233,12 +244,12 @@ fn media_to_key(media: MediaKeyCode) -> Option<Key> {
         MediaKeyCode::RaiseVolume => Some(Key::AUDIO_VOLUME_UP),
         MediaKeyCode::LowerVolume => Some(Key::AUDIO_VOLUME_DOWN),
         MediaKeyCode::MuteVolume => Some(Key::AUDIO_VOLUME_MUTE),
-        MediaKeyCode::Play
-        | MediaKeyCode::Pause
-        | MediaKeyCode::Reverse
-        | MediaKeyCode::FastForward
-        | MediaKeyCode::Rewind
-        | MediaKeyCode::Record => None,
+        MediaKeyCode::Play => Some(Key::MEDIA_PLAY),
+        MediaKeyCode::Pause => Some(Key::MEDIA_PAUSE),
+        MediaKeyCode::FastForward => Some(Key::MEDIA_FAST_FORWARD),
+        MediaKeyCode::Rewind => Some(Key::MEDIA_REWIND),
+        MediaKeyCode::Record => Some(Key::MEDIA_RECORD),
+        MediaKeyCode::Reverse => None,
     }
 }
 
@@ -252,9 +263,8 @@ fn modifier_keycode_to_key(modifier: ModifierKeyCode) -> Option<Key> {
         ModifierKeyCode::RightAlt => Some(Key::ALT_RIGHT),
         ModifierKeyCode::LeftSuper => Some(Key::META_LEFT),
         ModifierKeyCode::RightSuper => Some(Key::META_RIGHT),
-        ModifierKeyCode::LeftHyper
-        | ModifierKeyCode::RightHyper
-        | ModifierKeyCode::LeftMeta
+        ModifierKeyCode::LeftHyper | ModifierKeyCode::RightHyper => Some(Key::HYPER),
+        ModifierKeyCode::LeftMeta
         | ModifierKeyCode::RightMeta
         | ModifierKeyCode::IsoLevel3Shift
         | ModifierKeyCode::IsoLevel5Shift => None,
@@ -358,7 +368,9 @@ mod tests {
         assert_eq!(KeyCode::F(1).to_key(), Some(Key::F1));
         assert_eq!(KeyCode::F(12).to_key(), Some(Key::F12));
         assert_eq!(KeyCode::F(24).to_key(), Some(Key::F24));
-        assert_eq!(KeyCode::F(25).to_key(), None);
+        assert_eq!(KeyCode::F(25).to_key(), Some(Key::F25));
+        assert_eq!(KeyCode::F(35).to_key(), Some(Key::F35));
+        assert_eq!(KeyCode::F(36).to_key(), None);
         assert_eq!(KeyCode::F(0).to_key(), None);
     }
 
@@ -395,6 +407,30 @@ mod tests {
     }
 
     #[test]
+    fn extended_media_keys_to_key() {
+        assert_eq!(
+            KeyCode::Media(MediaKeyCode::Play).to_key(),
+            Some(Key::MEDIA_PLAY)
+        );
+        assert_eq!(
+            KeyCode::Media(MediaKeyCode::Pause).to_key(),
+            Some(Key::MEDIA_PAUSE)
+        );
+        assert_eq!(
+            KeyCode::Media(MediaKeyCode::FastForward).to_key(),
+            Some(Key::MEDIA_FAST_FORWARD)
+        );
+        assert_eq!(
+            KeyCode::Media(MediaKeyCode::Rewind).to_key(),
+            Some(Key::MEDIA_REWIND)
+        );
+        assert_eq!(
+            KeyCode::Media(MediaKeyCode::Record).to_key(),
+            Some(Key::MEDIA_RECORD)
+        );
+    }
+
+    #[test]
     fn modifier_keycode_to_key() {
         assert_eq!(
             KeyCode::Modifier(ModifierKeyCode::LeftControl).to_key(),
@@ -427,6 +463,18 @@ mod tests {
         assert_eq!(
             KeyCode::Modifier(ModifierKeyCode::RightSuper).to_key(),
             Some(Key::META_RIGHT)
+        );
+    }
+
+    #[test]
+    fn hyper_modifier_keys_to_key() {
+        assert_eq!(
+            KeyCode::Modifier(ModifierKeyCode::LeftHyper).to_key(),
+            Some(Key::HYPER)
+        );
+        assert_eq!(
+            KeyCode::Modifier(ModifierKeyCode::RightHyper).to_key(),
+            Some(Key::HYPER)
         );
     }
 

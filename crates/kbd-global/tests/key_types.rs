@@ -31,7 +31,7 @@ fn media_key_round_trips_through_evdev() {
 #[test]
 fn unmapped_evdev_keycode_maps_to_unknown_key() {
     use evdev::KeyCode;
-    assert_eq!(KeyCode::KEY_PROG1.to_key(), Key::UNIDENTIFIED);
+    assert_eq!(KeyCode::KEY_PROG2.to_key(), Key::UNIDENTIFIED);
 }
 
 #[test]
