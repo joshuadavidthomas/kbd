@@ -618,6 +618,23 @@ adding new bridge crates straightforward: extension traits with
 - [x] `IcedEventExt` trait: `iced::keyboard::Event → Option<Hotkey>`.
 - [x] Tests and `cargo build --workspace`.
 
+Expand `Key` constants — expose all `keyboard_types::Code` variants:
+
+- [ ] Add remaining ~91 `Key` constants to `kbd-core` for variants
+      already in `keyboard_types::Code` but not yet exposed: browser
+      keys (`BrowserBack`, `BrowserForward`, …), extended media
+      (`MediaPlay`, `MediaPause`, `MediaFastForward`, …), system keys
+      (`Sleep`, `WakeUp`, `Eject`, `BrightnessDown/Up`, `Fn`, …),
+      app-launch keys, clipboard keys (`Copy`, `Cut`, `Paste`, …),
+      F25–F35, international keys (`IntlBackslash`, `IntlRo`,
+      `IntlYen`), CJK input keys, extended numpad, and legacy/niche
+      keys (`Hyper`, `Again`, `Props`, …).
+- [ ] Add parse aliases in `parse_key_token` for the new constants.
+- [ ] Update all bridge crates (`kbd-crossterm`, `kbd-winit`, `kbd-tao`,
+      `kbd-iced`, `kbd-evdev`, `kbd-xkb`) to map newly-available keys.
+- [ ] Tests: round-trip `Display`/`FromStr` for new keys, bridge
+      mapping tests, `cargo test --workspace`.
+
 `kbd-egui` — egui bridge:
 
 - [ ] Create `crates/kbd-egui/` with `Cargo.toml` (deps: `egui`,
