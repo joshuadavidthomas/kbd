@@ -80,6 +80,12 @@ impl eframe::App for App {
                 continue;
             };
 
+            // Standard app-level quit shortcut
+            if hotkey == Hotkey::new(Key::Q).modifier(Modifier::Ctrl) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                continue;
+            }
+
             let line = match self.matcher.process(&hotkey, KeyTransition::Press) {
                 MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                 MatchResult::NoMatch => format!("{hotkey} → no match"),
