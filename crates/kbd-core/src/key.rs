@@ -217,6 +217,7 @@ impl Key {
     pub const BRIGHTNESS_UP: Self = Self(Code::BrightnessUp);
     pub const DISPLAY_TOGGLE_INT_EXT: Self = Self(Code::DisplayToggleIntExt);
     pub const PRIVACY_SCREEN_TOGGLE: Self = Self(Code::PrivacyScreenToggle);
+    pub const KEYBOARD_BACKLIGHT_TOGGLE: Self = Self(Code::KeyboardBacklightToggle);
 
     // Fn keys
     pub const FN: Self = Self(Code::Fn);
@@ -582,6 +583,7 @@ fn parse_key_token(token: &str) -> Option<Key> {
         "BRIGHTNESSUP" | "BRIGHTUP" => Some(Key::BRIGHTNESS_UP),
         "DISPLAYTOGGLEINTEXT" => Some(Key::DISPLAY_TOGGLE_INT_EXT),
         "PRIVACYSCREENTOGGLE" => Some(Key::PRIVACY_SCREEN_TOGGLE),
+        "KEYBOARDBACKLIGHTTOGGLE" | "KBDBACKLIGHT" => Some(Key::KEYBOARD_BACKLIGHT_TOGGLE),
         // Browser keys
         "BROWSERBACK" => Some(Key::BROWSER_BACK),
         "BROWSERFAVORITES" | "BOOKMARKS" => Some(Key::BROWSER_FAVORITES),
@@ -1274,6 +1276,7 @@ mod tests {
             Key::NUMPAD_PAREN_RIGHT,
             Key::NUMPAD_STAR,
             Key::DISPLAY_TOGGLE_INT_EXT,
+            Key::KEYBOARD_BACKLIGHT_TOGGLE,
             Key::KEYBOARD_LAYOUT_SELECT,
             Key::PRIVACY_SCREEN_TOGGLE,
             Key::SELECT_TASK,
