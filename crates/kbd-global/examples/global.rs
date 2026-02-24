@@ -24,7 +24,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         libc::signal(libc::SIGTSTP, libc::SIG_IGN);
     }
 
-    match run() {
+    // Disable terminal echo so raw keypresses don't appear
+    let original_termios = disable_echo();
+
+    let result = match run() {
         Ok(()) => Ok(()),
         Err(e) => {
             let msg = format!("{e}");
@@ -40,6 +43,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 Err(e.into())
             }
+        }
+    };
+
+    // Restore terminal settings
+    restore_termios(original_termios);
+    result
+}
+
+fn disable_echo() -> Option<libc::termios> {
+    unsafe {
+        let mut termios = std::mem::zeroed::<libc::termios>();
+        if libc::tcgetattr(libc::STDIN_FILENO, &raw mut termios) != 0 {
+            return None;
+        }
+        let original = termios;
+        termios.c_lflag &= !(libc::ECHO | libc::ICANON);
+        libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const termios);
+        Some(original)
+    }
+}
+
+fn restore_termios(original: Option<libc::termios>) {
+    if let Some(termios) = original {
+        unsafe {
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const termios);
         }
     }
 }
