@@ -80,6 +80,14 @@ impl eframe::App for App {
                 continue;
             };
 
+            // Ctrl+Q / Ctrl+W → close the window
+            if hotkey == Hotkey::new(Key::Q).modifier(Modifier::Ctrl)
+                || hotkey == Hotkey::new(Key::W).modifier(Modifier::Ctrl)
+            {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                continue;
+            }
+
             let line = match self.matcher.process(&hotkey, KeyTransition::Press) {
                 MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                 MatchResult::NoMatch => format!("{hotkey} → no match"),

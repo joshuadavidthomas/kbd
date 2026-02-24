@@ -72,24 +72,32 @@ enum Message {
 }
 
 impl App {
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::KeyEvent(event) => {
                 let iced_core::keyboard::Event::KeyPressed { .. } = event else {
-                    return;
+                    return Task::none();
                 };
 
                 let Some(hotkey) = event.to_hotkey() else {
-                    return;
+                    return Task::none();
                 };
+
+                // Ctrl+Q / Ctrl+W → close the window
+                if hotkey == Hotkey::new(Key::Q).modifier(Modifier::Ctrl)
+                    || hotkey == Hotkey::new(Key::W).modifier(Modifier::Ctrl)
+                {
+                    return iced::exit();
+                }
 
                 let line = match self.matcher.process(&hotkey, KeyTransition::Press) {
                     MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                     MatchResult::NoMatch => format!("{hotkey} → no match"),
                     MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
-                    MatchResult::Swallowed | MatchResult::Ignored => return,
+                    MatchResult::Swallowed | MatchResult::Ignored => return Task::none(),
                 };
                 self.log.push(line);
+                Task::none()
             }
         }
     }
