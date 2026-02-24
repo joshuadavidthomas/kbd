@@ -2,8 +2,10 @@
 //!
 //! This crate bridges egui's key types to `kbd-core`'s physical key types.
 //! Egui has a smaller, custom key enum that is not 1:1 with the W3C
-//! specification — some physical keys have no egui equivalent, and egui
-//! combines some concepts differently.
+//! specification — some physical keys have no egui equivalent, some egui
+//! keys are logical/shifted characters without a single physical key
+//! equivalent (e.g., `Colon`, `Pipe`, `Plus`), and egui combines some
+//! concepts differently.
 //!
 //! # Extension traits
 //!
@@ -49,10 +51,10 @@ use kbd_core::Modifier;
 
 /// Convert an [`egui::Key`] to a `kbd-core` [`Key`].
 ///
-/// Returns `None` for keys that have no `kbd-core` equivalent.
-/// Egui's key enum is smaller than the W3C set, so all egui keys
-/// map to a kbd-core key (this returns `Option` for API consistency
-/// with other bridge crates and to accommodate future egui additions).
+/// Returns `None` for egui keys that represent logical/shifted characters
+/// without a single physical key equivalent (e.g., `Colon`, `Pipe`,
+/// `Plus`, `Questionmark`). Most egui keys map directly to a physical
+/// key position.
 pub trait EguiKeyExt {
     fn to_key(&self) -> Option<Key>;
 }

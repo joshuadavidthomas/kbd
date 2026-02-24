@@ -637,13 +637,13 @@ Expand `Key` constants — expose all `keyboard_types::Code` variants:
 
 `kbd-egui` — egui bridge:
 
-- [ ] Create `crates/kbd-egui/` with `Cargo.toml` (deps: `egui`,
+- [x] Create `crates/kbd-egui/` with `Cargo.toml` (deps: `egui`,
       `kbd-core`).
-- [ ] `EguiKeyExt` trait: `egui::Key → Option<Key>`. egui's smaller
+- [x] `EguiKeyExt` trait: `egui::Key → Option<Key>`. egui's smaller
       key enum, not 1:1 with W3C.
-- [ ] `EguiModifiersExt` trait: `egui::Modifiers → Vec<Modifier>`.
-- [ ] `EguiEventExt` trait: full event conversion.
-- [ ] Tests and `cargo build --workspace`.
+- [x] `EguiModifiersExt` trait: `egui::Modifiers → Vec<Modifier>`.
+- [x] `EguiEventExt` trait: full event conversion.
+- [x] Tests and `cargo build --workspace`.
 
 Build on demand (niche):
 
@@ -666,7 +666,7 @@ Build on demand (niche):
 | 3.9 Public Matcher | 6/6 |
 | 3.10 Rewire kbd-global runtime | 7/7 |
 | 3.11 Adopt keyboard-types | 11/11 |
-| 3.12 Framework integration crates | 14/23 (build now) + 3 on-demand |
+| 3.12 Framework integration crates | 19/23 (build now) + 3 on-demand |
 | 3.13 Examples | 0/11 |
 
 ### 3.13 Examples
