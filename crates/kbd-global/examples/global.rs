@@ -19,6 +19,11 @@ use kbd_global::Layer;
 use kbd_global::Modifier;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Ignore terminal job-control signals so Ctrl+Z doesn't background us
+    unsafe {
+        libc::signal(libc::SIGTSTP, libc::SIG_IGN);
+    }
+
     match run() {
         Ok(()) => Ok(()),
         Err(e) => {
@@ -47,7 +52,6 @@ fn run() -> Result<(), Error> {
     println!("Backend: {:?}", manager.active_backend());
     println!();
 
-    // Register hotkeys that send events back to the main thread
     let tx1 = tx.clone();
     let _save = manager.register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), move || {
         let _ = tx1.send("Ctrl+S → Save!".to_string());
@@ -68,7 +72,13 @@ fn run() -> Result<(), Error> {
         let _ = tx4.send("quit".to_string());
     })?;
 
-    // Layer example
+    // F2 pushes the nav layer (handled on the main thread)
+    let tx_nav = tx.clone();
+    let _nav_toggle = manager.register(Hotkey::new(Key::F2), move || {
+        let _ = tx_nav.send("push_nav".to_string());
+    })?;
+
+    // Nav layer: hjkl for arrows, Escape pops back
     let tx5 = tx.clone();
     let tx6 = tx.clone();
     let tx7 = tx.clone();
@@ -106,22 +116,26 @@ fn run() -> Result<(), Error> {
     println!("  Ctrl+S  → Save");
     println!("  Ctrl+Z  → Undo");
     println!("  F1      → Help");
+    println!("  F2      → Toggle nav layer");
     println!("  Ctrl+Q  → Quit");
     println!();
-    println!("Defined layer 'nav' (push with manager.push_layer):");
+    println!("Nav layer (when active via F2):");
     println!("  H/J/K/L → arrow navigation");
-    println!("  Escape  → pop layer");
+    println!("  Escape  → exit nav layer");
     println!();
     println!("Listening for hotkeys... Ctrl+Q to exit.");
     println!();
 
-    // Block on the channel, printing events as they arrive
     loop {
         match rx.recv() {
             Ok(msg) if msg == "quit" => {
                 println!("Ctrl+Q → Quit!");
                 break;
             }
+            Ok(msg) if msg == "push_nav" => match manager.push_layer("nav") {
+                Ok(()) => println!("F2 → nav layer ON (hjkl, Escape to exit)"),
+                Err(e) => println!("F2 → failed to push layer: {e}"),
+            },
             Ok(msg) => println!("{msg}"),
             Err(_) => break,
         }
