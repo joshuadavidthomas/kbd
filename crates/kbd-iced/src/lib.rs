@@ -116,6 +116,17 @@ impl IcedKeyExt for key::Code {
             key::Code::F22 => Some(Key::F22),
             key::Code::F23 => Some(Key::F23),
             key::Code::F24 => Some(Key::F24),
+            key::Code::F25 => Some(Key::F25),
+            key::Code::F26 => Some(Key::F26),
+            key::Code::F27 => Some(Key::F27),
+            key::Code::F28 => Some(Key::F28),
+            key::Code::F29 => Some(Key::F29),
+            key::Code::F30 => Some(Key::F30),
+            key::Code::F31 => Some(Key::F31),
+            key::Code::F32 => Some(Key::F32),
+            key::Code::F33 => Some(Key::F33),
+            key::Code::F34 => Some(Key::F34),
+            key::Code::F35 => Some(Key::F35),
 
             // Navigation and editing
             key::Code::Enter => Some(Key::ENTER),
@@ -165,6 +176,20 @@ impl IcedKeyExt for key::Code {
             key::Code::NumpadMultiply => Some(Key::NUMPAD_MULTIPLY),
             key::Code::NumpadDivide => Some(Key::NUMPAD_DIVIDE),
             key::Code::NumpadEnter => Some(Key::NUMPAD_ENTER),
+            key::Code::NumpadEqual => Some(Key::NUMPAD_EQUAL),
+            key::Code::NumpadComma => Some(Key::NUMPAD_COMMA),
+            key::Code::NumpadBackspace => Some(Key::NUMPAD_BACKSPACE),
+            key::Code::NumpadClear => Some(Key::NUMPAD_CLEAR),
+            key::Code::NumpadClearEntry => Some(Key::NUMPAD_CLEAR_ENTRY),
+            key::Code::NumpadHash => Some(Key::NUMPAD_HASH),
+            key::Code::NumpadMemoryAdd => Some(Key::NUMPAD_MEMORY_ADD),
+            key::Code::NumpadMemoryClear => Some(Key::NUMPAD_MEMORY_CLEAR),
+            key::Code::NumpadMemoryRecall => Some(Key::NUMPAD_MEMORY_RECALL),
+            key::Code::NumpadMemoryStore => Some(Key::NUMPAD_MEMORY_STORE),
+            key::Code::NumpadMemorySubtract => Some(Key::NUMPAD_MEMORY_SUBTRACT),
+            key::Code::NumpadParenLeft => Some(Key::NUMPAD_PAREN_LEFT),
+            key::Code::NumpadParenRight => Some(Key::NUMPAD_PAREN_RIGHT),
+            key::Code::NumpadStar => Some(Key::NUMPAD_STAR),
 
             // Modifiers — iced uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight
             key::Code::ControlLeft => Some(Key::CONTROL_LEFT),
@@ -184,6 +209,16 @@ impl IcedKeyExt for key::Code {
             key::Code::MediaStop => Some(Key::MEDIA_STOP),
             key::Code::MediaTrackNext => Some(Key::MEDIA_TRACK_NEXT),
             key::Code::MediaTrackPrevious => Some(Key::MEDIA_TRACK_PREVIOUS),
+            key::Code::MediaSelect => Some(Key::MEDIA_SELECT),
+
+            // Browser keys
+            key::Code::BrowserBack => Some(Key::BROWSER_BACK),
+            key::Code::BrowserFavorites => Some(Key::BROWSER_FAVORITES),
+            key::Code::BrowserForward => Some(Key::BROWSER_FORWARD),
+            key::Code::BrowserHome => Some(Key::BROWSER_HOME),
+            key::Code::BrowserRefresh => Some(Key::BROWSER_REFRESH),
+            key::Code::BrowserSearch => Some(Key::BROWSER_SEARCH),
+            key::Code::BrowserStop => Some(Key::BROWSER_STOP),
 
             // System keys
             key::Code::PrintScreen => Some(Key::PRINT_SCREEN),
@@ -192,9 +227,51 @@ impl IcedKeyExt for key::Code {
             key::Code::NumLock => Some(Key::NUM_LOCK),
             key::Code::ContextMenu => Some(Key::CONTEXT_MENU),
             key::Code::Power => Some(Key::POWER),
+            key::Code::Sleep => Some(Key::SLEEP),
+            key::Code::WakeUp => Some(Key::WAKE_UP),
+            key::Code::Eject => Some(Key::EJECT),
 
-            // Everything else — iced has keys (F25+, international, browser,
-            // legacy Sun keys, etc.) that kbd-core doesn't define constants for.
+            // Clipboard / editing keys
+            key::Code::Copy => Some(Key::COPY),
+            key::Code::Cut => Some(Key::CUT),
+            key::Code::Paste => Some(Key::PASTE),
+            key::Code::Undo => Some(Key::UNDO),
+            key::Code::Find => Some(Key::FIND),
+            key::Code::Help => Some(Key::HELP),
+            key::Code::Open => Some(Key::OPEN),
+            key::Code::Select => Some(Key::SELECT),
+            key::Code::Again => Some(Key::AGAIN),
+            key::Code::Props => Some(Key::PROPS),
+            key::Code::Abort => Some(Key::ABORT),
+            key::Code::Resume => Some(Key::RESUME),
+            key::Code::Suspend => Some(Key::SUSPEND),
+
+            // Fn and legacy
+            key::Code::Fn => Some(Key::FN),
+            key::Code::FnLock => Some(Key::FN_LOCK),
+            key::Code::Hyper => Some(Key::HYPER),
+            key::Code::Turbo => Some(Key::TURBO),
+
+            // CJK / international
+            key::Code::Convert => Some(Key::CONVERT),
+            key::Code::NonConvert => Some(Key::NON_CONVERT),
+            key::Code::KanaMode => Some(Key::KANA_MODE),
+            key::Code::Hiragana => Some(Key::HIRAGANA),
+            key::Code::Katakana => Some(Key::KATAKANA),
+            key::Code::Lang1 => Some(Key::LANG1),
+            key::Code::Lang2 => Some(Key::LANG2),
+            key::Code::Lang3 => Some(Key::LANG3),
+            key::Code::Lang4 => Some(Key::LANG4),
+            key::Code::Lang5 => Some(Key::LANG5),
+            key::Code::IntlBackslash => Some(Key::INTL_BACKSLASH),
+            key::Code::IntlRo => Some(Key::INTL_RO),
+            key::Code::IntlYen => Some(Key::INTL_YEN),
+
+            // App launch keys
+            key::Code::LaunchApp1 => Some(Key::LAUNCH_APP1),
+            key::Code::LaunchApp2 => Some(Key::LAUNCH_APP2),
+            key::Code::LaunchMail => Some(Key::LAUNCH_MAIL),
+
             _ => None,
         }
     }
@@ -309,8 +386,7 @@ mod tests {
         assert_eq!(key::Code::F1.to_key(), Some(Key::F1));
         assert_eq!(key::Code::F12.to_key(), Some(Key::F12));
         assert_eq!(key::Code::F24.to_key(), Some(Key::F24));
-        // F25+ not in kbd-core
-        assert_eq!(key::Code::F25.to_key(), None);
+        assert_eq!(key::Code::F25.to_key(), Some(Key::F25));
     }
 
     #[test]
@@ -418,10 +494,18 @@ mod tests {
     }
 
     #[test]
-    fn code_unmappable_returns_none() {
-        // F25+ and international keys have no kbd-core equivalent
-        assert_eq!(key::Code::F25.to_key(), None);
-        assert_eq!(key::Code::F35.to_key(), None);
+    fn code_extended_keys() {
+        assert_eq!(key::Code::F25.to_key(), Some(Key::F25));
+        assert_eq!(key::Code::F35.to_key(), Some(Key::F35));
+        assert_eq!(key::Code::BrowserBack.to_key(), Some(Key::BROWSER_BACK));
+        assert_eq!(key::Code::Copy.to_key(), Some(Key::COPY));
+        assert_eq!(key::Code::Sleep.to_key(), Some(Key::SLEEP));
+        assert_eq!(key::Code::IntlBackslash.to_key(), Some(Key::INTL_BACKSLASH));
+        assert_eq!(key::Code::NumpadEqual.to_key(), Some(Key::NUMPAD_EQUAL));
+        assert_eq!(key::Code::Fn.to_key(), Some(Key::FN));
+        assert_eq!(key::Code::LaunchMail.to_key(), Some(Key::LAUNCH_MAIL));
+        assert_eq!(key::Code::Convert.to_key(), Some(Key::CONVERT));
+        assert_eq!(key::Code::Lang1.to_key(), Some(Key::LANG1));
     }
 
     // IcedKeyExt — Physical

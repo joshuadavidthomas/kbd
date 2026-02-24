@@ -162,6 +162,63 @@ impl KeyCodeExt for KeyCode {
             KeyCode::KEY_NUMLOCK => Key::NUM_LOCK,
             KeyCode::KEY_COMPOSE => Key::CONTEXT_MENU,
             KeyCode::KEY_POWER => Key::POWER,
+            KeyCode::KEY_SLEEP => Key::SLEEP,
+            KeyCode::KEY_WAKEUP => Key::WAKE_UP,
+            KeyCode::KEY_EJECTCD => Key::EJECT,
+            KeyCode::KEY_BRIGHTNESSDOWN => Key::BRIGHTNESS_DOWN,
+            KeyCode::KEY_BRIGHTNESSUP => Key::BRIGHTNESS_UP,
+            // Browser keys
+            KeyCode::KEY_BACK => Key::BROWSER_BACK,
+            KeyCode::KEY_FORWARD => Key::BROWSER_FORWARD,
+            KeyCode::KEY_HOMEPAGE => Key::BROWSER_HOME,
+            KeyCode::KEY_REFRESH => Key::BROWSER_REFRESH,
+            KeyCode::KEY_SEARCH => Key::BROWSER_SEARCH,
+            KeyCode::KEY_STOP => Key::BROWSER_STOP,
+            KeyCode::KEY_BOOKMARKS => Key::BROWSER_FAVORITES,
+            // Extended media
+            KeyCode::KEY_PLAY => Key::MEDIA_PLAY,
+            KeyCode::KEY_PAUSECD => Key::MEDIA_PAUSE,
+            KeyCode::KEY_FASTFORWARD => Key::MEDIA_FAST_FORWARD,
+            KeyCode::KEY_REWIND => Key::MEDIA_REWIND,
+            KeyCode::KEY_RECORD => Key::MEDIA_RECORD,
+            KeyCode::KEY_MEDIA => Key::MEDIA_SELECT,
+            KeyCode::KEY_MICMUTE => Key::MICROPHONE_MUTE_TOGGLE,
+            // Clipboard / editing
+            KeyCode::KEY_COPY => Key::COPY,
+            KeyCode::KEY_CUT => Key::CUT,
+            KeyCode::KEY_PASTE => Key::PASTE,
+            KeyCode::KEY_UNDO => Key::UNDO,
+            KeyCode::KEY_FIND => Key::FIND,
+            KeyCode::KEY_HELP => Key::HELP,
+            KeyCode::KEY_OPEN => Key::OPEN,
+            KeyCode::KEY_SELECT => Key::SELECT,
+            KeyCode::KEY_AGAIN => Key::AGAIN,
+            KeyCode::KEY_PROPS => Key::PROPS,
+            KeyCode::KEY_CANCEL => Key::ABORT,
+            KeyCode::KEY_SUSPEND => Key::SUSPEND,
+            KeyCode::KEY_FRONT => Key::RESUME,
+            // CJK / international
+            KeyCode::KEY_HENKAN => Key::CONVERT,
+            KeyCode::KEY_MUHENKAN => Key::NON_CONVERT,
+            KeyCode::KEY_KATAKANAHIRAGANA => Key::KANA_MODE,
+            KeyCode::KEY_HIRAGANA => Key::HIRAGANA,
+            KeyCode::KEY_KATAKANA => Key::KATAKANA,
+            KeyCode::KEY_HANGEUL => Key::LANG1,
+            KeyCode::KEY_HANJA => Key::LANG2,
+            KeyCode::KEY_102ND => Key::INTL_BACKSLASH,
+            KeyCode::KEY_RO => Key::INTL_RO,
+            KeyCode::KEY_YEN => Key::INTL_YEN,
+            // App launch
+            KeyCode::KEY_PROG1 => Key::LAUNCH_APP1,
+            KeyCode::KEY_CALC => Key::LAUNCH_APP2,
+            KeyCode::KEY_MAIL => Key::LAUNCH_MAIL,
+            // Fn
+            KeyCode::KEY_FN => Key::FN,
+            // Extended numpad
+            KeyCode::KEY_KPEQUAL => Key::NUMPAD_EQUAL,
+            KeyCode::KEY_KPCOMMA => Key::NUMPAD_COMMA,
+            KeyCode::KEY_KPLEFTPAREN => Key::NUMPAD_PAREN_LEFT,
+            KeyCode::KEY_KPRIGHTPAREN => Key::NUMPAD_PAREN_RIGHT,
             _ => Key::UNIDENTIFIED,
         }
     }
@@ -295,6 +352,56 @@ impl EvdevKeyExt for Key {
             Key::NUM_LOCK => KeyCode::KEY_NUMLOCK,
             Key::CONTEXT_MENU => KeyCode::KEY_COMPOSE,
             Key::POWER => KeyCode::KEY_POWER,
+            Key::SLEEP => KeyCode::KEY_SLEEP,
+            Key::WAKE_UP => KeyCode::KEY_WAKEUP,
+            Key::EJECT => KeyCode::KEY_EJECTCD,
+            Key::BRIGHTNESS_DOWN => KeyCode::KEY_BRIGHTNESSDOWN,
+            Key::BRIGHTNESS_UP => KeyCode::KEY_BRIGHTNESSUP,
+            Key::BROWSER_BACK => KeyCode::KEY_BACK,
+            Key::BROWSER_FORWARD => KeyCode::KEY_FORWARD,
+            Key::BROWSER_HOME => KeyCode::KEY_HOMEPAGE,
+            Key::BROWSER_REFRESH => KeyCode::KEY_REFRESH,
+            Key::BROWSER_SEARCH => KeyCode::KEY_SEARCH,
+            Key::BROWSER_STOP => KeyCode::KEY_STOP,
+            Key::BROWSER_FAVORITES => KeyCode::KEY_BOOKMARKS,
+            Key::MEDIA_PLAY => KeyCode::KEY_PLAY,
+            Key::MEDIA_PAUSE => KeyCode::KEY_PAUSECD,
+            Key::MEDIA_FAST_FORWARD => KeyCode::KEY_FASTFORWARD,
+            Key::MEDIA_REWIND => KeyCode::KEY_REWIND,
+            Key::MEDIA_RECORD => KeyCode::KEY_RECORD,
+            Key::MEDIA_SELECT => KeyCode::KEY_MEDIA,
+            Key::MICROPHONE_MUTE_TOGGLE => KeyCode::KEY_MICMUTE,
+            Key::COPY => KeyCode::KEY_COPY,
+            Key::CUT => KeyCode::KEY_CUT,
+            Key::PASTE => KeyCode::KEY_PASTE,
+            Key::UNDO => KeyCode::KEY_UNDO,
+            Key::FIND => KeyCode::KEY_FIND,
+            Key::HELP => KeyCode::KEY_HELP,
+            Key::OPEN => KeyCode::KEY_OPEN,
+            Key::SELECT => KeyCode::KEY_SELECT,
+            Key::AGAIN => KeyCode::KEY_AGAIN,
+            Key::PROPS => KeyCode::KEY_PROPS,
+            Key::ABORT => KeyCode::KEY_CANCEL,
+            Key::SUSPEND => KeyCode::KEY_SUSPEND,
+            Key::RESUME => KeyCode::KEY_FRONT,
+            Key::CONVERT => KeyCode::KEY_HENKAN,
+            Key::NON_CONVERT => KeyCode::KEY_MUHENKAN,
+            Key::KANA_MODE => KeyCode::KEY_KATAKANAHIRAGANA,
+            Key::HIRAGANA => KeyCode::KEY_HIRAGANA,
+            Key::KATAKANA => KeyCode::KEY_KATAKANA,
+            Key::LANG1 => KeyCode::KEY_HANGEUL,
+            Key::LANG2 => KeyCode::KEY_HANJA,
+            Key::INTL_BACKSLASH => KeyCode::KEY_102ND,
+            Key::INTL_RO => KeyCode::KEY_RO,
+            Key::INTL_YEN => KeyCode::KEY_YEN,
+            Key::LAUNCH_APP1 => KeyCode::KEY_PROG1,
+            Key::LAUNCH_APP2 => KeyCode::KEY_CALC,
+            Key::LAUNCH_MAIL => KeyCode::KEY_MAIL,
+            Key::FN => KeyCode::KEY_FN,
+            Key::NUMPAD_EQUAL => KeyCode::KEY_KPEQUAL,
+            Key::NUMPAD_COMMA => KeyCode::KEY_KPCOMMA,
+            Key::NUMPAD_PAREN_LEFT => KeyCode::KEY_KPLEFTPAREN,
+            Key::NUMPAD_PAREN_RIGHT => KeyCode::KEY_KPRIGHTPAREN,
             // Key wraps keyboard_types::Code which is #[non_exhaustive].
             // Codes without a known evdev mapping (including Key::UNIDENTIFIED)
             // fall back to KEY_UNKNOWN.
@@ -332,7 +439,7 @@ mod tests {
     #[test]
     fn unmapped_keycode_maps_to_unknown() {
         // Use a key code that has no Key:: constant or mapping
-        let key = KeyCode::KEY_PROG1.to_key();
+        let key = KeyCode::KEY_PROG2.to_key();
         assert_eq!(key, Key::UNIDENTIFIED);
     }
 
@@ -363,6 +470,67 @@ mod tests {
             Key::CONTEXT_MENU,
             Key::POWER,
         ] {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn extended_keys_round_trip() {
+        let extended_keys = [
+            Key::SLEEP,
+            Key::WAKE_UP,
+            Key::EJECT,
+            Key::BRIGHTNESS_DOWN,
+            Key::BRIGHTNESS_UP,
+            Key::BROWSER_BACK,
+            Key::BROWSER_FORWARD,
+            Key::BROWSER_HOME,
+            Key::BROWSER_REFRESH,
+            Key::BROWSER_SEARCH,
+            Key::BROWSER_STOP,
+            Key::BROWSER_FAVORITES,
+            Key::MEDIA_PLAY,
+            Key::MEDIA_PAUSE,
+            Key::MEDIA_FAST_FORWARD,
+            Key::MEDIA_REWIND,
+            Key::MEDIA_RECORD,
+            Key::MEDIA_SELECT,
+            Key::MICROPHONE_MUTE_TOGGLE,
+            Key::COPY,
+            Key::CUT,
+            Key::PASTE,
+            Key::UNDO,
+            Key::FIND,
+            Key::HELP,
+            Key::OPEN,
+            Key::SELECT,
+            Key::AGAIN,
+            Key::PROPS,
+            Key::ABORT,
+            Key::SUSPEND,
+            Key::RESUME,
+            Key::CONVERT,
+            Key::NON_CONVERT,
+            Key::KANA_MODE,
+            Key::HIRAGANA,
+            Key::KATAKANA,
+            Key::LANG1,
+            Key::LANG2,
+            Key::INTL_BACKSLASH,
+            Key::INTL_RO,
+            Key::INTL_YEN,
+            Key::LAUNCH_APP1,
+            Key::LAUNCH_APP2,
+            Key::LAUNCH_MAIL,
+            Key::FN,
+            Key::NUMPAD_EQUAL,
+            Key::NUMPAD_COMMA,
+            Key::NUMPAD_PAREN_LEFT,
+            Key::NUMPAD_PAREN_RIGHT,
+        ];
+        for key in extended_keys {
             let code = key.to_key_code();
             let parsed = code.to_key();
             assert_eq!(parsed, key, "round-trip failed for {key:?}");

@@ -91,7 +91,7 @@ impl TaoKeyExt for KeyCode {
             KeyCode::Digit8 => Some(Key::DIGIT8),
             KeyCode::Digit9 => Some(Key::DIGIT9),
 
-            // Function keys (F1–F24; F25+ have no kbd-core equivalent)
+            // Function keys
             KeyCode::F1 => Some(Key::F1),
             KeyCode::F2 => Some(Key::F2),
             KeyCode::F3 => Some(Key::F3),
@@ -116,6 +116,17 @@ impl TaoKeyExt for KeyCode {
             KeyCode::F22 => Some(Key::F22),
             KeyCode::F23 => Some(Key::F23),
             KeyCode::F24 => Some(Key::F24),
+            KeyCode::F25 => Some(Key::F25),
+            KeyCode::F26 => Some(Key::F26),
+            KeyCode::F27 => Some(Key::F27),
+            KeyCode::F28 => Some(Key::F28),
+            KeyCode::F29 => Some(Key::F29),
+            KeyCode::F30 => Some(Key::F30),
+            KeyCode::F31 => Some(Key::F31),
+            KeyCode::F32 => Some(Key::F32),
+            KeyCode::F33 => Some(Key::F33),
+            KeyCode::F34 => Some(Key::F34),
+            KeyCode::F35 => Some(Key::F35),
 
             // Navigation and editing
             KeyCode::Enter => Some(Key::ENTER),
@@ -165,6 +176,20 @@ impl TaoKeyExt for KeyCode {
             KeyCode::NumpadMultiply => Some(Key::NUMPAD_MULTIPLY),
             KeyCode::NumpadDivide => Some(Key::NUMPAD_DIVIDE),
             KeyCode::NumpadEnter => Some(Key::NUMPAD_ENTER),
+            KeyCode::NumpadEqual => Some(Key::NUMPAD_EQUAL),
+            KeyCode::NumpadComma => Some(Key::NUMPAD_COMMA),
+            KeyCode::NumpadBackspace => Some(Key::NUMPAD_BACKSPACE),
+            KeyCode::NumpadClear => Some(Key::NUMPAD_CLEAR),
+            KeyCode::NumpadClearEntry => Some(Key::NUMPAD_CLEAR_ENTRY),
+            KeyCode::NumpadHash => Some(Key::NUMPAD_HASH),
+            KeyCode::NumpadMemoryAdd => Some(Key::NUMPAD_MEMORY_ADD),
+            KeyCode::NumpadMemoryClear => Some(Key::NUMPAD_MEMORY_CLEAR),
+            KeyCode::NumpadMemoryRecall => Some(Key::NUMPAD_MEMORY_RECALL),
+            KeyCode::NumpadMemoryStore => Some(Key::NUMPAD_MEMORY_STORE),
+            KeyCode::NumpadMemorySubtract => Some(Key::NUMPAD_MEMORY_SUBTRACT),
+            KeyCode::NumpadParenLeft => Some(Key::NUMPAD_PAREN_LEFT),
+            KeyCode::NumpadParenRight => Some(Key::NUMPAD_PAREN_RIGHT),
+            KeyCode::NumpadStar => Some(Key::NUMPAD_STAR),
 
             // Modifiers — tao uses SuperLeft/SuperRight where kbd-core uses MetaLeft/MetaRight
             KeyCode::ControlLeft => Some(Key::CONTROL_LEFT),
@@ -184,6 +209,16 @@ impl TaoKeyExt for KeyCode {
             KeyCode::MediaStop => Some(Key::MEDIA_STOP),
             KeyCode::MediaTrackNext => Some(Key::MEDIA_TRACK_NEXT),
             KeyCode::MediaTrackPrevious => Some(Key::MEDIA_TRACK_PREVIOUS),
+            KeyCode::MediaSelect => Some(Key::MEDIA_SELECT),
+
+            // Browser keys
+            KeyCode::BrowserBack => Some(Key::BROWSER_BACK),
+            KeyCode::BrowserFavorites => Some(Key::BROWSER_FAVORITES),
+            KeyCode::BrowserForward => Some(Key::BROWSER_FORWARD),
+            KeyCode::BrowserHome => Some(Key::BROWSER_HOME),
+            KeyCode::BrowserRefresh => Some(Key::BROWSER_REFRESH),
+            KeyCode::BrowserSearch => Some(Key::BROWSER_SEARCH),
+            KeyCode::BrowserStop => Some(Key::BROWSER_STOP),
 
             // System keys
             KeyCode::PrintScreen => Some(Key::PRINT_SCREEN),
@@ -192,9 +227,51 @@ impl TaoKeyExt for KeyCode {
             KeyCode::NumLock => Some(Key::NUM_LOCK),
             KeyCode::ContextMenu => Some(Key::CONTEXT_MENU),
             KeyCode::Power => Some(Key::POWER),
+            KeyCode::Sleep => Some(Key::SLEEP),
+            KeyCode::WakeUp => Some(Key::WAKE_UP),
+            KeyCode::Eject => Some(Key::EJECT),
 
-            // Everything else — tao has many keys (F25+, browser, CJK, editing,
-            // numpad extras, international) that kbd-core doesn't define constants for.
+            // Clipboard / editing keys
+            KeyCode::Copy => Some(Key::COPY),
+            KeyCode::Cut => Some(Key::CUT),
+            KeyCode::Paste => Some(Key::PASTE),
+            KeyCode::Undo => Some(Key::UNDO),
+            KeyCode::Find => Some(Key::FIND),
+            KeyCode::Help => Some(Key::HELP),
+            KeyCode::Open => Some(Key::OPEN),
+            KeyCode::Select => Some(Key::SELECT),
+            KeyCode::Again => Some(Key::AGAIN),
+            KeyCode::Props => Some(Key::PROPS),
+            KeyCode::Abort => Some(Key::ABORT),
+            KeyCode::Resume => Some(Key::RESUME),
+            KeyCode::Suspend => Some(Key::SUSPEND),
+
+            // Fn and legacy
+            KeyCode::Fn => Some(Key::FN),
+            KeyCode::FnLock => Some(Key::FN_LOCK),
+            KeyCode::Hyper => Some(Key::HYPER),
+            KeyCode::Turbo => Some(Key::TURBO),
+
+            // CJK / international
+            KeyCode::Convert => Some(Key::CONVERT),
+            KeyCode::NonConvert => Some(Key::NON_CONVERT),
+            KeyCode::KanaMode => Some(Key::KANA_MODE),
+            KeyCode::Hiragana => Some(Key::HIRAGANA),
+            KeyCode::Katakana => Some(Key::KATAKANA),
+            KeyCode::Lang1 => Some(Key::LANG1),
+            KeyCode::Lang2 => Some(Key::LANG2),
+            KeyCode::Lang3 => Some(Key::LANG3),
+            KeyCode::Lang4 => Some(Key::LANG4),
+            KeyCode::Lang5 => Some(Key::LANG5),
+            KeyCode::IntlBackslash => Some(Key::INTL_BACKSLASH),
+            KeyCode::IntlRo => Some(Key::INTL_RO),
+            KeyCode::IntlYen => Some(Key::INTL_YEN),
+
+            // App launch keys
+            KeyCode::LaunchApp1 => Some(Key::LAUNCH_APP1),
+            KeyCode::LaunchApp2 => Some(Key::LAUNCH_APP2),
+            KeyCode::LaunchMail => Some(Key::LAUNCH_MAIL),
+
             _ => None,
         }
     }
@@ -299,8 +376,7 @@ mod tests {
         assert_eq!(KeyCode::F1.to_key(), Some(Key::F1));
         assert_eq!(KeyCode::F12.to_key(), Some(Key::F12));
         assert_eq!(KeyCode::F24.to_key(), Some(Key::F24));
-        // F25+ not in kbd-core
-        assert_eq!(KeyCode::F25.to_key(), None);
+        assert_eq!(KeyCode::F25.to_key(), Some(Key::F25));
     }
 
     #[test]
@@ -399,10 +475,17 @@ mod tests {
     }
 
     #[test]
-    fn keycode_unmappable_returns_none() {
-        // F25+ and unidentified keys have no kbd-core equivalent
-        assert_eq!(KeyCode::F25.to_key(), None);
-        assert_eq!(KeyCode::F35.to_key(), None);
+    fn keycode_extended_keys() {
+        assert_eq!(KeyCode::F35.to_key(), Some(Key::F35));
+        assert_eq!(KeyCode::BrowserBack.to_key(), Some(Key::BROWSER_BACK));
+        assert_eq!(KeyCode::Copy.to_key(), Some(Key::COPY));
+        assert_eq!(KeyCode::Sleep.to_key(), Some(Key::SLEEP));
+        assert_eq!(KeyCode::IntlBackslash.to_key(), Some(Key::INTL_BACKSLASH));
+        assert_eq!(KeyCode::NumpadEqual.to_key(), Some(Key::NUMPAD_EQUAL));
+        assert_eq!(KeyCode::Fn.to_key(), Some(Key::FN));
+        assert_eq!(KeyCode::LaunchMail.to_key(), Some(Key::LAUNCH_MAIL));
+        assert_eq!(KeyCode::Convert.to_key(), Some(Key::CONVERT));
+        assert_eq!(KeyCode::Lang1.to_key(), Some(Key::LANG1));
     }
 
     // TaoModifiersExt
