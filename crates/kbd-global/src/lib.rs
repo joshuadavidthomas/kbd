@@ -35,9 +35,6 @@ mod error;
 mod handle;
 mod manager;
 
-#[cfg(any(feature = "tokio", feature = "async-std"))]
-mod events;
-
 // Re-exports from kbd — all domain types live there.
 // kbd-global re-exports them so consumers use a single `kbd_global::` import path.
 pub use kbd::action::Action;

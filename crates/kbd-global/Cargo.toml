@@ -12,22 +12,15 @@ categories = ["os::linux-apis", "api-bindings"]
 readme = "../../README.md"
 
 [features]
-async-std = ["dep:async-std", "dep:async-channel"]
 grab = []
-portal = ["dep:ashpd", "dep:async-std"]
 serde = ["dep:serde", "kbd/serde"]
-tokio = ["dep:tokio", "dep:async-channel"]
 
 [dependencies]
-ashpd = { workspace = true, optional = true }
-async-channel = { workspace = true, optional = true }
-async-std = { workspace = true, optional = true }
 kbd = { workspace = true }
 kbd-evdev = { workspace = true }
 libc = { workspace = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

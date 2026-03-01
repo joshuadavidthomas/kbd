@@ -374,29 +374,15 @@ fn resolve_backend(selection: BackendSelection) -> Result<Backend, Error> {
     }
 }
 
-// Returns Err when the portal feature is enabled and Portal is selected.
-// Without portal, clippy sees a single arm that always returns Ok.
 #[allow(clippy::unnecessary_wraps)]
 fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
     match backend {
         Backend::Evdev => Ok(Backend::Evdev),
-        #[cfg(feature = "portal")]
-        Backend::Portal => Err(Error::BackendUnavailable),
     }
 }
 
-// Returns Err for portal+grab combinations when the portal feature is enabled.
-// Without portal, the check is dead and the function always returns Ok.
 #[allow(clippy::unnecessary_wraps)]
-fn validate_grab_configuration(backend: Backend, grab: GrabConfiguration) -> Result<(), Error> {
-    if matches!(grab, GrabConfiguration::Enabled) {
-        #[cfg(feature = "portal")]
-        if matches!(backend, Backend::Portal) {
-            return Err(Error::UnsupportedFeature);
-        }
-    }
-
-    let _ = backend;
+fn validate_grab_configuration(_backend: Backend, _grab: GrabConfiguration) -> Result<(), Error> {
     Ok(())
 }
 
