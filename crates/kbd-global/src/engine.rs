@@ -1032,9 +1032,9 @@ mod tests {
             .iter()
             .filter(|b| {
                 b.location
-                    == kbd::introspection::BindingLocation::Layer(
-                        kbd::action::LayerName::from("nav"),
-                    )
+                    == kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
+                        "nav",
+                    ))
             })
             .collect();
         assert_eq!(nav_bindings.len(), 2);
@@ -1056,9 +1056,9 @@ mod tests {
             .iter()
             .filter(|b| {
                 b.location
-                    == kbd::introspection::BindingLocation::Layer(
-                        kbd::action::LayerName::from("nav"),
-                    )
+                    == kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
+                        "nav",
+                    ))
             })
             .collect();
         assert_eq!(nav_bindings.len(), 3);
@@ -1086,10 +1086,7 @@ mod tests {
         let result = engine
             .matcher
             .process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(
-            result,
-            kbd::matcher::MatchResult::Matched { .. }
-        ));
+        assert!(matches!(result, kbd::matcher::MatchResult::Matched { .. }));
 
         // After oneshot depth of 1, layer should be gone
         let result = engine
@@ -2102,9 +2099,7 @@ mod tests {
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Swallow,
                 )
-                .with_options(
-                    kbd::binding::BindingOptions::default().with_description("Copy"),
-                ),
+                .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
             )
             .unwrap();
 
@@ -2114,14 +2109,8 @@ mod tests {
         let info = &bindings[0];
         assert_eq!(info.hotkey, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert_eq!(info.description.as_deref(), Some("Copy"));
-        assert_eq!(
-            info.location,
-            kbd::introspection::BindingLocation::Global
-        );
-        assert_eq!(
-            info.shadowed,
-            kbd::introspection::ShadowedStatus::Active
-        );
+        assert_eq!(info.location, kbd::introspection::BindingLocation::Global);
+        assert_eq!(info.shadowed, kbd::introspection::ShadowedStatus::Active);
     }
 
     #[test]
@@ -2136,12 +2125,7 @@ mod tests {
         let bindings = engine.matcher.list_bindings();
         let layer_bindings: Vec<_> = bindings
             .iter()
-            .filter(|b| {
-                matches!(
-                    b.location,
-                    kbd::introspection::BindingLocation::Layer(_)
-                )
-            })
+            .filter(|b| matches!(b.location, kbd::introspection::BindingLocation::Layer(_)))
             .collect();
         assert_eq!(layer_bindings.len(), 2);
     }
@@ -2195,25 +2179,17 @@ mod tests {
             .expect("should find global H");
         assert_eq!(
             global_h.shadowed,
-            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::action::LayerName::from(
-                "nav"
-            ))
+            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::action::LayerName::from("nav"))
         );
 
         let layer_h = bindings
             .iter()
             .find(|b| {
                 b.hotkey == Hotkey::new(Key::H)
-                    && matches!(
-                        b.location,
-                        kbd::introspection::BindingLocation::Layer(_)
-                    )
+                    && matches!(b.location, kbd::introspection::BindingLocation::Layer(_))
             })
             .expect("should find layer H");
-        assert_eq!(
-            layer_h.shadowed,
-            kbd::introspection::ShadowedStatus::Active
-        );
+        assert_eq!(layer_h.shadowed, kbd::introspection::ShadowedStatus::Active);
     }
 
     #[test]
@@ -2242,16 +2218,14 @@ mod tests {
             .find(|b| {
                 b.hotkey == Hotkey::new(Key::H)
                     && b.location
-                        == kbd::introspection::BindingLocation::Layer(
-                            kbd::action::LayerName::from("layer1"),
-                        )
+                        == kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
+                            "layer1",
+                        ))
             })
             .expect("should find layer1 H");
         assert_eq!(
             layer1_h.shadowed,
-            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::action::LayerName::from(
-                "layer2"
-            ))
+            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::action::LayerName::from("layer2"))
         );
 
         let layer2_h = bindings
@@ -2259,9 +2233,9 @@ mod tests {
             .find(|b| {
                 b.hotkey == Hotkey::new(Key::H)
                     && b.location
-                        == kbd::introspection::BindingLocation::Layer(
-                            kbd::action::LayerName::from("layer2"),
-                        )
+                        == kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
+                            "layer2",
+                        ))
             })
             .expect("should find layer2 H");
         assert_eq!(
@@ -2282,9 +2256,7 @@ mod tests {
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Swallow,
                 )
-                .with_options(
-                    kbd::binding::BindingOptions::default().with_description("Copy"),
-                ),
+                .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
             )
             .unwrap();
 
@@ -2296,10 +2268,7 @@ mod tests {
         let info = result.unwrap();
         assert_eq!(info.hotkey, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert_eq!(info.description.as_deref(), Some("Copy"));
-        assert_eq!(
-            info.location,
-            kbd::introspection::BindingLocation::Global
-        );
+        assert_eq!(info.location, kbd::introspection::BindingLocation::Global);
     }
 
     #[test]
@@ -2348,9 +2317,7 @@ mod tests {
         let info = result.unwrap();
         assert_eq!(
             info.location,
-            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
-                "nav"
-            ))
+            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from("nav"))
         );
     }
 
@@ -2445,9 +2412,7 @@ mod tests {
         );
         assert_eq!(
             conflict.shadowing_binding.location,
-            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
-                "nav"
-            ))
+            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from("nav"))
         );
     }
 
@@ -2477,15 +2442,11 @@ mod tests {
         assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
         assert_eq!(
             conflict.shadowed_binding.location,
-            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
-                "layer1"
-            ))
+            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from("layer1"))
         );
         assert_eq!(
             conflict.shadowing_binding.location,
-            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
-                "layer2"
-            ))
+            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from("layer2"))
         );
     }
 
@@ -2502,9 +2463,7 @@ mod tests {
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Swallow,
                 )
-                .with_options(
-                    kbd::binding::BindingOptions::default().with_description("Copy"),
-                ),
+                .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
                 reply: reply_tx,
             })
             .unwrap();
