@@ -8,12 +8,12 @@
 //! cargo run -p kbd-evdev --example evdev
 //! ```
 
-use kbd_core::Action;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::KeyTransition;
-use kbd_core::MatchResult;
-use kbd_core::Matcher;
+use kbd::Action;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::KeyTransition;
+use kbd::MatchResult;
+use kbd::Matcher;
 use kbd_evdev::devices::DeviceGrabMode;
 use kbd_evdev::devices::DeviceManager;
 

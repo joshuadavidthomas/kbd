@@ -5,13 +5,13 @@
 //! cargo run -p kbd-tao --example tao
 //! ```
 
-use kbd_core::Action;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::KeyTransition;
-use kbd_core::MatchResult;
-use kbd_core::Matcher;
-use kbd_core::Modifier;
+use kbd::Action;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::KeyTransition;
+use kbd::MatchResult;
+use kbd::Matcher;
+use kbd::Modifier;
 use kbd_tao::TaoEventExt;
 use tao::event::Event;
 use tao::event::WindowEvent;
@@ -72,7 +72,7 @@ fn main() {
                         return;
                     }
 
-                    // Convert to a kbd-core Hotkey
+                    // Convert to a kbd Hotkey
                     let Some(hotkey) = event.to_hotkey(modifiers) else {
                         return;
                     };

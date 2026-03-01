@@ -1,7 +1,7 @@
-//! Tests that `kbd-global` re-exports all kbd-core public types
+//! Tests that `kbd-global` re-exports all kbd public types
 //! and that the public API surface is correct after the runtime rewire.
 
-// All these imports should work through `kbd_global::` — they come from kbd-core.
+// All these imports should work through `kbd_global::` — they come from kbd.
 use kbd_global::Action;
 use kbd_global::ActiveLayerInfo;
 use kbd_global::BindingId;

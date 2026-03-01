@@ -1,6 +1,6 @@
-//! Tao key event conversions for `kbd-core`.
+//! Tao key event conversions for `kbd`.
 //!
-//! This crate bridges tao's physical key model to `kbd-core`'s key types.
+//! This crate bridges tao's physical key model to `kbd`'s key types.
 //! tao is Tauri's fork of winit — both derive from the W3C UI Events
 //! specification, so the variant names are nearly identical and the
 //! mapping is mechanical.
@@ -10,16 +10,16 @@
 //!
 //! # Extension traits
 //!
-//! - [`TaoKeyExt`] — converts a tao [`KeyCode`] to a [`kbd_core::Key`].
+//! - [`TaoKeyExt`] — converts a tao [`KeyCode`] to a [`kbd::Key`].
 //! - [`TaoModifiersExt`] — converts tao [`ModifiersState`] to a
 //!   `Vec<Modifier>`.
 //! - [`TaoEventExt`] — converts a tao [`KeyEvent`] plus
-//!   [`ModifiersState`] to a [`kbd_core::Hotkey`].
+//!   [`ModifiersState`] to a [`kbd::Hotkey`].
 //!
 //! # Usage
 //!
 //! ```
-//! use kbd_core::{Hotkey, Key, Modifier};
+//! use kbd::{Hotkey, Key, Modifier};
 //! use kbd_tao::{TaoKeyExt, TaoModifiersExt};
 //! use tao::keyboard::{KeyCode, ModifiersState};
 //!
@@ -32,16 +32,16 @@
 //! assert_eq!(mods, vec![Modifier::Ctrl]);
 //! ```
 
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::Modifier;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::Modifier;
 use tao::event::KeyEvent;
 use tao::keyboard::KeyCode;
 use tao::keyboard::ModifiersState;
 
-/// Convert a tao key type to a `kbd-core` [`Key`].
+/// Convert a tao key type to a `kbd` [`Key`].
 ///
-/// Returns `None` for keys that have no `kbd-core` equivalent (e.g.,
+/// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24).
 pub trait TaoKeyExt {
     fn to_key(&self) -> Option<Key>;
@@ -191,7 +191,7 @@ impl TaoKeyExt for KeyCode {
             KeyCode::NumpadParenRight => Some(Key::NUMPAD_PAREN_RIGHT),
             KeyCode::NumpadStar => Some(Key::NUMPAD_STAR),
 
-            // Modifiers — tao uses SuperLeft/SuperRight where kbd-core uses MetaLeft/MetaRight
+            // Modifiers — tao uses SuperLeft/SuperRight where kbd uses MetaLeft/MetaRight
             KeyCode::ControlLeft => Some(Key::CONTROL_LEFT),
             KeyCode::ControlRight => Some(Key::CONTROL_RIGHT),
             KeyCode::ShiftLeft => Some(Key::SHIFT_LEFT),
@@ -308,10 +308,10 @@ impl TaoModifiersExt for ModifiersState {
 ///
 /// When the key is itself a modifier (e.g., `ControlLeft`), the
 /// corresponding modifier flag is stripped — tao includes the pressed
-/// modifier key in its own state, but `kbd-core` treats the key as the
+/// modifier key in its own state, but `kbd` treats the key as the
 /// trigger, not as a modifier of itself.
 ///
-/// Returns `None` if the key code has no `kbd-core` equivalent.
+/// Returns `None` if the key code has no `kbd` equivalent.
 #[must_use]
 pub fn keycode_to_hotkey(keycode: KeyCode, modifiers: ModifiersState) -> Option<Hotkey> {
     let key = keycode.to_key()?;
@@ -324,18 +324,18 @@ pub fn keycode_to_hotkey(keycode: KeyCode, modifiers: ModifiersState) -> Option<
     Some(Hotkey::with_modifiers(key, mods))
 }
 
-/// Convert a tao [`KeyEvent`] (plus modifier state) to a `kbd-core`
+/// Convert a tao [`KeyEvent`] (plus modifier state) to a `kbd`
 /// [`Hotkey`].
 ///
 /// Tao's `KeyEvent` does not include modifier state — modifiers are
 /// tracked via `WindowEvent::ModifiersChanged`. Pass the current
 /// `ModifiersState` alongside the event.
 ///
-/// Returns `None` if the physical key has no `kbd-core` equivalent.
+/// Returns `None` if the physical key has no `kbd` equivalent.
 ///
 /// When the key is itself a modifier (e.g., `ControlLeft`), the
 /// corresponding modifier flag is stripped from the modifiers — tao
-/// includes the pressed modifier key in its own state, but `kbd-core`
+/// includes the pressed modifier key in its own state, but `kbd`
 /// treats the key as the trigger, not as a modifier of itself.
 pub trait TaoEventExt {
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey>;
@@ -349,9 +349,9 @@ impl TaoEventExt for KeyEvent {
 
 #[cfg(test)]
 mod tests {
-    use kbd_core::Hotkey;
-    use kbd_core::Key;
-    use kbd_core::Modifier;
+    use kbd::Hotkey;
+    use kbd::Key;
+    use kbd::Modifier;
     use tao::keyboard::KeyCode;
     use tao::keyboard::ModifiersState;
 
@@ -406,7 +406,7 @@ mod tests {
         assert_eq!(KeyCode::ShiftRight.to_key(), Some(Key::SHIFT_RIGHT));
         assert_eq!(KeyCode::AltLeft.to_key(), Some(Key::ALT_LEFT));
         assert_eq!(KeyCode::AltRight.to_key(), Some(Key::ALT_RIGHT));
-        // tao uses SuperLeft/SuperRight → kbd-core's MetaLeft/MetaRight
+        // tao uses SuperLeft/SuperRight → kbd's MetaLeft/MetaRight
         assert_eq!(KeyCode::SuperLeft.to_key(), Some(Key::META_LEFT));
         assert_eq!(KeyCode::SuperRight.to_key(), Some(Key::META_RIGHT));
     }

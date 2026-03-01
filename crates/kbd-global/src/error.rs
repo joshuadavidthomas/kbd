@@ -1,13 +1,13 @@
 //! Error types for the kbd-global runtime.
 //!
-//! Extends the core error types from `kbd-core` with platform-specific
+//! Extends the core error types from `kbd` with platform-specific
 //! errors for backend initialization, device access, and permissions.
 
 /// Library-wide error type.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("parse error: {0}")]
-    Parse(#[from] kbd_core::key::ParseHotkeyError),
+    Parse(#[from] kbd::key::ParseHotkeyError),
     #[error("hotkey registration conflicts with an existing binding")]
     AlreadyRegistered,
     #[error("failed to initialize the selected backend")]
@@ -32,14 +32,14 @@ pub enum Error {
     EmptyLayerStack,
 }
 
-impl From<kbd_core::Error> for Error {
-    fn from(error: kbd_core::Error) -> Self {
+impl From<kbd::Error> for Error {
+    fn from(error: kbd::Error) -> Self {
         match error {
-            kbd_core::Error::Parse(e) => Self::Parse(e),
-            kbd_core::Error::AlreadyRegistered => Self::AlreadyRegistered,
-            kbd_core::Error::LayerAlreadyDefined => Self::LayerAlreadyDefined,
-            kbd_core::Error::LayerNotDefined => Self::LayerNotDefined,
-            kbd_core::Error::EmptyLayerStack => Self::EmptyLayerStack,
+            kbd::Error::Parse(e) => Self::Parse(e),
+            kbd::Error::AlreadyRegistered => Self::AlreadyRegistered,
+            kbd::Error::LayerAlreadyDefined => Self::LayerAlreadyDefined,
+            kbd::Error::LayerNotDefined => Self::LayerNotDefined,
+            kbd::Error::EmptyLayerStack => Self::EmptyLayerStack,
         }
     }
 }

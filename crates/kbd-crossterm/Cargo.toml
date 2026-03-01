@@ -3,13 +3,17 @@ name = "kbd-crossterm"
 version = "0.1.0"
 description = "crossterm bridge for kbd — converts crossterm key events and modifiers to kbd types."
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "../../README.md"
+keywords = ["keyboard", "crossterm", "hotkey", "keybinding"]
+categories = ["command-line-interface"]
 
 [dependencies]
 crossterm.workspace = true
-kbd-core.workspace = true
+kbd.workspace = true
 
 [lints]
 workspace = true

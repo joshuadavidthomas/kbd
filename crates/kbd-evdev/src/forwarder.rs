@@ -12,8 +12,8 @@
 //! Note: keyd creates two virtual devices (keyboard + pointer). For now
 //! we only need one (keyboard). Pointer device is a future stretch goal.
 
-use kbd_core::Key;
-use kbd_core::key_state::KeyTransition;
+use kbd::Key;
+use kbd::key_state::KeyTransition;
 
 use crate::EvdevKeyExt;
 use crate::error::Error;
@@ -83,8 +83,8 @@ pub mod testing {
     use std::sync::Arc;
     use std::sync::Mutex;
 
-    use kbd_core::Key;
-    use kbd_core::key_state::KeyTransition;
+    use kbd::Key;
+    use kbd::key_state::KeyTransition;
 
     use super::ForwardSink;
     use crate::error::Error;

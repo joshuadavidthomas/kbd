@@ -2,26 +2,31 @@
 
 Keyboard shortcut engine for Rust.
 
-The core (`kbd-core`) is platform-agnostic — it handles key types,
-modifier tracking, binding matching, layer stacks, and sequence
-resolution. It works anywhere you have key events: GUI apps, TUI apps,
-compositors, game engines.
+The core (`kbd`) is platform-agnostic — it handles key types,
+modifier tracking, binding matching, and layer stacks. It works
+anywhere you have key events: GUI apps, TUI apps, compositors,
+game engines.
 
 The runtime (`kbd-global`) adds a Linux global hotkey backend on top,
-with evdev device access, grab mode, and XDG portal support.
+with evdev device access and grab mode.
 
 ## Features
 
-- **Dual backend** — XDG GlobalShortcuts portal (no root) with evdev fallback
-- **Key sequences** — multi-step combos like `Ctrl+K, Ctrl+C`
-- **Layers** — stack-based groups of hotkeys (oneshot, swallow, timeout)
-- **Event grabbing** — exclusive capture via `EVIOCGRAB` with uinput re-emission
-- **Tap vs. hold** — dual-function keys (e.g. CapsLock → tap Escape / hold Ctrl)
-- **Device filtering** — bind hotkeys to specific keyboards by name or USB ID
-- **Press / release / hold** — separate callbacks, min-hold, debounce, rate limiting
+- **Embeddable matcher** — `kbd`'s `Matcher` works synchronously in any event loop (winit, ratatui, Smithay, etc.)
+- **Layers** — stack-based binding groups with oneshot, swallow, and timeout options
 - **String parsing** — `"Ctrl+Shift+A".parse::<Hotkey>()`
-- **Async streams** — optional tokio / async-std event streams
-- **Embeddable matcher** — `kbd-core`'s `Matcher` works in any event loop (winit, ratatui, Smithay, etc.)
+- **Introspection** — list bindings, query what would fire, detect conflicts and shadowed bindings
+- **Event grabbing** — exclusive capture via `EVIOCGRAB` with uinput forwarding (`kbd-global`)
+- **Framework bridges** — crossterm, winit, tao, iced, egui key event conversions
+
+### Planned
+
+- Key sequences (`Ctrl+K, Ctrl+C`)
+- Tap-hold dual-function keys
+- XDG GlobalShortcuts portal backend
+- Device filtering
+- Async event streams (tokio / async-std)
+- Serde support
 
 ## Installation
 
@@ -36,10 +41,10 @@ For in-app shortcut matching (any platform):
 
 ```toml
 [dependencies]
-kbd-core = "0.1"
+kbd = "0.1"
 ```
 
-Optional features on `kbd-global`: `grab`, `portal`, `tokio`, `async-std`, `serde`.
+Optional features on `kbd-global`: `grab`, `serde`.
 
 ## Quick start
 
@@ -63,8 +68,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Permissions
 
-### evdev backend
-
 Your user must be able to read `/dev/input/event*` devices. On most systems this means joining the `input` group:
 
 ```bash
@@ -82,18 +85,13 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger /dev/uinput
 ```
 
-### Portal backend
-
-The XDG GlobalShortcuts portal requires no special permissions.
-
 ## How it works
 
-`kbd-global` auto-selects the best available backend:
+`kbd-global` uses the Linux evdev subsystem to read key events directly from
+`/dev/input/event*` device nodes. This works on both X11 and Wayland without
+requiring display server integration.
 
-1. **XDG GlobalShortcuts portal** — tried first when the `portal` feature is enabled. Works without root on compositors that support it (KDE Plasma, GNOME, Hyprland).
-2. **evdev** — reads `/dev/input/event*` directly. Works everywhere on Linux but requires `input` group membership.
-
-For explicit control: `HotkeyManager::with_backend(Backend::Evdev)`.
+For explicit backend selection: `HotkeyManager::builder().backend(Backend::Evdev).build()`.
 
 ## License
 

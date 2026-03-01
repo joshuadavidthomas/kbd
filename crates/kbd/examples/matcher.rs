@@ -1,21 +1,21 @@
 //! Standalone `Matcher` usage — register bindings, process key events,
 //! print match results.
 //!
-//! This example shows `kbd-core` works on its own: no platform dependencies,
+//! This example shows `kbd` works on its own: no platform dependencies,
 //! no threads, no async. You bring the events, the `Matcher` tells you what
 //! matched.
 //!
 //! ```sh
-//! cargo run -p kbd-core --example matcher
+//! cargo run -p kbd --example matcher
 //! ```
 
-use kbd_core::Action;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::KeyTransition;
-use kbd_core::MatchResult;
-use kbd_core::Matcher;
-use kbd_core::Modifier;
+use kbd::Action;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::KeyTransition;
+use kbd::MatchResult;
+use kbd::Matcher;
+use kbd::Modifier;
 
 fn main() {
     let mut matcher = Matcher::new();

@@ -1,10 +1,12 @@
 [package]
-name = "kbd-core"
+name = "kbd"
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "../../README.md"
 description = "Pure-logic keyboard shortcut engine — key types, modifier tracking, binding matching, layer stacks, sequence resolution. No platform dependencies."
 keywords = ["keyboard", "hotkey", "keybinding", "shortcut"]
 categories = ["data-structures"]

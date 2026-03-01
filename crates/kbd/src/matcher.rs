@@ -68,7 +68,7 @@ struct LayerTimeout {
 /// # Example
 ///
 /// ```rust
-/// use kbd_core::{Action, Hotkey, Key, KeyTransition, Layer, MatchResult, Matcher, Modifier};
+/// use kbd::{Action, Hotkey, Key, KeyTransition, Layer, MatchResult, Matcher, Modifier};
 ///
 /// let mut matcher = Matcher::new();
 /// let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);

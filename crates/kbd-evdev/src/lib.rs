@@ -11,7 +11,7 @@
 //!
 //! # Dependencies
 //!
-//! Depends on `evdev` (Linux C library, needs `/dev/input/` access) and `kbd-core`.
+//! Depends on `evdev` (Linux C library, needs `/dev/input/` access) and `kbd`.
 
 pub mod convert;
 pub mod devices;

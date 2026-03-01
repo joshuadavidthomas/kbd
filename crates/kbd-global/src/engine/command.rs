@@ -1,16 +1,16 @@
 use std::sync::Arc;
 use std::sync::mpsc;
 
-use kbd_core::Key;
-use kbd_core::Modifier;
-use kbd_core::action::LayerName;
-use kbd_core::binding::BindingId;
-use kbd_core::binding::RegisteredBinding;
-use kbd_core::introspection::ActiveLayerInfo;
-use kbd_core::introspection::BindingInfo;
-use kbd_core::introspection::ConflictInfo;
-use kbd_core::key::Hotkey;
-use kbd_core::layer::Layer;
+use kbd::Key;
+use kbd::Modifier;
+use kbd::action::LayerName;
+use kbd::binding::BindingId;
+use kbd::binding::RegisteredBinding;
+use kbd::introspection::ActiveLayerInfo;
+use kbd::introspection::BindingInfo;
+use kbd::introspection::ConflictInfo;
+use kbd::key::Hotkey;
+use kbd::layer::Layer;
 
 use super::wake::WakeFd;
 use crate::Error;

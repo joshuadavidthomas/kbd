@@ -27,8 +27,8 @@ use evdev::Device;
 use evdev::EventSummary;
 use evdev::InputEvent;
 use evdev::KeyCode;
-use kbd_core::Key;
-use kbd_core::key_state::KeyTransition;
+use kbd::Key;
+use kbd::key_state::KeyTransition;
 
 use crate::KeyCodeExt;
 use crate::forwarder::VIRTUAL_DEVICE_NAME;
@@ -597,8 +597,8 @@ mod tests {
     use evdev::EventType;
     use evdev::InputEvent;
     use evdev::KeyCode;
-    use kbd_core::Key;
-    use kbd_core::key_state::KeyTransition;
+    use kbd::Key;
+    use kbd::key_state::KeyTransition;
 
     use super::DiscoveryOutcome;
     use super::HotplugFsEvent;

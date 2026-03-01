@@ -1,17 +1,17 @@
 //! Parse hotkeys from strings, display them back.
 //!
-//! `kbd-core` supports parsing hotkeys from human-readable strings that
+//! `kbd` supports parsing hotkeys from human-readable strings that
 //! round-trip through `Display`. Useful for config files, user input,
 //! and logging.
 //!
 //! ```sh
-//! cargo run -p kbd-core --example string_parsing
+//! cargo run -p kbd --example string_parsing
 //! ```
 
-use kbd_core::Hotkey;
-use kbd_core::HotkeySequence;
-use kbd_core::Key;
-use kbd_core::Modifier;
+use kbd::Hotkey;
+use kbd::HotkeySequence;
+use kbd::Key;
+use kbd::Modifier;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse single hotkeys from strings

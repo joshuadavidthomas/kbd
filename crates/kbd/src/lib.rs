@@ -1,6 +1,6 @@
 //! Pure-logic keyboard shortcut engine.
 //!
-//! `kbd-core` provides the domain types and matching logic that every keyboard
+//! `kbd` provides the domain types and matching logic that every keyboard
 //! shortcut system needs: key types, modifier tracking, binding matching, layer
 //! stacks, and sequence resolution. It has zero platform dependencies and can
 //! be embedded in any event loop — winit, GPUI, Smithay, a game loop, or a

@@ -1,24 +1,24 @@
-//! Crossterm key event conversions for `kbd-core`.
+//! Crossterm key event conversions for `kbd`.
 //!
-//! This crate bridges crossterm's logical key model to `kbd-core`'s physical
+//! This crate bridges crossterm's logical key model to `kbd`'s physical
 //! key types. Crossterm reports keys as characters (`Char('a')`) and modifier
-//! bitflags, while `kbd-core` uses physical key positions (`Key::A`) and
+//! bitflags, while `kbd` uses physical key positions (`Key::A`) and
 //! typed `Modifier` values.
 //!
 //! # Extension traits
 //!
 //! - [`CrosstermKeyExt`] — converts a [`crossterm::event::KeyCode`] to a
-//!   [`kbd_core::Key`].
+//!   [`kbd::Key`].
 //! - [`CrosstermModifiersExt`] — converts [`crossterm::event::KeyModifiers`]
 //!   to a `Vec<Modifier>`.
 //! - [`CrosstermEventExt`] — converts a full [`crossterm::event::KeyEvent`]
-//!   to a [`kbd_core::Hotkey`].
+//!   to a [`kbd::Hotkey`].
 //!
 //! # Usage
 //!
 //! ```
 //! use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-//! use kbd_core::{Hotkey, Key, Modifier};
+//! use kbd::{Hotkey, Key, Modifier};
 //! use kbd_crossterm::{CrosstermEventExt, CrosstermKeyExt, CrosstermModifiersExt};
 //!
 //! // Single key conversion
@@ -40,13 +40,13 @@ use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MediaKeyCode;
 use crossterm::event::ModifierKeyCode;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::Modifier;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::Modifier;
 
-/// Convert a crossterm [`KeyCode`] to a `kbd-core` [`Key`].
+/// Convert a crossterm [`KeyCode`] to a `kbd` [`Key`].
 ///
-/// Returns `None` for keys that have no `kbd-core` equivalent (e.g.,
+/// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `BackTab`, `Null`, `KeypadBegin`, non-ASCII characters).
 pub trait CrosstermKeyExt {
     fn to_key(&self) -> Option<Key>;
@@ -86,7 +86,7 @@ impl CrosstermKeyExt for KeyCode {
 
 /// Convert crossterm [`KeyModifiers`] bitflags to a sorted `Vec<Modifier>`.
 ///
-/// Crossterm's `HYPER` and `META` flags have no `kbd-core` equivalent and
+/// Crossterm's `HYPER` and `META` flags have no `kbd` equivalent and
 /// are silently ignored.
 pub trait CrosstermModifiersExt {
     fn to_modifiers(&self) -> Vec<Modifier>;
@@ -111,13 +111,13 @@ impl CrosstermModifiersExt for KeyModifiers {
     }
 }
 
-/// Convert a crossterm [`KeyEvent`] to a `kbd-core` [`Hotkey`].
+/// Convert a crossterm [`KeyEvent`] to a `kbd` [`Hotkey`].
 ///
-/// Returns `None` if the key code has no `kbd-core` equivalent.
+/// Returns `None` if the key code has no `kbd` equivalent.
 ///
 /// When the key is itself a modifier (e.g., `LeftShift`), the corresponding
 /// modifier flag is stripped from the modifiers — crossterm includes the
-/// pressed modifier key in its own modifier bitflags, but `kbd-core` treats
+/// pressed modifier key in its own modifier bitflags, but `kbd` treats
 /// the key as the trigger, not as a modifier of itself.
 pub trait CrosstermEventExt {
     fn to_hotkey(&self) -> Option<Hotkey>;
@@ -298,9 +298,9 @@ mod tests {
     use crossterm::event::KeyModifiers;
     use crossterm::event::MediaKeyCode;
     use crossterm::event::ModifierKeyCode;
-    use kbd_core::Hotkey;
-    use kbd_core::Key;
-    use kbd_core::Modifier;
+    use kbd::Hotkey;
+    use kbd::Key;
+    use kbd::Modifier;
 
     use super::*;
 

@@ -1,6 +1,6 @@
-//! Winit key event conversions for `kbd-core`.
+//! Winit key event conversions for `kbd`.
 //!
-//! This crate bridges winit's physical key model to `kbd-core`'s key types.
+//! This crate bridges winit's physical key model to `kbd`'s key types.
 //! Both derive from the W3C UI Events specification, so the variant names
 //! are nearly identical — the mapping is mechanical.
 //!
@@ -11,16 +11,16 @@
 //! # Extension traits
 //!
 //! - [`WinitKeyExt`] — converts a winit [`PhysicalKey`] or [`KeyCode`] to
-//!   a [`kbd_core::Key`].
+//!   a [`kbd::Key`].
 //! - [`WinitModifiersExt`] — converts winit [`ModifiersState`] to a
 //!   `Vec<Modifier>`.
 //! - [`WinitEventExt`] — converts a winit [`KeyEvent`] plus
-//!   [`ModifiersState`] to a [`kbd_core::Hotkey`].
+//!   [`ModifiersState`] to a [`kbd::Hotkey`].
 //!
 //! # Usage
 //!
 //! ```
-//! use kbd_core::{Hotkey, Key, Modifier};
+//! use kbd::{Hotkey, Key, Modifier};
 //! use kbd_winit::{WinitKeyExt, WinitModifiersExt};
 //! use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 //!
@@ -37,17 +37,17 @@
 //! assert_eq!(mods, vec![Modifier::Ctrl]);
 //! ```
 
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::Modifier;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::Modifier;
 use winit::event::KeyEvent;
 use winit::keyboard::KeyCode;
 use winit::keyboard::ModifiersState;
 use winit::keyboard::PhysicalKey;
 
-/// Convert a winit key type to a `kbd-core` [`Key`].
+/// Convert a winit key type to a `kbd` [`Key`].
 ///
-/// Returns `None` for keys that have no `kbd-core` equivalent (e.g.,
+/// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24, TV remote keys).
 pub trait WinitKeyExt {
     fn to_key(&self) -> Option<Key>;
@@ -324,10 +324,10 @@ impl WinitModifiersExt for ModifiersState {
 ///
 /// When the key is itself a modifier (e.g., `ControlLeft`), the
 /// corresponding modifier flag is stripped — winit includes the pressed
-/// modifier key in its own state, but `kbd-core` treats the key as the
+/// modifier key in its own state, but `kbd` treats the key as the
 /// trigger, not as a modifier of itself.
 ///
-/// Returns `None` if the physical key has no `kbd-core` equivalent.
+/// Returns `None` if the physical key has no `kbd` equivalent.
 #[must_use]
 pub fn physical_key_to_hotkey(
     physical_key: PhysicalKey,
@@ -343,18 +343,18 @@ pub fn physical_key_to_hotkey(
     Some(Hotkey::with_modifiers(key, mods))
 }
 
-/// Convert a winit [`KeyEvent`] (plus modifier state) to a `kbd-core`
+/// Convert a winit [`KeyEvent`] (plus modifier state) to a `kbd`
 /// [`Hotkey`].
 ///
 /// Winit's `KeyEvent` does not include modifier state — modifiers are
 /// tracked via `WindowEvent::ModifiersChanged`. Pass the current
 /// `ModifiersState` alongside the event.
 ///
-/// Returns `None` if the physical key has no `kbd-core` equivalent.
+/// Returns `None` if the physical key has no `kbd` equivalent.
 ///
 /// When the key is itself a modifier (e.g., `ControlLeft`), the
 /// corresponding modifier flag is stripped from the modifiers — winit
-/// includes the pressed modifier key in its own state, but `kbd-core`
+/// includes the pressed modifier key in its own state, but `kbd`
 /// treats the key as the trigger, not as a modifier of itself.
 pub trait WinitEventExt {
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey>;
@@ -368,9 +368,9 @@ impl WinitEventExt for KeyEvent {
 
 #[cfg(test)]
 mod tests {
-    use kbd_core::Hotkey;
-    use kbd_core::Key;
-    use kbd_core::Modifier;
+    use kbd::Hotkey;
+    use kbd::Key;
+    use kbd::Modifier;
     use winit::keyboard::KeyCode;
     use winit::keyboard::ModifiersState;
     use winit::keyboard::NativeKeyCode;
@@ -427,7 +427,7 @@ mod tests {
         assert_eq!(KeyCode::ShiftRight.to_key(), Some(Key::SHIFT_RIGHT));
         assert_eq!(KeyCode::AltLeft.to_key(), Some(Key::ALT_LEFT));
         assert_eq!(KeyCode::AltRight.to_key(), Some(Key::ALT_RIGHT));
-        // winit's SuperLeft/Right → kbd-core's MetaLeft/Right
+        // winit's SuperLeft/Right → kbd's MetaLeft/Right
         assert_eq!(KeyCode::SuperLeft.to_key(), Some(Key::META_LEFT));
         assert_eq!(KeyCode::SuperRight.to_key(), Some(Key::META_RIGHT));
         // winit's legacy Meta (no left/right) → defaults to MetaLeft

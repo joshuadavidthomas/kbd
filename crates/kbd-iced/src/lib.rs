@@ -1,26 +1,26 @@
-//! Iced key event conversions for `kbd-core`.
+//! Iced key event conversions for `kbd`.
 //!
-//! This crate bridges iced's keyboard types to `kbd-core`'s key types.
+//! This crate bridges iced's keyboard types to `kbd`'s key types.
 //! iced defines its own W3C-derived key types: [`key::Code`] for physical
 //! key positions and [`key::Physical`] wrapping `Code` with an unidentified
 //! fallback. iced also has a logical key type for character/named key
 //! identity, but this crate only converts physical keys — they are
-//! layout-independent and match `kbd-core`'s model.
+//! layout-independent and match `kbd`'s model.
 //!
 //! # Extension traits
 //!
 //! - [`IcedKeyExt`] — converts an iced [`key::Code`] or [`key::Physical`]
-//!   to a [`kbd_core::Key`].
+//!   to a [`kbd::Key`].
 //! - [`IcedModifiersExt`] — converts iced [`Modifiers`] to a
 //!   `Vec<Modifier>`.
 //! - [`IcedEventExt`] — converts an iced keyboard [`Event`] to a
-//!   [`kbd_core::Hotkey`].
+//!   [`kbd::Hotkey`].
 //!
 //! # Usage
 //!
 //! ```
 //! use iced_core::keyboard::{key::Code, Modifiers};
-//! use kbd_core::{Key, Modifier};
+//! use kbd::{Key, Modifier};
 //! use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 //!
 //! // Code conversion
@@ -35,13 +35,13 @@
 use iced_core::keyboard::Event;
 use iced_core::keyboard::Modifiers;
 use iced_core::keyboard::key;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::Modifier;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::Modifier;
 
-/// Convert an iced physical key type to a `kbd-core` [`Key`].
+/// Convert an iced physical key type to a `kbd` [`Key`].
 ///
-/// Returns `None` for keys that have no `kbd-core` equivalent (e.g.,
+/// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24, international input keys).
 pub trait IcedKeyExt {
     fn to_key(&self) -> Option<Key>;
@@ -290,7 +290,7 @@ impl IcedKeyExt for key::Physical {
 /// Convert iced [`Modifiers`] bitflags to a sorted `Vec<Modifier>`.
 ///
 /// Iced uses `LOGO` for the Super/Meta/Windows key. This maps to
-/// `Modifier::Super` in `kbd-core`.
+/// `Modifier::Super` in `kbd`.
 pub trait IcedModifiersExt {
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
@@ -314,7 +314,7 @@ impl IcedModifiersExt for Modifiers {
     }
 }
 
-/// Convert an iced keyboard [`Event`] to a `kbd-core` [`Hotkey`].
+/// Convert an iced keyboard [`Event`] to a `kbd` [`Hotkey`].
 ///
 /// Uses the physical key from the event for layout-independent matching.
 /// Returns `None` for `ModifiersChanged` events (no key trigger) and
@@ -323,7 +323,7 @@ impl IcedModifiersExt for Modifiers {
 /// When the key is itself a modifier (e.g., `ControlLeft`), the
 /// corresponding modifier flag is stripped from the modifiers — iced
 /// includes the pressed modifier key in its own modifier state, but
-/// `kbd-core` treats the key as the trigger, not as a modifier of itself.
+/// `kbd` treats the key as the trigger, not as a modifier of itself.
 pub trait IcedEventExt {
     fn to_hotkey(&self) -> Option<Hotkey>;
 }
@@ -362,9 +362,9 @@ mod tests {
     use iced_core::keyboard::Location;
     use iced_core::keyboard::Modifiers;
     use iced_core::keyboard::key;
-    use kbd_core::Hotkey;
-    use kbd_core::Key;
-    use kbd_core::Modifier;
+    use kbd::Hotkey;
+    use kbd::Key;
+    use kbd::Modifier;
 
     use super::*;
 
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!(key::Code::ShiftRight.to_key(), Some(Key::SHIFT_RIGHT));
         assert_eq!(key::Code::AltLeft.to_key(), Some(Key::ALT_LEFT));
         assert_eq!(key::Code::AltRight.to_key(), Some(Key::ALT_RIGHT));
-        // iced's SuperLeft/Right → kbd-core's MetaLeft/MetaRight
+        // iced's SuperLeft/Right → kbd's MetaLeft/MetaRight
         assert_eq!(key::Code::SuperLeft.to_key(), Some(Key::META_LEFT));
         assert_eq!(key::Code::SuperRight.to_key(), Some(Key::META_RIGHT));
         // iced's legacy Meta (no left/right) → defaults to MetaLeft
@@ -537,7 +537,7 @@ mod tests {
         assert_eq!(Modifiers::CTRL.to_modifiers(), vec![Modifier::Ctrl]);
         assert_eq!(Modifiers::SHIFT.to_modifiers(), vec![Modifier::Shift]);
         assert_eq!(Modifiers::ALT.to_modifiers(), vec![Modifier::Alt]);
-        // iced's LOGO = kbd-core's Super
+        // iced's LOGO = kbd's Super
         assert_eq!(Modifiers::LOGO.to_modifiers(), vec![Modifier::Super]);
     }
 
