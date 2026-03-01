@@ -1,6 +1,6 @@
-//! Egui key event conversions for `kbd-core`.
+//! Egui key event conversions for `kbd`.
 //!
-//! This crate bridges egui's key types to `kbd-core`'s physical key types.
+//! This crate bridges egui's key types to `kbd`'s physical key types.
 //! Egui has a smaller, custom key enum that is not 1:1 with the W3C
 //! specification — some physical keys have no egui equivalent, some egui
 //! keys are logical/shifted characters without a single physical key
@@ -9,17 +9,17 @@
 //!
 //! # Extension traits
 //!
-//! - [`EguiKeyExt`] — converts an [`egui::Key`] to a [`kbd_core::Key`].
+//! - [`EguiKeyExt`] — converts an [`egui::Key`] to a [`kbd::Key`].
 //! - [`EguiModifiersExt`] — converts [`egui::Modifiers`] to a
 //!   `Vec<Modifier>`.
 //! - [`EguiEventExt`] — converts a full [`egui::Event`] keyboard event
-//!   to a [`kbd_core::Hotkey`].
+//!   to a [`kbd::Hotkey`].
 //!
 //! # Usage
 //!
 //! ```
 //! use egui::{Key as EguiKey, Modifiers};
-//! use kbd_core::{Hotkey, Key, Modifier};
+//! use kbd::{Hotkey, Key, Modifier};
 //! use kbd_egui::{EguiKeyExt, EguiModifiersExt};
 //!
 //! // Single key conversion
@@ -45,11 +45,11 @@
 
 use egui::Key as EguiKey;
 use egui::Modifiers;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::Modifier;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::Modifier;
 
-/// Convert an [`egui::Key`] to a `kbd-core` [`Key`].
+/// Convert an [`egui::Key`] to a `kbd` [`Key`].
 ///
 /// Returns `None` for egui keys that represent logical/shifted characters
 /// without a single physical key equivalent (e.g., `Colon`, `Pipe`,
@@ -193,7 +193,7 @@ impl EguiKeyExt for EguiKey {
 /// abstractions. On non-macOS platforms, `command` mirrors `ctrl`.
 /// This implementation maps `ctrl`, `shift`, `alt`, and either
 /// `mac_cmd` or `command` (whichever represents the platform's
-/// command key) to `kbd-core` modifiers.
+/// command key) to `kbd` modifiers.
 ///
 /// To avoid double-counting on macOS (where `command` == `mac_cmd`),
 /// we use `ctrl` and `mac_cmd` as the canonical sources:
@@ -224,10 +224,10 @@ impl EguiModifiersExt for Modifiers {
     }
 }
 
-/// Convert an [`egui::Event`] keyboard event to a `kbd-core` [`Hotkey`].
+/// Convert an [`egui::Event`] keyboard event to a `kbd` [`Hotkey`].
 ///
 /// Returns `None` if the event is not a keyboard event, or if the key
-/// has no `kbd-core` equivalent.
+/// has no `kbd` equivalent.
 ///
 /// Only `Event::Key { .. }` variants produce a hotkey. All other event
 /// variants return `None`.
@@ -251,9 +251,9 @@ impl EguiEventExt for egui::Event {
 mod tests {
     use egui::Key as EguiKey;
     use egui::Modifiers;
-    use kbd_core::Hotkey;
-    use kbd_core::Key;
-    use kbd_core::Modifier;
+    use kbd::Hotkey;
+    use kbd::Key;
+    use kbd::Modifier;
 
     use super::*;
 

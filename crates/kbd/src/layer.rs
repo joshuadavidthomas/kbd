@@ -99,7 +99,7 @@ impl std::fmt::Debug for StoredLayer {
 /// Construct via the builder pattern:
 ///
 /// ```rust
-/// use kbd_core::{Action, Hotkey, Key, Layer, Modifier};
+/// use kbd::{Action, Hotkey, Key, Layer, Modifier};
 ///
 /// let nav = Layer::new("nav")
 ///     .bind(Key::H, Action::Swallow)

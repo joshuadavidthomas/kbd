@@ -2,6 +2,7 @@
 name = "kbd-global"
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -13,19 +14,16 @@ readme = "../../README.md"
 [features]
 async-std = ["dep:async-std", "dep:async-channel"]
 grab = []
-portal = ["dep:ashpd", "dep:async-std", "dep:kbd-portal"]
-serde = ["dep:serde", "kbd-core/serde"]
+portal = ["dep:ashpd", "dep:async-std"]
+serde = ["dep:serde", "kbd/serde"]
 tokio = ["dep:tokio", "dep:async-channel"]
 
 [dependencies]
 ashpd = { workspace = true, optional = true }
 async-channel = { workspace = true, optional = true }
 async-std = { workspace = true, optional = true }
-kbd-core = { workspace = true }
-kbd-derive = { workspace = true, optional = true }
+kbd = { workspace = true }
 kbd-evdev = { workspace = true }
-kbd-portal = { workspace = true, optional = true }
-kbd-xkb = { workspace = true, optional = true }
 libc = { workspace = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }

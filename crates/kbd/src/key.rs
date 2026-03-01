@@ -22,7 +22,7 @@ use keyboard_types::Code;
 /// Use the associated constants to refer to specific keys:
 ///
 /// ```
-/// use kbd_core::Key;
+/// use kbd::Key;
 ///
 /// let key = Key::A;
 /// assert_eq!(key.to_string(), "A");

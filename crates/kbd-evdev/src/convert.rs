@@ -1,14 +1,14 @@
-//! Extension traits for converting between evdev key codes and `kbd-core` key types.
+//! Extension traits for converting between evdev key codes and `kbd` key types.
 //!
 //! These are extension traits rather than `From`/`Into` impls because of the
-//! orphan rule: neither `evdev::KeyCode` nor `kbd_core::Key` is defined in
+//! orphan rule: neither `evdev::KeyCode` nor `kbd::Key` is defined in
 //! this crate, so we cannot implement foreign traits for foreign types.
 //!
 //! # Usage
 //!
 //! ```rust
 //! use evdev::KeyCode;
-//! use kbd_core::Key;
+//! use kbd::Key;
 //! use kbd_evdev::KeyCodeExt;
 //!
 //! let key: Key = KeyCode::KEY_A.to_key();
@@ -16,9 +16,9 @@
 //! ```
 
 use evdev::KeyCode;
-use kbd_core::Key;
+use kbd::Key;
 
-/// Extension trait on `evdev::KeyCode` for converting to `kbd_core::Key`.
+/// Extension trait on `evdev::KeyCode` for converting to `kbd::Key`.
 pub trait KeyCodeExt {
     /// Convert this evdev key code to a `Key`.
     ///
@@ -26,7 +26,7 @@ pub trait KeyCodeExt {
     fn to_key(self) -> Key;
 }
 
-/// Extension trait on `kbd_core::Key` for converting to `evdev::KeyCode`.
+/// Extension trait on `kbd::Key` for converting to `evdev::KeyCode`.
 pub trait EvdevKeyExt {
     /// Convert this key to an evdev `KeyCode`.
     ///
@@ -413,7 +413,7 @@ impl EvdevKeyExt for Key {
 #[cfg(test)]
 mod tests {
     use evdev::KeyCode;
-    use kbd_core::Key;
+    use kbd::Key;
 
     use super::EvdevKeyExt;
     use super::KeyCodeExt;

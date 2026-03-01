@@ -11,7 +11,7 @@
 //!
 //! # Dependencies
 //!
-//! Depends on `ashpd` (async D-Bus client) and `kbd-core`. Pulls in an async
+//! Depends on `ashpd` (async D-Bus client) and `kbd`. Pulls in an async
 //! runtime — isolated here so it doesn't infect the rest of the workspace.
 
 /// Initialize a portal session for global shortcut registration.

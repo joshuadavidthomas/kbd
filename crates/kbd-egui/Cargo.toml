@@ -3,13 +3,17 @@ name = "kbd-egui"
 version = "0.1.0"
 description = "egui bridge for kbd — converts egui key events and modifiers to kbd types."
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "../../README.md"
+keywords = ["keyboard", "egui", "hotkey", "keybinding"]
+categories = ["gui"]
 
 [dependencies]
 egui.workspace = true
-kbd-core.workspace = true
+kbd.workspace = true
 
 [dev-dependencies]
 eframe = { workspace = true }

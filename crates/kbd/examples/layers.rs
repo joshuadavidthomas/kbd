@@ -6,19 +6,19 @@
 //! down is checked, and so on down to the global bindings.
 //!
 //! ```sh
-//! cargo run -p kbd-core --example layers
+//! cargo run -p kbd --example layers
 //! ```
 
 use std::time::Duration;
 
-use kbd_core::Action;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::KeyTransition;
-use kbd_core::Layer;
-use kbd_core::MatchResult;
-use kbd_core::Matcher;
-use kbd_core::Modifier;
+use kbd::Action;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::KeyTransition;
+use kbd::Layer;
+use kbd::MatchResult;
+use kbd::Matcher;
+use kbd::Modifier;
 
 fn main() {
     let mut matcher = setup_matcher();

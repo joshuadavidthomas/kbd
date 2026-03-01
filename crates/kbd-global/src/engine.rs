@@ -34,7 +34,7 @@
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
 //!
-//! Key state and matching logic live in `kbd-core` (`KeyState`, `Matcher`).
+//! Key state and matching logic live in `kbd` (`KeyState`, `Matcher`).
 //!
 //! # Reference
 //!
@@ -48,14 +48,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 
-use kbd_core::Key;
-use kbd_core::Matcher;
-use kbd_core::action::Action;
-use kbd_core::binding::Passthrough;
-use kbd_core::key::Hotkey;
-use kbd_core::key_state::KeyState;
-use kbd_core::key_state::KeyTransition;
-use kbd_core::matcher::MatchResult;
+use kbd::Key;
+use kbd::Matcher;
+use kbd::action::Action;
+use kbd::binding::Passthrough;
+use kbd::key::Hotkey;
+use kbd::key_state::KeyState;
+use kbd::key_state::KeyTransition;
+use kbd::matcher::MatchResult;
 
 use crate::Error;
 use crate::engine::devices::DeviceKeyEvent;
@@ -341,7 +341,7 @@ impl Engine {
         // Cache the disposition for non-modifier key presses so the
         // corresponding release uses the same disposition.
         if matches!(event.transition, KeyTransition::Press)
-            && kbd_core::key::Modifier::from_key(event.key).is_none()
+            && kbd::key::Modifier::from_key(event.key).is_none()
         {
             self.press_cache.insert(event.key, disposition);
         }
@@ -397,14 +397,14 @@ mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
-    use kbd_core::Key;
-    use kbd_core::Modifier;
-    use kbd_core::action::Action;
-    use kbd_core::binding::BindingId;
-    use kbd_core::binding::Passthrough;
-    use kbd_core::binding::RegisteredBinding;
-    use kbd_core::key::Hotkey;
-    use kbd_core::key_state::KeyTransition;
+    use kbd::Key;
+    use kbd::Modifier;
+    use kbd::action::Action;
+    use kbd::binding::BindingId;
+    use kbd::binding::Passthrough;
+    use kbd::binding::RegisteredBinding;
+    use kbd::key::Hotkey;
+    use kbd::key_state::KeyTransition;
 
     use super::Command;
     use super::Engine;
@@ -1019,7 +1019,7 @@ mod tests {
     #[test]
     fn engine_stores_defined_layer() {
         let mut engine = test_engine();
-        let layer = kbd_core::Layer::new("nav")
+        let layer = kbd::Layer::new("nav")
             .bind(Key::H, Action::Swallow)
             .bind(Key::J, Action::Swallow);
 
@@ -1032,8 +1032,8 @@ mod tests {
             .iter()
             .filter(|b| {
                 b.location
-                    == kbd_core::introspection::BindingLocation::Layer(
-                        kbd_core::action::LayerName::from("nav"),
+                    == kbd::introspection::BindingLocation::Layer(
+                        kbd::action::LayerName::from("nav"),
                     )
             })
             .collect();
@@ -1043,7 +1043,7 @@ mod tests {
     #[test]
     fn engine_stores_layer_bindings() {
         let mut engine = test_engine();
-        let layer = kbd_core::Layer::new("nav")
+        let layer = kbd::Layer::new("nav")
             .bind(Key::H, Action::Swallow)
             .bind(Key::J, Action::Swallow)
             .bind(Key::K, Action::Swallow);
@@ -1056,8 +1056,8 @@ mod tests {
             .iter()
             .filter(|b| {
                 b.location
-                    == kbd_core::introspection::BindingLocation::Layer(
-                        kbd_core::action::LayerName::from("nav"),
+                    == kbd::introspection::BindingLocation::Layer(
+                        kbd::action::LayerName::from("nav"),
                     )
             })
             .collect();
@@ -1067,7 +1067,7 @@ mod tests {
     #[test]
     fn engine_stores_layer_options() {
         let mut engine = test_engine();
-        let layer = kbd_core::Layer::new("oneshot-nav")
+        let layer = kbd::Layer::new("oneshot-nav")
             .bind(Key::H, Action::Swallow)
             .swallow()
             .oneshot(1)
@@ -1079,7 +1079,7 @@ mod tests {
         // the oneshot layer should auto-pop after 1 keypress
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("oneshot-nav"))
+            .push_layer(kbd::action::LayerName::from("oneshot-nav"))
             .unwrap();
 
         // H should match in the layer
@@ -1088,27 +1088,27 @@ mod tests {
             .process(&Hotkey::new(Key::H), KeyTransition::Press);
         assert!(matches!(
             result,
-            kbd_core::matcher::MatchResult::Matched { .. }
+            kbd::matcher::MatchResult::Matched { .. }
         ));
 
         // After oneshot depth of 1, layer should be gone
         let result = engine
             .matcher
             .process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, kbd_core::matcher::MatchResult::NoMatch));
+        assert!(matches!(result, kbd::matcher::MatchResult::NoMatch));
     }
 
     #[test]
     fn engine_stores_empty_layer() {
         let mut engine = test_engine();
-        let layer = kbd_core::Layer::new("empty");
+        let layer = kbd::Layer::new("empty");
 
         engine.matcher.define_layer(layer).unwrap();
 
         // Push the empty layer — should succeed and have 0 bindings
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("empty"))
+            .push_layer(kbd::action::LayerName::from("empty"))
             .unwrap();
         let active = engine.matcher.active_layers();
         assert_eq!(active.len(), 1);
@@ -1120,7 +1120,7 @@ mod tests {
     fn define_layer_via_runtime_command() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
-        let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         runtime
@@ -1144,7 +1144,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define first layer — should succeed
-        let first_layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let first_layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1161,7 +1161,7 @@ mod tests {
         );
 
         // Define second layer with same name — should fail
-        let duplicate_layer = kbd_core::Layer::new("nav").bind(Key::J, Action::Swallow);
+        let duplicate_layer = kbd::Layer::new("nav").bind(Key::J, Action::Swallow);
         let (dup_reply_tx, dup_reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1179,14 +1179,14 @@ mod tests {
     }
 
     fn define_and_push_layer(engine: &mut Engine, name: &str, bindings: Vec<(Key, Action)>) {
-        let mut layer = kbd_core::Layer::new(name);
+        let mut layer = kbd::Layer::new(name);
         for (key, action) in bindings {
             layer = layer.bind(key, action);
         }
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from(name))
+            .push_layer(kbd::action::LayerName::from(name))
             .unwrap();
     }
 
@@ -1243,7 +1243,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd_core::Layer::new("nav").bind(
+        let layer = kbd::Layer::new("nav").bind(
             Key::H,
             Action::from(move || {
                 cc.fetch_add(1, Ordering::Relaxed);
@@ -1253,7 +1253,7 @@ mod tests {
 
         engine
             .matcher
-            .toggle_layer(kbd_core::action::LayerName::from("nav"))
+            .toggle_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
         press_key(&mut engine, Key::H, 10);
@@ -1280,7 +1280,7 @@ mod tests {
         // Toggle off
         engine
             .matcher
-            .toggle_layer(kbd_core::action::LayerName::from("nav"))
+            .toggle_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
         // H should no longer match
@@ -1293,8 +1293,8 @@ mod tests {
         let mut engine = test_engine();
         let result = engine
             .matcher
-            .toggle_layer(kbd_core::action::LayerName::from("nonexistent"));
-        assert!(matches!(result, Err(kbd_core::Error::LayerNotDefined)));
+            .toggle_layer(kbd::action::LayerName::from("nonexistent"));
+        assert!(matches!(result, Err(kbd::Error::LayerNotDefined)));
     }
 
     #[test]
@@ -1382,13 +1382,13 @@ mod tests {
             ))
             .unwrap();
 
-        let layer = kbd_core::Layer::new("modal")
+        let layer = kbd::Layer::new("modal")
             .bind(Key::H, Action::Swallow)
             .swallow();
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("modal"))
+            .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
         // X not in swallow layer — consumed, global should NOT fire
@@ -1403,7 +1403,7 @@ mod tests {
 
         let layer_counter = Arc::new(AtomicUsize::new(0));
         let lc = Arc::clone(&layer_counter);
-        let layer = kbd_core::Layer::new("nav").bind(
+        let layer = kbd::Layer::new("nav").bind(
             Key::H,
             Action::from(move || {
                 lc.fetch_add(1, Ordering::Relaxed);
@@ -1417,7 +1417,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F1),
-                Action::PushLayer(kbd_core::action::LayerName::from("nav")),
+                Action::PushLayer(kbd::action::LayerName::from("nav")),
             ))
             .unwrap();
 
@@ -1435,7 +1435,7 @@ mod tests {
 
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
-        let layer = kbd_core::Layer::new("nav")
+        let layer = kbd::Layer::new("nav")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1446,7 +1446,7 @@ mod tests {
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("nav"))
+            .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
         // H fires in nav layer
@@ -1469,7 +1469,7 @@ mod tests {
 
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
-        let layer = kbd_core::Layer::new("nav").bind(
+        let layer = kbd::Layer::new("nav").bind(
             Key::H,
             Action::from(move || {
                 cc.fetch_add(1, Ordering::Relaxed);
@@ -1483,7 +1483,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F2),
-                Action::ToggleLayer(kbd_core::action::LayerName::from("nav")),
+                Action::ToggleLayer(kbd::action::LayerName::from("nav")),
             ))
             .unwrap();
 
@@ -1551,7 +1551,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd_core::Layer::new("oneshot")
+        let layer = kbd::Layer::new("oneshot")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1562,7 +1562,7 @@ mod tests {
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("oneshot"))
+            .push_layer(kbd::action::LayerName::from("oneshot"))
             .unwrap();
 
         // First keypress — should match and auto-pop
@@ -1581,7 +1581,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd_core::Layer::new("oneshot")
+        let layer = kbd::Layer::new("oneshot")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1592,7 +1592,7 @@ mod tests {
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("oneshot"))
+            .push_layer(kbd::action::LayerName::from("oneshot"))
             .unwrap();
 
         // Press an unmatched key — should count toward oneshot depth and pop
@@ -1610,7 +1610,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd_core::Layer::new("oneshot2")
+        let layer = kbd::Layer::new("oneshot2")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1621,7 +1621,7 @@ mod tests {
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("oneshot2"))
+            .push_layer(kbd::action::LayerName::from("oneshot2"))
             .unwrap();
 
         // First keypress — layer still active
@@ -1644,7 +1644,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define layer
-        let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1663,7 +1663,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::PushLayer {
-                name: kbd_core::action::LayerName::from("nav"),
+                name: kbd::action::LayerName::from("nav"),
                 reply: reply_tx,
             })
             .unwrap();
@@ -1681,7 +1681,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::PushLayer {
-                name: kbd_core::action::LayerName::from("nonexistent"),
+                name: kbd::action::LayerName::from("nonexistent"),
                 reply: reply_tx,
             })
             .unwrap();
@@ -1696,7 +1696,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define and push layer
-        let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1714,7 +1714,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::PushLayer {
-                name: kbd_core::action::LayerName::from("nav"),
+                name: kbd::action::LayerName::from("nav"),
                 reply: reply_tx,
             })
             .unwrap();
@@ -1757,7 +1757,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd_core::Layer::new("timed")
+        let layer = kbd::Layer::new("timed")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1768,7 +1768,7 @@ mod tests {
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("timed"))
+            .push_layer(kbd::action::LayerName::from("timed"))
             .unwrap();
 
         // H fires while layer is active
@@ -1793,7 +1793,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd_core::Layer::new("timed")
+        let layer = kbd::Layer::new("timed")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1804,7 +1804,7 @@ mod tests {
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("timed"))
+            .push_layer(kbd::action::LayerName::from("timed"))
             .unwrap();
 
         // Activity within the timeout window
@@ -1836,7 +1836,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define layer
-        let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1855,7 +1855,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::ToggleLayer {
-                name: kbd_core::action::LayerName::from("nav"),
+                name: kbd::action::LayerName::from("nav"),
                 reply: reply_tx,
             })
             .unwrap();
@@ -1933,13 +1933,13 @@ mod tests {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
-        let layer = kbd_core::Layer::new("modal")
+        let layer = kbd::Layer::new("modal")
             .bind(Key::H, Action::Swallow)
             .swallow();
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("modal"))
+            .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
         let press_disp = press_key(&mut engine, Key::X, 10);
@@ -1990,13 +1990,13 @@ mod tests {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
-        let layer = kbd_core::Layer::new("nav")
+        let layer = kbd::Layer::new("nav")
             .bind(Key::H, Action::PopLayer)
             .bind(Key::J, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("nav"))
+            .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
         let press_disp = press_key(&mut engine, Key::H, 10);
@@ -2103,7 +2103,7 @@ mod tests {
                     Action::Swallow,
                 )
                 .with_options(
-                    kbd_core::binding::BindingOptions::default().with_description("Copy"),
+                    kbd::binding::BindingOptions::default().with_description("Copy"),
                 ),
             )
             .unwrap();
@@ -2116,11 +2116,11 @@ mod tests {
         assert_eq!(info.description.as_deref(), Some("Copy"));
         assert_eq!(
             info.location,
-            kbd_core::introspection::BindingLocation::Global
+            kbd::introspection::BindingLocation::Global
         );
         assert_eq!(
             info.shadowed,
-            kbd_core::introspection::ShadowedStatus::Active
+            kbd::introspection::ShadowedStatus::Active
         );
     }
 
@@ -2128,7 +2128,7 @@ mod tests {
     fn list_bindings_includes_layer_bindings() {
         let mut engine = test_engine();
 
-        let layer = kbd_core::Layer::new("nav")
+        let layer = kbd::Layer::new("nav")
             .bind(Key::H, Action::Swallow)
             .bind(Key::J, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
@@ -2139,7 +2139,7 @@ mod tests {
             .filter(|b| {
                 matches!(
                     b.location,
-                    kbd_core::introspection::BindingLocation::Layer(_)
+                    kbd::introspection::BindingLocation::Layer(_)
                 )
             })
             .collect();
@@ -2150,7 +2150,7 @@ mod tests {
     fn list_bindings_inactive_layer_binding_marked_inactive() {
         let mut engine = test_engine();
 
-        let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
 
         let bindings = engine.matcher.list_bindings();
@@ -2160,7 +2160,7 @@ mod tests {
             .expect("should find H binding");
         assert_eq!(
             nav_binding.shadowed,
-            kbd_core::introspection::ShadowedStatus::Inactive
+            kbd::introspection::ShadowedStatus::Inactive
         );
     }
 
@@ -2177,11 +2177,11 @@ mod tests {
             ))
             .unwrap();
 
-        let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("nav"))
+            .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
         let bindings = engine.matcher.list_bindings();
@@ -2190,12 +2190,12 @@ mod tests {
             .iter()
             .find(|b| {
                 b.hotkey == Hotkey::new(Key::H)
-                    && matches!(b.location, kbd_core::introspection::BindingLocation::Global)
+                    && matches!(b.location, kbd::introspection::BindingLocation::Global)
             })
             .expect("should find global H");
         assert_eq!(
             global_h.shadowed,
-            kbd_core::introspection::ShadowedStatus::ShadowedBy(kbd_core::action::LayerName::from(
+            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::action::LayerName::from(
                 "nav"
             ))
         );
@@ -2206,13 +2206,13 @@ mod tests {
                 b.hotkey == Hotkey::new(Key::H)
                     && matches!(
                         b.location,
-                        kbd_core::introspection::BindingLocation::Layer(_)
+                        kbd::introspection::BindingLocation::Layer(_)
                     )
             })
             .expect("should find layer H");
         assert_eq!(
             layer_h.shadowed,
-            kbd_core::introspection::ShadowedStatus::Active
+            kbd::introspection::ShadowedStatus::Active
         );
     }
 
@@ -2220,19 +2220,19 @@ mod tests {
     fn list_bindings_higher_layer_shadows_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = kbd_core::Layer::new("layer1").bind(Key::H, Action::Swallow);
+        let layer1 = kbd::Layer::new("layer1").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd_core::Layer::new("layer2").bind(Key::H, Action::Swallow);
+        let layer2 = kbd::Layer::new("layer2").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer2).unwrap();
 
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("layer1"))
+            .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("layer2"))
+            .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
         let bindings = engine.matcher.list_bindings();
@@ -2242,14 +2242,14 @@ mod tests {
             .find(|b| {
                 b.hotkey == Hotkey::new(Key::H)
                     && b.location
-                        == kbd_core::introspection::BindingLocation::Layer(
-                            kbd_core::action::LayerName::from("layer1"),
+                        == kbd::introspection::BindingLocation::Layer(
+                            kbd::action::LayerName::from("layer1"),
                         )
             })
             .expect("should find layer1 H");
         assert_eq!(
             layer1_h.shadowed,
-            kbd_core::introspection::ShadowedStatus::ShadowedBy(kbd_core::action::LayerName::from(
+            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::action::LayerName::from(
                 "layer2"
             ))
         );
@@ -2259,14 +2259,14 @@ mod tests {
             .find(|b| {
                 b.hotkey == Hotkey::new(Key::H)
                     && b.location
-                        == kbd_core::introspection::BindingLocation::Layer(
-                            kbd_core::action::LayerName::from("layer2"),
+                        == kbd::introspection::BindingLocation::Layer(
+                            kbd::action::LayerName::from("layer2"),
                         )
             })
             .expect("should find layer2 H");
         assert_eq!(
             layer2_h.shadowed,
-            kbd_core::introspection::ShadowedStatus::Active
+            kbd::introspection::ShadowedStatus::Active
         );
     }
 
@@ -2283,7 +2283,7 @@ mod tests {
                     Action::Swallow,
                 )
                 .with_options(
-                    kbd_core::binding::BindingOptions::default().with_description("Copy"),
+                    kbd::binding::BindingOptions::default().with_description("Copy"),
                 ),
             )
             .unwrap();
@@ -2298,7 +2298,7 @@ mod tests {
         assert_eq!(info.description.as_deref(), Some("Copy"));
         assert_eq!(
             info.location,
-            kbd_core::introspection::BindingLocation::Global
+            kbd::introspection::BindingLocation::Global
         );
     }
 
@@ -2330,16 +2330,16 @@ mod tests {
             .register_binding(
                 RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Swallow)
                     .with_options(
-                        kbd_core::binding::BindingOptions::default().with_description("Global H"),
+                        kbd::binding::BindingOptions::default().with_description("Global H"),
                     ),
             )
             .unwrap();
 
-        let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("nav"))
+            .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
         let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::H));
@@ -2348,7 +2348,7 @@ mod tests {
         let info = result.unwrap();
         assert_eq!(
             info.location,
-            kbd_core::introspection::BindingLocation::Layer(kbd_core::action::LayerName::from(
+            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
                 "nav"
             ))
         );
@@ -2365,12 +2365,12 @@ mod tests {
     fn active_layers_returns_stack_in_order() {
         let mut engine = test_engine();
 
-        let layer1 = kbd_core::Layer::new("layer1")
+        let layer1 = kbd::Layer::new("layer1")
             .bind(Key::H, Action::Swallow)
             .description("First layer");
         engine.matcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd_core::Layer::new("layer2")
+        let layer2 = kbd::Layer::new("layer2")
             .bind(Key::J, Action::Swallow)
             .bind(Key::K, Action::Swallow)
             .description("Second layer");
@@ -2378,11 +2378,11 @@ mod tests {
 
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("layer1"))
+            .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("layer2"))
+            .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
         let active = engine.matcher.active_layers();
@@ -2427,11 +2427,11 @@ mod tests {
             ))
             .unwrap();
 
-        let layer = kbd_core::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("nav"))
+            .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
         let conflicts = engine.matcher.conflicts();
@@ -2441,11 +2441,11 @@ mod tests {
         assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
         assert_eq!(
             conflict.shadowed_binding.location,
-            kbd_core::introspection::BindingLocation::Global
+            kbd::introspection::BindingLocation::Global
         );
         assert_eq!(
             conflict.shadowing_binding.location,
-            kbd_core::introspection::BindingLocation::Layer(kbd_core::action::LayerName::from(
+            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
                 "nav"
             ))
         );
@@ -2455,19 +2455,19 @@ mod tests {
     fn conflicts_detects_layer_shadowing_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = kbd_core::Layer::new("layer1").bind(Key::H, Action::Swallow);
+        let layer1 = kbd::Layer::new("layer1").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd_core::Layer::new("layer2").bind(Key::H, Action::Swallow);
+        let layer2 = kbd::Layer::new("layer2").bind(Key::H, Action::Swallow);
         engine.matcher.define_layer(layer2).unwrap();
 
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("layer1"))
+            .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("layer2"))
+            .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
         let conflicts = engine.matcher.conflicts();
@@ -2477,13 +2477,13 @@ mod tests {
         assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
         assert_eq!(
             conflict.shadowed_binding.location,
-            kbd_core::introspection::BindingLocation::Layer(kbd_core::action::LayerName::from(
+            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
                 "layer1"
             ))
         );
         assert_eq!(
             conflict.shadowing_binding.location,
-            kbd_core::introspection::BindingLocation::Layer(kbd_core::action::LayerName::from(
+            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
                 "layer2"
             ))
         );
@@ -2503,7 +2503,7 @@ mod tests {
                     Action::Swallow,
                 )
                 .with_options(
-                    kbd_core::binding::BindingOptions::default().with_description("Copy"),
+                    kbd::binding::BindingOptions::default().with_description("Copy"),
                 ),
                 reply: reply_tx,
             })
@@ -2573,8 +2573,8 @@ mod tests {
                     Action::Swallow,
                 )
                 .with_options(
-                    kbd_core::binding::BindingOptions::default()
-                        .with_overlay_visibility(kbd_core::binding::OverlayVisibility::Hidden),
+                    kbd::binding::BindingOptions::default()
+                        .with_overlay_visibility(kbd::binding::OverlayVisibility::Hidden),
                 ),
             )
             .unwrap();
@@ -2583,7 +2583,7 @@ mod tests {
         assert_eq!(bindings.len(), 1);
         assert_eq!(
             bindings[0].overlay_visibility,
-            kbd_core::binding::OverlayVisibility::Hidden
+            kbd::binding::OverlayVisibility::Hidden
         );
     }
 
@@ -2600,13 +2600,13 @@ mod tests {
             ))
             .unwrap();
 
-        let layer = kbd_core::Layer::new("modal")
+        let layer = kbd::Layer::new("modal")
             .bind(Key::H, Action::Swallow)
             .swallow();
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
-            .push_layer(kbd_core::action::LayerName::from("modal"))
+            .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
         let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::X));

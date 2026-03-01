@@ -1,4 +1,4 @@
-//! Minimal TUI loop using `kbd-crossterm` + `kbd-core`.
+//! Minimal TUI loop using `kbd-crossterm` + `kbd`.
 //!
 //! Reads real terminal key events, converts them via the crossterm
 //! extension traits, and feeds them to a `Matcher`. Prints match results
@@ -21,13 +21,13 @@ use crossterm::event::{
     self,
 };
 use crossterm::terminal;
-use kbd_core::Action;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::KeyTransition;
-use kbd_core::MatchResult;
-use kbd_core::Matcher;
-use kbd_core::Modifier;
+use kbd::Action;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::KeyTransition;
+use kbd::MatchResult;
+use kbd::Matcher;
+use kbd::Modifier;
 use kbd_crossterm::CrosstermEventExt;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,7 +88,7 @@ fn run_event_loop(matcher: &mut Matcher) -> Result<(), Box<dyn std::error::Error
                 return Ok(());
             }
 
-            // Convert crossterm event to kbd-core Hotkey
+            // Convert crossterm event to kbd Hotkey
             let Some(hotkey) = key_event.to_hotkey() else {
                 continue;
             };

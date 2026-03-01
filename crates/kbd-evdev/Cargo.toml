@@ -2,16 +2,18 @@
 name = "kbd-evdev"
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "../../README.md"
 description = "evdev backend for kbd — Linux input device discovery, hotplug, grab, and event forwarding."
 keywords = ["evdev", "keyboard", "input", "linux"]
 categories = ["os::linux-apis"]
 
 [dependencies]
 evdev = { workspace = true }
-kbd-core = { workspace = true }
+kbd = { workspace = true }
 libc = { workspace = true }
 thiserror = { workspace = true }
 

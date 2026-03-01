@@ -12,7 +12,7 @@
 
 use std::fmt;
 
-use kbd_core::binding::BindingId;
+use kbd::binding::BindingId;
 
 use crate::Error;
 use crate::engine::Command;

@@ -38,32 +38,32 @@ mod manager;
 #[cfg(any(feature = "tokio", feature = "async-std"))]
 mod events;
 
-// Re-exports from kbd-core — all domain types live there.
+// Re-exports from kbd — all domain types live there.
 // kbd-global re-exports them so consumers use a single `kbd_global::` import path.
-pub use kbd_core::action::Action;
-pub use kbd_core::action::LayerName;
-pub use kbd_core::binding::BindingId;
-pub use kbd_core::binding::BindingOptions;
-pub use kbd_core::binding::DeviceFilter;
-pub use kbd_core::binding::OverlayVisibility;
-pub use kbd_core::binding::Passthrough;
-pub use kbd_core::binding::RegisteredBinding;
-pub use kbd_core::introspection::ActiveLayerInfo;
-pub use kbd_core::introspection::BindingInfo;
-pub use kbd_core::introspection::BindingLocation;
-pub use kbd_core::introspection::ConflictInfo;
-pub use kbd_core::introspection::ShadowedStatus;
-pub use kbd_core::key::Hotkey;
-pub use kbd_core::key::HotkeySequence;
-pub use kbd_core::key::Key;
-pub use kbd_core::key::Modifier;
-pub use kbd_core::key::ParseHotkeyError;
-pub use kbd_core::key_state::KeyTransition;
-pub use kbd_core::layer::Layer;
-pub use kbd_core::layer::LayerOptions;
-pub use kbd_core::layer::UnmatchedKeyBehavior;
-pub use kbd_core::matcher::MatchResult;
-pub use kbd_core::matcher::Matcher;
+pub use kbd::action::Action;
+pub use kbd::action::LayerName;
+pub use kbd::binding::BindingId;
+pub use kbd::binding::BindingOptions;
+pub use kbd::binding::DeviceFilter;
+pub use kbd::binding::OverlayVisibility;
+pub use kbd::binding::Passthrough;
+pub use kbd::binding::RegisteredBinding;
+pub use kbd::introspection::ActiveLayerInfo;
+pub use kbd::introspection::BindingInfo;
+pub use kbd::introspection::BindingLocation;
+pub use kbd::introspection::ConflictInfo;
+pub use kbd::introspection::ShadowedStatus;
+pub use kbd::key::Hotkey;
+pub use kbd::key::HotkeySequence;
+pub use kbd::key::Key;
+pub use kbd::key::Modifier;
+pub use kbd::key::ParseHotkeyError;
+pub use kbd::key_state::KeyTransition;
+pub use kbd::layer::Layer;
+pub use kbd::layer::LayerOptions;
+pub use kbd::layer::UnmatchedKeyBehavior;
+pub use kbd::matcher::MatchResult;
+pub use kbd::matcher::Matcher;
 
 pub use crate::backend::Backend;
 pub use crate::error::Error;

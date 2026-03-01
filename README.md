@@ -2,7 +2,7 @@
 
 Keyboard shortcut engine for Rust.
 
-The core (`kbd-core`) is platform-agnostic — it handles key types,
+The core (`kbd`) is platform-agnostic — it handles key types,
 modifier tracking, binding matching, layer stacks, and sequence
 resolution. It works anywhere you have key events: GUI apps, TUI apps,
 compositors, game engines.
@@ -21,7 +21,7 @@ with evdev device access, grab mode, and XDG portal support.
 - **Press / release / hold** — separate callbacks, min-hold, debounce, rate limiting
 - **String parsing** — `"Ctrl+Shift+A".parse::<Hotkey>()`
 - **Async streams** — optional tokio / async-std event streams
-- **Embeddable matcher** — `kbd-core`'s `Matcher` works in any event loop (winit, ratatui, Smithay, etc.)
+- **Embeddable matcher** — `kbd`'s `Matcher` works in any event loop (winit, ratatui, Smithay, etc.)
 
 ## Installation
 
@@ -36,7 +36,7 @@ For in-app shortcut matching (any platform):
 
 ```toml
 [dependencies]
-kbd-core = "0.1"
+kbd = "0.1"
 ```
 
 Optional features on `kbd-global`: `grab`, `portal`, `tokio`, `async-std`, `serde`.

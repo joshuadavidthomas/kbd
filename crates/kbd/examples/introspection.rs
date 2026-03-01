@@ -7,22 +7,22 @@
 //! what's shadowed, and what would fire for any given key.
 //!
 //! ```sh
-//! cargo run -p kbd-core --example introspection
+//! cargo run -p kbd --example introspection
 //! ```
 
-use kbd_core::Action;
-use kbd_core::BindingId;
-use kbd_core::BindingInfo;
-use kbd_core::BindingLocation;
-use kbd_core::BindingOptions;
-use kbd_core::Hotkey;
-use kbd_core::Key;
-use kbd_core::Layer;
-use kbd_core::Matcher;
-use kbd_core::Modifier;
-use kbd_core::OverlayVisibility;
-use kbd_core::RegisteredBinding;
-use kbd_core::ShadowedStatus;
+use kbd::Action;
+use kbd::BindingId;
+use kbd::BindingInfo;
+use kbd::BindingLocation;
+use kbd::BindingOptions;
+use kbd::Hotkey;
+use kbd::Key;
+use kbd::Layer;
+use kbd::Matcher;
+use kbd::Modifier;
+use kbd::OverlayVisibility;
+use kbd::RegisteredBinding;
+use kbd::ShadowedStatus;
 
 fn main() {
     let (mut matcher, copy_id) = setup_matcher();
