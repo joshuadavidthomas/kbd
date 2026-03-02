@@ -62,63 +62,30 @@ pub mod layer;
 /// Synchronous matching engine — feed key events, get match results.
 pub mod matcher;
 
-// Actions
-/// What happens when a binding matches — callbacks, key emission, or layer control.
 pub use crate::action::Action;
-/// A layer's unique name, used for push/pop/toggle operations.
 pub use crate::action::LayerName;
-// Bindings
-/// Unique identifier for a registered binding.
 pub use crate::binding::BindingId;
-/// Per-binding behavioral options (passthrough, description, device filter).
 pub use crate::binding::BindingOptions;
-/// Device filter expression for restricting a binding to specific input devices.
 pub use crate::binding::DeviceFilter;
-/// Whether a binding appears in hotkey overlays and help screens.
 pub use crate::binding::OverlayVisibility;
-/// Whether a matched binding consumes or forwards the original key event.
 pub use crate::binding::Passthrough;
-/// A binding registered with the engine: hotkey + action + options.
 pub use crate::binding::RegisteredBinding;
-// Errors
-/// Error type for registration, layer, and parse operations.
 pub use crate::error::Error;
-// Introspection
-/// Snapshot of an active layer on the stack.
 pub use crate::introspection::ActiveLayerInfo;
-/// Snapshot of a single binding with its status and metadata.
 pub use crate::introspection::BindingInfo;
-/// Where a binding lives — global or within a named layer.
 pub use crate::introspection::BindingLocation;
-/// A pair of bindings in conflict — one shadows the other.
 pub use crate::introspection::ConflictInfo;
-/// Whether a binding is currently reachable or shadowed by a higher layer.
 pub use crate::introspection::ShadowedStatus;
-// Keys
-/// A key combined with zero or more modifiers (e.g., `Ctrl+C`).
 pub use crate::key::Hotkey;
-/// An ordered sequence of hotkeys (e.g., `Ctrl+K, Ctrl+C` for chord sequences).
 pub use crate::key::HotkeySequence;
-/// A physical key on the keyboard.
 pub use crate::key::Key;
-/// A modifier key (Ctrl, Shift, Alt, Super).
 pub use crate::key::Modifier;
-/// Error returned when parsing a hotkey string like `"Ctrl+C"` fails.
 pub use crate::key::ParseHotkeyError;
-// Key state
-/// Whether a key was pressed, released, or repeated.
 pub use crate::key_state::KeyTransition;
-// Layers
-/// A named collection of bindings that can be activated and deactivated.
 pub use crate::layer::Layer;
-/// Per-layer behavioral options (oneshot, timeout, unmatched key behavior).
 pub use crate::layer::LayerOptions;
-/// Whether unmatched keys in an active layer fall through or are swallowed.
 pub use crate::layer::UnmatchedKeyBehavior;
-// Matcher
-/// Result of attempting to match a key event against registered bindings.
 pub use crate::matcher::MatchResult;
-/// The synchronous keyboard shortcut matching engine.
 pub use crate::matcher::Matcher;
 
 #[cfg(test)]
