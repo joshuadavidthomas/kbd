@@ -157,11 +157,11 @@ These follow a consistent pattern. Model after `once_cell` (small, focused, perf
 
 For each of the 5 bridge crates:
 
-- [ ] **Crate docs**: Ensure quick-start example compiles (not just `no_run`)
-- [ ] **Extension traits**: Add `# Examples` to each trait method, not just the crate-level example
-- [ ] **Conversion tables**: Add a module-level doc table showing the mapping (e.g., `crossterm::KeyCode::Char('a')` → `kbd::Key::A`)
-- [ ] **Trait method docs**: Every `fn` on every trait gets a `///` with at least a summary line
-- [ ] **README**: Update to match crate-level docs
+- [x] **Crate docs**: Ensure quick-start example compiles (not just `no_run`)
+- [x] **Extension traits**: Add `# Examples` to each trait method, not just the crate-level example
+- [x] **Conversion tables**: Add a module-level doc table showing the mapping (e.g., `crossterm::KeyCode::Char('a')` → `kbd::Key::A`)
+- [x] **Trait method docs**: Every `fn` on every trait gets a `///` with at least a summary line
+- [x] **README**: Update to match crate-level docs
 
 ### Phase 4 — `kbd-evdev`
 
