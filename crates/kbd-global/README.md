@@ -1,62 +1,38 @@
 # kbd-global
 
-Global hotkey runtime for Linux — threaded engine, device management, and backend selection. Works on Wayland, X11, and TTY.
+[![crates.io](https://img.shields.io/crates/v/kbd-global.svg)](https://crates.io/crates/kbd-global)
+[![docs.rs](https://docs.rs/kbd-global/badge.svg)](https://docs.rs/kbd-global)
 
-Part of the [`kbd`](https://crates.io/crates/kbd) keyboard shortcut engine.
-
-## Installation
+When a key combination happens on a Linux keyboard, do something. Works on Wayland, X11, and TTY — it reads evdev directly, no display server integration needed.
 
 ```toml
 [dependencies]
 kbd-global = "0.1"
 ```
 
-Optional features: `grab`, `serde`.
-
-## Usage
-
 ```rust,no_run
 use kbd_global::{HotkeyManager, Hotkey, Key, Modifier};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let manager = HotkeyManager::new()?;
+let manager = HotkeyManager::new()?;
 
-    let _handle = manager.register(
-        Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
-        || println!("Ctrl+Shift+C pressed!"),
-    )?;
+let _handle = manager.register(
+    Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
+    || println!("Ctrl+Shift+C pressed!"),
+)?;
 
-    // Keep the program running to receive hotkey events
-    std::thread::park();
-
-    Ok(())
-}
+std::thread::park();
+# Ok::<(), kbd_global::Error>(())
 ```
 
-All `kbd` domain types (`Key`, `Modifier`, `Hotkey`, `Matcher`, `Layer`, etc.) are re-exported so you only need a single dependency.
+All [`kbd`](https://crates.io/crates/kbd) domain types are re-exported, so this is the only dependency you need.
 
-## Permissions
-
-Your user must be able to read `/dev/input/event*` devices. On most systems this means joining the `input` group:
+Your user must be in the `input` group to read `/dev/input/event*` devices:
 
 ```bash
 sudo usermod -aG input $USER
-# Log out and back in
 ```
 
-### Grab mode
-
-Grab mode uses `EVIOCGRAB` for exclusive device capture and writes to `/dev/uinput` to re-emit non-hotkey events. Grant access with a udev rule:
-
-```bash
-sudo tee /etc/udev/rules.d/99-uinput.rules <<< 'KERNEL=="uinput", GROUP="input", MODE="0660"'
-sudo udevadm control --reload-rules
-sudo udevadm trigger /dev/uinput
-```
-
-## How it works
-
-`kbd-global` uses the Linux evdev subsystem to read key events directly from `/dev/input/event*` device nodes. This works on both X11 and Wayland without requiring display server integration.
+The `grab` feature enables exclusive device capture via `EVIOCGRAB` with uinput forwarding for non-hotkey events — see the [docs](https://docs.rs/kbd-global) for udev setup. The `serde` feature adds serialization for hotkey types.
 
 ## License
 

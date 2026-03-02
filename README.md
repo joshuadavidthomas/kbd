@@ -1,14 +1,17 @@
 # kbd
 
-Keyboard shortcut engine for Rust.
+[![crates.io](https://img.shields.io/crates/v/kbd.svg)](https://crates.io/crates/kbd)
+[![docs.rs](https://docs.rs/kbd/badge.svg)](https://docs.rs/kbd)
+[![CI](https://github.com/joshuadavidthomas/kbd/actions/workflows/test.yml/badge.svg)](https://github.com/joshuadavidthomas/kbd/actions/workflows/test.yml)
+[![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](#)
 
-The core crate (`kbd`) is platform-agnostic — key types, modifier tracking, hotkey parsing, binding matching, layer stacks. It works anywhere you have key events: GUI apps, TUI apps, compositors, game engines.
+A keyboard shortcut engine for Rust. You describe the shortcuts you care about, feed in key events from whatever source you have, and `kbd` tells you when something matches. Same engine whether you're building a text editor, a tiling compositor, or a global hotkey daemon.
 
-Bridge crates convert framework-specific key events into `kbd` types. A Linux runtime (`kbd-global`) adds system-wide global hotkeys on top.
-
-## Quick start
-
-### In-app shortcut matching (any platform)
+```toml
+[dependencies]
+kbd = "0.1"
+```
 
 ```rust
 use kbd::{Action, Hotkey, Key, MatchResult, Matcher, Modifier};
@@ -22,53 +25,24 @@ let result = matcher.key_down(Key::A, &[Modifier::Ctrl, Modifier::Shift]);
 assert!(matches!(result, MatchResult::Matched { .. }));
 ```
 
-```toml
-[dependencies]
-kbd = "0.1"
-```
+The core crate has no platform dependencies and works synchronously in any event loop. String parsing supports aliases (`Cmd`, `Super`, `Win` all map to `Meta`). Layers let you group bindings into named stacks with oneshot, swallow, and timeout options. The introspection API lists active bindings, detects conflicts, and reports shadowing. Enable `serde` for serialization.
 
-### Global hotkeys on Linux
+Bridge crates convert framework key events into `kbd` types. [`kbd-global`](crates/kbd-global) adds system-wide hotkeys on Linux.
 
-```rust,no_run
-use kbd_global::{HotkeyManager, Hotkey, Key, Modifier};
-
-let manager = HotkeyManager::new()?;
-
-let _handle = manager.register(
-    Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
-    || println!("Ctrl+Shift+C pressed!"),
-)?;
-
-std::thread::park();
-# Ok::<(), kbd_global::Error>(())
-```
-
-```toml
-[dependencies]
-kbd-global = "0.1"
-```
-
-## Crates
-
-| Crate | Description |
+| Crate | |
 |---|---|
 | [`kbd`](crates/kbd) | Core engine — key types, matcher, layers, string parsing |
 | [`kbd-global`](crates/kbd-global) | Linux global hotkey runtime (evdev, grab mode, hotplug) |
 | [`kbd-evdev`](crates/kbd-evdev) | Linux evdev backend (used by `kbd-global`) |
-| [`kbd-crossterm`](crates/kbd-crossterm) | Bridge for [crossterm](https://docs.rs/crossterm) |
-| [`kbd-winit`](crates/kbd-winit) | Bridge for [winit](https://docs.rs/winit) |
-| [`kbd-tao`](crates/kbd-tao) | Bridge for [tao](https://docs.rs/tao) (Tauri) |
-| [`kbd-iced`](crates/kbd-iced) | Bridge for [iced](https://docs.rs/iced) |
-| [`kbd-egui`](crates/kbd-egui) | Bridge for [egui](https://docs.rs/egui) |
+| [`kbd-crossterm`](crates/kbd-crossterm) | [crossterm](https://docs.rs/crossterm) bridge |
+| [`kbd-winit`](crates/kbd-winit) | [winit](https://docs.rs/winit) bridge |
+| [`kbd-tao`](crates/kbd-tao) | [tao](https://docs.rs/tao) bridge (Tauri) |
+| [`kbd-iced`](crates/kbd-iced) | [iced](https://docs.rs/iced) bridge |
+| [`kbd-egui`](crates/kbd-egui) | [egui](https://docs.rs/egui) bridge |
 
-## Features
+## Contributing
 
-- **String parsing** — `"Ctrl+Shift+A".parse::<Hotkey>()` with aliases (`Cmd`, `Super`, `Win`)
-- **Synchronous matcher** — embeds in any event loop, no async runtime needed
-- **Layers** — stack-based binding groups with oneshot, swallow, and timeout options
-- **Introspection** — list bindings, query what would fire, detect conflicts and shadowed bindings
-- **Grab mode** — exclusive device capture via `EVIOCGRAB` with uinput forwarding (`kbd-global`)
-- **Framework bridges** — crossterm, winit, tao, iced, egui key event conversions
+[Issues](https://github.com/joshuadavidthomas/kbd/issues) and pull requests are welcome. See the [changelog](CHANGELOG.md) for release history.
 
 ## License
 
