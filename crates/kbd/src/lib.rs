@@ -31,19 +31,6 @@
 //! assert!(matches!(result, MatchResult::Matched { .. }));
 //! ```
 //!
-//! # Modules
-//!
-//! | Module | Contains |
-//! |--------|----------|
-//! | [`key`] | [`Key`], [`Modifier`], [`Hotkey`], [`HotkeySequence`] — the input vocabulary |
-//! | [`action`] | [`Action`], [`LayerName`] — what to do when a binding matches |
-//! | [`binding`] | [`BindingId`], [`BindingOptions`], [`RegisteredBinding`] — binding configuration |
-//! | [`layer`] | [`Layer`], [`LayerOptions`], [`UnmatchedKeyBehavior`] — named binding groups that stack |
-//! | [`matcher`] | [`Matcher`], [`MatchResult`] — the synchronous matching engine |
-//! | [`key_state`] | [`KeyTransition`], `KeyState` — per-device press/release tracking |
-//! | [`introspection`] | [`BindingInfo`], [`ActiveLayerInfo`], [`ConflictInfo`] — read-only snapshots |
-//! | [`error`] | [`Error`] — parse, conflict, and layer errors |
-//!
 //! # Feature Flags
 //!
 //! | Flag | Default | Effect |
