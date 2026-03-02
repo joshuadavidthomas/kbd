@@ -179,17 +179,17 @@ Linux-specific, more complex. Model after `crossbeam` (clear module docs with us
 
 Largest non-core crate (17 files). Model after `tokio` (rich module-level docs, feature annotations).
 
-- [ ] **lib.rs**: Expand crate docs — architecture overview, backend selection, lifecycle diagram
-- [ ] **`pub use` re-exports**: Add `///` or `#[doc(inline)]` to all 29 re-exports
-- [ ] **Module docs for engine/**: Add `//!` headers to `command.rs`, `runtime.rs`, `types.rs`, `wake.rs`
-- [ ] **manager.rs**: `HotkeyManager` and `HotkeyManagerBuilder` — full lifecycle examples
-- [ ] **handle.rs**: `Handle` — what you can do with it, examples
-- [ ] **events.rs**: Event types — what each event means
-- [ ] **backend.rs**: `Backend` enum — when to use each variant
-- [ ] **error.rs**: Every error variant documented
-- [ ] **Feature: `grab`**: Document what it enables, platform requirements
-- [ ] **Feature: `serde`**: Document what becomes serializable
-- [ ] **README**: Expand with architecture diagram and usage example
+- [x] **lib.rs**: Expand crate docs — architecture overview, backend selection, lifecycle diagram
+- [x] **`pub use` re-exports**: Add `///` or `#[doc(inline)]` to all 29 re-exports
+- [x] **Module docs for engine/**: Add `//!` headers to `command.rs`, `runtime.rs`, `types.rs`, `wake.rs`
+- [x] **manager.rs**: `HotkeyManager` and `HotkeyManagerBuilder` — full lifecycle examples
+- [x] **handle.rs**: `Handle` — what you can do with it, examples
+- [x] **events.rs**: Event types — what each event means
+- [x] **backend.rs**: `Backend` enum — when to use each variant
+- [x] **error.rs**: Every error variant documented
+- [x] **Feature: `grab`**: Document what it enables, platform requirements
+- [x] **Feature: `serde`**: Document what becomes serializable
+- [x] **README**: Expand with architecture diagram and usage example
 
 ### Phase 6 — Placeholder Crates (derive, portal, xkb)
 

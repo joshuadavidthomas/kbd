@@ -1,3 +1,9 @@
+//! Eventfd-based wake mechanism for interrupting `poll()`.
+//!
+//! [`WakeFd`] wraps a Linux `eventfd` descriptor. The manager writes to it
+//! after sending a command, causing the engine's `poll()` to return so it
+//! can drain the command queue.
+
 use std::io;
 use std::mem::size_of;
 use std::os::fd::AsRawFd;

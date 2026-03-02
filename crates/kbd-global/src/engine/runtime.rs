@@ -1,3 +1,8 @@
+//! Engine thread lifecycle — spawn, shutdown, and join.
+//!
+//! [`EngineRuntime`] owns the thread handle and command sender. Created
+//! by [`HotkeyManager`](crate::HotkeyManager) during construction.
+
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;

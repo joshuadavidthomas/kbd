@@ -92,6 +92,14 @@ impl HotkeyManagerBuilder {
     }
 
     /// Build and start a new manager instance.
+    ///
+    /// Spawns the engine thread and begins listening for input device events.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the backend cannot be initialized, grab mode
+    /// is requested without the `grab` feature, or the engine thread
+    /// fails to start.
     pub fn build(self) -> Result<HotkeyManager, Error> {
         let backend = resolve_backend(self.backend)?;
         validate_grab_configuration(backend, self.grab)?;
@@ -132,6 +140,11 @@ impl fmt::Debug for HotkeyManager {
 
 impl HotkeyManager {
     /// Create a manager with backend auto-detection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the backend cannot be initialized or input
+    /// devices are not accessible.
     pub fn new() -> Result<Self, Error> {
         Self::builder().build()
     }
@@ -142,12 +155,18 @@ impl HotkeyManager {
         HotkeyManagerBuilder::default()
     }
 
+    /// Returns the backend this manager is using.
     #[must_use]
     pub const fn active_backend(&self) -> Backend {
         self.backend
     }
 
     /// Register a simple hotkey callback.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`] if the hotkey is already bound,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn register<F>(&self, hotkey: impl Into<Hotkey>, callback: F) -> Result<Handle, Error>
     where
         F: Fn() + Send + Sync + 'static,
@@ -158,7 +177,12 @@ impl HotkeyManager {
     /// Register a hotkey with an explicit action and binding options.
     ///
     /// Use when you need metadata (description, overlay visibility) or
-    /// behavioral options beyond what `register()` provides.
+    /// behavioral options beyond what [`register()`](Self::register) provides.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`] if the hotkey is already bound,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn register_with_options(
         &self,
         hotkey: impl Into<Hotkey>,
@@ -182,6 +206,10 @@ impl HotkeyManager {
     }
 
     /// Query whether a hotkey is currently registered.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn is_registered(&self, hotkey: impl Into<Hotkey>) -> Result<bool, Error> {
         let hotkey = hotkey.into();
         let (reply_tx, reply_rx) = mpsc::channel();
@@ -195,6 +223,10 @@ impl HotkeyManager {
     }
 
     /// Query whether a specific key is currently pressed on any device.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn is_key_pressed(&self, key: Key) -> Result<bool, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -210,6 +242,10 @@ impl HotkeyManager {
     ///
     /// Left/right variants are canonicalized: if either `LeftCtrl` or `RightCtrl`
     /// is held, `Modifier::Ctrl` is in the returned set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn active_modifiers(&self) -> Result<Vec<Modifier>, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -222,10 +258,13 @@ impl HotkeyManager {
     /// Define a named layer.
     ///
     /// Sends the layer definition to the engine for storage. The layer
-    /// is not active until explicitly pushed via `push_layer()`.
+    /// is not active until explicitly pushed via [`push_layer()`](Self::push_layer).
     ///
-    /// Returns `Error::LayerAlreadyDefined` if a layer with the same
-    /// name has already been defined.
+    /// # Errors
+    ///
+    /// Returns [`Error::LayerAlreadyDefined`] if a layer with the same
+    /// name has already been defined, or [`Error::ManagerStopped`] if
+    /// the engine has shut down.
     pub fn define_layer(&self, layer: Layer) -> Result<(), Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -238,6 +277,13 @@ impl HotkeyManager {
     }
 
     /// Stop the manager and join the engine thread.
+    ///
+    /// All registered bindings are dropped. This is also called
+    /// automatically when the manager is dropped.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::EngineError`] if the engine thread panicked.
     pub fn shutdown(self) -> Result<(), Error> {
         self.shutdown_inner()
     }
@@ -260,7 +306,10 @@ impl HotkeyManager {
     /// The layer must have been previously defined via [`define_layer`](Self::define_layer).
     /// The pushed layer becomes the highest-priority layer for matching.
     ///
-    /// Returns `Error::LayerNotDefined` if no layer with the given name exists.
+    /// # Errors
+    ///
+    /// Returns [`Error::LayerNotDefined`] if no layer with the given name exists,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn push_layer(&self, name: impl Into<LayerName>) -> Result<(), Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -274,8 +323,12 @@ impl HotkeyManager {
 
     /// Pop the topmost layer from the layer stack.
     ///
-    /// Returns the name of the popped layer, or `Error::EmptyLayerStack`
-    /// if no layers are active.
+    /// Returns the name of the popped layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::EmptyLayerStack`] if no layers are active,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn pop_layer(&self) -> Result<LayerName, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -289,7 +342,10 @@ impl HotkeyManager {
     /// If the layer is currently in the stack, it is removed.
     /// If the layer is not in the stack, it is pushed.
     ///
-    /// Returns `Error::LayerNotDefined` if no layer with the given name exists.
+    /// # Errors
+    ///
+    /// Returns [`Error::LayerNotDefined`] if no layer with the given name exists,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn toggle_layer(&self, name: impl Into<LayerName>) -> Result<(), Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -306,6 +362,10 @@ impl HotkeyManager {
     /// Returns global bindings and all layer bindings (active or not).
     /// Each entry includes whether the binding is currently reachable
     /// or shadowed by a higher-priority layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn list_bindings(&self) -> Result<Vec<BindingInfo>, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -319,6 +379,10 @@ impl HotkeyManager {
     ///
     /// Considers the current layer stack. Returns `None` if no binding
     /// matches the hotkey.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn bindings_for_key(
         &self,
         hotkey: impl Into<Hotkey>,
@@ -336,6 +400,10 @@ impl HotkeyManager {
     /// Query the current layer stack.
     ///
     /// Returns layers in stack order (bottom to top).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn active_layers(&self) -> Result<Vec<ActiveLayerInfo>, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
@@ -349,6 +417,10 @@ impl HotkeyManager {
     ///
     /// Returns conflict pairs: each entry shows the shadowed binding
     /// and the binding that shadows it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn conflicts(&self) -> Result<Vec<ConflictInfo>, Error> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
