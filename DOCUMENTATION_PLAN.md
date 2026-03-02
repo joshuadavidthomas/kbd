@@ -136,17 +136,20 @@ Set up the scaffolding so every crate benefits automatically.
 The most important crate. Everything depends on it. Model after `regex` (structured front-page) and `itertools` (examples on every method).
 
 - [ ] **lib.rs crate docs**: Rewrite to structured format — Summary → Quick Start → Modules Overview → Feature Flags → Example
-- [ ] **`pub mod` docs**: Add `///` summary to each of the 8 `pub mod` declarations
+- [x] **`pub mod` docs**: Add `///` summary to each of the 8 `pub mod` declarations
 - [ ] **`pub use` docs**: Add `///` or `#[doc(inline)]` to all 25 re-exports
-- [ ] **key.rs**: Doc comments on `Key` constants (or a module-level table), `Hotkey` parsing examples, `Modifier` docs
+- [x] **key.rs**: `#[allow(missing_docs)]` on constants impl block with group doc comment, `Hotkey` and `HotkeySequence` struct docs with examples, `Modifier` enum and variant docs, `ParseHotkeyError` variant docs
 - [ ] **binding.rs**: Examples for `BindingOptions`, `DeviceFilter`, `Passthrough`, `OverlayVisibility`
 - [ ] **layer.rs**: Examples for `Layer` construction and `UnmatchedKeyBehavior` variants
 - [ ] **matcher.rs**: Examples for `Matcher` lifecycle — create → register bindings → feed keys → match results
-- [ ] **action.rs**: Docs for `Action` variants and `LayerName`
-- [ ] **error.rs**: Docs for every error variant
-- [ ] **key_state.rs**: Docs for `KeyTransition`, `apply_device_event`, `disconnect_device`
+- [x] **action.rs**: Docs for `LayerName::new`, `LayerName::as_str`
+- [x] **error.rs**: Docs for every error variant
+- [x] **key_state.rs**: Docs for `KeyTransition`, `KeyState`, `apply_device_event`, `disconnect_device`, `is_pressed`
 - [ ] **introspection.rs**: Docs for all info types (`ActiveLayerInfo`, `BindingInfo`, `ConflictInfo`, etc.)
 - [ ] **Feature: `serde`**: Document what becomes serializable, show JSON example
+- [x] **binding.rs**: Docs for all undocumented methods on `BindingId`, `BindingOptions`, `RegisteredBinding`, `DeviceFilter` fields
+- [x] **matcher.rs**: Docs for `MatchResult` variant fields
+- [x] **Zero `missing_docs` warnings** for `kbd` crate
 
 ### Phase 3 — Bridge Crates (crossterm, egui, iced, tao, winit)
 
