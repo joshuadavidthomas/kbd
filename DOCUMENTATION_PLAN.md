@@ -209,6 +209,12 @@ These are stubs. Keep docs proportional but correct.
 - [ ] **Consistent voice**: Review all crate docs for consistent tone and terminology
 - [ ] **`just doc`**: Add a Justfile recipe for `cargo doc --all-features` with `RUSTDOCFLAGS="--cfg docsrs"`
 
+## Follow-ups
+
+Post-docs work to do on separate branches:
+
+- **Remove all `pub use` re-exports from `kbd` lib.rs.** 25 top-level re-exports flatten the entire API into the crate root. Popular crates (regex, once_cell, anyhow, thiserror) re-export 0–2 types. Users should import from modules directly (`kbd::key::Hotkey`, `kbd::matcher::Matcher`, etc.). `kbd-global` already does this. Update doc examples and downstream crates to use module paths.
+
 ## Tracking
 
 Mark items done by changing `[ ]` to `[x]` as each task is completed. Phases are meant to be worked in order — each builds on the previous — but items within a phase can be done in any order.
