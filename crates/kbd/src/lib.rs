@@ -23,13 +23,21 @@
 //! - Keyboard layout / xkbcommon (`kbd-xkb`)
 //! - Threaded manager, message passing, handles (`kbd-global`)
 
+/// What happens when a binding matches — callbacks, key emission, layer control.
 pub mod action;
+/// Binding types — pattern + action + options, device filtering.
 pub mod binding;
+/// Error types for parsing, conflicts, and layer operations.
 pub mod error;
+/// Read-only snapshots of matcher state for UI and debugging.
 pub mod introspection;
+/// Physical key types, modifiers, hotkeys, and string parsing.
 pub mod key;
+/// Per-device key press/release tracking and modifier derivation.
 pub mod key_state;
+/// Named binding groups that stack — oneshot, timeout, swallow modes.
 pub mod layer;
+/// Synchronous matching engine — feed key events, get match results.
 pub mod matcher;
 
 pub use crate::action::Action;

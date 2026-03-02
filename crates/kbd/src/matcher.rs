@@ -26,14 +26,17 @@ use crate::layer::UnmatchedKeyBehavior;
 pub enum MatchResult<'a> {
     /// A binding matched. Contains the action and passthrough setting.
     Matched {
+        /// The action to execute.
         action: &'a Action,
+        /// Whether to consume or forward the original key event.
         passthrough: Passthrough,
     },
     /// A multi-step sequence is in progress. Consumers can use this for
-    /// UI feedback ("waiting for next key…"). Produced by the sequence
-    /// state machine (Phase 4).
+    /// UI feedback ("waiting for next key…").
     Pending {
+        /// Number of sequence steps completed so far.
         steps_matched: usize,
+        /// Number of sequence steps still needed.
         steps_remaining: usize,
     },
     /// No binding matched the event.

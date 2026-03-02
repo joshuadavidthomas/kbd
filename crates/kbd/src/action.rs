@@ -26,11 +26,13 @@ use crate::key::Modifier;
 pub struct LayerName(Box<str>);
 
 impl LayerName {
+    /// Create a new layer name.
     #[must_use]
     pub fn new(value: impl Into<Box<str>>) -> Self {
         Self(value.into())
     }
 
+    /// Return the name as a string slice.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0

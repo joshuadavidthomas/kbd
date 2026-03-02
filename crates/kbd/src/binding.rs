@@ -26,6 +26,7 @@ impl BindingId {
         Self(NEXT_ID.fetch_add(1, Ordering::Relaxed))
     }
 
+    /// Return the raw `u64` value of this ID.
     #[must_use]
     pub const fn as_u64(self) -> u64 {
         self.0
@@ -68,7 +69,12 @@ pub enum DeviceFilter {
     /// Match devices whose names fit a glob-like pattern.
     NamePattern(Box<str>),
     /// Match devices by USB vendor/product IDs.
-    Usb { vendor_id: u16, product_id: u16 },
+    Usb {
+        /// USB vendor ID.
+        vendor_id: u16,
+        /// USB product ID.
+        product_id: u16,
+    },
 }
 
 /// Per-binding behavioral options.
@@ -83,11 +89,13 @@ pub struct BindingOptions {
 }
 
 impl BindingOptions {
+    /// How the original key event is handled after matching.
     #[must_use]
     pub const fn passthrough(&self) -> Passthrough {
         self.passthrough
     }
 
+    /// Set the passthrough behavior.
     #[must_use]
     pub const fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
         self.passthrough = passthrough;
@@ -120,12 +128,14 @@ impl BindingOptions {
         self
     }
 
+    /// Restrict this binding to a specific input device.
     #[must_use]
     pub fn with_device_filter(mut self, device_filter: DeviceFilter) -> Self {
         self.device_filter = Some(device_filter);
         self
     }
 
+    /// The device filter for this binding, if set.
     #[must_use]
     pub fn device_filter(&self) -> Option<&DeviceFilter> {
         self.device_filter.as_ref()
@@ -144,6 +154,7 @@ pub struct RegisteredBinding {
 }
 
 impl RegisteredBinding {
+    /// Create a registered binding with default options.
     #[must_use]
     pub fn new(id: BindingId, hotkey: Hotkey, action: Action) -> Self {
         Self {
@@ -154,38 +165,45 @@ impl RegisteredBinding {
         }
     }
 
+    /// Replace the binding's options.
     #[must_use]
     pub fn with_options(mut self, options: BindingOptions) -> Self {
         self.options = options;
         self
     }
 
+    /// Set the passthrough behavior for this binding.
     #[must_use]
     pub fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
         self.options = self.options.with_passthrough(passthrough);
         self
     }
 
+    /// The unique ID of this binding.
     #[must_use]
     pub const fn id(&self) -> BindingId {
         self.id
     }
 
+    /// The hotkey pattern that triggers this binding.
     #[must_use]
     pub fn hotkey(&self) -> &Hotkey {
         &self.hotkey
     }
 
+    /// The action to execute when this binding matches.
     #[must_use]
     pub const fn action(&self) -> &Action {
         &self.action
     }
 
+    /// How the original key event is handled after matching.
     #[must_use]
     pub const fn passthrough(&self) -> Passthrough {
         self.options.passthrough()
     }
 
+    /// The full options for this binding.
     #[must_use]
     pub const fn options(&self) -> &BindingOptions {
         &self.options

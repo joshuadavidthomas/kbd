@@ -7,14 +7,19 @@
 /// Core error type for keyboard shortcut operations.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A hotkey string could not be parsed.
     #[error("parse error: {0}")]
     Parse(#[from] crate::key::ParseHotkeyError),
+    /// A binding for this hotkey is already registered.
     #[error("hotkey registration conflicts with an existing binding")]
     AlreadyRegistered,
+    /// A layer with this name already exists.
     #[error("a layer with this name is already defined")]
     LayerAlreadyDefined,
+    /// No layer with this name has been defined.
     #[error("no layer with this name has been defined")]
     LayerNotDefined,
+    /// Tried to pop a layer but the stack is empty.
     #[error("no active layer to pop")]
     EmptyLayerStack,
 }
