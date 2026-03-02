@@ -124,17 +124,12 @@ Every crate should meet these standards before we consider it done.
 
 Set up the scaffolding so every crate benefits automatically.
 
-- [ ] Add `missing_docs = "warn"` to `[workspace.lints.rust]` in root `Cargo.toml`
-- [ ] Add `#![cfg_attr(docsrs, feature(doc_auto_cfg))]` to every `lib.rs`
-- [ ] Add `[package.metadata.docs.rs]` to every `Cargo.toml`:
-  ```toml
-  [package.metadata.docs.rs]
-  all-features = true
-  rustdoc-args = ["--cfg", "docsrs"]
-  ```
-- [ ] Decide on README sync strategy: `#![doc = include_str!("../README.md")]` vs `//!` comments
-- [ ] Create missing READMEs: `kbd`, `kbd-derive`, `kbd-portal`, `kbd-xkb`
-- [ ] Fix all `missing_docs` warnings introduced by the lint (expect many — this is the forcing function)
+- [x] Add `missing_docs = "warn"` to `[workspace.lints.rust]` in root `Cargo.toml`
+- [x] Add `#![cfg_attr(docsrs, feature(doc_auto_cfg))]` to every `lib.rs`
+- [x] Add `[package.metadata.docs.rs]` to every `Cargo.toml`
+- [x] Decide on README sync strategy: keep `//!` for rustdoc, separate README for crates.io/GitHub
+- [x] Create missing READMEs: `kbd`, `kbd-derive`, `kbd-portal`, `kbd-xkb`
+- [ ] Fix all `missing_docs` warnings (306 total — 268 in kbd, 14 in kbd-global, 9 in kbd-evdev, 15 in bridge crates)
 
 ### Phase 2 — `kbd` (Core Crate)
 
