@@ -167,13 +167,13 @@ For each of the 5 bridge crates:
 
 Linux-specific, more complex. Model after `crossbeam` (clear module docs with usage patterns).
 
-- [ ] **lib.rs**: Expand crate docs with prerequisites (Linux, `/dev/input/` access, root/input group)
-- [ ] **convert.rs**: Add examples for `EvdevKeyExt` and `KeyCodeExt` traits
-- [ ] **devices.rs**: Document `INPUT_DIRECTORY`, `DeviceEvent` struct fields, `classify_change`
-- [ ] **forwarder.rs**: Document `Forwarder::new()` with `# Errors` section
-- [ ] **error.rs**: Document every error variant
-- [ ] **`pub mod` / `pub use`**: Add summary docs to all re-exports
-- [ ] **README**: Expand beyond the current 15 lines
+- [x] **lib.rs**: Expand crate docs with prerequisites (Linux, `/dev/input/` access, root/input group)
+- [x] **convert.rs**: Add examples for `EvdevKeyExt` and `KeyCodeExt` traits
+- [x] **devices.rs**: Document `INPUT_DIRECTORY`, `DeviceEvent` struct fields, `classify_change`
+- [x] **forwarder.rs**: Document `Forwarder::new()` with `# Errors` section
+- [x] **error.rs**: Document every error variant
+- [x] **`pub mod` / `pub use`**: Add summary docs to all re-exports
+- [x] **README**: Expand beyond the current 15 lines
 
 ### Phase 5 — `kbd-global`
 

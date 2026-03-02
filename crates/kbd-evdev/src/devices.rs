@@ -33,6 +33,10 @@ use kbd::key_state::KeyTransition;
 use crate::KeyCodeExt;
 use crate::forwarder::VIRTUAL_DEVICE_NAME;
 
+/// Default path to the Linux input device directory.
+///
+/// [`DeviceManager`] scans this directory for `event*` device nodes and
+/// watches it with inotify for hotplug events.
 pub const INPUT_DIRECTORY: &str = "/dev/input";
 const HOTPLUG_BUFFER_SIZE: usize = 4096;
 
@@ -72,10 +76,16 @@ struct ManagedDevice {
 }
 
 /// A key event from a specific device.
+///
+/// Pairs a [`Key`] and [`KeyTransition`] with the file descriptor of the
+/// device that produced it, so callers can track per-device key state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeviceKeyEvent {
+    /// File descriptor of the input device that produced this event.
     pub device_fd: RawFd,
+    /// The key that was pressed, released, or repeated.
     pub key: Key,
+    /// Whether this is a press, release, or repeat event.
     pub transition: KeyTransition,
 }
 
@@ -93,6 +103,20 @@ pub struct PollResult {
     pub disconnected_devices: Vec<RawFd>,
 }
 
+/// Manages discovered input devices and watches for hotplug events.
+///
+/// On creation, scans the input directory for keyboard devices and sets
+/// up an inotify watch for add/remove events. Call [`poll_fds`](Self::poll_fds)
+/// to get file descriptors for `poll(2)`, then pass the results to
+/// [`process_polled_events`](Self::process_polled_events) to get key events.
+///
+/// # Lifecycle
+///
+/// 1. Create with [`DeviceManager::new`]
+/// 2. Loop:
+///    a. Call `poll(2)` on [`poll_fds()`](Self::poll_fds)
+///    b. Pass the polled fds to [`process_polled_events`](Self::process_polled_events)
+///    c. Handle the returned [`PollResult`]
 #[derive(Debug)]
 pub struct DeviceManager {
     input_dir: PathBuf,
@@ -109,6 +133,14 @@ impl Default for DeviceManager {
 }
 
 impl DeviceManager {
+    /// Create a new device manager for the given input directory.
+    ///
+    /// Scans `input_dir` for existing keyboard devices and sets up an
+    /// inotify watch for hotplug events. If inotify initialization fails,
+    /// hotplug detection is silently disabled.
+    ///
+    /// Use [`DeviceGrabMode::Exclusive`] to grab devices for exclusive
+    /// access (requires write permission on the device nodes).
     #[must_use]
     pub fn new(input_dir: &Path, grab_mode: DeviceGrabMode) -> Self {
         let mut manager = Self {
@@ -280,6 +312,10 @@ impl DeviceManager {
         }
     }
 
+    /// File descriptors to pass to `poll(2)`.
+    ///
+    /// Includes the inotify watch descriptor (if active) followed by all
+    /// open device descriptors. The order may change after hotplug events.
     #[must_use]
     pub fn poll_fds(&self) -> &[RawFd] {
         &self.poll_fds
