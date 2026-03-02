@@ -25,7 +25,7 @@ let result = matcher.key_down(Key::A, &[Modifier::Ctrl, Modifier::Shift]);
 assert!(matches!(result, MatchResult::Matched { .. }));
 ```
 
-The core crate has no platform dependencies and works synchronously in any event loop. String parsing supports aliases (`Cmd`, `Super`, `Win` all map to `Meta`). Layers let you group bindings into named stacks with oneshot, swallow, and timeout options. The introspection API lists active bindings, detects conflicts, and reports shadowing. Enable `serde` for serialization.
+The core crate has no platform dependencies and works synchronously in any event loop. It also supports [layers](https://docs.rs/kbd/latest/kbd/layer/), [introspection](https://docs.rs/kbd/latest/kbd/introspection/), and optional `serde` — see the [API docs](https://docs.rs/kbd) for the full picture.
 
 Bridge crates convert framework key events into `kbd` types. [`kbd-global`](crates/kbd-global) adds system-wide hotkeys on Linux.
 
