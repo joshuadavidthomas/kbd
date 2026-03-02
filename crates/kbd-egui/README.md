@@ -1,7 +1,6 @@
 # kbd-egui
 
-Egui bridge for [`kbd`](https://crates.io/crates/kbd) — converts egui key
-events and modifiers to `kbd` types.
+Egui bridge for [`kbd`](https://crates.io/crates/kbd) — converts egui key events and modifiers to `kbd` types.
 
 ## Installation
 

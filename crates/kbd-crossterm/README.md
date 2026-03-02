@@ -1,7 +1,6 @@
 # kbd-crossterm
 
-Crossterm bridge for [`kbd`](https://crates.io/crates/kbd) — converts crossterm
-key events and modifiers to `kbd` types.
+Crossterm bridge for [`kbd`](https://crates.io/crates/kbd) — converts crossterm key events and modifiers to `kbd` types.
 
 ## Installation
 

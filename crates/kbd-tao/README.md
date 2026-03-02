@@ -1,7 +1,6 @@
 # kbd-tao
 
-Tao bridge for [`kbd`](https://crates.io/crates/kbd) — converts tao key events
-and modifiers to `kbd` types.
+Tao bridge for [`kbd`](https://crates.io/crates/kbd) — converts tao key events and modifiers to `kbd` types.
 
 [Tao](https://github.com/nicegui-dev/nicegui-tao) is Tauri's fork of winit.
 

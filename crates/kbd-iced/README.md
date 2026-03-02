@@ -1,7 +1,6 @@
 # kbd-iced
 
-Iced bridge for [`kbd`](https://crates.io/crates/kbd) — converts iced key
-events and modifiers to `kbd` types.
+Iced bridge for [`kbd`](https://crates.io/crates/kbd) — converts iced key events and modifiers to `kbd` types.
 
 ## Installation
 

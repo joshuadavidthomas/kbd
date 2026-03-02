@@ -1,10 +1,8 @@
 # kbd-evdev
 
-Linux evdev backend for [`kbd`](https://crates.io/crates/kbd) — device
-discovery, hotplug, grab, and event forwarding.
+Linux evdev backend for [`kbd`](https://crates.io/crates/kbd) — device discovery, hotplug, grab, and event forwarding.
 
-Most users want [`kbd-global`](https://crates.io/crates/kbd-global) instead,
-which wraps this crate in a threaded runtime with a higher-level API.
+Most users want [`kbd-global`](https://crates.io/crates/kbd-global) instead, which wraps this crate in a threaded runtime with a higher-level API.
 
 ## Installation
 

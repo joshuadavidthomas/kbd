@@ -2,10 +2,7 @@
 
 Pure-logic keyboard shortcut engine for Rust.
 
-`kbd` provides the domain types and matching logic that every keyboard shortcut
-system needs: key types, modifier tracking, binding matching, layer stacks, and
-sequence resolution. It has zero platform dependencies and can be embedded in
-any event loop — winit, egui, Smithay, a game loop, or a compositor.
+`kbd` provides the domain types and matching logic that every keyboard shortcut system needs: key types, modifier tracking, binding matching, layer stacks, and sequence resolution. It has zero platform dependencies and can be embedded in any event loop — winit, egui, Smithay, a game loop, or a compositor.
 
 ## Installation
 

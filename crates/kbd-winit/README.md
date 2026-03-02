@@ -1,7 +1,6 @@
 # kbd-winit
 
-Winit bridge for [`kbd`](https://crates.io/crates/kbd) — converts winit key
-events and modifiers to `kbd` types.
+Winit bridge for [`kbd`](https://crates.io/crates/kbd) — converts winit key events and modifiers to `kbd` types.
 
 ## Installation
 
