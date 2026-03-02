@@ -6,7 +6,7 @@ resolver = "3"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Josh Thomas <josh@joshthomas.dev>"]
-license = "MIT"
+license-file = "LICENSE"
 repository = "https://github.com/joshuadavidthomas/kbd"
 
 [workspace.dependencies]

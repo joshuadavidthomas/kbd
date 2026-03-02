@@ -5,9 +5,9 @@ description = "winit bridge for kbd — converts winit key events and modifiers 
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-license.workspace = true
+license-file.workspace = true
 repository.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["keyboard", "winit", "hotkey", "keybinding"]
 categories = ["gui"]
 

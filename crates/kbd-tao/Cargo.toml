@@ -5,9 +5,9 @@ description = "tao bridge for kbd — converts tao key events and modifiers to k
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-license.workspace = true
+license-file.workspace = true
 repository.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["keyboard", "tao", "hotkey", "keybinding"]
 categories = ["gui"]
 

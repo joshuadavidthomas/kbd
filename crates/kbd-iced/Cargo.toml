@@ -5,9 +5,9 @@ description = "iced bridge for kbd — converts iced key events and modifiers to
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-license.workspace = true
+license-file.workspace = true
 repository.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["keyboard", "iced", "hotkey", "keybinding"]
 categories = ["gui"]
 
