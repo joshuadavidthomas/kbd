@@ -1,6 +1,6 @@
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! Derive macros for kbd.
+//! Derive macros for `kbd`.
 //!
 //! This crate will provide `#[derive(Bindings)]` for declarative hotkey
 //! registration, `#[hotkey(...)]` attributes, `#[flatten]` for composition,

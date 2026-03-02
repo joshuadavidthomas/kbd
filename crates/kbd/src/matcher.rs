@@ -62,7 +62,7 @@ struct LayerTimeout {
     last_activity: Instant,
 }
 
-/// A synchronous keyboard shortcut matching engine.
+/// A synchronous hotkey matching engine.
 ///
 /// `Matcher` is the embeddable engine. No threads, no channels, no evdev.
 /// Consumers drive it from their own event loop — winit, GPUI, Smithay,

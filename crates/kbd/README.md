@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/kbd.svg)](https://crates.io/crates/kbd)
 [![docs.rs](https://docs.rs/kbd/badge.svg)](https://docs.rs/kbd)
 
-Pure-logic keyboard shortcut engine — key types, modifier tracking, binding matching, layer stacks, sequence resolution. No platform dependencies.
+Pure-logic hotkey engine — key types, modifier tracking, binding matching, layer stacks, sequence resolution. No platform dependencies.
 
 ```toml
 [dependencies]

@@ -1,9 +1,9 @@
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! Pure-logic keyboard shortcut engine.
+//! Pure-logic hotkey engine.
 //!
-//! `kbd` provides the domain types and matching logic that every keyboard
-//! shortcut system needs: key types, modifier tracking, binding matching, layer
+//! `kbd` provides the domain types and matching logic that every hotkey
+//! system needs: key types, modifier tracking, binding matching, layer
 //! stacks, and sequence resolution. It has zero platform dependencies and can
 //! be embedded in any event loop — winit, GPUI, Smithay, a game loop, or a
 //! compositor.

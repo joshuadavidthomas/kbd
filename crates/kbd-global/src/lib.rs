@@ -1,12 +1,11 @@
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! Global hotkey runtime for kbd — threaded engine, device management,
-//! and backend selection for Linux.
+//! Global hotkey runtime for `kbd`.
 //!
-//! When a specific pattern of keys happens on a Linux input device, do
-//! something. The library handles platform complexity — evdev, portal,
-//! permissions, hotplug, virtual devices — so you just describe what
-//! patterns you care about and what should happen.
+//! Threaded engine, device management, and backend selection for Linux.
+//! The library handles platform complexity — evdev, portal, permissions,
+//! hotplug, virtual devices — so callers describe what patterns they care
+//! about and what should happen.
 //!
 //! # Quick start
 //!
@@ -24,7 +23,7 @@
 //!
 //! # Concepts
 //!
-//! Four ideas cover everything this library does:
+//! Four concepts cover the library's surface:
 //!
 //! - **Keys** — physical keys on a keyboard ([`Key`], [`Modifier`], [`Hotkey`])
 //! - **Bindings** — "when this pattern matches, do that" ([`Action`], [`BindingOptions`])

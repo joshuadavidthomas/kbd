@@ -100,7 +100,7 @@ Every crate should meet these standards before we consider it done.
 
 ### Feature Flags on docs.rs
 
-- [x] `#![cfg_attr(docsrs, feature(doc_auto_cfg))]` in lib.rs for auto-badging
+- [x] `#![cfg_attr(docsrs, feature(doc_cfg))]` in lib.rs for auto-badging (updated from `doc_auto_cfg` which was removed in Rust 1.92)
 - [ ] Or manual `#[cfg_attr(docsrs, doc(cfg(feature = "...")))]` on gated items
 
 ### Doc Tests
@@ -203,11 +203,11 @@ These are stubs. Keep docs proportional but correct.
 ### Phase 7 — Workspace-Level Polish
 
 - [x] **Root README.md**: Workspace overview with crate map table and per-crate badges
-- [ ] **`cargo doc` check**: Build docs for entire workspace, fix all warnings
-- [ ] **`cargo test --doc`**: Ensure all doc tests pass
-- [ ] **Cross-crate links**: Verify intra-doc links between crates resolve correctly
-- [ ] **Consistent voice**: Review all crate docs for consistent tone and terminology
-- [ ] **`just doc`**: Add a Justfile recipe for `cargo doc --all-features` with `RUSTDOCFLAGS="--cfg docsrs"`
+- [x] **`cargo doc` check**: Build docs for entire workspace, fix all warnings
+- [x] **`cargo test --doc`**: Ensure all doc tests pass
+- [x] **Cross-crate links**: Verify intra-doc links between crates resolve correctly
+- [x] **Consistent voice**: Review all crate docs for consistent tone and terminology
+- [x] **`just doc`**: Add a Justfile recipe for `cargo doc --all-features` with `RUSTDOCFLAGS="--cfg docsrs"`
 
 ## Follow-ups
 

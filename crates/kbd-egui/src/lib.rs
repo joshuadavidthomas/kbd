@@ -1,8 +1,8 @@
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 //! Egui key event conversions for `kbd`.
 //!
-//! This crate bridges egui's key types to `kbd`'s physical key types.
+//! This crate bridges egui's key types to `kbd`'s key types.
 //! Egui has a smaller, custom key enum that is not 1:1 with the W3C
 //! specification — some physical keys have no egui equivalent, some egui
 //! keys are logical/shifted characters without a single physical key

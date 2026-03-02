@@ -1,10 +1,10 @@
-//! Core error types for keyboard shortcut operations.
+//! Core error types for hotkey operations.
 //!
 //! These cover domain-level errors: parsing failures, binding conflicts,
 //! and layer operations. Platform-specific errors (backend init, device
 //! access, permissions) belong in the runtime crate (`kbd-global`).
 
-/// Core error type for keyboard shortcut operations.
+/// Core error type for hotkey operations.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// A hotkey string could not be parsed.
