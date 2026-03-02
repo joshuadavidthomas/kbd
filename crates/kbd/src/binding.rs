@@ -40,6 +40,22 @@ impl Default for BindingId {
 }
 
 /// How a matched binding handles the original key event.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{Action, BindingId, BindingOptions, Hotkey, Key, Modifier, Passthrough, RegisteredBinding};
+///
+/// // A binding that forwards the key event to the application
+/// // while still running its action (e.g., logging keypresses).
+/// let binding = RegisteredBinding::new(
+///     BindingId::new(),
+///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     Action::Swallow,
+/// ).with_passthrough(Passthrough::Enabled);
+///
+/// assert_eq!(binding.passthrough(), Passthrough::Enabled);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Passthrough {
     /// Consume the event by default.
@@ -54,6 +70,21 @@ pub enum Passthrough {
 /// Lets consumers build discoverable hotkey overlays while excluding
 /// internal or administrative bindings. Follows the pattern from
 /// Niri's `hotkey-overlay-title=null`.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{BindingOptions, OverlayVisibility};
+///
+/// // Hide an internal binding from the overlay
+/// let opts = BindingOptions::default()
+///     .with_overlay_visibility(OverlayVisibility::Hidden);
+/// assert_eq!(opts.overlay_visibility(), OverlayVisibility::Hidden);
+///
+/// // By default, bindings are visible
+/// let opts = BindingOptions::default();
+/// assert_eq!(opts.overlay_visibility(), OverlayVisibility::Visible);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum OverlayVisibility {
     /// Binding is shown in overlays and help screens.
@@ -64,6 +95,26 @@ pub enum OverlayVisibility {
 }
 
 /// Device filter expression for restricting binding scope.
+///
+/// Used with [`BindingOptions::with_device_filter`] to make a binding
+/// respond only to events from a specific input device.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{BindingOptions, DeviceFilter};
+///
+/// // Match a device by name pattern
+/// let opts = BindingOptions::default()
+///     .with_device_filter(DeviceFilter::NamePattern("Ergodox*".into()));
+///
+/// // Match a device by USB vendor and product IDs
+/// let opts = BindingOptions::default()
+///     .with_device_filter(DeviceFilter::Usb {
+///         vendor_id: 0x1234,
+///         product_id: 0x5678,
+///     });
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DeviceFilter {
     /// Match devices whose names fit a glob-like pattern.
@@ -78,6 +129,23 @@ pub enum DeviceFilter {
 }
 
 /// Per-binding behavioral options.
+///
+/// Configure a binding's passthrough behavior, description, overlay visibility,
+/// and optional device filter. Built via method chaining:
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{BindingOptions, OverlayVisibility, Passthrough};
+///
+/// let opts = BindingOptions::default()
+///     .with_description("Copy to clipboard")
+///     .with_passthrough(Passthrough::Consume)
+///     .with_overlay_visibility(OverlayVisibility::Visible);
+///
+/// assert_eq!(opts.description(), Some("Copy to clipboard"));
+/// assert_eq!(opts.passthrough(), Passthrough::Consume);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BindingOptions {
     passthrough: Passthrough,

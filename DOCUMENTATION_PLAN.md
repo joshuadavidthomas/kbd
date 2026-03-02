@@ -129,24 +129,24 @@ Set up the scaffolding so every crate benefits automatically.
 - [x] Add `[package.metadata.docs.rs]` to every `Cargo.toml`
 - [x] Decide on README sync strategy: keep `//!` for rustdoc, separate README for crates.io/GitHub
 - [x] Create missing READMEs: `kbd`, `kbd-derive`, `kbd-portal`, `kbd-xkb`
-- [ ] Fix all `missing_docs` warnings (deferred — each phase fixes its own crate's warnings)
+- [-] Fix all `missing_docs` warnings (deferred — each phase fixes its own crate's warnings)
 
 ### Phase 2 — `kbd` (Core Crate)
 
 The most important crate. Everything depends on it. Model after `regex` (structured front-page) and `itertools` (examples on every method).
 
-- [ ] **lib.rs crate docs**: Rewrite to structured format — Summary → Quick Start → Modules Overview → Feature Flags → Example
+- [x] **lib.rs crate docs**: Rewrite to structured format — Summary → Quick Start → Modules Overview → Feature Flags → Example
 - [x] **`pub mod` docs**: Add `///` summary to each of the 8 `pub mod` declarations
-- [ ] **`pub use` docs**: Add `///` or `#[doc(inline)]` to all 25 re-exports
+- [x] **`pub use` docs**: Add `///` or `#[doc(inline)]` to all 25 re-exports
 - [x] **key.rs**: `#[allow(missing_docs)]` on constants impl block with group doc comment, `Hotkey` and `HotkeySequence` struct docs with examples, `Modifier` enum and variant docs, `ParseHotkeyError` variant docs
-- [ ] **binding.rs**: Examples for `BindingOptions`, `DeviceFilter`, `Passthrough`, `OverlayVisibility`
-- [ ] **layer.rs**: Examples for `Layer` construction and `UnmatchedKeyBehavior` variants
-- [ ] **matcher.rs**: Examples for `Matcher` lifecycle — create → register bindings → feed keys → match results
+- [x] **binding.rs**: Examples for `BindingOptions`, `DeviceFilter`, `Passthrough`, `OverlayVisibility`
+- [x] **layer.rs**: Examples for `Layer` construction and `UnmatchedKeyBehavior` variants
+- [x] **matcher.rs**: Examples for `Matcher` lifecycle — create → register bindings → feed keys → match results
 - [x] **action.rs**: Docs for `LayerName::new`, `LayerName::as_str`
 - [x] **error.rs**: Docs for every error variant
 - [x] **key_state.rs**: Docs for `KeyTransition`, `KeyState`, `apply_device_event`, `disconnect_device`, `is_pressed`
-- [ ] **introspection.rs**: Docs for all info types (`ActiveLayerInfo`, `BindingInfo`, `ConflictInfo`, etc.)
-- [ ] **Feature: `serde`**: Document what becomes serializable, show JSON example
+- [x] **introspection.rs**: Docs for all info types (`ActiveLayerInfo`, `BindingInfo`, `ConflictInfo`, etc.)
+- [-] **Feature: `serde`**: Document what becomes serializable, show JSON example (deferred — serde derives not yet implemented)
 - [x] **binding.rs**: Docs for all undocumented methods on `BindingId`, `BindingOptions`, `RegisteredBinding`, `DeviceFilter` fields
 - [x] **matcher.rs**: Docs for `MatchResult` variant fields
 - [x] **Zero `missing_docs` warnings** for `kbd` crate
