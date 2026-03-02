@@ -7,6 +7,7 @@ authors.workspace = true
 license-file.workspace = true
 repository.workspace = true
 description = "XDG GlobalShortcuts portal backend for kbd — Wayland-friendly, no root needed."
+readme = "README.md"
 publish = false
 keywords = ["portal", "wayland", "xdg", "keyboard"]
 categories = ["os::linux-apis"]

@@ -7,6 +7,7 @@ authors.workspace = true
 license-file.workspace = true
 repository.workspace = true
 description = "Derive macros for kbd — #[derive(Bindings)] for declarative hotkey registration."
+readme = "README.md"
 publish = false
 keywords = ["keyboard", "hotkey", "derive", "macro"]
 categories = ["development-tools::procedural-macro-helpers"]

@@ -15,5 +15,9 @@ categories = ["gui"]
 tao.workspace = true
 kbd.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true

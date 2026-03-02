@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 //! XDG `GlobalShortcuts` portal backend for kbd.
 //!
 //! This crate provides Wayland-friendly global shortcut registration via the

@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 //! evdev backend for kbd.
 //!
 //! This crate provides the Linux input device layer:

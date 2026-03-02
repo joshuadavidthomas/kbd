@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use kbd_evdev::EvdevKeyExt;
 use kbd_evdev::KeyCodeExt;
 use kbd_global::Key;

@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 //! Egui key event conversions for `kbd`.
 //!
 //! This crate bridges egui's key types to `kbd`'s physical key types.

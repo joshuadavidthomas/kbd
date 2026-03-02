@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 //! Winit key event conversions for `kbd`.
 //!
 //! This crate bridges winit's physical key model to `kbd`'s key types.

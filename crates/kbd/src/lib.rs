@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 //! Pure-logic keyboard shortcut engine.
 //!
 //! `kbd` provides the domain types and matching logic that every keyboard

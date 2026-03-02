@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 //! Keyboard layout awareness for kbd.
 //!
 //! This crate will provide xkbcommon integration:

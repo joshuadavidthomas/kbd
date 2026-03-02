@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 //! Crossterm key event conversions for `kbd`.
 //!
 //! This crate bridges crossterm's logical key model to `kbd`'s physical

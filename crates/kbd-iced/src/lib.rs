@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 //! Iced key event conversions for `kbd`.
 //!
 //! This crate bridges iced's keyboard types to `kbd`'s key types.

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
