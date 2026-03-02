@@ -129,7 +129,7 @@ Set up the scaffolding so every crate benefits automatically.
 - [x] Add `[package.metadata.docs.rs]` to every `Cargo.toml`
 - [x] Decide on README sync strategy: keep `//!` for rustdoc, separate README for crates.io/GitHub
 - [x] Create missing READMEs: `kbd`, `kbd-derive`, `kbd-portal`, `kbd-xkb`
-- [ ] Fix all `missing_docs` warnings (306 total — 268 in kbd, 14 in kbd-global, 9 in kbd-evdev, 15 in bridge crates)
+- [ ] Fix all `missing_docs` warnings (deferred — each phase fixes its own crate's warnings)
 
 ### Phase 2 — `kbd` (Core Crate)
 
