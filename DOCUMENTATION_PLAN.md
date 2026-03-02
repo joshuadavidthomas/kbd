@@ -93,14 +93,14 @@ Every crate should meet these standards before we consider it done.
 
 ### Cargo.toml Metadata
 
-- [ ] `description` — concise (already done)
-- [ ] `keywords` — up to 5 (already done)
-- [ ] `categories` — valid crates.io categories (already done)
-- [ ] `[package.metadata.docs.rs]` — `all-features = true`, `rustdoc-args = ["--cfg", "docsrs"]`
+- [x] `description` — concise (already done)
+- [x] `keywords` — up to 5 (already done)
+- [x] `categories` — valid crates.io categories (already done)
+- [x] `[package.metadata.docs.rs]` — `all-features = true`, `rustdoc-args = ["--cfg", "docsrs"]`
 
 ### Feature Flags on docs.rs
 
-- [ ] `#![cfg_attr(docsrs, feature(doc_auto_cfg))]` in lib.rs for auto-badging
+- [x] `#![cfg_attr(docsrs, feature(doc_auto_cfg))]` in lib.rs for auto-badging
 - [ ] Or manual `#[cfg_attr(docsrs, doc(cfg(feature = "...")))]` on gated items
 
 ### Doc Tests
@@ -111,12 +111,12 @@ Every crate should meet these standards before we consider it done.
 
 ### README ↔ Crate Docs Sync
 
-- [ ] Every published crate has a `README.md`
-- [ ] `#![doc = include_str!("../README.md")]` as the crate-level doc (or keep `//!` if preferred — pick one, stay consistent)
+- [x] Every published crate has a `README.md`
+- [x] Keep `//!` for rustdoc, separate README for crates.io/GitHub
 
 ### Workspace Lints
 
-- [ ] Add `missing_docs = "warn"` to `[workspace.lints.rust]` in root `Cargo.toml`
+- [x] Add `missing_docs = "warn"` to `[workspace.lints.rust]` in root `Cargo.toml`
 
 ## Phases
 
@@ -192,14 +192,14 @@ Largest non-core crate (17 files). Model after `tokio` (rich module-level docs, 
 
 These are stubs. Keep docs proportional but correct.
 
-- [ ] **kbd-derive**: README explaining planned functionality, link to tracking issue/design doc
-- [ ] **kbd-portal**: README explaining planned functionality, current stub status
-- [ ] **kbd-xkb**: README explaining planned functionality, current stub status
-- [ ] All three: Ensure `//!` docs clearly state "not yet implemented" status
+- [x] **kbd-derive**: README explaining planned functionality
+- [x] **kbd-portal**: README explaining planned functionality, current stub status
+- [x] **kbd-xkb**: README explaining planned functionality
+- [x] All three: Ensure `//!` docs clearly state "not yet implemented" status
 
 ### Phase 7 — Workspace-Level Polish
 
-- [ ] **Root README.md**: Expand with crate map table, quick-start, architecture overview
+- [x] **Root README.md**: Workspace overview with crate map table and per-crate badges
 - [ ] **`cargo doc` check**: Build docs for entire workspace, fix all warnings
 - [ ] **`cargo test --doc`**: Ensure all doc tests pass
 - [ ] **Cross-crate links**: Verify intra-doc links between crates resolve correctly
