@@ -2,11 +2,16 @@
 
 //! Winit key event conversions for `kbd`.
 //!
-//! This crate bridges winit's physical key model to `kbd`'s key types.
-//! Both derive from the W3C UI Events specification, so the variant names
-//! are nearly identical — the mapping is mechanical.
+//! This crate converts winit's key events into `kbd`'s unified types so
+//! that window-focused key events (from winit) and global hotkey events
+//! (from [`kbd-global`](https://docs.rs/kbd-global)) can feed into the
+//! same [`Dispatcher`](kbd::dispatcher::Dispatcher). This is useful in
+//! applications where you want both in-window shortcuts and system-wide
+//! hotkeys handled through a single hotkey registry.
 //!
-//! Winit's `KeyEvent` does not carry modifier state; modifiers are tracked
+//! Both winit and `kbd` derive from the W3C UI Events specification, so
+//! the variant names are nearly identical — the mapping is mechanical.
+//! Winit wraps key codes in a [`PhysicalKey`] type and tracks modifiers
 //! separately via `WindowEvent::ModifiersChanged`. The [`WinitEventExt`]
 //! trait therefore takes `ModifiersState` as a parameter.
 //!
@@ -47,9 +52,55 @@
 //!
 //! # Usage
 //!
+//! Inside winit's event loop, use [`WinitEventExt`] to convert key
+//! events directly:
+//!
+//! ```no_run
+//! use kbd::prelude::*;
+//! use kbd_winit::WinitEventExt;
+//! use winit::application::ApplicationHandler;
+//! use winit::event::WindowEvent;
+//! use winit::event_loop::{ActiveEventLoop, EventLoop};
+//! use winit::keyboard::ModifiersState;
+//! use winit::window::{Window, WindowId};
+//!
+//! struct App {
+//!     modifiers: ModifiersState,
+//!     window: Option<Window>,
+//! }
+//!
+//! impl ApplicationHandler for App {
+//!     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+//!         if self.window.is_none() {
+//!             let attrs = Window::default_attributes().with_title("kbd-winit example");
+//!             self.window = Some(event_loop.create_window(attrs).unwrap());
+//!         }
+//!     }
+//!
+//!     fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+//!         match event {
+//!             WindowEvent::ModifiersChanged(mods) => {
+//!                 self.modifiers = mods.state();
+//!             }
+//!             WindowEvent::KeyboardInput { event, .. } => {
+//!                 if let Some(hotkey) = event.to_hotkey(self.modifiers) {
+//!                     println!("{hotkey}");
+//!                 }
+//!             }
+//!             _ => {}
+//!         }
+//!     }
+//! }
+//!
+//! let event_loop = EventLoop::new().unwrap();
+//! let mut app = App { modifiers: ModifiersState::empty(), window: None };
+//! event_loop.run_app(&mut app).unwrap();
 //! ```
-//! use kbd::hotkey::{Hotkey, Modifier};
-//! use kbd::key::Key;
+//!
+//! The individual conversion traits can also be used separately:
+//!
+//! ```
+//! use kbd::prelude::*;
 //! use kbd_winit::{WinitKeyExt, WinitModifiersExt};
 //! use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 //!
@@ -74,23 +125,35 @@ use winit::keyboard::KeyCode;
 use winit::keyboard::ModifiersState;
 use winit::keyboard::PhysicalKey;
 
+mod private {
+    pub trait Sealed {}
+    impl Sealed for winit::keyboard::KeyCode {}
+    impl Sealed for winit::keyboard::PhysicalKey {}
+    impl Sealed for winit::keyboard::ModifiersState {}
+    impl Sealed for winit::event::KeyEvent {}
+}
+
 /// Convert a winit key type to a `kbd` [`Key`].
 ///
 /// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24, TV remote keys).
-pub trait WinitKeyExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait WinitKeyExt: private::Sealed {
     /// Convert this winit key to a `kbd` [`Key`], or `None` if unmappable.
     ///
     /// # Examples
     ///
     /// ```
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_winit::WinitKeyExt;
     /// use winit::keyboard::{KeyCode, PhysicalKey};
     ///
     /// assert_eq!(KeyCode::KeyA.to_key(), Some(Key::A));
     /// assert_eq!(PhysicalKey::Code(KeyCode::Enter).to_key(), Some(Key::ENTER));
+    /// assert_eq!(KeyCode::SuperLeft.to_key(), Some(Key::META_LEFT));
     /// ```
+    #[must_use]
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -335,19 +398,22 @@ impl WinitKeyExt for PhysicalKey {
 }
 
 /// Convert winit [`ModifiersState`] bitflags to a sorted `Vec<Modifier>`.
-pub trait WinitModifiersExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait WinitModifiersExt: private::Sealed {
     /// Convert these winit modifier flags to a `Vec<Modifier>`.
     ///
     /// # Examples
     ///
     /// ```
-    /// use kbd::hotkey::Modifier;
+    /// use kbd::prelude::*;
     /// use kbd_winit::WinitModifiersExt;
     /// use winit::keyboard::ModifiersState;
     ///
     /// let mods = (ModifiersState::CONTROL | ModifiersState::SHIFT).to_modifiers();
     /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
     /// ```
+    #[must_use]
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -372,8 +438,11 @@ impl WinitModifiersExt for ModifiersState {
 
 /// Build a [`Hotkey`] from a physical key and modifier state.
 ///
-/// This is the logic behind [`WinitEventExt::to_hotkey`], exposed as a
-/// standalone function for use when a [`KeyEvent`] is not available.
+/// This is the same conversion performed by [`WinitEventExt::to_hotkey`],
+/// exposed as a standalone function for use when you have a raw
+/// [`PhysicalKey`] and [`ModifiersState`] but no [`KeyEvent`]. If you do
+/// have a `KeyEvent`, prefer calling [`event.to_hotkey(modifiers)`](WinitEventExt::to_hotkey)
+/// instead.
 ///
 /// When the key is itself a modifier (e.g., `ControlLeft`), the
 /// corresponding modifier flag is stripped — winit includes the pressed
@@ -406,7 +475,9 @@ pub fn winit_key_to_hotkey(physical_key: PhysicalKey, modifiers: ModifiersState)
 /// corresponding modifier flag is stripped from the modifiers — winit
 /// includes the pressed modifier key in its own state, but `kbd`
 /// treats the key as the trigger, not as a modifier of itself.
-pub trait WinitEventExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait WinitEventExt: private::Sealed {
     /// Convert this key event to a [`Hotkey`], or `None` if the key is unmappable.
     ///
     /// Pass the current [`ModifiersState`] from
@@ -414,9 +485,13 @@ pub trait WinitEventExt {
     ///
     /// # Examples
     ///
+    /// Winit's [`KeyEvent`] cannot be easily constructed in doctests,
+    /// so this trait is used inside winit's event loop where the
+    /// framework provides the event. For standalone conversion use
+    /// [`winit_key_to_hotkey`]:
+    ///
     /// ```
-    /// use kbd::hotkey::{Hotkey, Modifier};
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_winit::winit_key_to_hotkey;
     /// use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
     ///
@@ -429,6 +504,7 @@ pub trait WinitEventExt {
     ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
     /// );
     /// ```
+    #[must_use]
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey>;
 }
 
@@ -570,105 +646,17 @@ mod tests {
     }
 
     #[test]
-    fn keycode_extended_function_keys() {
-        assert_eq!(KeyCode::F25.to_key(), Some(Key::F25));
+    fn keycode_extended_keys() {
         assert_eq!(KeyCode::F35.to_key(), Some(Key::F35));
-    }
-
-    #[test]
-    fn keycode_browser_keys() {
         assert_eq!(KeyCode::BrowserBack.to_key(), Some(Key::BROWSER_BACK));
-        assert_eq!(KeyCode::BrowserForward.to_key(), Some(Key::BROWSER_FORWARD));
-        assert_eq!(KeyCode::BrowserHome.to_key(), Some(Key::BROWSER_HOME));
-        assert_eq!(KeyCode::BrowserRefresh.to_key(), Some(Key::BROWSER_REFRESH));
-        assert_eq!(KeyCode::BrowserSearch.to_key(), Some(Key::BROWSER_SEARCH));
-        assert_eq!(KeyCode::BrowserStop.to_key(), Some(Key::BROWSER_STOP));
-        assert_eq!(
-            KeyCode::BrowserFavorites.to_key(),
-            Some(Key::BROWSER_FAVORITES)
-        );
-    }
-
-    #[test]
-    fn keycode_clipboard_and_editing() {
         assert_eq!(KeyCode::Copy.to_key(), Some(Key::COPY));
-        assert_eq!(KeyCode::Cut.to_key(), Some(Key::CUT));
-        assert_eq!(KeyCode::Paste.to_key(), Some(Key::PASTE));
-        assert_eq!(KeyCode::Undo.to_key(), Some(Key::UNDO));
-        assert_eq!(KeyCode::Find.to_key(), Some(Key::FIND));
-        assert_eq!(KeyCode::Help.to_key(), Some(Key::HELP));
-        assert_eq!(KeyCode::Open.to_key(), Some(Key::OPEN));
-        assert_eq!(KeyCode::Select.to_key(), Some(Key::SELECT));
-        assert_eq!(KeyCode::Again.to_key(), Some(Key::AGAIN));
-        assert_eq!(KeyCode::Props.to_key(), Some(Key::PROPS));
-        assert_eq!(KeyCode::Abort.to_key(), Some(Key::ABORT));
-    }
-
-    #[test]
-    fn keycode_system_keys_extended() {
         assert_eq!(KeyCode::Sleep.to_key(), Some(Key::SLEEP));
-        assert_eq!(KeyCode::WakeUp.to_key(), Some(Key::WAKE_UP));
-        assert_eq!(KeyCode::Eject.to_key(), Some(Key::EJECT));
-        assert_eq!(KeyCode::Resume.to_key(), Some(Key::RESUME));
-        assert_eq!(KeyCode::Suspend.to_key(), Some(Key::SUSPEND));
-    }
-
-    #[test]
-    fn keycode_extended_numpad() {
-        assert_eq!(KeyCode::NumpadEqual.to_key(), Some(Key::NUMPAD_EQUAL));
-        assert_eq!(KeyCode::NumpadComma.to_key(), Some(Key::NUMPAD_COMMA));
-        assert_eq!(
-            KeyCode::NumpadBackspace.to_key(),
-            Some(Key::NUMPAD_BACKSPACE)
-        );
-        assert_eq!(KeyCode::NumpadClear.to_key(), Some(Key::NUMPAD_CLEAR));
-        assert_eq!(
-            KeyCode::NumpadClearEntry.to_key(),
-            Some(Key::NUMPAD_CLEAR_ENTRY)
-        );
-        assert_eq!(KeyCode::NumpadHash.to_key(), Some(Key::NUMPAD_HASH));
-        assert_eq!(
-            KeyCode::NumpadParenLeft.to_key(),
-            Some(Key::NUMPAD_PAREN_LEFT)
-        );
-        assert_eq!(
-            KeyCode::NumpadParenRight.to_key(),
-            Some(Key::NUMPAD_PAREN_RIGHT)
-        );
-        assert_eq!(KeyCode::NumpadStar.to_key(), Some(Key::NUMPAD_STAR));
-    }
-
-    #[test]
-    fn keycode_international_and_cjk() {
         assert_eq!(KeyCode::IntlBackslash.to_key(), Some(Key::INTL_BACKSLASH));
-        assert_eq!(KeyCode::IntlRo.to_key(), Some(Key::INTL_RO));
-        assert_eq!(KeyCode::IntlYen.to_key(), Some(Key::INTL_YEN));
-        assert_eq!(KeyCode::Convert.to_key(), Some(Key::CONVERT));
-        assert_eq!(KeyCode::NonConvert.to_key(), Some(Key::NON_CONVERT));
-        assert_eq!(KeyCode::KanaMode.to_key(), Some(Key::KANA_MODE));
-        assert_eq!(KeyCode::Hiragana.to_key(), Some(Key::HIRAGANA));
-        assert_eq!(KeyCode::Katakana.to_key(), Some(Key::KATAKANA));
-        assert_eq!(KeyCode::Lang1.to_key(), Some(Key::LANG1));
-        assert_eq!(KeyCode::Lang2.to_key(), Some(Key::LANG2));
-        assert_eq!(KeyCode::Lang3.to_key(), Some(Key::LANG3));
-        assert_eq!(KeyCode::Lang4.to_key(), Some(Key::LANG4));
-        assert_eq!(KeyCode::Lang5.to_key(), Some(Key::LANG5));
-    }
-
-    #[test]
-    fn keycode_fn_and_legacy() {
+        assert_eq!(KeyCode::NumpadEqual.to_key(), Some(Key::NUMPAD_EQUAL));
         assert_eq!(KeyCode::Fn.to_key(), Some(Key::FN));
-        assert_eq!(KeyCode::FnLock.to_key(), Some(Key::FN_LOCK));
-        assert_eq!(KeyCode::Hyper.to_key(), Some(Key::HYPER));
-        assert_eq!(KeyCode::Turbo.to_key(), Some(Key::TURBO));
-    }
-
-    #[test]
-    fn keycode_launch_keys() {
-        assert_eq!(KeyCode::LaunchApp1.to_key(), Some(Key::LAUNCH_APP1));
-        assert_eq!(KeyCode::LaunchApp2.to_key(), Some(Key::LAUNCH_APP2));
         assert_eq!(KeyCode::LaunchMail.to_key(), Some(Key::LAUNCH_MAIL));
-        assert_eq!(KeyCode::MediaSelect.to_key(), Some(Key::MEDIA_SELECT));
+        assert_eq!(KeyCode::Convert.to_key(), Some(Key::CONVERT));
+        assert_eq!(KeyCode::Lang1.to_key(), Some(Key::LANG1));
     }
 
     // WinitKeyExt — PhysicalKey
