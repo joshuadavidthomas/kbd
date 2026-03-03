@@ -307,7 +307,7 @@ impl Engine {
                 }
                 MatchResult::Suppressed => MatchOutcome::Suppressed,
                 MatchResult::NoMatch => MatchOutcome::NoMatch,
-                // Sequences not yet implemented (Phase 4)
+                // Sequences not yet implemented
                 MatchResult::Ignored | MatchResult::Pending { .. } => MatchOutcome::Ignored,
             }
         };
