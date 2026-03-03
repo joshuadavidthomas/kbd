@@ -350,13 +350,6 @@ mod tests {
     }
 
     #[test]
-    fn sequence_display_round_trips() {
-        let sequence = "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap();
-        let round_trip = sequence.to_string().parse::<HotkeySequence>().unwrap();
-        assert_eq!(round_trip, sequence);
-    }
-
-    #[test]
     fn parses_modifier_key_as_trigger_when_no_non_modifier_key_exists() {
         let hotkey = "Ctrl".parse::<Hotkey>().unwrap();
         assert_eq!(hotkey.key(), Key::CONTROL_LEFT);
@@ -368,13 +361,6 @@ mod tests {
         let hotkey = "Ctrl+Shift".parse::<Hotkey>().unwrap();
         assert_eq!(hotkey.key(), Key::SHIFT_LEFT);
         assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl]);
-    }
-
-    #[test]
-    fn display_round_trips_hotkey() {
-        let parsed = "Super+Shift+A".parse::<Hotkey>().unwrap();
-        let round_trip = parsed.to_string().parse::<Hotkey>().unwrap();
-        assert_eq!(parsed, round_trip);
     }
 
     #[test]

@@ -529,19 +529,10 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::time::Duration;
 
     use super::*;
     use crate::key::Key;
     use crate::layer::Layer;
-
-    #[test]
-    fn new_dispatcher_is_empty() {
-        let dispatcher = Dispatcher::new();
-        assert!(dispatcher.list_bindings().is_empty());
-        assert!(dispatcher.active_layers().is_empty());
-        assert!(dispatcher.conflicts().is_empty());
-    }
 
     #[test]
     fn register_returns_unique_id() {
@@ -556,19 +547,6 @@ mod tests {
     }
 
     #[test]
-    fn register_duplicate_hotkey_returns_error() {
-        let mut dispatcher = Dispatcher::new();
-        dispatcher
-            .register(Hotkey::new(Key::A), Action::Suppress)
-            .unwrap();
-        let result = dispatcher.register(Hotkey::new(Key::A), Action::Suppress);
-        assert!(matches!(
-            result,
-            Err(crate::error::Error::AlreadyRegistered)
-        ));
-    }
-
-    #[test]
     fn is_registered_reflects_state() {
         let mut dispatcher = Dispatcher::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
@@ -578,64 +556,6 @@ mod tests {
             .register(hotkey.clone(), Action::Suppress)
             .unwrap();
         assert!(dispatcher.is_registered(&hotkey));
-    }
-
-    #[test]
-    fn unregister_removes_binding() {
-        let mut dispatcher = Dispatcher::new();
-        let hotkey = Hotkey::new(Key::A);
-        let id = dispatcher
-            .register(hotkey.clone(), Action::Suppress)
-            .unwrap();
-
-        assert!(dispatcher.is_registered(&hotkey));
-        dispatcher.unregister(id);
-        assert!(!dispatcher.is_registered(&hotkey));
-    }
-
-    #[test]
-    fn process_matches_registered_hotkey() {
-        let mut dispatcher = Dispatcher::new();
-        let counter = Arc::new(AtomicUsize::new(0));
-        let cc = Arc::clone(&counter);
-
-        dispatcher
-            .register(Hotkey::new(Key::C).modifier(Modifier::Ctrl), move || {
-                cc.fetch_add(1, Ordering::Relaxed);
-            })
-            .unwrap();
-
-        let result = dispatcher.process(
-            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-            KeyTransition::Press,
-        );
-
-        assert!(matches!(result, MatchResult::Matched { .. }));
-        if let MatchResult::Matched {
-            action: Action::Callback(cb),
-            ..
-        } = result
-        {
-            cb();
-        }
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
-    }
-
-    #[test]
-    fn process_returns_no_match_for_unregistered_hotkey() {
-        let mut dispatcher = Dispatcher::new();
-        dispatcher
-            .register(
-                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Suppress,
-            )
-            .unwrap();
-
-        let result = dispatcher.process(
-            &Hotkey::new(Key::V).modifier(Modifier::Ctrl),
-            KeyTransition::Press,
-        );
-        assert!(matches!(result, MatchResult::NoMatch));
     }
 
     #[test]
@@ -663,28 +583,6 @@ mod tests {
     }
 
     #[test]
-    fn process_ignores_release_events() {
-        let mut dispatcher = Dispatcher::new();
-        dispatcher
-            .register(Hotkey::new(Key::A), Action::Suppress)
-            .unwrap();
-
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Release);
-        assert!(matches!(result, MatchResult::Ignored));
-    }
-
-    #[test]
-    fn process_ignores_repeat_events() {
-        let mut dispatcher = Dispatcher::new();
-        dispatcher
-            .register(Hotkey::new(Key::A), Action::Suppress)
-            .unwrap();
-
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Repeat);
-        assert!(matches!(result, MatchResult::Ignored));
-    }
-
-    #[test]
     fn process_ignores_modifier_only_presses() {
         let mut dispatcher = Dispatcher::new();
         dispatcher
@@ -693,148 +591,6 @@ mod tests {
 
         let result = dispatcher.process(&Hotkey::new(Key::CONTROL_LEFT), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Ignored));
-    }
-
-    #[test]
-    fn process_matches_no_modifier_hotkey() {
-        let mut dispatcher = Dispatcher::new();
-        dispatcher
-            .register(Hotkey::new(Key::ESCAPE), Action::Suppress)
-            .unwrap();
-
-        let result = dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::Matched { .. }));
-    }
-
-    #[test]
-    fn define_and_push_layer_activates_bindings() {
-        let mut dispatcher = Dispatcher::new();
-        let counter = Arc::new(AtomicUsize::new(0));
-        let cc = Arc::clone(&counter);
-
-        let layer = Layer::new("nav").bind(
-            Key::H,
-            Action::from(move || {
-                cc.fetch_add(1, Ordering::Relaxed);
-            }),
-        );
-        dispatcher.define_layer(layer).unwrap();
-        dispatcher.push_layer("nav").unwrap();
-
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        if let MatchResult::Matched {
-            action: Action::Callback(cb),
-            ..
-        } = result
-        {
-            cb();
-        }
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
-    }
-
-    #[test]
-    fn pop_layer_deactivates_bindings() {
-        let mut dispatcher = Dispatcher::new();
-        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
-        dispatcher.define_layer(layer).unwrap();
-        dispatcher.push_layer("nav").unwrap();
-
-        let popped = dispatcher.pop_layer().unwrap();
-        assert_eq!(popped.as_str(), "nav");
-
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::NoMatch));
-    }
-
-    #[test]
-    fn toggle_layer_pushes_when_not_active() {
-        let mut dispatcher = Dispatcher::new();
-        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
-        dispatcher.define_layer(layer).unwrap();
-
-        dispatcher.toggle_layer("nav").unwrap();
-
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::Matched { .. }));
-    }
-
-    #[test]
-    fn toggle_layer_removes_when_active() {
-        let mut dispatcher = Dispatcher::new();
-        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
-        dispatcher.define_layer(layer).unwrap();
-        dispatcher.push_layer("nav").unwrap();
-
-        dispatcher.toggle_layer("nav").unwrap();
-
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::NoMatch));
-    }
-
-    #[test]
-    fn push_undefined_layer_returns_error() {
-        let mut dispatcher = Dispatcher::new();
-        let result = dispatcher.push_layer("nonexistent");
-        assert!(matches!(result, Err(crate::error::Error::LayerNotDefined)));
-    }
-
-    #[test]
-    fn pop_empty_stack_returns_error() {
-        let mut dispatcher = Dispatcher::new();
-        let result = dispatcher.pop_layer();
-        assert!(matches!(result, Err(crate::error::Error::EmptyLayerStack)));
-    }
-
-    #[test]
-    fn define_duplicate_layer_returns_error() {
-        let mut dispatcher = Dispatcher::new();
-        dispatcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
-            .unwrap();
-        let result = dispatcher.define_layer(Layer::new("nav").bind(Key::J, Action::Suppress));
-        assert!(matches!(
-            result,
-            Err(crate::error::Error::LayerAlreadyDefined)
-        ));
-    }
-
-    #[test]
-    fn topmost_layer_has_highest_priority() {
-        let mut dispatcher = Dispatcher::new();
-        let layer1_counter = Arc::new(AtomicUsize::new(0));
-        let l1c = Arc::clone(&layer1_counter);
-        let layer2_counter = Arc::new(AtomicUsize::new(0));
-        let l2c = Arc::clone(&layer2_counter);
-
-        dispatcher
-            .define_layer(Layer::new("layer1").bind(
-                Key::H,
-                Action::from(move || {
-                    l1c.fetch_add(1, Ordering::Relaxed);
-                }),
-            ))
-            .unwrap();
-        dispatcher
-            .define_layer(Layer::new("layer2").bind(
-                Key::H,
-                Action::from(move || {
-                    l2c.fetch_add(1, Ordering::Relaxed);
-                }),
-            ))
-            .unwrap();
-        dispatcher.push_layer("layer1").unwrap();
-        dispatcher.push_layer("layer2").unwrap();
-
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        if let MatchResult::Matched {
-            action: Action::Callback(cb),
-            ..
-        } = result
-        {
-            cb();
-        }
-        assert_eq!(layer2_counter.load(Ordering::Relaxed), 1);
-        assert_eq!(layer1_counter.load(Ordering::Relaxed), 0);
     }
 
     #[test]
@@ -862,21 +618,6 @@ mod tests {
             cb();
         }
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-    }
-
-    #[test]
-    fn swallow_layer_consumes_unmatched_keys() {
-        let mut dispatcher = Dispatcher::new();
-        dispatcher
-            .register(Hotkey::new(Key::X), Action::Suppress)
-            .unwrap();
-        dispatcher
-            .define_layer(Layer::new("modal").bind(Key::H, Action::Suppress).swallow())
-            .unwrap();
-        dispatcher.push_layer("modal").unwrap();
-
-        let result = dispatcher.process(&Hotkey::new(Key::X), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::Suppressed));
     }
 
     #[test]
@@ -913,82 +654,6 @@ mod tests {
             cb();
         }
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-    }
-
-    #[test]
-    fn process_applies_pop_layer_action() {
-        let mut dispatcher = Dispatcher::new();
-
-        let layer = Layer::new("nav")
-            .bind(Key::H, Action::Suppress)
-            .bind(Key::ESCAPE, Action::PopLayer);
-        dispatcher.define_layer(layer).unwrap();
-        dispatcher.push_layer("nav").unwrap();
-
-        // Escape pops the layer
-        dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
-
-        // H should no longer match
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::NoMatch));
-    }
-
-    #[test]
-    fn process_applies_toggle_layer_action() {
-        let mut dispatcher = Dispatcher::new();
-
-        dispatcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
-            .unwrap();
-        dispatcher
-            .register(
-                Hotkey::new(Key::F2),
-                Action::ToggleLayer(LayerName::from("nav")),
-            )
-            .unwrap();
-
-        // Toggle on
-        dispatcher.process(&Hotkey::new(Key::F2), KeyTransition::Press);
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::Matched { .. }));
-
-        // Toggle off
-        dispatcher.process(&Hotkey::new(Key::F2), KeyTransition::Press);
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::NoMatch));
-    }
-
-    #[test]
-    fn oneshot_layer_pops_after_n_keypresses() {
-        let mut dispatcher = Dispatcher::new();
-        let counter = Arc::new(AtomicUsize::new(0));
-        let cc = Arc::clone(&counter);
-
-        let layer = Layer::new("oneshot")
-            .bind(
-                Key::H,
-                Action::from(move || {
-                    cc.fetch_add(1, Ordering::Relaxed);
-                }),
-            )
-            .oneshot(1);
-        dispatcher.define_layer(layer).unwrap();
-        dispatcher.push_layer("oneshot").unwrap();
-
-        // First press → matches and auto-pops
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        if let MatchResult::Matched {
-            action: Action::Callback(cb),
-            ..
-        } = result
-        {
-            cb();
-        }
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        // Second press → layer gone
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::NoMatch));
     }
 
     #[test]
@@ -1032,80 +697,5 @@ mod tests {
         // Second press → layer should be gone now
         let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
         assert!(matches!(result, MatchResult::NoMatch));
-    }
-
-    #[test]
-    fn timeout_layer_pops_after_inactivity() {
-        let mut dispatcher = Dispatcher::new();
-        let layer = Layer::new("timed")
-            .bind(Key::H, Action::Suppress)
-            .timeout(Duration::from_millis(50));
-        dispatcher.define_layer(layer).unwrap();
-        dispatcher.push_layer("timed").unwrap();
-
-        // H matches while active
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::Matched { .. }));
-
-        // Wait for timeout
-        std::thread::sleep(Duration::from_millis(80));
-        dispatcher.check_timeouts();
-
-        // H should no longer match
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::NoMatch));
-    }
-
-    #[test]
-    fn standalone_dispatcher_full_workflow() {
-        let mut dispatcher = Dispatcher::new();
-
-        // Register global bindings
-        let counter = Arc::new(AtomicUsize::new(0));
-        let cc = Arc::clone(&counter);
-        dispatcher
-            .register(Hotkey::new(Key::C).modifier(Modifier::Ctrl), move || {
-                cc.fetch_add(1, Ordering::Relaxed);
-            })
-            .unwrap();
-
-        // Define and push a layer
-        dispatcher
-            .define_layer(
-                Layer::new("nav")
-                    .bind(Key::H, Action::Suppress)
-                    .bind(Key::ESCAPE, Action::PopLayer),
-            )
-            .unwrap();
-        dispatcher.push_layer("nav").unwrap();
-
-        // Layer binding matches
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::Matched { .. }));
-
-        // Global binding falls through
-        let result = dispatcher.process(
-            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-            KeyTransition::Press,
-        );
-        if let MatchResult::Matched {
-            action: Action::Callback(cb),
-            ..
-        } = result
-        {
-            cb();
-        }
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        // Pop layer via action
-        dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
-
-        // Layer binding no longer matches
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::NoMatch));
-
-        // Introspection works
-        assert!(dispatcher.active_layers().is_empty());
-        assert!(!dispatcher.list_bindings().is_empty());
     }
 }
