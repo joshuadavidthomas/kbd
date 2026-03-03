@@ -37,7 +37,7 @@ pub(crate) enum KeyEventDisposition {
 
 /// Intermediate result from matching, used for forwarding decisions.
 ///
-/// Layer effects are handled by the `Matcher` — the engine only needs
+/// Layer effects are handled by the `Dispatcher` — the engine only needs
 /// the match/no-match outcome and propagation setting.
 pub(super) enum MatchOutcome {
     Matched { propagation: KeyPropagation },

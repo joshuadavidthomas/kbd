@@ -141,10 +141,10 @@ pub use kbd::layer::Layer;
 pub use kbd::layer::LayerOptions;
 /// What happens to key events that don't match any binding in a layer.
 pub use kbd::layer::UnmatchedKeyBehavior;
-/// The outcome of feeding a key event into the matcher.
-pub use kbd::matcher::MatchResult;
-/// Core matching engine that tracks bindings, layers, and key state.
-pub use kbd::matcher::Matcher;
+/// Core dispatch engine that tracks bindings, layers, and sequences.
+pub use kbd::dispatcher::Dispatcher;
+/// The outcome of feeding a key event into the dispatcher.
+pub use kbd::dispatcher::MatchResult;
 
 /// Which input backend to use.
 pub use crate::backend::Backend;

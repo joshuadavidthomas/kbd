@@ -1,5 +1,5 @@
 //! Read real evdev key events from keyboard devices and feed them to a
-//! `Matcher`.
+//! `Dispatcher`.
 //!
 //! Requires read access to `/dev/input/` (typically via the `input` group
 //! or running as root).
@@ -13,7 +13,7 @@ use kbd::Hotkey;
 use kbd::Key;
 use kbd::KeyTransition;
 use kbd::MatchResult;
-use kbd::Matcher;
+use kbd::Dispatcher;
 use kbd_evdev::devices::DeviceGrabMode;
 use kbd_evdev::devices::DeviceManager;
 
@@ -21,7 +21,7 @@ fn main() {
     println!("kbd-evdev example — press keys to see matches");
     println!();
 
-    let mut matcher = Matcher::new();
+    let mut matcher = Dispatcher::new();
 
     matcher
         .register(

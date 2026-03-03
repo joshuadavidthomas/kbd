@@ -3,18 +3,18 @@
 //! Every type here is a **read-only snapshot**, safe to hold indefinitely.
 //! The matcher's actual state may change after the snapshot is taken.
 //!
-//! Used by [`Matcher::list_bindings`](crate::Matcher::list_bindings),
-//! [`Matcher::bindings_for_key`](crate::Matcher::bindings_for_key),
-//! [`Matcher::active_layers`](crate::Matcher::active_layers), and
-//! [`Matcher::conflicts`](crate::Matcher::conflicts).
+//! Used by [`Dispatcher::list_bindings`](crate::Dispatcher::list_bindings),
+//! [`Dispatcher::bindings_for_key`](crate::Dispatcher::bindings_for_key),
+//! [`Dispatcher::active_layers`](crate::Dispatcher::active_layers), and
+//! [`Dispatcher::conflicts`](crate::Dispatcher::conflicts).
 //!
 //! # Examples
 //!
 //! ```
-//! use kbd::{Action, Hotkey, Key, Layer, Matcher, Modifier};
+//! use kbd::{Action, Hotkey, Key, Layer, Dispatcher, Modifier};
 //! use kbd::{BindingLocation, ShadowedStatus};
 //!
-//! let mut matcher = Matcher::new();
+//! let mut matcher = Dispatcher::new();
 //! matcher.register(
 //!     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
 //!     Action::Suppress,
@@ -50,10 +50,10 @@ pub enum BindingLocation {
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Hotkey, Key, Layer, Matcher, Modifier};
+/// use kbd::{Action, Hotkey, Key, Layer, Dispatcher, Modifier};
 /// use kbd::ShadowedStatus;
 ///
-/// let mut matcher = Matcher::new();
+/// let mut matcher = Dispatcher::new();
 /// matcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();
 ///
 /// // Define a layer that also binds H
@@ -81,8 +81,8 @@ pub enum ShadowedStatus {
 
 /// Snapshot of a single binding for introspection.
 ///
-/// Returned by [`Matcher::list_bindings`](crate::Matcher::list_bindings) and
-/// [`Matcher::bindings_for_key`](crate::Matcher::bindings_for_key).
+/// Returned by [`Dispatcher::list_bindings`](crate::Dispatcher::list_bindings) and
+/// [`Dispatcher::bindings_for_key`](crate::Dispatcher::bindings_for_key).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindingInfo {
     /// The hotkey (key + modifiers) that triggers this binding.
@@ -99,14 +99,14 @@ pub struct BindingInfo {
 
 /// Snapshot of an active layer on the stack.
 ///
-/// Returned by [`Matcher::active_layers`](crate::Matcher::active_layers).
+/// Returned by [`Dispatcher::active_layers`](crate::Dispatcher::active_layers).
 ///
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Key, Layer, Matcher};
+/// use kbd::{Action, Key, Layer, Dispatcher};
 ///
-/// let mut matcher = Matcher::new();
+/// let mut matcher = Dispatcher::new();
 /// matcher.define_layer(
 ///     Layer::new("nav")
 ///         .bind(Key::H, Action::Suppress)
@@ -133,14 +133,14 @@ pub struct ActiveLayerInfo {
 
 /// A pair of bindings in conflict — one shadows the other.
 ///
-/// Returned by [`Matcher::conflicts`](crate::Matcher::conflicts).
+/// Returned by [`Dispatcher::conflicts`](crate::Dispatcher::conflicts).
 ///
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Hotkey, Key, Layer, Matcher};
+/// use kbd::{Action, Hotkey, Key, Layer, Dispatcher};
 ///
-/// let mut matcher = Matcher::new();
+/// let mut matcher = Dispatcher::new();
 /// matcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();
 /// matcher.define_layer(
 ///     Layer::new("nav").bind(Key::H, Action::Suppress)

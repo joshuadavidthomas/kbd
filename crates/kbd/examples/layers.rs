@@ -17,7 +17,7 @@ use kbd::Key;
 use kbd::KeyTransition;
 use kbd::Layer;
 use kbd::MatchResult;
-use kbd::Matcher;
+use kbd::Dispatcher;
 use kbd::Modifier;
 
 fn main() {
@@ -82,7 +82,7 @@ fn main() {
     println!("  After toggle off: {:?}", layer_names(&matcher));
 }
 
-fn process(matcher: &mut Matcher, label: &str, hotkey: &Hotkey) {
+fn process(matcher: &mut Dispatcher, label: &str, hotkey: &Hotkey) {
     print!("  {label}: ");
     match matcher.process(hotkey, KeyTransition::Press) {
         MatchResult::Matched { action, .. } => {
@@ -99,7 +99,7 @@ fn process(matcher: &mut Matcher, label: &str, hotkey: &Hotkey) {
     }
 }
 
-fn layer_names(matcher: &Matcher) -> Vec<String> {
+fn layer_names(matcher: &Dispatcher) -> Vec<String> {
     matcher
         .active_layers()
         .into_iter()
@@ -107,8 +107,8 @@ fn layer_names(matcher: &Matcher) -> Vec<String> {
         .collect()
 }
 
-fn setup_matcher() -> Matcher {
-    let mut matcher = Matcher::new();
+fn setup_matcher() -> Dispatcher {
+    let mut matcher = Dispatcher::new();
 
     // Global bindings — always active, like a base layer
     matcher

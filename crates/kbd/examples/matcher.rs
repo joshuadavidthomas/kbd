@@ -1,8 +1,8 @@
-//! Standalone `Matcher` usage — register bindings, process key events,
+//! Standalone `Dispatcher` usage — register bindings, process key events,
 //! print match results.
 //!
 //! This example shows `kbd` works on its own: no platform dependencies,
-//! no threads, no async. You bring the events, the `Matcher` tells you what
+//! no threads, no async. You bring the events, the `Dispatcher` tells you what
 //! matched.
 //!
 //! ```sh
@@ -14,11 +14,11 @@ use kbd::Hotkey;
 use kbd::Key;
 use kbd::KeyTransition;
 use kbd::MatchResult;
-use kbd::Matcher;
+use kbd::Dispatcher;
 use kbd::Modifier;
 
 fn main() {
-    let mut matcher = Matcher::new();
+    let mut matcher = Dispatcher::new();
 
     // Register some bindings
     matcher

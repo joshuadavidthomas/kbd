@@ -20,7 +20,7 @@ use kbd_global::Layer;
 use kbd_global::LayerName;
 use kbd_global::LayerOptions;
 use kbd_global::MatchResult;
-use kbd_global::Matcher;
+use kbd_global::Dispatcher;
 use kbd_global::Modifier;
 use kbd_global::OverlayVisibility;
 use kbd_global::ParseHotkeyError;
@@ -74,7 +74,7 @@ fn core_types_reexported_through_kbd_global() {
 
 #[test]
 fn matcher_reexported_through_kbd_global() {
-    let mut matcher = Matcher::new();
+    let mut matcher = Dispatcher::new();
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
     matcher
         .register(hotkey.clone(), Action::Suppress)

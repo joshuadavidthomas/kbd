@@ -45,7 +45,7 @@
 //!                                                │
 //!                              ┌─────────────────┼─────────────────┐
 //!                              │                 │                 │
-//!                           Matcher          KeyState     UinputForwarder
+//!                           Dispatcher          KeyState     UinputForwarder
 //!                        (kbd core)        (kbd core)     (grab mode only)
 //! ```
 //!

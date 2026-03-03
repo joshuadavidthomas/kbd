@@ -1,4 +1,4 @@
-//! Opens an iced window and feeds keyboard events through a `Matcher`.
+//! Opens an iced window and feeds keyboard events through a `Dispatcher`.
 //! Press keys to see matches in the GUI.
 //!
 //! ```sh
@@ -15,7 +15,7 @@ use kbd::Hotkey;
 use kbd::Key;
 use kbd::KeyTransition;
 use kbd::MatchResult;
-use kbd::Matcher;
+use kbd::Dispatcher;
 use kbd::Modifier;
 use kbd_iced::IcedEventExt;
 
@@ -27,13 +27,13 @@ fn main() -> iced::Result {
 }
 
 struct App {
-    matcher: Matcher,
+    matcher: Dispatcher,
     log: Vec<String>,
 }
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         matcher
             .register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), || {})

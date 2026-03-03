@@ -18,7 +18,7 @@ use kbd::BindingOptions;
 use kbd::Hotkey;
 use kbd::Key;
 use kbd::Layer;
-use kbd::Matcher;
+use kbd::Dispatcher;
 use kbd::Modifier;
 use kbd::OverlayVisibility;
 use kbd::RegisteredBinding;
@@ -142,8 +142,8 @@ fn format_location(b: &BindingInfo) -> String {
     }
 }
 
-fn setup_matcher() -> (Matcher, BindingId) {
-    let mut matcher = Matcher::new();
+fn setup_matcher() -> (Dispatcher, BindingId) {
+    let mut matcher = Dispatcher::new();
 
     // Register global bindings with metadata
     let copy_id = matcher

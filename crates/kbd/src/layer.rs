@@ -117,7 +117,7 @@ impl std::fmt::Debug for StoredLayer {
 /// A named collection of bindings that can be activated and deactivated.
 ///
 /// Construct via the builder pattern, then register with
-/// [`Matcher::define_layer`](crate::Matcher::define_layer).
+/// [`Dispatcher::define_layer`](crate::Dispatcher::define_layer).
 ///
 /// # Examples
 ///

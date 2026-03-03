@@ -1,5 +1,5 @@
 //! Minimal winit window that converts key events via `kbd-winit`, feeds
-//! them to a `Matcher`, and prints matches.
+//! them to a `Dispatcher`, and prints matches.
 //!
 //! ```sh
 //! cargo run -p kbd-winit --example winit
@@ -13,7 +13,7 @@ use kbd::Hotkey;
 use kbd::Key;
 use kbd::KeyTransition;
 use kbd::MatchResult;
-use kbd::Matcher;
+use kbd::Dispatcher;
 use kbd::Modifier;
 use kbd_winit::WinitEventExt;
 use winit::application::ApplicationHandler;
@@ -25,7 +25,7 @@ use winit::window::Window;
 use winit::window::WindowId;
 
 struct App {
-    matcher: Matcher,
+    matcher: Dispatcher,
     modifiers: ModifiersState,
     window: Option<Arc<Window>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
@@ -33,7 +33,7 @@ struct App {
 
 impl App {
     fn new() -> Self {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         matcher
             .register(

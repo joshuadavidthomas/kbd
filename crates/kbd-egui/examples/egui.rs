@@ -1,5 +1,5 @@
 //! Opens an eframe/egui window and feeds keyboard events through a
-//! `Matcher`. Press keys to see matches in the GUI.
+//! `Dispatcher`. Press keys to see matches in the GUI.
 //!
 //! ```sh
 //! cargo run -p kbd-egui --example egui
@@ -10,7 +10,7 @@ use kbd::Hotkey;
 use kbd::Key;
 use kbd::KeyTransition;
 use kbd::MatchResult;
-use kbd::Matcher;
+use kbd::Dispatcher;
 use kbd::Modifier;
 use kbd_egui::EguiEventExt;
 
@@ -30,13 +30,13 @@ fn main() -> eframe::Result {
 }
 
 struct App {
-    matcher: Matcher,
+    matcher: Dispatcher,
     log: Vec<String>,
 }
 
 impl App {
     fn new() -> Self {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         matcher
             .register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), || {})
