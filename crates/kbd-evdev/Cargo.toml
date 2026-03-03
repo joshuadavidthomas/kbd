@@ -7,6 +7,7 @@ authors.workspace = true
 license-file.workspace = true
 repository.workspace = true
 readme = "README.md"
+publish = false
 description = "evdev backend for kbd — Linux input device discovery, hotplug, grab, and event forwarding."
 keywords = ["evdev", "keyboard", "input", "linux"]
 categories = ["os::linux-apis"]
