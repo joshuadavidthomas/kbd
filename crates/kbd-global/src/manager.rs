@@ -407,6 +407,9 @@ impl HotkeyManager {
         reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }
 
+    // TODO: register_sequence() — multi-step hotkey
+    // TODO: register_tap_hold() — dual-function key
+
     /// Find bindings that are shadowed by higher-priority layers.
     ///
     /// Returns conflict pairs: each entry shows the shadowed binding
@@ -422,9 +425,6 @@ impl HotkeyManager {
 
         reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }
-
-    // TODO: register_sequence() — multi-step hotkey
-    // TODO: register_tap_hold() — dual-function key
 }
 
 impl Drop for HotkeyManager {

@@ -16,7 +16,7 @@ kbd-global = "0.1"
 ## Quick start
 
 ```rust,no_run
-use kbd::key::{Hotkey, Key, Modifier};
+use kbd::prelude::*;
 use kbd_global::HotkeyManager;
 
 let manager = HotkeyManager::new()?;
@@ -64,9 +64,7 @@ Layers let you define context-dependent bindings. Define a layer, push
 it onto the stack, and its bindings take priority over global ones:
 
 ```rust,no_run
-use kbd::action::Action;
-use kbd::key::{Hotkey, Key};
-use kbd::layer::Layer;
+use kbd::prelude::*;
 use kbd_global::HotkeyManager;
 
 let manager = HotkeyManager::new()?;

@@ -10,8 +10,7 @@
 //! # Quick start
 //!
 //! ```rust,no_run
-//! use kbd::hotkey::{Hotkey, Modifier};
-//! use kbd::key::Key;
+//! use kbd::prelude::*;
 //! use kbd_global::HotkeyManager;
 //!
 //! let manager = HotkeyManager::new()?;
