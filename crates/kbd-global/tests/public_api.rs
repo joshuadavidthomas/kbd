@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 //! Integration tests for the public API surface.
 //!
-//! The DESIGN.md example compiles and runs. The builder API works.
+//! The documented quick-start example compiles and runs. The builder API works.
 //!
 //! Behavioral coverage for individual types (keys, actions, bindings,
 //! errors) lives in their own test files (`action_binding.rs`,
