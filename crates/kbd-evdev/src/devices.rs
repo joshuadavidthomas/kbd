@@ -30,7 +30,7 @@ use evdev::KeyCode;
 use kbd::Key;
 use kbd::key_state::KeyTransition;
 
-use crate::KeyCodeExt;
+use crate::EvdevKeyCodeExt;
 use crate::forwarder::VIRTUAL_DEVICE_NAME;
 
 /// Default path to the Linux input device directory.

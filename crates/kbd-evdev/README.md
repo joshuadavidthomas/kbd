@@ -37,7 +37,7 @@ kbd-evdev = "0.1"
 ```rust
 use evdev::KeyCode;
 use kbd::Key;
-use kbd_evdev::{KeyCodeExt, EvdevKeyExt};
+use kbd_evdev::{EvdevKeyCodeExt, KbdKeyExt};
 
 // evdev → kbd
 let key: Key = KeyCode::KEY_A.to_key();
@@ -83,7 +83,7 @@ for event in &result.key_events {
   ├─ event1  ──┼──────→│  hotplug (inotify)   │
   └─ event2  ──┘       └───────────────────────┘
                                                │
-                                     KeyCodeExt::to_key()
+                                     EvdevKeyCodeExt::to_key()
                                                │
                                                ▼
                                           kbd::Key

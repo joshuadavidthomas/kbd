@@ -13,7 +13,7 @@
 //! - **Event forwarding** — [`UinputForwarder`](forwarder::UinputForwarder)
 //!   re-emits unmatched events through a virtual device so they still reach
 //!   applications in grab mode
-//! - **Key conversion** — extension traits ([`KeyCodeExt`], [`EvdevKeyExt`])
+//! - **Key conversion** — extension traits ([`EvdevKeyCodeExt`], [`KbdKeyExt`])
 //!   for converting between `evdev::KeyCode` and [`kbd::Key`]
 //!
 //! # Prerequisites
@@ -38,7 +38,7 @@
 //!   ├─ event1  ──┼──────→│  hotplug (inotify)   │
 //!   └─ event2  ──┘       └───────────────────────┘
 //!                                                │
-//!                                      KeyCodeExt::to_key()
+//!                                      EvdevKeyCodeExt::to_key()
 //!                                                │
 //!                                                ▼
 //!                                           kbd::Key
@@ -71,6 +71,6 @@ pub mod error;
 pub mod forwarder;
 
 /// Convert an [`evdev::KeyCode`] to a [`kbd::Key`].
-pub use crate::convert::EvdevKeyExt;
+pub use crate::convert::KbdKeyExt;
 /// Convert a [`kbd::Key`] to an [`evdev::KeyCode`].
-pub use crate::convert::KeyCodeExt;
+pub use crate::convert::EvdevKeyCodeExt;

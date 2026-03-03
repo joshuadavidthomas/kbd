@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
-use kbd_evdev::EvdevKeyExt;
-use kbd_evdev::KeyCodeExt;
+use kbd_evdev::KbdKeyExt;
+use kbd_evdev::EvdevKeyCodeExt;
 use kbd_global::Key;
 use kbd_global::Modifier;
 

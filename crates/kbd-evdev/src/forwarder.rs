@@ -15,7 +15,7 @@
 use kbd::Key;
 use kbd::key_state::KeyTransition;
 
-use crate::EvdevKeyExt;
+use crate::KbdKeyExt;
 use crate::error::Error;
 
 /// Name of the virtual device we create, used for self-detection.
