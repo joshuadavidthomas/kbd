@@ -11,12 +11,7 @@ use iced::Task;
 use iced::widget::column;
 use iced::widget::scrollable;
 use iced::widget::text;
-use kbd::dispatcher::Dispatcher;
-use kbd::dispatcher::MatchResult;
-use kbd::hotkey::Hotkey;
-use kbd::hotkey::Modifier;
-use kbd::key::Key;
-use kbd::key_state::KeyTransition;
+use kbd::prelude::*;
 use kbd_iced::IcedEventExt;
 
 fn main() -> iced::Result {

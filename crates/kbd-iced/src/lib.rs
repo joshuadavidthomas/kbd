@@ -47,8 +47,7 @@
 //!
 //! ```
 //! use iced_core::keyboard::{key::Code, Modifiers};
-//! use kbd::hotkey::Modifier;
-//! use kbd::key::Key;
+//! use kbd::prelude::*;
 //! use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 //!
 //! // Code conversion
@@ -67,18 +66,28 @@ use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
 
+mod private {
+    pub trait Sealed {}
+    impl Sealed for iced_core::keyboard::key::Code {}
+    impl Sealed for iced_core::keyboard::key::Physical {}
+    impl Sealed for iced_core::keyboard::Modifiers {}
+    impl Sealed for iced_core::keyboard::Event {}
+}
+
 /// Convert an iced physical key type to a `kbd` [`Key`].
 ///
 /// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24, international input keys).
-pub trait IcedKeyExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait IcedKeyExt: private::Sealed {
     /// Convert this iced key to a `kbd` [`Key`], or `None` if unmappable.
     ///
     /// # Examples
     ///
     /// ```
     /// use iced_core::keyboard::key;
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_iced::IcedKeyExt;
     ///
     /// assert_eq!(key::Code::KeyA.to_key(), Some(Key::A));
@@ -87,6 +96,7 @@ pub trait IcedKeyExt {
     /// let physical = key::Physical::Code(key::Code::Enter);
     /// assert_eq!(physical.to_key(), Some(Key::ENTER));
     /// ```
+    #[must_use]
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -334,19 +344,22 @@ impl IcedKeyExt for key::Physical {
 ///
 /// Iced uses `LOGO` for the Super/Meta/Windows key. This maps to
 /// `Modifier::Super` in `kbd`.
-pub trait IcedModifiersExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait IcedModifiersExt: private::Sealed {
     /// Convert these iced modifier flags to a `Vec<Modifier>`.
     ///
     /// # Examples
     ///
     /// ```
     /// use iced_core::keyboard::Modifiers;
-    /// use kbd::hotkey::Modifier;
+    /// use kbd::prelude::*;
     /// use kbd_iced::IcedModifiersExt;
     ///
     /// let mods = (Modifiers::CTRL | Modifiers::SHIFT).to_modifiers();
     /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
     /// ```
+    #[must_use]
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -379,15 +392,15 @@ impl IcedModifiersExt for Modifiers {
 /// corresponding modifier flag is stripped from the modifiers — iced
 /// includes the pressed modifier key in its own modifier state, but
 /// `kbd` treats the key as the trigger, not as a modifier of itself.
-pub trait IcedEventExt {
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait IcedEventExt: private::Sealed {
     /// Convert this keyboard event to a [`Hotkey`], or `None` if unmappable.
     ///
     /// # Examples
     ///
     /// ```
     /// use iced_core::keyboard::{Event, Location, Modifiers, key};
-    /// use kbd::hotkey::{Hotkey, Modifier};
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_iced::IcedEventExt;
     ///
     /// let event = Event::KeyPressed {
@@ -404,6 +417,7 @@ pub trait IcedEventExt {
     ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
     /// );
     /// ```
+    #[must_use]
     fn to_hotkey(&self) -> Option<Hotkey>;
 }
 

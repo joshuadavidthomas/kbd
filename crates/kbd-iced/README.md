@@ -23,7 +23,7 @@ kbd-iced = "0.1"
 
 ```rust
 use iced_core::keyboard::{key::Code, Modifiers};
-use kbd::key::{Key, Modifier};
+use kbd::prelude::*;
 use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 
 let key = Code::KeyA.to_key();
