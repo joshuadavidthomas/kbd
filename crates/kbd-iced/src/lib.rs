@@ -2,7 +2,13 @@
 
 //! Iced key event conversions for `kbd`.
 //!
-//! This crate bridges iced's keyboard types to `kbd`'s key types.
+//! This crate converts iced's keyboard events into `kbd`'s unified types
+//! so that GUI key events (from iced) and global hotkey events (from
+//! [`kbd-global`](https://docs.rs/kbd-global)) can feed into the same
+//! [`Dispatcher`](kbd::dispatcher::Dispatcher). This is useful in iced
+//! apps that want both in-window shortcuts and system-wide hotkeys
+//! handled through a single hotkey registry.
+//!
 //! iced defines its own W3C-derived key types: [`key::Code`] for physical
 //! key positions and [`key::Physical`] wrapping `Code` with an unidentified
 //! fallback. iced also has a logical key type for character/named key

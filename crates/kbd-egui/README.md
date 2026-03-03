@@ -5,6 +5,8 @@
 
 [`kbd`](https://crates.io/crates/kbd) bridge for [egui](https://docs.rs/egui) — converts key events and modifiers to `kbd` types.
 
+This lets GUI key events (from egui) and global hotkey events (from [`kbd-global`](https://docs.rs/kbd-global)) feed into the same `Dispatcher`. Useful in egui apps that want both in-window shortcuts and system-wide hotkeys handled through a single hotkey registry.
+
 Egui has a smaller, custom key enum that is not 1:1 with the W3C specification — some egui keys are logical/shifted characters without a single physical key equivalent (e.g., `Colon`, `Pipe`, `Plus`), and those return `None`.
 
 ```toml

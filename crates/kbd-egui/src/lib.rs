@@ -2,7 +2,13 @@
 
 //! Egui key event conversions for `kbd`.
 //!
-//! This crate bridges egui's key types to `kbd`'s key types.
+//! This crate converts egui's key events into `kbd`'s unified types so
+//! that GUI key events (from egui) and global hotkey events (from
+//! [`kbd-global`](https://docs.rs/kbd-global)) can feed into the same
+//! [`Dispatcher`](kbd::dispatcher::Dispatcher). This is useful in egui
+//! apps that want both in-window shortcuts and system-wide hotkeys
+//! handled through a single hotkey registry.
+//!
 //! Egui has a smaller, custom key enum that is not 1:1 with the W3C
 //! specification — some physical keys have no egui equivalent, some egui
 //! keys are logical/shifted characters without a single physical key

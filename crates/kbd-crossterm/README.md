@@ -5,6 +5,8 @@
 
 [`kbd`](https://crates.io/crates/kbd) bridge for [crossterm](https://docs.rs/crossterm) — converts key events and modifiers to `kbd` types.
 
+This lets you use `kbd`'s `Dispatcher`, hotkey parsing, layers, and sequences in a TUI app.
+
 Crossterm reports keys as characters (`Char('a')`) and modifier bitflags, while `kbd` uses physical key positions (`Key::A`) and typed `Modifier` values.
 
 ```toml
