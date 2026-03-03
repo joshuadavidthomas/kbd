@@ -1,0 +1,43 @@
+name: deny
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/deny.yml
+      - crates/**
+      - deny.toml
+      - Cargo.toml
+      - Cargo.lock
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deny.yml
+      - crates/**
+      - deny.toml
+      - Cargo.toml
+      - Cargo.lock
+  workflow_call:
+
+concurrency:
+  group: deny-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  should-run:
+    if: "${{ github.event_name != 'push' || !contains(github.event.head_commit.message, ':bookmark: bump version') }}"
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+
+  deny:
+    runs-on: ubuntu-24.04
+    needs: [should-run]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
