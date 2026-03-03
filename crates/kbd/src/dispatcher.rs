@@ -17,6 +17,10 @@ use crate::action::LayerName;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
+use crate::introspection::BindingInfo;
+use crate::introspection::BindingLocation;
+use crate::introspection::ConflictInfo;
+use crate::introspection::ShadowedStatus;
 use crate::key::Hotkey;
 use crate::key::Modifier;
 use crate::key_state::KeyTransition;
@@ -345,10 +349,10 @@ impl Dispatcher {
     /// return `MatchResult::Ignored`. Modifier-only presses also return
     /// `MatchResult::Ignored`.
     pub fn process(&mut self, hotkey: &Hotkey, transition: KeyTransition) -> MatchResult<'_> {
-        // Phase 1: Match and extract outcome (temporary borrow of &self)
+        // Match and extract outcome (temporary borrow of &self)
         let outcome = self.match_extract(hotkey, transition);
 
-        // Phase 2: Apply layer effects (&mut self)
+        // Apply layer effects (&mut self)
         if let InternalOutcome::Matched {
             ref layer_effect, ..
         } = outcome
@@ -356,7 +360,7 @@ impl Dispatcher {
             self.apply_layer_effect(layer_effect);
         }
 
-        // Phase 3: Tick oneshot and reset timeouts for actionable events
+        // Tick oneshot and reset timeouts for actionable events
         if !matches!(outcome, InternalOutcome::Ignored) {
             self.reset_layer_timeouts();
             // Skip oneshot tick for layer mutation events — the mutation
@@ -373,7 +377,7 @@ impl Dispatcher {
             }
         }
 
-        // Phase 4: Convert to MatchResult by re-borrowing &self
+        // Convert to MatchResult by re-borrowing &self
         match outcome {
             InternalOutcome::Matched {
                 binding_ref,
@@ -433,10 +437,6 @@ impl Dispatcher {
     /// Return a snapshot of all registered bindings with their status.
     #[must_use]
     pub fn list_bindings(&self) -> Vec<crate::introspection::BindingInfo> {
-        use crate::introspection::BindingInfo;
-        use crate::introspection::BindingLocation;
-        use crate::introspection::ShadowedStatus;
-
         // Build a map of hotkey → claiming layer name for active layers.
         // Walk top-down so the topmost layer claiming a hotkey "wins".
         let mut claimed_by: HashMap<&Hotkey, &LayerName> = HashMap::new();
@@ -503,10 +503,6 @@ impl Dispatcher {
     /// would match (including swallow-layer suppression).
     #[must_use]
     pub fn bindings_for_key(&self, hotkey: &Hotkey) -> Option<crate::introspection::BindingInfo> {
-        use crate::introspection::BindingInfo;
-        use crate::introspection::BindingLocation;
-        use crate::introspection::ShadowedStatus;
-
         // Modifier-only keys never fire bindings in the real dispatcher,
         // so they can't match here either.
         if Modifier::from_key(hotkey.key()).is_some() {
@@ -572,10 +568,6 @@ impl Dispatcher {
     /// Return bindings shadowed by higher-priority layers.
     #[must_use]
     pub fn conflicts(&self) -> Vec<crate::introspection::ConflictInfo> {
-        use crate::introspection::BindingLocation;
-        use crate::introspection::ConflictInfo;
-        use crate::introspection::ShadowedStatus;
-
         let all_bindings = self.list_bindings();
         let mut conflicts = Vec::new();
 
@@ -708,7 +700,7 @@ impl Default for Dispatcher {
 }
 
 #[cfg(test)]
-mod dispatcher_tests {
+mod tests {
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
@@ -717,13 +709,8 @@ mod dispatcher_tests {
     use super::*;
     use crate::binding::BindingOptions;
     use crate::binding::OverlayVisibility;
-    use crate::introspection::BindingLocation;
-    use crate::introspection::ShadowedStatus;
     use crate::key::Key;
-    use crate::key::Modifier;
     use crate::layer::Layer;
-
-    // Registration and basic matching
 
     #[test]
     fn new_dispatcher_is_empty() {
@@ -895,8 +882,6 @@ mod dispatcher_tests {
         let result = dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
     }
-
-    // Layer operations
 
     #[test]
     fn define_and_push_layer_activates_bindings() {
@@ -1071,8 +1056,6 @@ mod dispatcher_tests {
         assert!(matches!(result, MatchResult::Suppressed));
     }
 
-    // Layer actions applied internally by process()
-
     #[test]
     fn process_applies_push_layer_action() {
         let mut dispatcher = Dispatcher::new();
@@ -1152,8 +1135,6 @@ mod dispatcher_tests {
         assert!(matches!(result, MatchResult::NoMatch));
     }
 
-    // Oneshot layers
-
     #[test]
     fn oneshot_layer_pops_after_n_keypresses() {
         let mut dispatcher = Dispatcher::new();
@@ -1230,8 +1211,6 @@ mod dispatcher_tests {
         assert!(matches!(result, MatchResult::NoMatch));
     }
 
-    // Timeout layers
-
     #[test]
     fn timeout_layer_pops_after_inactivity() {
         let mut dispatcher = Dispatcher::new();
@@ -1253,8 +1232,6 @@ mod dispatcher_tests {
         let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
         assert!(matches!(result, MatchResult::NoMatch));
     }
-
-    // Introspection
 
     #[test]
     fn list_bindings_returns_global_bindings() {
@@ -1464,8 +1441,6 @@ mod dispatcher_tests {
         assert!(dispatcher.conflicts().is_empty());
     }
 
-    // MatchResult::Pending exists
-
     #[test]
     fn pending_variant_exists() {
         let result: MatchResult<'_> = MatchResult::Pending {
@@ -1480,8 +1455,6 @@ mod dispatcher_tests {
             }
         ));
     }
-
-    // Overlay visibility preserved through introspection
 
     #[test]
     fn list_bindings_preserves_overlay_visibility() {
@@ -1502,8 +1475,6 @@ mod dispatcher_tests {
         let bindings = dispatcher.list_bindings();
         assert_eq!(bindings[0].overlay_visibility, OverlayVisibility::Hidden);
     }
-
-    // Standalone usage without any engine thread
 
     #[test]
     fn standalone_dispatcher_full_workflow() {

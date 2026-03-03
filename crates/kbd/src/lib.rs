@@ -47,20 +47,11 @@
 //!   [`kbd-egui`](https://docs.rs/kbd-egui), [`kbd-iced`](https://docs.rs/kbd-iced),
 //!   [`kbd-tao`](https://docs.rs/kbd-tao), [`kbd-winit`](https://docs.rs/kbd-winit)
 
-/// Actions — what happens when a binding matches (callbacks, key emission,
-/// layer control).
 pub mod action;
-/// Binding types — pattern + action + options, device filtering.
 pub mod binding;
-/// Synchronous dispatch engine — feed key events, get match results.
 pub mod dispatcher;
-/// Error types for parsing, conflicts, and layer operations.
 pub mod error;
-/// Read-only snapshots of dispatcher state for UI and debugging.
 pub mod introspection;
-/// Physical key types, modifiers, hotkeys, and string parsing.
 pub mod key;
-/// Per-device key press/release tracking and modifier derivation.
 pub mod key_state;
-/// Named binding groups that stack — oneshot, timeout, swallow modes.
 pub mod layer;
