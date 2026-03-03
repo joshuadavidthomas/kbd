@@ -25,7 +25,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c
+        with:
+          cache: true
 
       - uses: release-plz/action@f708778669256143d984cce4b23592637532e040 # v0.5.127
         with:
@@ -48,7 +50,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c
+        with:
+          cache: true
 
       - uses: release-plz/action@f708778669256143d984cce4b23592637532e040 # v0.5.127
         with:
