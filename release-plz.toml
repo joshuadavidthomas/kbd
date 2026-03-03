@@ -5,8 +5,6 @@ git_tag_enable = true
 git_release_enable = true
 publish_allow_dirty = false
 
-# Publishable packages — synchronized versions, single changelog
-
 [[package]]
 name = "kbd"
 version_group = "kbd"
@@ -47,8 +45,7 @@ name = "kbd-winit"
 version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
-# Dev-only packages — excluded from releases
-
+# excluded from releases
 [[package]]
 name = "kbd-derive"
 release = false
