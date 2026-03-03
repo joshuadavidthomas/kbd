@@ -1,8 +1,9 @@
 # kbd-evdev
 
-> **Internal crate** — not published to crates.io. Used by [`kbd-global`](../kbd-global).
+[![crates.io](https://img.shields.io/crates/v/kbd-evdev.svg)](https://crates.io/crates/kbd-evdev)
+[![docs.rs](https://docs.rs/kbd-evdev/badge.svg)](https://docs.rs/kbd-evdev)
 
-Linux evdev backend for [`kbd`](../kbd) — device discovery, hotplug, grab, and event forwarding.
+Linux evdev backend for [`kbd`](https://crates.io/crates/kbd) — device discovery, hotplug, grab, and event forwarding.
 
 ## Features
 
