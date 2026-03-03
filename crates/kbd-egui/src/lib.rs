@@ -42,9 +42,8 @@
 //!
 //! ```
 //! use egui::{Key as EguiKey, Modifiers};
-//! use kbd::hotkey::{Hotkey, Modifier};
-//! use kbd::key::Key;
-//! use kbd_egui::{EguiKeyExt, EguiModifiersExt};
+//! use kbd::prelude::*;
+//! use kbd_egui::{EguiEventExt, EguiKeyExt, EguiModifiersExt};
 //!
 //! // Single key conversion
 //! let key = EguiKey::A.to_key();
@@ -62,7 +61,6 @@
 //!     repeat: false,
 //!     modifiers: Modifiers::CTRL,
 //! };
-//! use kbd_egui::EguiEventExt;
 //! let hotkey = event.to_hotkey();
 //! assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
 //! ```
@@ -73,20 +71,29 @@ use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
 
+mod private {
+    pub trait Sealed {}
+    impl Sealed for egui::Key {}
+    impl Sealed for egui::Modifiers {}
+    impl Sealed for egui::Event {}
+}
+
 /// Convert an [`egui::Key`] to a `kbd` [`Key`].
 ///
 /// Returns `None` for egui keys that represent logical/shifted characters
 /// without a single physical key equivalent (e.g., `Colon`, `Pipe`,
 /// `Plus`, `Questionmark`). Most egui keys map directly to a physical
 /// key position.
-pub trait EguiKeyExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait EguiKeyExt: private::Sealed {
     /// Convert this egui key to a `kbd` [`Key`], or `None` if unmappable.
     ///
     /// # Examples
     ///
     /// ```
     /// use egui::Key as EguiKey;
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_egui::EguiKeyExt;
     ///
     /// assert_eq!(EguiKey::A.to_key(), Some(Key::A));
@@ -94,6 +101,7 @@ pub trait EguiKeyExt {
     /// // Shifted characters have no physical key equivalent
     /// assert_eq!(EguiKey::Colon.to_key(), None);
     /// ```
+    #[must_use]
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -242,14 +250,16 @@ impl EguiKeyExt for EguiKey {
 /// - `shift` → `Modifier::Shift`
 /// - `alt` → `Modifier::Alt`
 /// - `mac_cmd` → `Modifier::Super`
-pub trait EguiModifiersExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait EguiModifiersExt: private::Sealed {
     /// Convert these egui modifiers to a `Vec<Modifier>`.
     ///
     /// # Examples
     ///
     /// ```
     /// use egui::Modifiers;
-    /// use kbd::hotkey::Modifier;
+    /// use kbd::prelude::*;
     /// use kbd_egui::EguiModifiersExt;
     ///
     /// let mods = Modifiers {
@@ -258,25 +268,22 @@ pub trait EguiModifiersExt {
     /// };
     /// assert_eq!(mods.to_modifiers(), vec![Modifier::Ctrl, Modifier::Shift]);
     /// ```
+    #[must_use]
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
 impl EguiModifiersExt for Modifiers {
     fn to_modifiers(&self) -> Vec<Modifier> {
-        let mut modifiers = Vec::new();
-        if self.ctrl {
-            modifiers.push(Modifier::Ctrl);
-        }
-        if self.shift {
-            modifiers.push(Modifier::Shift);
-        }
-        if self.alt {
-            modifiers.push(Modifier::Alt);
-        }
-        if self.mac_cmd {
-            modifiers.push(Modifier::Super);
-        }
-        modifiers
+        [
+            (self.ctrl, Modifier::Ctrl),
+            (self.shift, Modifier::Shift),
+            (self.alt, Modifier::Alt),
+            (self.mac_cmd, Modifier::Super),
+        ]
+        .into_iter()
+        .filter(|(active, _)| *active)
+        .map(|(_, m)| m)
+        .collect()
     }
 }
 
@@ -287,15 +294,16 @@ impl EguiModifiersExt for Modifiers {
 ///
 /// Only `Event::Key { .. }` variants produce a hotkey. All other event
 /// variants return `None`.
-pub trait EguiEventExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait EguiEventExt: private::Sealed {
     /// Convert this event to a [`Hotkey`], or `None` if not a keyboard event.
     ///
     /// # Examples
     ///
     /// ```
     /// use egui::{Key as EguiKey, Modifiers};
-    /// use kbd::hotkey::{Hotkey, Modifier};
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_egui::EguiEventExt;
     ///
     /// let event = egui::Event::Key {
@@ -310,6 +318,7 @@ pub trait EguiEventExt {
     ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
     /// );
     /// ```
+    #[must_use]
     fn to_hotkey(&self) -> Option<Hotkey>;
 }
 
@@ -402,6 +411,11 @@ mod tests {
         assert_eq!(EguiKey::CloseBracket.to_key(), Some(Key::BRACKET_RIGHT));
         assert_eq!(EguiKey::Equals.to_key(), Some(Key::EQUAL));
         assert_eq!(EguiKey::Quote.to_key(), Some(Key::QUOTE));
+    }
+
+    #[test]
+    fn browser_back_key() {
+        assert_eq!(EguiKey::BrowserBack.to_key(), Some(Key::BROWSER_BACK));
     }
 
     #[test]
