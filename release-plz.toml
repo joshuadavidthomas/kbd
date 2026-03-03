@@ -1,0 +1,65 @@
+[workspace]
+changelog_update = true
+semver_check = true
+git_tag_enable = true
+git_release_enable = true
+publish_allow_dirty = false
+
+# Publishable packages — synchronized versions, single changelog
+
+[[package]]
+name = "kbd"
+version_group = "kbd"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "kbd-crossterm"
+version_group = "kbd"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "kbd-egui"
+version_group = "kbd"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "kbd-evdev"
+version_group = "kbd"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "kbd-global"
+version_group = "kbd"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "kbd-iced"
+version_group = "kbd"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "kbd-tao"
+version_group = "kbd"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "kbd-winit"
+version_group = "kbd"
+changelog_path = "CHANGELOG.md"
+
+# Dev-only packages — excluded from releases
+
+[[package]]
+name = "kbd-derive"
+release = false
+publish = false
+
+[[package]]
+name = "kbd-portal"
+release = false
+publish = false
+
+[[package]]
+name = "kbd-xkb"
+release = false
+publish = false
