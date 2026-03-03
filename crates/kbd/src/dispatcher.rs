@@ -138,6 +138,7 @@ struct LayerTimeout {
 /// let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
 /// assert!(matches!(result, MatchResult::NoMatch));
 /// ```
+#[derive(Default)]
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
@@ -190,12 +191,7 @@ impl Dispatcher {
     /// Create a new empty dispatcher with no bindings or layers.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            bindings_by_id: HashMap::new(),
-            binding_ids_by_hotkey: HashMap::new(),
-            layers: HashMap::new(),
-            layer_stack: Vec::new(),
-        }
+        Self::default()
     }
 
     /// Register a binding. Returns the assigned [`BindingId`].
@@ -427,8 +423,6 @@ impl Dispatcher {
         });
     }
 
-    // Internal matching logic
-
     /// Match a hotkey against the layer stack and global bindings.
     /// Returns an `InternalOutcome` that carries binding refs and layer effects.
     fn match_extract(&self, hotkey: &Hotkey, transition: KeyTransition) -> InternalOutcome {
@@ -527,12 +521,6 @@ impl Dispatcher {
         if let Some(index) = pop_index {
             self.layer_stack.remove(index);
         }
-    }
-}
-
-impl Default for Dispatcher {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
