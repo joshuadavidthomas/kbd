@@ -8,15 +8,11 @@ A keyboard shortcut engine for Rust. You describe the shortcuts you care about, 
 
 ## Crates
 
-### Core
-
 | Crate | | |
 |---|---|---|
 | [`kbd`](crates/kbd) | [![crates.io](https://img.shields.io/crates/v/kbd.svg)](https://crates.io/crates/kbd) | Core engine — key types, hotkeys, dispatcher, layers, string parsing |
 | [`kbd-evdev`](crates/kbd-evdev) | [![crates.io](https://img.shields.io/crates/v/kbd-evdev.svg)](https://crates.io/crates/kbd-evdev) | Linux evdev backend — device discovery, hotplug, grab, forwarding |
 | [`kbd-global`](crates/kbd-global) | [![crates.io](https://img.shields.io/crates/v/kbd-global.svg)](https://crates.io/crates/kbd-global) | System-wide hotkeys on Linux (evdev, grab mode, hotplug) |
-
-### Bridges
 
 Bridge crates convert framework key events into `kbd` types. Use one alongside the core crates — for example, `kbd-tao` + `kbd-global` gives a Tauri app both in-window shortcuts and system-wide hotkeys through a single `Dispatcher`.
 
