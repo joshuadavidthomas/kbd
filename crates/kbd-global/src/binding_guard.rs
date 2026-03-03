@@ -6,9 +6,6 @@
 //! One guard type for all binding kinds (replaces v0's `Handle`,
 //! `SequenceHandle`, `TapHoldHandle`).
 //!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/manager/handles.rs`
 
 use std::fmt;
 

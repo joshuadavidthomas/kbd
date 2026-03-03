@@ -35,12 +35,6 @@
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
 //!
 //! Key state and matching logic live in `kbd` (`KeyState`, `Dispatcher`).
-//!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/listener.rs` (357-line `listener_loop`),
-//! `archive/v0/src/listener/` (dispatch, io, sequence, hotplug, forwarding, state).
-//! The engine replaces all of this.
 
 use std::collections::HashMap;
 use std::io;
@@ -87,7 +81,7 @@ pub(crate) struct Engine {
     /// on press, its release should also be consumed even if the layer
     /// was popped in between (oneshot, `PopLayer` action, etc.).
     ///
-    /// Reference: keyd's `cache_entry` system in `reference/keyd/src/keyboard.c`.
+    /// Mirrors the approach used by keyd's `cache_entry` system.
     press_cache: HashMap<Key, KeyEventDisposition>,
     devices: devices::DeviceManager,
     key_state: KeyState,

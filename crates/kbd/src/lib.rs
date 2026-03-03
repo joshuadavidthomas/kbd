@@ -38,7 +38,7 @@
 //!
 //! | Flag | Default | Effect |
 //! |------|---------|--------|
-//! | `serde` | off | Enables `serde` dependency (serialization support planned) |
+//! | `serde` | off | Adds `Serialize`/`Deserialize` to key and hotkey types |
 //!
 //! # See Also
 //!

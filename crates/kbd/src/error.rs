@@ -1,6 +1,6 @@
-//! Core error types for hotkey operations.
+//! Core [`Error`](crate::error::Error) type for hotkey operations.
 //!
-//! These cover domain-level errors: parsing failures, binding conflicts,
+//! Covers domain-level errors: parsing failures, binding conflicts,
 //! and layer operations. Platform-specific errors (backend init, device
 //! access, permissions) belong in the runtime crate (`kbd-global`).
 

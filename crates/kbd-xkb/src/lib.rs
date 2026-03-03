@@ -2,7 +2,7 @@
 
 //! Keyboard layout awareness for `kbd`.
 //!
-//! This crate will provide xkbcommon integration:
+//! xkbcommon integration for:
 //!
 //! - Keycode → keysym resolution based on active XKB layout
 //! - `KeyReference` enum: `ByCode` (position-based) vs `BySymbol` (character-based)
@@ -10,5 +10,4 @@
 //!
 //! # Status
 //!
-//! Placeholder crate. No dependencies or implementation yet.
-//! Full implementation is planned for Phase 4.9.
+//! Not yet implemented.

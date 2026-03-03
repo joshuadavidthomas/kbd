@@ -16,12 +16,6 @@
 //!   → engine processes command, sends Result back on reply_tx
 //!   → manager returns BindingGuard or Error to caller
 //! ```
-//!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/manager.rs` (3000+ lines mixing API with
-//! shared-state management). This file should stay small — if it grows
-//! past a few hundred lines, something is wrong.
 
 use std::fmt;
 use std::sync::Mutex;
@@ -84,7 +78,7 @@ impl HotkeyManagerBuilder {
         self
     }
 
-    /// Enable grab mode (backend support added in Phase 2).
+    /// Enable grab mode for exclusive device capture.
     #[must_use]
     pub fn grab(mut self) -> Self {
         self.grab = GrabConfiguration::Enabled;

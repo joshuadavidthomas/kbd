@@ -1,10 +1,12 @@
 //! Binding dispatcher — finds which binding (if any) matches a key event.
 //!
-//! Walks the layer stack top-down, checking bindings in each active layer,
-//! then global bindings. Within each layer, speculative patterns (tap-hold,
-//! sequences) are checked before immediate patterns (hotkeys).
+//! The [`Dispatcher`](crate::dispatcher::Dispatcher) walks the layer stack
+//! top-down, checking bindings in each active layer, then global bindings.
+//! Within each layer, speculative patterns (tap-hold, sequences) are checked
+//! before immediate patterns (hotkeys).
 //!
-//! Returns the matched binding's action (or "no match" for forwarding).
+//! Returns a [`MatchResult`](crate::dispatcher::MatchResult) — the matched
+//! binding's action (or "no match" for forwarding).
 
 use std::collections::HashMap;
 use std::time::Duration;
