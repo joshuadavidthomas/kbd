@@ -1,0 +1,48 @@
+- name: blocked 🛑
+  color: "#be222a"
+  description: Progress is blocked due to external dependencies or obstacles
+- name: bug 🐛
+  color: "#d73a4a"
+  description: Something isn't working
+- name: debt 💳
+  color: "#000000"
+  description: Technical debt that will need to be addressed
+- name: dependabot 🤖
+  color: "#0366d6"
+  description: Automated updates and changes managed by Dependabot
+- name: docs 📝
+  color: "#3f474e"
+  description: Enhancements, additions, or corrections to project documentation
+- name: duplicate 🧑‍🤝‍🧑
+  color: "#cfd3d7"
+  description: This issue or pull request already exists
+- name: feature ✨
+  color: "#ddf4ff"
+  description: New feature or request
+- name: good first issue 👶
+  color: "#7057ff"
+  description: Good for newcomers
+- name: help wanted ⛑️
+  color: "#008672"
+  description: Extra attention is needed
+- name: improvement 🏋️
+  color: "#fbefff"
+  description: Enhancements or optimizations to existing functionality
+- name: invalid 🤷
+  color: "#e4e669"
+  description: This doesn't seem right
+- name: needs baking 🧁
+  color: "#cbf26f"
+  description: Requires more time for consideration or development before further action
+- name: 🕵️ needs research
+  color: "#d876e3"
+  description: Issue that requires further investigation or information gathering
+- name: nice to have 💅
+  color: "#bc4c1e"
+  description: Desirable enhancements that are not critical to the project
+- name: tidy up 🧹
+  color: "#5ba7e0"
+  description: QoL improvements to code quality, formatting, or organization
+- name: wontfix ⛔
+  color: "#ffffff"
+  description: This will not be worked on
