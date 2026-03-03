@@ -22,6 +22,20 @@ _For multi-package releases, list package versions here_
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.1.0)
+
+### Fixed
+- fix API documentation errors
+
+### Other
+- Update docs to reflect API renames and kbd-evdev status ([#63](https://github.com/joshuadavidthomas/kbd/pull/63))
+- Pre-release API cleanup for v0.1.0 ([#62](https://github.com/joshuadavidthomas/kbd/pull/62))
+- Refresh and rewrite documentation workspace-wide ([#61](https://github.com/joshuadavidthomas/kbd/pull/61))
+- rewrite and polish READMEs
+- unwrap lines
+- add crate specific READMEs and adjust package metadata
+- Prepare workspace for 0.1.0 crates.io release ([#60](https://github.com/joshuadavidthomas/kbd/pull/60))
+
 ### Added
 
 - **kbd** — Pure-logic keyboard shortcut engine: key types (newtype over `keyboard-types` W3C physical key codes), modifier tracking, hotkey parsing/display with aliases, binding matching, layer stacks (oneshot, swallow, timeout), press cache, and introspection API. No platform dependencies.
