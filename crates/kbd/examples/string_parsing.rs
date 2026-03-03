@@ -8,10 +8,10 @@
 //! cargo run -p kbd --example string_parsing
 //! ```
 
-use kbd::key::Hotkey;
-use kbd::key::HotkeySequence;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::HotkeySequence;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse single hotkeys from strings

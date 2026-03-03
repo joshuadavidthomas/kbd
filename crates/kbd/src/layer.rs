@@ -1,19 +1,64 @@
-//! [`Layer`](crate::layer::Layer) — a named collection of bindings, stackable.
+//! Layers — named, stackable collections of bindings.
 //!
 //! Layers are the organizational unit. When active, a layer's bindings
 //! participate in matching. Layers stack: most recently activated is
 //! checked first. Global bindings act as an always-active base layer.
 //!
-//! Layer is a builder — construct with `Layer::new("name")`, add bindings
+//! [`LayerName`] is the identifier type used everywhere a layer is
+//! referenced — in [`Action::PushLayer`],
+//! in the dispatcher's stack, and in introspection snapshots.
+//!
+//! [`Layer`] is a builder — construct with `Layer::new("name")`, add bindings
 //! with `.bind()`, configure with `.oneshot()` / `.swallow()` / `.timeout()`,
-//! then hand to `manager.define_layer(layer)`.
+//! then hand to [`Dispatcher::define_layer`](crate::dispatcher::Dispatcher::define_layer).
 
 use std::time::Duration;
 
 use crate::action::Action;
-use crate::action::LayerName;
 use crate::binding::KeyPropagation;
-use crate::key::Hotkey;
+use crate::hotkey::Hotkey;
+
+/// Layer identifier.
+///
+/// Used by layer-control actions ([`Action::PushLayer`],
+/// [`Action::ToggleLayer`]), the dispatcher's
+/// layer stack, and introspection snapshots.
+///
+/// Converts from `&str` and `String` for convenience.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LayerName(Box<str>);
+
+impl LayerName {
+    /// Create a new layer name.
+    #[must_use]
+    pub fn new(value: impl Into<Box<str>>) -> Self {
+        Self(value.into())
+    }
+
+    /// Return the name as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for LayerName {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for LayerName {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl std::fmt::Display for LayerName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 /// Whether unmatched keys in an active layer fall through to lower layers.
 ///
@@ -39,6 +84,7 @@ use crate::key::Hotkey;
 /// assert_eq!(modal.options().unmatched(), UnmatchedKeys::Swallow);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
 pub enum UnmatchedKeys {
     /// Unmatched keys pass to the next layer down the stack.
     #[default]
@@ -267,8 +313,8 @@ mod tests {
 
     use super::*;
     use crate::action::Action;
+    use crate::hotkey::Modifier;
     use crate::key::Key;
-    use crate::key::Modifier;
 
     #[test]
     fn layer_new_creates_with_name() {

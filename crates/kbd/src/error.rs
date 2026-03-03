@@ -1,15 +1,38 @@
-//! Core [`Error`](crate::error::Error) type for hotkey operations.
+//! Error types for hotkey operations.
 //!
-//! Covers domain-level errors: parsing failures, binding conflicts,
-//! and layer operations. Platform-specific errors (backend init, device
-//! access, permissions) belong in the runtime crate (`kbd-global`).
+//! [`ParseHotkeyError`] covers parsing failures for keys and hotkeys from strings.
+//! [`Error`] covers domain-level errors: binding conflicts and layer operations.
+//! Platform-specific errors (backend init, device access, permissions)
+//! belong in the runtime crate (`kbd-global`).
+
+/// Error returned when parsing a hotkey or key from a string fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum ParseHotkeyError {
+    /// The input string was empty.
+    #[error("hotkey string is empty")]
+    Empty,
+    /// A segment between `+` separators was empty (e.g., `"Ctrl++A"`).
+    #[error("hotkey contains an empty token")]
+    EmptySegment,
+    /// A token could not be recognized as a key or modifier.
+    #[error("unknown hotkey token: {0}")]
+    UnknownToken(String),
+    /// The hotkey contained only modifiers with no trigger key.
+    #[error("hotkey is missing a non-modifier key")]
+    MissingKey,
+    /// The hotkey contained more than one non-modifier key.
+    #[error("hotkey has multiple non-modifier keys")]
+    MultipleKeys,
+}
 
 /// Core error type for hotkey operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     /// A hotkey string could not be parsed.
     #[error("parse error: {0}")]
-    Parse(#[from] crate::key::ParseHotkeyError),
+    Parse(#[from] ParseHotkeyError),
     /// A binding for this hotkey is already registered.
     #[error("hotkey registration conflicts with an existing binding")]
     AlreadyRegistered,

@@ -10,7 +10,8 @@
 //! # Quick start
 //!
 //! ```rust,no_run
-//! use kbd::key::{Hotkey, Key, Modifier};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
 //! use kbd_global::HotkeyManager;
 //!
 //! let manager = HotkeyManager::new()?;
@@ -26,7 +27,7 @@
 //!
 //! Four concepts cover the library's surface:
 //!
-//! - **Keys** — physical keys on a keyboard ([`Key`](kbd::key::Key), [`Modifier`](kbd::key::Modifier), [`Hotkey`](kbd::key::Hotkey))
+//! - **Keys** — physical keys on a keyboard ([`Key`](kbd::key::Key), [`Modifier`](kbd::hotkey::Modifier), [`Hotkey`](kbd::hotkey::Hotkey))
 //! - **Bindings** — "when this pattern matches, do that" ([`Action`](kbd::action::Action), [`BindingOptions`](kbd::binding::BindingOptions))
 //! - **Layers** — named groups of bindings, stackable ([`Layer`](kbd::layer::Layer), [`LayerOptions`](kbd::layer::LayerOptions))
 //! - **Grab mode** — exclusive device capture for interception and remapping

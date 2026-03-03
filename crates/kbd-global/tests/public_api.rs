@@ -7,9 +7,9 @@
 //! errors) lives in their own test files (`action_binding.rs`,
 //! `error_type.rs`, `key_types.rs`, `string_parsing.rs`, `manager_handle.rs`).
 
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd_global::Backend;
 use kbd_global::BindingGuard;
 use kbd_global::HotkeyManager;

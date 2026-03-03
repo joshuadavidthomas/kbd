@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use std::error::Error as StdError;
 
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
 use kbd_global::Error;
 
 #[test]

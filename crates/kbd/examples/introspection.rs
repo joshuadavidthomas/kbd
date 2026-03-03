@@ -16,12 +16,12 @@ use kbd::binding::BindingOptions;
 use kbd::binding::OverlayVisibility;
 use kbd::binding::RegisteredBinding;
 use kbd::dispatcher::Dispatcher;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::introspection::BindingInfo;
 use kbd::introspection::BindingLocation;
 use kbd::introspection::ShadowedStatus;
-use kbd::key::Hotkey;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::layer::Layer;
 
 fn main() {
@@ -123,10 +123,11 @@ fn format_binding(b: &BindingInfo) -> String {
         ShadowedStatus::Active => "active".to_string(),
         ShadowedStatus::ShadowedBy(name) => format!("shadowed by {name}"),
         ShadowedStatus::Inactive => "inactive".to_string(),
+        _ => "unknown".to_string(),
     };
     let vis = match b.overlay_visibility {
-        OverlayVisibility::Visible => "",
         OverlayVisibility::Hidden => " [hidden]",
+        _ => "",
     };
     format!(
         "{:20} {:30} [{}, {}]{vis}",
@@ -141,6 +142,7 @@ fn format_location(b: &BindingInfo) -> String {
     match &b.location {
         BindingLocation::Global => "global".to_string(),
         BindingLocation::Layer(name) => format!("layer:{name}"),
+        _ => "unknown".to_string(),
     }
 }
 

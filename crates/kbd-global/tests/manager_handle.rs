@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd_global::Error;
 use kbd_global::HotkeyManager;
 

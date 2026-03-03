@@ -11,7 +11,7 @@
 pub enum Error {
     /// A hotkey string like `"Ctrl+A"` could not be parsed.
     #[error("parse error: {0}")]
-    Parse(#[from] kbd::key::ParseHotkeyError),
+    Parse(#[from] kbd::error::ParseHotkeyError),
     /// The hotkey is already bound to another action.
     #[error("hotkey registration conflicts with an existing binding")]
     AlreadyRegistered,
@@ -63,6 +63,7 @@ impl From<kbd::error::Error> for Error {
             kbd::error::Error::LayerAlreadyDefined => Self::LayerAlreadyDefined,
             kbd::error::Error::LayerNotDefined => Self::LayerNotDefined,
             kbd::error::Error::EmptyLayerStack => Self::EmptyLayerStack,
+            _ => Self::EngineError,
         }
     }
 }

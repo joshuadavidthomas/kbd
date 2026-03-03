@@ -10,11 +10,12 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::hotkey::Modifier;
 use crate::key::Key;
-use crate::key::Modifier;
 
 /// Whether a key was pressed, released, or repeated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KeyTransition {
     /// The key was pressed down.
     Press,
@@ -123,8 +124,8 @@ impl KeyState {
 mod tests {
     use super::KeyState;
     use super::KeyTransition;
+    use crate::hotkey::Modifier;
     use crate::key::Key;
-    use crate::key::Modifier;
 
     #[test]
     fn pressed_keys_are_tracked_per_device() {

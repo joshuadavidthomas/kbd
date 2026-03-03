@@ -16,7 +16,7 @@
 //! - [`IcedModifiersExt`] — converts iced [`Modifiers`] to a
 //!   `Vec<Modifier>`.
 //! - [`IcedEventExt`] — converts an iced keyboard [`Event`] to a
-//!   [`kbd::key::Hotkey`].
+//!   [`kbd::hotkey::Hotkey`].
 //!
 //! # Key mapping
 //!
@@ -47,7 +47,8 @@
 //!
 //! ```
 //! use iced_core::keyboard::{key::Code, Modifiers};
-//! use kbd::key::{Key, Modifier};
+//! use kbd::hotkey::Modifier;
+//! use kbd::key::Key;
 //! use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 //!
 //! // Code conversion
@@ -62,9 +63,9 @@
 use iced_core::keyboard::Event;
 use iced_core::keyboard::Modifiers;
 use iced_core::keyboard::key;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 
 /// Convert an iced physical key type to a `kbd` [`Key`].
 ///
@@ -340,7 +341,7 @@ pub trait IcedModifiersExt {
     ///
     /// ```
     /// use iced_core::keyboard::Modifiers;
-    /// use kbd::key::Modifier;
+    /// use kbd::hotkey::Modifier;
     /// use kbd_iced::IcedModifiersExt;
     ///
     /// let mods = (Modifiers::CTRL | Modifiers::SHIFT).to_modifiers();
@@ -385,7 +386,8 @@ pub trait IcedEventExt {
     ///
     /// ```
     /// use iced_core::keyboard::{Event, Location, Modifiers, key};
-    /// use kbd::key::{Hotkey, Key, Modifier};
+    /// use kbd::hotkey::{Hotkey, Modifier};
+    /// use kbd::key::Key;
     /// use kbd_iced::IcedEventExt;
     ///
     /// let event = Event::KeyPressed {
@@ -439,9 +441,9 @@ mod tests {
     use iced_core::keyboard::Location;
     use iced_core::keyboard::Modifiers;
     use iced_core::keyboard::key;
-    use kbd::key::Hotkey;
+    use kbd::hotkey::Hotkey;
+    use kbd::hotkey::Modifier;
     use kbd::key::Key;
-    use kbd::key::Modifier;
 
     use super::*;
 

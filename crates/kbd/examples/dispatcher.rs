@@ -12,9 +12,9 @@
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::key_state::KeyTransition;
 
 fn main() {
@@ -71,20 +71,16 @@ fn main() {
     for (label, hotkey) in &test_events {
         print!("  {label}: ");
         match dispatcher.process(hotkey, KeyTransition::Press) {
-            MatchResult::Matched { action, .. } => {
-                if let Action::Callback(cb) = action {
-                    cb();
-                }
-            }
-            MatchResult::Pending {
-                steps_matched,
-                steps_remaining,
+            MatchResult::Matched {
+                action: Action::Callback(cb),
+                ..
             } => {
-                println!("  → Pending (matched {steps_matched}, remaining {steps_remaining})");
+                cb();
             }
             MatchResult::NoMatch => println!("  → No match"),
             MatchResult::Suppressed => println!("  → Suppressed"),
             MatchResult::Ignored => println!("  → Ignored"),
+            _ => {}
         }
     }
 }

@@ -13,7 +13,7 @@
 //! - [`CrosstermModifiersExt`] — converts [`crossterm::event::KeyModifiers`]
 //!   to a `Vec<Modifier>`.
 //! - [`CrosstermEventExt`] — converts a full [`crossterm::event::KeyEvent`]
-//!   to a [`kbd::key::Hotkey`].
+//!   to a [`kbd::hotkey::Hotkey`].
 //!
 //! # Key mapping
 //!
@@ -43,7 +43,8 @@
 //!
 //! ```
 //! use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-//! use kbd::key::{Hotkey, Key, Modifier};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
 //! use kbd_crossterm::{CrosstermEventExt, CrosstermKeyExt, CrosstermModifiersExt};
 //!
 //! // Single key conversion
@@ -65,9 +66,9 @@ use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MediaKeyCode;
 use crossterm::event::ModifierKeyCode;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 
 /// Convert a crossterm [`KeyCode`] to a `kbd` [`Key`].
 ///
@@ -133,7 +134,7 @@ pub trait CrosstermModifiersExt {
     ///
     /// ```
     /// use crossterm::event::KeyModifiers;
-    /// use kbd::key::Modifier;
+    /// use kbd::hotkey::Modifier;
     /// use kbd_crossterm::CrosstermModifiersExt;
     ///
     /// let mods = (KeyModifiers::CONTROL | KeyModifiers::SHIFT).to_modifiers();
@@ -176,7 +177,8 @@ pub trait CrosstermEventExt {
     ///
     /// ```
     /// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    /// use kbd::key::{Hotkey, Key, Modifier};
+    /// use kbd::hotkey::{Hotkey, Modifier};
+    /// use kbd::key::Key;
     /// use kbd_crossterm::CrosstermEventExt;
     ///
     /// let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
@@ -363,9 +365,9 @@ mod tests {
     use crossterm::event::KeyModifiers;
     use crossterm::event::MediaKeyCode;
     use crossterm::event::ModifierKeyCode;
-    use kbd::key::Hotkey;
+    use kbd::hotkey::Hotkey;
+    use kbd::hotkey::Modifier;
     use kbd::key::Key;
-    use kbd::key::Modifier;
 
     use super::*;
 

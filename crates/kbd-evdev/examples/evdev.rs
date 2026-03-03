@@ -11,7 +11,7 @@
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
 use kbd::key::Key;
 use kbd::key_state::KeyTransition;
 use kbd_evdev::devices::DeviceGrabMode;
@@ -106,13 +106,14 @@ fn main() {
                         }
                         MatchResult::NoMatch => println!("no match"),
                         MatchResult::Suppressed => println!("suppressed"),
-                        MatchResult::Pending { .. } => println!("pending..."),
                         MatchResult::Ignored => println!("ignored"),
+                        _ => {}
                     }
                 }
                 KeyTransition::Release | KeyTransition::Repeat => {
                     dispatcher.process(&hotkey, event.transition);
                 }
+                _ => {}
             }
         }
 
