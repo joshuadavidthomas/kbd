@@ -49,16 +49,16 @@ impl BindingGuard {
         }
     }
 
-    /// Returns the unique identifier for this handle's binding.
+    /// Returns the unique identifier for this guard's binding.
     #[must_use]
     pub const fn binding_id(&self) -> BindingId {
         self.id
     }
 
-    /// Explicitly unregister this handle's binding.
+    /// Explicitly unregister this guard's binding.
     ///
     /// Sends an unregister command to the engine. The same unregistration
-    /// is attempted automatically when the handle is dropped.
+    /// is attempted automatically when the guard is dropped.
     ///
     /// # Errors
     ///

@@ -6,7 +6,7 @@
 //! matched.
 //!
 //! ```sh
-//! cargo run -p kbd --example matcher
+//! cargo run -p kbd --example dispatcher
 //! ```
 
 use kbd::action::Action;
@@ -18,24 +18,24 @@ use kbd::key::Modifier;
 use kbd::key_state::KeyTransition;
 
 fn main() {
-    let mut matcher = Dispatcher::new();
+    let mut dispatcher = Dispatcher::new();
 
     // Register some bindings
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::S).modifier(Modifier::Ctrl),
             Action::from(|| println!("  → Save!")),
         )
         .expect("register Ctrl+S");
 
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
             Action::from(|| println!("  → Quit!")),
         )
         .expect("register Ctrl+Q");
 
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::Z)
                 .modifier(Modifier::Ctrl)
@@ -70,7 +70,7 @@ fn main() {
     println!("Processing events:");
     for (label, hotkey) in &test_events {
         print!("  {label}: ");
-        match matcher.process(hotkey, KeyTransition::Press) {
+        match dispatcher.process(hotkey, KeyTransition::Press) {
             MatchResult::Matched { action, .. } => {
                 if let Action::Callback(cb) = action {
                     cb();

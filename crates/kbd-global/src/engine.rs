@@ -2603,7 +2603,7 @@ mod tests {
             .bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
         assert!(
             result.is_none(),
-            "modifier-only key should not match, consistent with real matcher"
+            "modifier-only key should not match, consistent with real dispatcher"
         );
     }
 }

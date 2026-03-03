@@ -73,14 +73,14 @@ fn core_types_reexported_through_kbd_global() {
 }
 
 #[test]
-fn matcher_reexported_through_kbd_global() {
-    let mut matcher = Dispatcher::new();
+fn dispatcher_reexported_through_kbd_global() {
+    let mut dispatcher = Dispatcher::new();
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-    matcher
+    dispatcher
         .register(hotkey.clone(), Action::Suppress)
         .expect("register should succeed");
 
-    let result = matcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(&hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 

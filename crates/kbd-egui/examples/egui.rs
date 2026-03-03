@@ -30,21 +30,21 @@ fn main() -> eframe::Result {
 }
 
 struct App {
-    matcher: Dispatcher,
+    dispatcher: Dispatcher,
     log: Vec<String>,
 }
 
 impl App {
     fn new() -> Self {
-        let mut matcher = Dispatcher::new();
+        let mut dispatcher = Dispatcher::new();
 
-        matcher
+        dispatcher
             .register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), || {})
             .expect("register Ctrl+S");
-        matcher
+        dispatcher
             .register(Hotkey::new(Key::Z).modifier(Modifier::Ctrl), || {})
             .expect("register Ctrl+Z");
-        matcher
+        dispatcher
             .register(
                 Hotkey::new(Key::Z)
                     .modifier(Modifier::Ctrl)
@@ -52,15 +52,15 @@ impl App {
                 || {},
             )
             .expect("register Ctrl+Shift+Z");
-        matcher
+        dispatcher
             .register(Hotkey::new(Key::SPACE), || {})
             .expect("register Space");
-        matcher
+        dispatcher
             .register(Hotkey::new(Key::ESCAPE), || {})
             .expect("register Escape");
 
         Self {
-            matcher,
+            dispatcher,
             log: Vec::new(),
         }
     }
@@ -89,7 +89,7 @@ impl eframe::App for App {
                 continue;
             }
 
-            let line = match self.matcher.process(&hotkey, KeyTransition::Press) {
+            let line = match self.dispatcher.process(&hotkey, KeyTransition::Press) {
                 MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                 MatchResult::NoMatch => format!("{hotkey} → no match"),
                 MatchResult::Pending { .. } => format!("{hotkey} → pending..."),

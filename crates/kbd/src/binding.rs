@@ -132,7 +132,7 @@ pub enum DeviceFilter {
 
 /// Per-binding behavioral options.
 ///
-/// Configure a binding's passthrough behavior, description, overlay visibility,
+/// Configure a binding's key propagation behavior, description, overlay visibility,
 /// and optional device filter. Built via method chaining:
 ///
 /// # Examples
