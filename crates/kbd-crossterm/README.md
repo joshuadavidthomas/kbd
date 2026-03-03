@@ -23,8 +23,7 @@ kbd-crossterm = "0.1"
 
 ```rust
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kbd::hotkey::{Hotkey, Modifier};
-use kbd::key::Key;
+use kbd::prelude::*;
 use kbd_crossterm::{CrosstermEventExt, CrosstermKeyExt, CrosstermModifiersExt};
 
 // Single key conversion

@@ -43,8 +43,7 @@
 //!
 //! ```
 //! use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-//! use kbd::hotkey::{Hotkey, Modifier};
-//! use kbd::key::Key;
+//! use kbd::prelude::*;
 //! use kbd_crossterm::{CrosstermEventExt, CrosstermKeyExt, CrosstermModifiersExt};
 //!
 //! // Single key conversion
@@ -90,7 +89,7 @@ pub trait CrosstermKeyExt: private::Sealed {
     ///
     /// ```
     /// use crossterm::event::KeyCode;
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_crossterm::CrosstermKeyExt;
     ///
     /// assert_eq!(KeyCode::Char('a').to_key(), Some(Key::A));
@@ -146,7 +145,7 @@ pub trait CrosstermModifiersExt: private::Sealed {
     ///
     /// ```
     /// use crossterm::event::KeyModifiers;
-    /// use kbd::hotkey::Modifier;
+    /// use kbd::prelude::*;
     /// use kbd_crossterm::CrosstermModifiersExt;
     ///
     /// let mods = (KeyModifiers::CONTROL | KeyModifiers::SHIFT).to_modifiers();
@@ -192,8 +191,7 @@ pub trait CrosstermEventExt: private::Sealed {
     ///
     /// ```
     /// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    /// use kbd::hotkey::{Hotkey, Modifier};
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_crossterm::CrosstermEventExt;
     ///
     /// let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
