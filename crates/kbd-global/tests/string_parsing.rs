@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
-use kbd_global::Hotkey;
-use kbd_global::HotkeySequence;
-use kbd_global::Key;
-use kbd_global::Modifier;
+use kbd::key::Hotkey;
+use kbd::key::HotkeySequence;
+use kbd::key::Key;
+use kbd::key::Modifier;
 
 #[test]
 fn parses_hotkey_with_aliases_case_insensitive() {

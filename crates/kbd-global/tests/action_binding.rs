@@ -4,16 +4,16 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use kbd_global::Action;
-use kbd_global::BindingId;
-use kbd_global::BindingOptions;
-use kbd_global::DeviceFilter;
-use kbd_global::Hotkey;
+use kbd::action::Action;
+use kbd::binding::BindingId;
+use kbd::binding::BindingOptions;
+use kbd::binding::DeviceFilter;
+use kbd::binding::KeyPropagation;
+use kbd::binding::OverlayVisibility;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use kbd_global::HotkeyManager;
-use kbd_global::Key;
-use kbd_global::KeyPropagation;
-use kbd_global::Modifier;
-use kbd_global::OverlayVisibility;
 
 #[test]
 fn action_from_closure_runs_callback() {

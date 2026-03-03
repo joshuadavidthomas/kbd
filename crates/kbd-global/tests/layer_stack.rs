@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
-use kbd_global::Action;
+use kbd::action::Action;
+use kbd::action::LayerName;
+use kbd::key::Key;
+use kbd::layer::Layer;
 use kbd_global::Error;
 use kbd_global::HotkeyManager;
-use kbd_global::Key;
-use kbd_global::Layer;
-use kbd_global::LayerName;
 
 #[test]
 fn push_layer_succeeds_for_defined_layer() {

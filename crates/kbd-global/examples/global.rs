@@ -10,13 +10,13 @@
 
 use std::sync::mpsc;
 
-use kbd_global::Action;
+use kbd::action::Action;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::layer::Layer;
 use kbd_global::Error;
-use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;
-use kbd_global::Key;
-use kbd_global::Layer;
-use kbd_global::Modifier;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Ignore terminal job-control signals so Ctrl+Z doesn't background us

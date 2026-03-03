@@ -1,15 +1,15 @@
 #![allow(missing_docs)]
 use std::time::Duration;
 
-use kbd_global::Action;
+use kbd::action::Action;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::layer::Layer;
+use kbd::layer::LayerOptions;
+use kbd::layer::UnmatchedKeys;
 use kbd_global::Error;
-use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;
-use kbd_global::Key;
-use kbd_global::Layer;
-use kbd_global::LayerOptions;
-use kbd_global::Modifier;
-use kbd_global::UnmatchedKeys;
 
 #[test]
 fn define_layer_via_manager() {

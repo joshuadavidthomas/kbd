@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
+use kbd::key::Key;
+use kbd::key::Modifier;
 use kbd_evdev::EvdevKeyCodeExt;
 use kbd_evdev::KbdKeyExt;
-use kbd_global::Key;
-use kbd_global::Modifier;
 
 #[test]
 fn key_round_trips_through_evdev_keycode() {
