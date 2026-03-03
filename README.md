@@ -30,4 +30,4 @@ Bridge crates convert framework key events into `kbd` types. Use one alongside t
 
 ## License
 
-kdb is licensed under the MIT license. See the [`LICENSE`](LICENSE) file for more information.
+kbd is licensed under the MIT license. See the [`LICENSE`](LICENSE) file for more information.
