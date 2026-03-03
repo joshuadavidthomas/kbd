@@ -1,4 +1,4 @@
-//! Physical key type: [`Key`](crate::key::Key).
+//! Physical key type: [`Key`].
 //!
 //! `Key` is a newtype wrapping a W3C physical key code. Associated constants
 //! (`Key::A`, `Key::ENTER`, `Key::CONTROL_LEFT`) are the primary API for

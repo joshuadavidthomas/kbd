@@ -1,11 +1,11 @@
 //! Binding dispatcher — finds which binding (if any) matches a key event.
 //!
-//! The [`Dispatcher`](crate::dispatcher::Dispatcher) walks the layer stack
+//! The [`Dispatcher`] walks the layer stack
 //! top-down, checking bindings in each active layer, then global bindings.
 //! Within each layer, speculative patterns (tap-hold, sequences) are checked
 //! before immediate patterns (hotkeys).
 //!
-//! Returns a [`MatchResult`](crate::dispatcher::MatchResult) — the matched
+//! Returns a [`MatchResult`] — the matched
 //! binding's action (or "no match" for forwarding).
 
 mod query;

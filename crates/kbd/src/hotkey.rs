@@ -1,6 +1,6 @@
 //! Hotkey composition types: [`Modifier`], [`Hotkey`], [`HotkeySequence`].
 //!
-//! These types build on [`Key`](crate::key::Key) to express key combinations.
+//! These types build on [`Key`] to express key combinations.
 //! Parse from human-readable strings (`"Ctrl+Shift+A"`) or build
 //! programmatically with [`Hotkey::new`] and [`Hotkey::modifier`].
 //!

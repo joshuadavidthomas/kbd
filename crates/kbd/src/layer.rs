@@ -5,7 +5,7 @@
 //! checked first. Global bindings act as an always-active base layer.
 //!
 //! [`LayerName`] is the identifier type used everywhere a layer is
-//! referenced — in [`Action::PushLayer`](crate::action::Action::PushLayer),
+//! referenced — in [`Action::PushLayer`],
 //! in the dispatcher's stack, and in introspection snapshots.
 //!
 //! [`Layer`] is a builder — construct with `Layer::new("name")`, add bindings
@@ -20,8 +20,8 @@ use crate::hotkey::Hotkey;
 
 /// Layer identifier.
 ///
-/// Used by layer-control actions ([`Action::PushLayer`](crate::action::Action::PushLayer),
-/// [`Action::ToggleLayer`](crate::action::Action::ToggleLayer)), the dispatcher's
+/// Used by layer-control actions ([`Action::PushLayer`],
+/// [`Action::ToggleLayer`]), the dispatcher's
 /// layer stack, and introspection snapshots.
 ///
 /// Converts from `&str` and `String` for convenience.
