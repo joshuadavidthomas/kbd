@@ -9,7 +9,7 @@ use kbd_global::Key;
 use kbd_global::Layer;
 use kbd_global::LayerOptions;
 use kbd_global::Modifier;
-use kbd_global::UnmatchedKeyBehavior;
+use kbd_global::UnmatchedKeys;
 
 #[test]
 fn define_layer_via_manager() {
@@ -85,7 +85,7 @@ fn layer_builder_produces_correct_state() {
 
     assert_eq!(layer.name().as_str(), "test");
     assert_eq!(layer.binding_count(), 2);
-    assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+    assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
     assert_eq!(layer.options().oneshot(), Some(2));
     assert_eq!(layer.options().timeout(), Some(Duration::from_millis(500)));
 }
@@ -94,7 +94,7 @@ fn layer_builder_produces_correct_state() {
 fn layer_default_options() {
     let options = LayerOptions::default();
     assert_eq!(options.oneshot(), None);
-    assert_eq!(options.unmatched(), UnmatchedKeyBehavior::Fallthrough);
+    assert_eq!(options.unmatched(), UnmatchedKeys::Fallthrough);
     assert_eq!(options.timeout(), None);
     assert_eq!(options.description(), None);
 }
@@ -123,7 +123,7 @@ fn layer_description_chains_with_other_options() {
         .timeout(Duration::from_secs(5));
 
     assert_eq!(layer.options().description(), Some("Navigation keys"));
-    assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+    assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
     assert_eq!(layer.options().oneshot(), Some(1));
     assert_eq!(layer.binding_count(), 1);
 }

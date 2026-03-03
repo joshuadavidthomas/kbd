@@ -27,7 +27,7 @@ use kbd_global::ParseHotkeyError;
 use kbd_global::KeyPropagation;
 use kbd_global::RegisteredBinding;
 use kbd_global::ShadowedStatus;
-use kbd_global::UnmatchedKeyBehavior;
+use kbd_global::UnmatchedKeys;
 
 #[test]
 fn core_types_reexported_through_kbd_global() {
@@ -57,7 +57,7 @@ fn core_types_reexported_through_kbd_global() {
     // Layer
     let layer = Layer::new("test").bind(Key::H, Action::Suppress).swallow();
     assert_eq!(layer.name().as_str(), "test");
-    assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+    assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
 
     // LayerName
     let name = LayerName::from("test");

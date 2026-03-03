@@ -20,24 +20,24 @@ use crate::key::Hotkey;
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Key, Layer, UnmatchedKeyBehavior};
+/// use kbd::{Action, Key, Layer, UnmatchedKeys};
 ///
 /// // A navigation layer that only captures H/J/K/L.
 /// // Other keys (like Ctrl+S) still reach global bindings.
 /// let nav = Layer::new("nav")
 ///     .bind(Key::H, Action::Suppress)
 ///     .bind(Key::J, Action::Suppress);
-/// assert_eq!(nav.options().unmatched(), UnmatchedKeyBehavior::Fallthrough);
+/// assert_eq!(nav.options().unmatched(), UnmatchedKeys::Fallthrough);
 ///
 /// // A modal layer that captures ALL keys — nothing falls through.
 /// // Useful for insert-mode or game-input modes.
 /// let modal = Layer::new("modal")
 ///     .bind(Key::H, Action::Suppress)
 ///     .swallow();
-/// assert_eq!(modal.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+/// assert_eq!(modal.options().unmatched(), UnmatchedKeys::Swallow);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum UnmatchedKeyBehavior {
+pub enum UnmatchedKeys {
     /// Unmatched keys pass to the next layer down the stack.
     #[default]
     Fallthrough,
@@ -51,7 +51,7 @@ pub struct LayerOptions {
     /// If set, automatically pop the layer after this many keypresses.
     oneshot: Option<usize>,
     /// Whether unmatched keys are consumed or fall through.
-    unmatched: UnmatchedKeyBehavior,
+    unmatched: UnmatchedKeys,
     /// If set, automatically pop the layer after this duration of inactivity.
     timeout: Option<Duration>,
     /// Human-readable label for this layer, used for overlay grouping.
@@ -67,7 +67,7 @@ impl LayerOptions {
 
     /// Whether unmatched keys are consumed or fall through.
     #[must_use]
-    pub const fn unmatched(&self) -> UnmatchedKeyBehavior {
+    pub const fn unmatched(&self) -> UnmatchedKeys {
         self.unmatched
     }
 
@@ -85,7 +85,7 @@ impl LayerOptions {
 
     /// Set unmatched key behavior.
     #[must_use]
-    pub const fn with_unmatched(mut self, behavior: UnmatchedKeyBehavior) -> Self {
+    pub const fn with_unmatched(mut self, behavior: UnmatchedKeys) -> Self {
         self.unmatched = behavior;
         self
     }
@@ -191,7 +191,7 @@ impl Layer {
     /// Set the layer to swallow unmatched keys (consume instead of fallthrough).
     #[must_use]
     pub fn swallow(mut self) -> Self {
-        self.options.unmatched = UnmatchedKeyBehavior::Swallow;
+        self.options.unmatched = UnmatchedKeys::Swallow;
         self
     }
 
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn layer_swallow_sets_option() {
         let layer = Layer::new("test").swallow();
-        assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+        assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
     }
 
     #[test]
@@ -346,7 +346,7 @@ mod tests {
         assert_eq!(layer.name().as_str(), "nav");
         assert_eq!(layer.binding_count(), 2);
         assert_eq!(layer.options().description(), Some("Navigation keys"));
-        assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+        assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
         assert_eq!(layer.options().oneshot(), Some(1));
         assert_eq!(layer.options().timeout(), Some(Duration::from_millis(500)));
     }
@@ -355,7 +355,7 @@ mod tests {
     fn layer_options_default_is_fallthrough_no_oneshot_no_timeout_no_description() {
         let options = LayerOptions::default();
         assert_eq!(options.oneshot(), None);
-        assert_eq!(options.unmatched(), UnmatchedKeyBehavior::Fallthrough);
+        assert_eq!(options.unmatched(), UnmatchedKeys::Fallthrough);
         assert_eq!(options.timeout(), None);
         assert_eq!(options.description(), None);
     }
@@ -373,7 +373,7 @@ mod tests {
         let (name, bindings, options) = layer.into_parts();
         assert_eq!(name.as_str(), "nav");
         assert_eq!(bindings.len(), 1);
-        assert_eq!(options.unmatched(), UnmatchedKeyBehavior::Swallow);
+        assert_eq!(options.unmatched(), UnmatchedKeys::Swallow);
     }
 
     #[test]

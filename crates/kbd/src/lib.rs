@@ -84,7 +84,7 @@ pub use crate::key::ParseHotkeyError;
 pub use crate::key_state::KeyTransition;
 pub use crate::layer::Layer;
 pub use crate::layer::LayerOptions;
-pub use crate::layer::UnmatchedKeyBehavior;
+pub use crate::layer::UnmatchedKeys;
 pub use crate::dispatcher::Dispatcher;
 pub use crate::dispatcher::MatchResult;
 
@@ -115,7 +115,7 @@ mod tests {
     fn core_layer_builder() {
         let layer = Layer::new("test").bind(Key::H, Action::Suppress).swallow();
         assert_eq!(layer.name().as_str(), "test");
-        assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+        assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
     }
 
     #[test]

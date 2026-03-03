@@ -140,7 +140,7 @@ pub use kbd::layer::Layer;
 /// Configuration for layer behavior (unmatched key handling, overlay mode).
 pub use kbd::layer::LayerOptions;
 /// What happens to key events that don't match any binding in a layer.
-pub use kbd::layer::UnmatchedKeyBehavior;
+pub use kbd::layer::UnmatchedKeys;
 /// Core dispatch engine that tracks bindings, layers, and sequences.
 pub use kbd::dispatcher::Dispatcher;
 /// The outcome of feeding a key event into the dispatcher.

@@ -19,7 +19,7 @@ use crate::key::Hotkey;
 use crate::key::Modifier;
 use crate::key_state::KeyTransition;
 use crate::layer::StoredLayer;
-use crate::layer::UnmatchedKeyBehavior;
+use crate::layer::UnmatchedKeys;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
@@ -41,7 +41,7 @@ pub enum MatchResult<'a> {
     },
     /// No binding matched the event.
     NoMatch,
-    /// The event was suppressed by a layer with `UnmatchedKeyBehavior::Swallow`.
+    /// The event was suppressed by a layer with `UnmatchedKeys::Swallow`.
     Suppressed,
     /// The event was not eligible for matching (modifier-only press, release, repeat).
     Ignored,
@@ -500,7 +500,7 @@ impl Dispatcher {
 
                 // Swallow layers block all unmatched keys from reaching
                 // lower layers and globals — matches the real matcher.
-                if matches!(stored.options.unmatched(), UnmatchedKeyBehavior::Swallow) {
+                if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
                     return None;
                 }
             }
@@ -599,7 +599,7 @@ impl Dispatcher {
                     }
                 }
 
-                if matches!(stored.options.unmatched(), UnmatchedKeyBehavior::Swallow) {
+                if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
                     return InternalOutcome::Suppressed;
                 }
             }
