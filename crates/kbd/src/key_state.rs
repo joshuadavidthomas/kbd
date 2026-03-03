@@ -15,6 +15,7 @@ use crate::key::Key;
 
 /// Whether a key was pressed, released, or repeated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum KeyTransition {
     /// The key was pressed down.

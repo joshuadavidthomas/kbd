@@ -15,6 +15,8 @@ use crate::hotkey::Hotkey;
 
 /// Unique identifier for a registered binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct BindingId(u64);
 
 impl BindingId {
@@ -59,6 +61,7 @@ impl Default for BindingId {
 /// assert_eq!(binding.propagation(), KeyPropagation::Continue);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum KeyPropagation {
     /// Stop propagation — the event is consumed and not forwarded.
@@ -89,6 +92,7 @@ pub enum KeyPropagation {
 /// assert_eq!(opts.overlay_visibility(), OverlayVisibility::Visible);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum OverlayVisibility {
     /// Binding is shown in overlays and help screens.
@@ -117,6 +121,7 @@ pub enum OverlayVisibility {
 /// assert_eq!(opts.propagation(), KeyPropagation::Stop);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BindingOptions {
     propagation: KeyPropagation,
     /// Human-readable label for this binding ("Copy to clipboard").
