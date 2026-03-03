@@ -8,7 +8,7 @@
 //!
 //! ```rust
 //! use evdev::KeyCode;
-//! use kbd::Key;
+//! use kbd::key::Key;
 //! use kbd_evdev::EvdevKeyCodeExt;
 //!
 //! let key: Key = KeyCode::KEY_A.to_key();
@@ -16,7 +16,7 @@
 //! ```
 
 use evdev::KeyCode;
-use kbd::Key;
+use kbd::key::Key;
 
 /// Extension trait on [`evdev::KeyCode`] for converting to [`kbd::Key`].
 ///
@@ -31,7 +31,7 @@ pub trait EvdevKeyCodeExt {
     ///
     /// ```
     /// use evdev::KeyCode;
-    /// use kbd::Key;
+    /// use kbd::key::Key;
     /// use kbd_evdev::EvdevKeyCodeExt;
     ///
     /// assert_eq!(KeyCode::KEY_A.to_key(), Key::A);
@@ -56,7 +56,7 @@ pub trait KbdKeyExt {
     ///
     /// ```
     /// use evdev::KeyCode;
-    /// use kbd::Key;
+    /// use kbd::key::Key;
     /// use kbd_evdev::KbdKeyExt;
     ///
     /// assert_eq!(Key::A.to_key_code(), KeyCode::KEY_A);
@@ -447,7 +447,7 @@ impl KbdKeyExt for Key {
 #[cfg(test)]
 mod tests {
     use evdev::KeyCode;
-    use kbd::Key;
+    use kbd::key::Key;
 
     use super::EvdevKeyCodeExt;
     use super::KbdKeyExt;

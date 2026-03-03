@@ -20,7 +20,9 @@ use crate::key::Hotkey;
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Key, Layer, UnmatchedKeys};
+/// use kbd::action::Action;
+/// use kbd::key::Key;
+/// use kbd::layer::{Layer, UnmatchedKeys};
 ///
 /// // A navigation layer that only captures H/J/K/L.
 /// // Other keys (like Ctrl+S) still reach global bindings.
@@ -124,7 +126,9 @@ impl std::fmt::Debug for StoredLayer {
 /// Basic layer with vim-style navigation:
 ///
 /// ```
-/// use kbd::{Action, Key, Layer};
+/// use kbd::action::Action;
+/// use kbd::key::Key;
+/// use kbd::layer::Layer;
 ///
 /// let nav = Layer::new("nav")
 ///     .bind(Key::H, Action::Suppress)
@@ -141,7 +145,9 @@ impl std::fmt::Debug for StoredLayer {
 /// Oneshot layer that auto-pops after one keypress:
 ///
 /// ```
-/// use kbd::{Action, Key, Layer};
+/// use kbd::action::Action;
+/// use kbd::key::Key;
+/// use kbd::layer::Layer;
 ///
 /// let leader = Layer::new("leader")
 ///     .bind(Key::F, Action::Suppress)
@@ -153,7 +159,9 @@ impl std::fmt::Debug for StoredLayer {
 ///
 /// ```
 /// use std::time::Duration;
-/// use kbd::{Action, Key, Layer};
+/// use kbd::action::Action;
+/// use kbd::key::Key;
+/// use kbd::layer::Layer;
 ///
 /// let timed = Layer::new("quick-nav")
 ///     .bind(Key::N, Action::Suppress)

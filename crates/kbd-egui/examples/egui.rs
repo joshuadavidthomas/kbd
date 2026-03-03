@@ -6,12 +6,12 @@
 //! ```
 
 use eframe::egui;
-use kbd::Dispatcher;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Modifier;
+use kbd::dispatcher::Dispatcher;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key_state::KeyTransition;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Modifier;
 use kbd_egui::EguiEventExt;
 
 fn main() -> eframe::Result {

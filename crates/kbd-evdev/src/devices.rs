@@ -27,7 +27,7 @@ use evdev::Device;
 use evdev::EventSummary;
 use evdev::InputEvent;
 use evdev::KeyCode;
-use kbd::Key;
+use kbd::key::Key;
 use kbd::key_state::KeyTransition;
 
 use crate::EvdevKeyCodeExt;
@@ -633,7 +633,7 @@ mod tests {
     use evdev::EventType;
     use evdev::InputEvent;
     use evdev::KeyCode;
-    use kbd::Key;
+    use kbd::key::Key;
     use kbd::key_state::KeyTransition;
 
     use super::DiscoveryOutcome;

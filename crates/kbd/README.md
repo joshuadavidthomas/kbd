@@ -11,7 +11,10 @@ kbd = "0.1"
 ```
 
 ```rust
-use kbd::{Action, Dispatcher, Hotkey, Key, KeyTransition, MatchResult, Modifier};
+use kbd::action::Action;
+use kbd::dispatcher::{Dispatcher, MatchResult};
+use kbd::key::{Hotkey, Key};
+use kbd::key_state::KeyTransition;
 
 let mut dispatcher = Dispatcher::new();
 

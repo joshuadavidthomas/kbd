@@ -8,13 +8,13 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use kbd::Action;
-use kbd::Dispatcher;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Modifier;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key_state::KeyTransition;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Modifier;
 use kbd_winit::WinitEventExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;

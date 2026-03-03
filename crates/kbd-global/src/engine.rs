@@ -48,8 +48,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 
-use kbd::Dispatcher;
-use kbd::Key;
+use kbd::dispatcher::Dispatcher;
+use kbd::key::Key;
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
 use kbd::dispatcher::MatchResult;
@@ -401,9 +401,9 @@ mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
-    use kbd::Key;
-    use kbd::Modifier;
     use kbd::action::Action;
+    use kbd::key::Key;
+    use kbd::key::Modifier;
     use kbd::binding::BindingId;
     use kbd::binding::KeyPropagation;
     use kbd::binding::RegisteredBinding;

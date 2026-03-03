@@ -48,7 +48,7 @@
 //! # Usage
 //!
 //! ```
-//! use kbd::{Hotkey, Key, Modifier};
+//! use kbd::key::{Hotkey, Key, Modifier};
 //! use kbd_winit::{WinitKeyExt, WinitModifiersExt};
 //! use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 //!
@@ -65,9 +65,9 @@
 //! assert_eq!(mods, vec![Modifier::Ctrl]);
 //! ```
 
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::Modifier;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use winit::event::KeyEvent;
 use winit::keyboard::KeyCode;
 use winit::keyboard::ModifiersState;
@@ -83,7 +83,7 @@ pub trait WinitKeyExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::Key;
+    /// use kbd::key::Key;
     /// use kbd_winit::WinitKeyExt;
     /// use winit::keyboard::{KeyCode, PhysicalKey};
     ///
@@ -340,7 +340,7 @@ pub trait WinitModifiersExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::Modifier;
+    /// use kbd::key::Modifier;
     /// use kbd_winit::WinitModifiersExt;
     /// use winit::keyboard::ModifiersState;
     ///
@@ -414,7 +414,7 @@ pub trait WinitEventExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::{Hotkey, Key, Modifier};
+    /// use kbd::key::{Hotkey, Key, Modifier};
     /// use kbd_winit::winit_key_to_hotkey;
     /// use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
     ///
@@ -438,9 +438,9 @@ impl WinitEventExt for KeyEvent {
 
 #[cfg(test)]
 mod tests {
-    use kbd::Hotkey;
-    use kbd::Key;
-    use kbd::Modifier;
+    use kbd::key::Hotkey;
+    use kbd::key::Key;
+    use kbd::key::Modifier;
     use winit::keyboard::KeyCode;
     use winit::keyboard::ModifiersState;
     use winit::keyboard::NativeKeyCode;

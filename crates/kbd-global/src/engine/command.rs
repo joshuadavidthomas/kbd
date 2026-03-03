@@ -7,8 +7,8 @@
 use std::sync::Arc;
 use std::sync::mpsc;
 
-use kbd::Key;
-use kbd::Modifier;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use kbd::action::LayerName;
 use kbd::binding::BindingId;
 use kbd::binding::RegisteredBinding;

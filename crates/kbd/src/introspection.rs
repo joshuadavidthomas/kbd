@@ -11,8 +11,11 @@
 //! # Examples
 //!
 //! ```
-//! use kbd::{Action, Hotkey, Key, Layer, Dispatcher, Modifier};
-//! use kbd::{BindingLocation, ShadowedStatus};
+//! use kbd::action::Action;
+//! use kbd::dispatcher::Dispatcher;
+//! use kbd::introspection::{BindingLocation, ShadowedStatus};
+//! use kbd::key::{Hotkey, Key, Modifier};
+//! use kbd::layer::Layer;
 //!
 //! let mut matcher = Dispatcher::new();
 //! matcher.register(
@@ -50,8 +53,11 @@ pub enum BindingLocation {
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Hotkey, Key, Layer, Dispatcher, Modifier};
-/// use kbd::ShadowedStatus;
+/// use kbd::action::Action;
+/// use kbd::dispatcher::Dispatcher;
+/// use kbd::introspection::ShadowedStatus;
+/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::layer::Layer;
 ///
 /// let mut matcher = Dispatcher::new();
 /// matcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();
@@ -104,7 +110,10 @@ pub struct BindingInfo {
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Key, Layer, Dispatcher};
+/// use kbd::action::Action;
+/// use kbd::dispatcher::Dispatcher;
+/// use kbd::key::Key;
+/// use kbd::layer::Layer;
 ///
 /// let mut matcher = Dispatcher::new();
 /// matcher.define_layer(
@@ -138,7 +147,10 @@ pub struct ActiveLayerInfo {
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Hotkey, Key, Layer, Dispatcher};
+/// use kbd::action::Action;
+/// use kbd::dispatcher::Dispatcher;
+/// use kbd::key::{Hotkey, Key};
+/// use kbd::layer::Layer;
 ///
 /// let mut matcher = Dispatcher::new();
 /// matcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();

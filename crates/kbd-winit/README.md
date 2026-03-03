@@ -22,7 +22,7 @@ kbd-winit = "0.1"
 ## Usage
 
 ```rust
-use kbd::{Key, Modifier};
+use kbd::key::{Key, Modifier};
 use kbd_winit::{WinitKeyExt, WinitModifiersExt};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 

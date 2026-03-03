@@ -13,7 +13,10 @@
 //! Register a hotkey, feed key events, and check for matches:
 //!
 //! ```
-//! use kbd::{Action, Dispatcher, Hotkey, Key, KeyTransition, MatchResult, Modifier};
+//! use kbd::action::Action;
+//! use kbd::dispatcher::{Dispatcher, MatchResult};
+//! use kbd::key::{Hotkey, Key, Modifier};
+//! use kbd::key_state::KeyTransition;
 //!
 //! let mut dispatcher = Dispatcher::new();
 //!

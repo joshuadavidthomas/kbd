@@ -23,7 +23,7 @@ kbd-egui = "0.1"
 
 ```rust
 use egui::{Key as EguiKey, Modifiers};
-use kbd::{Hotkey, Key, Modifier};
+use kbd::key::{Hotkey, Key, Modifier};
 use kbd_egui::{EguiKeyExt, EguiModifiersExt, EguiEventExt};
 
 let key = EguiKey::A.to_key();

@@ -21,13 +21,13 @@ use crossterm::event::{
     self,
 };
 use crossterm::terminal;
-use kbd::Action;
-use kbd::Dispatcher;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Modifier;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key_state::KeyTransition;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Modifier;
 use kbd_crossterm::CrosstermEventExt;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

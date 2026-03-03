@@ -46,7 +46,7 @@
 //! # Usage
 //!
 //! ```
-//! use kbd::{Hotkey, Key, Modifier};
+//! use kbd::key::{Hotkey, Key, Modifier};
 //! use kbd_tao::{TaoKeyExt, TaoModifiersExt};
 //! use tao::keyboard::{KeyCode, ModifiersState};
 //!
@@ -59,9 +59,9 @@
 //! assert_eq!(mods, vec![Modifier::Ctrl]);
 //! ```
 
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::Modifier;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use tao::event::KeyEvent;
 use tao::keyboard::KeyCode;
 use tao::keyboard::ModifiersState;
@@ -76,7 +76,7 @@ pub trait TaoKeyExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::Key;
+    /// use kbd::key::Key;
     /// use kbd_tao::TaoKeyExt;
     /// use tao::keyboard::KeyCode;
     ///
@@ -324,7 +324,7 @@ pub trait TaoModifiersExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::Modifier;
+    /// use kbd::key::Modifier;
     /// use kbd_tao::TaoModifiersExt;
     /// use tao::keyboard::ModifiersState;
     ///
@@ -398,7 +398,7 @@ pub trait TaoEventExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::{Hotkey, Key, Modifier};
+    /// use kbd::key::{Hotkey, Key, Modifier};
     /// use kbd_tao::tao_key_to_hotkey;
     /// use tao::keyboard::{KeyCode, ModifiersState};
     ///
@@ -419,9 +419,9 @@ impl TaoEventExt for KeyEvent {
 
 #[cfg(test)]
 mod tests {
-    use kbd::Hotkey;
-    use kbd::Key;
-    use kbd::Modifier;
+    use kbd::key::Hotkey;
+    use kbd::key::Key;
+    use kbd::key::Modifier;
     use tao::keyboard::KeyCode;
     use tao::keyboard::ModifiersState;
 

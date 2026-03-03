@@ -42,7 +42,7 @@
 //!
 //! ```
 //! use egui::{Key as EguiKey, Modifiers};
-//! use kbd::{Hotkey, Key, Modifier};
+//! use kbd::key::{Hotkey, Key, Modifier};
 //! use kbd_egui::{EguiKeyExt, EguiModifiersExt};
 //!
 //! // Single key conversion
@@ -68,9 +68,9 @@
 
 use egui::Key as EguiKey;
 use egui::Modifiers;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::Modifier;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
 
 /// Convert an [`egui::Key`] to a `kbd` [`Key`].
 ///
@@ -85,7 +85,7 @@ pub trait EguiKeyExt {
     ///
     /// ```
     /// use egui::Key as EguiKey;
-    /// use kbd::Key;
+    /// use kbd::key::Key;
     /// use kbd_egui::EguiKeyExt;
     ///
     /// assert_eq!(EguiKey::A.to_key(), Some(Key::A));
@@ -245,7 +245,7 @@ pub trait EguiModifiersExt {
     ///
     /// ```
     /// use egui::Modifiers;
-    /// use kbd::Modifier;
+    /// use kbd::key::Modifier;
     /// use kbd_egui::EguiModifiersExt;
     ///
     /// let mods = Modifiers {
@@ -290,7 +290,7 @@ pub trait EguiEventExt {
     ///
     /// ```
     /// use egui::{Key as EguiKey, Modifiers};
-    /// use kbd::{Hotkey, Key, Modifier};
+    /// use kbd::key::{Hotkey, Key, Modifier};
     /// use kbd_egui::EguiEventExt;
     ///
     /// let event = egui::Event::Key {
@@ -324,9 +324,9 @@ impl EguiEventExt for egui::Event {
 mod tests {
     use egui::Key as EguiKey;
     use egui::Modifiers;
-    use kbd::Hotkey;
-    use kbd::Key;
-    use kbd::Modifier;
+    use kbd::key::Hotkey;
+    use kbd::key::Key;
+    use kbd::key::Modifier;
 
     use super::*;
 

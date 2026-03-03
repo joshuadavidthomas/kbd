@@ -44,7 +44,9 @@ impl Default for BindingId {
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, BindingId, BindingOptions, Hotkey, Key, Modifier, KeyPropagation, RegisteredBinding};
+/// use kbd::action::Action;
+/// use kbd::binding::{BindingId, BindingOptions, KeyPropagation, RegisteredBinding};
+/// use kbd::key::{Hotkey, Key, Modifier};
 ///
 /// // A binding that forwards the key event to the application
 /// // while still running its action (e.g., logging keypresses).
@@ -74,7 +76,7 @@ pub enum KeyPropagation {
 /// # Examples
 ///
 /// ```
-/// use kbd::{BindingOptions, OverlayVisibility};
+/// use kbd::binding::{BindingOptions, OverlayVisibility};
 ///
 /// // Hide an internal binding from the overlay
 /// let opts = BindingOptions::default()
@@ -102,7 +104,7 @@ pub enum OverlayVisibility {
 /// # Examples
 ///
 /// ```
-/// use kbd::{BindingOptions, DeviceFilter};
+/// use kbd::binding::{BindingOptions, DeviceFilter};
 ///
 /// // Match a device by name pattern
 /// let opts = BindingOptions::default()
@@ -136,7 +138,7 @@ pub enum DeviceFilter {
 /// # Examples
 ///
 /// ```
-/// use kbd::{BindingOptions, OverlayVisibility, KeyPropagation};
+/// use kbd::binding::{BindingOptions, KeyPropagation, OverlayVisibility};
 ///
 /// let opts = BindingOptions::default()
 ///     .with_description("Copy to clipboard")

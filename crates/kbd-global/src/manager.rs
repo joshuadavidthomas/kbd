@@ -27,8 +27,8 @@ use std::fmt;
 use std::sync::Mutex;
 use std::sync::mpsc;
 
-use kbd::Key;
-use kbd::Modifier;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use kbd::action::Action;
 use kbd::action::LayerName;
 use kbd::binding::BindingId;

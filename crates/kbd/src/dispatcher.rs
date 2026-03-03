@@ -86,7 +86,10 @@ struct LayerTimeout {
 /// Register a global binding and match against it:
 ///
 /// ```
-/// use kbd::{Action, Hotkey, Key, KeyTransition, MatchResult, Dispatcher, Modifier};
+/// use kbd::action::Action;
+/// use kbd::dispatcher::{Dispatcher, MatchResult};
+/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::key_state::KeyTransition;
 ///
 /// let mut matcher = Dispatcher::new();
 /// matcher.register(
@@ -104,7 +107,11 @@ struct LayerTimeout {
 /// Using layers for modal editing:
 ///
 /// ```
-/// use kbd::{Action, Hotkey, Key, KeyTransition, Layer, MatchResult, Dispatcher, Modifier};
+/// use kbd::action::Action;
+/// use kbd::dispatcher::{Dispatcher, MatchResult};
+/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::key_state::KeyTransition;
+/// use kbd::layer::Layer;
 ///
 /// let mut matcher = Dispatcher::new();
 ///

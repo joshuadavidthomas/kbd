@@ -9,13 +9,13 @@
 //! cargo run -p kbd --example matcher
 //! ```
 
-use kbd::Action;
-use kbd::Dispatcher;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Modifier;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key_state::KeyTransition;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Modifier;
 
 fn main() {
     let mut matcher = Dispatcher::new();
