@@ -51,7 +51,7 @@ use std::sync::mpsc;
 use kbd::Key;
 use kbd::Matcher;
 use kbd::action::Action;
-use kbd::binding::Passthrough;
+use kbd::binding::KeyPropagation;
 use kbd::key::Hotkey;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
@@ -304,11 +304,11 @@ impl Engine {
             match &result {
                 MatchResult::Matched {
                     action,
-                    passthrough,
+                    propagation,
                 } => {
                     execute_action(action);
                     MatchOutcome::Matched {
-                        passthrough: *passthrough,
+                        propagation: *propagation,
                     }
                 }
                 MatchResult::Suppressed => MatchOutcome::Suppressed,
@@ -320,12 +320,12 @@ impl Engine {
 
         // Determine event disposition based on match outcome and grab state
         let disposition = match outcome {
-            MatchOutcome::Matched { passthrough } => match passthrough {
-                Passthrough::Enabled if matches!(self.grab_state, GrabState::Enabled { .. }) => {
+            MatchOutcome::Matched { propagation } => match propagation {
+                KeyPropagation::Continue if matches!(self.grab_state, GrabState::Enabled { .. }) => {
                     self.forward_event(event.key, event.transition);
                     KeyEventDisposition::MatchedForwarded
                 }
-                Passthrough::Enabled | Passthrough::Consume => KeyEventDisposition::MatchedConsumed,
+                KeyPropagation::Continue | KeyPropagation::Stop => KeyEventDisposition::MatchedConsumed,
             },
             MatchOutcome::Suppressed => KeyEventDisposition::MatchedConsumed,
             MatchOutcome::NoMatch | MatchOutcome::Ignored => {
@@ -401,7 +401,7 @@ mod tests {
     use kbd::Modifier;
     use kbd::action::Action;
     use kbd::binding::BindingId;
-    use kbd::binding::Passthrough;
+    use kbd::binding::KeyPropagation;
     use kbd::binding::RegisteredBinding;
     use kbd::key::Hotkey;
     use kbd::key_state::KeyTransition;
@@ -850,7 +850,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding =
-            RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
+            RegisteredBinding::new(id, hotkey, action).with_propagation(KeyPropagation::Continue);
         engine.matcher.register_binding(binding).unwrap();
 
         // Press Ctrl+C with passthrough — should fire AND forward
@@ -891,7 +891,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding =
-            RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
+            RegisteredBinding::new(id, hotkey, action).with_propagation(KeyPropagation::Continue);
         engine.matcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
@@ -1905,7 +1905,7 @@ mod tests {
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
                 )
-                .with_passthrough(Passthrough::Enabled),
+                .with_propagation(KeyPropagation::Continue),
             )
             .unwrap();
 
@@ -2062,7 +2062,7 @@ mod tests {
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
                 )
-                .with_passthrough(Passthrough::Enabled),
+                .with_propagation(KeyPropagation::Continue),
             )
             .unwrap();
 

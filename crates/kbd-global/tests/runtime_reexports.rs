@@ -24,7 +24,7 @@ use kbd_global::Matcher;
 use kbd_global::Modifier;
 use kbd_global::OverlayVisibility;
 use kbd_global::ParseHotkeyError;
-use kbd_global::Passthrough;
+use kbd_global::KeyPropagation;
 use kbd_global::RegisteredBinding;
 use kbd_global::ShadowedStatus;
 use kbd_global::UnmatchedKeyBehavior;
@@ -49,10 +49,10 @@ fn core_types_reexported_through_kbd_global() {
 
     // Options
     let opts = BindingOptions::default()
-        .with_passthrough(Passthrough::Enabled)
+        .with_propagation(KeyPropagation::Continue)
         .with_overlay_visibility(OverlayVisibility::Hidden)
         .with_description("test");
-    assert_eq!(opts.passthrough(), Passthrough::Enabled);
+    assert_eq!(opts.propagation(), KeyPropagation::Continue);
 
     // Layer
     let layer = Layer::new("test").bind(Key::H, Action::Suppress).swallow();

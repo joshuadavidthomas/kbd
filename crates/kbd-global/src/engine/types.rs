@@ -3,7 +3,7 @@
 //! Internal types used by the engine to track grab mode and classify how
 //! each key event was handled.
 
-use kbd::binding::Passthrough;
+use kbd::binding::KeyPropagation;
 
 /// Whether the engine is running in grab mode.
 ///
@@ -27,7 +27,7 @@ pub(crate) enum GrabState {
 pub(crate) enum KeyEventDisposition {
     /// Event matched a binding and was consumed (not forwarded).
     MatchedConsumed,
-    /// Event matched a binding with passthrough and was forwarded.
+    /// Event matched a binding with propagation and was forwarded.
     MatchedForwarded,
     /// Event did not match any binding and was forwarded (grab mode).
     UnmatchedForwarded,
@@ -38,9 +38,9 @@ pub(crate) enum KeyEventDisposition {
 /// Intermediate result from matching, used for forwarding decisions.
 ///
 /// Layer effects are handled by the `Matcher` — the engine only needs
-/// the match/no-match outcome and passthrough setting.
+/// the match/no-match outcome and propagation setting.
 pub(super) enum MatchOutcome {
-    Matched { passthrough: Passthrough },
+    Matched { propagation: KeyPropagation },
     Suppressed,
     NoMatch,
     Ignored,

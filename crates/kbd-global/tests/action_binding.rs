@@ -13,7 +13,7 @@ use kbd_global::HotkeyManager;
 use kbd_global::Key;
 use kbd_global::Modifier;
 use kbd_global::OverlayVisibility;
-use kbd_global::Passthrough;
+use kbd_global::KeyPropagation;
 
 #[test]
 fn action_from_closure_runs_callback() {
@@ -47,7 +47,7 @@ fn generated_binding_ids_are_unique() {
 #[test]
 fn binding_options_default_to_consuming_events() {
     let options = BindingOptions::default();
-    assert_eq!(options.passthrough(), Passthrough::Consume);
+    assert_eq!(options.propagation(), KeyPropagation::Stop);
 }
 
 #[test]
@@ -113,11 +113,11 @@ fn binding_options_chains_all_metadata() {
     let options = BindingOptions::default()
         .with_description("Quit application")
         .with_overlay_visibility(OverlayVisibility::Hidden)
-        .with_passthrough(Passthrough::Enabled);
+        .with_propagation(KeyPropagation::Continue);
 
     assert_eq!(options.description(), Some("Quit application"));
     assert_eq!(options.overlay_visibility(), OverlayVisibility::Hidden);
-    assert_eq!(options.passthrough(), Passthrough::Enabled);
+    assert_eq!(options.propagation(), KeyPropagation::Continue);
 }
 
 #[test]

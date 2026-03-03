@@ -13,7 +13,7 @@ use std::time::Instant;
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::BindingId;
-use crate::binding::Passthrough;
+use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
 use crate::key::Hotkey;
 use crate::key::Modifier;
@@ -24,12 +24,12 @@ use crate::layer::UnmatchedKeyBehavior;
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
 pub enum MatchResult<'a> {
-    /// A binding matched. Contains the action and passthrough setting.
+    /// A binding matched. Contains the action and propagation setting.
     Matched {
         /// The action to execute.
         action: &'a Action,
         /// Whether to consume or forward the original key event.
-        passthrough: Passthrough,
+        propagation: KeyPropagation,
     },
     /// A multi-step sequence is in progress. Consumers can use this for
     /// UI feedback ("waiting for next key…").
@@ -151,7 +151,7 @@ enum InternalOutcome {
     Matched {
         binding_ref: MatchedBindingRef,
         layer_effect: LayerEffect,
-        passthrough: Passthrough,
+        propagation: KeyPropagation,
     },
     Suppressed,
     NoMatch,
@@ -347,13 +347,13 @@ impl Matcher {
         match outcome {
             InternalOutcome::Matched {
                 binding_ref,
-                passthrough,
+                propagation,
                 ..
             } => {
                 let action = self.resolve_binding(&binding_ref);
                 MatchResult::Matched {
                     action,
-                    passthrough,
+                    propagation,
                 }
             }
             InternalOutcome::Suppressed => MatchResult::Suppressed,
@@ -594,7 +594,7 @@ impl Matcher {
                                 index,
                             },
                             layer_effect: LayerEffect::from_action(&layer_binding.action),
-                            passthrough: layer_binding.passthrough,
+                            propagation: layer_binding.propagation,
                         };
                     }
                 }
@@ -612,7 +612,7 @@ impl Matcher {
             return InternalOutcome::Matched {
                 binding_ref: MatchedBindingRef::Global(id),
                 layer_effect: LayerEffect::from_action(binding.action()),
-                passthrough: binding.passthrough(),
+                propagation: binding.propagation(),
             };
         }
 

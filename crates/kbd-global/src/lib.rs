@@ -110,7 +110,7 @@ pub use kbd::binding::DeviceFilter;
 /// Controls whether a binding is visible through overlay layers.
 pub use kbd::binding::OverlayVisibility;
 /// Controls whether matched key events are forwarded to the OS.
-pub use kbd::binding::Passthrough;
+pub use kbd::binding::KeyPropagation;
 /// A fully-configured binding ready for registration.
 pub use kbd::binding::RegisteredBinding;
 /// Introspection snapshot of an active layer.

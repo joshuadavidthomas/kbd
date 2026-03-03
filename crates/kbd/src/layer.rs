@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use crate::action::Action;
 use crate::action::LayerName;
-use crate::binding::Passthrough;
+use crate::binding::KeyPropagation;
 use crate::key::Hotkey;
 
 /// Whether unmatched keys in an active layer fall through to lower layers.
@@ -96,7 +96,7 @@ impl LayerOptions {
 pub(crate) struct LayerBinding {
     pub(crate) hotkey: Hotkey,
     pub(crate) action: Action,
-    pub(crate) passthrough: Passthrough,
+    pub(crate) propagation: KeyPropagation,
 }
 
 /// Engine-internal representation of a stored layer definition.
@@ -183,7 +183,7 @@ impl Layer {
         self.bindings.push(LayerBinding {
             hotkey: hotkey.into(),
             action: action.into(),
-            passthrough: Passthrough::default(),
+            propagation: KeyPropagation::default(),
         });
         self
     }
