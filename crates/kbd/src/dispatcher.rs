@@ -201,7 +201,10 @@ impl Dispatcher {
 
     /// Register a binding. Returns the assigned [`BindingId`].
     ///
-    /// Returns `Error::AlreadyRegistered` if a binding for the same hotkey exists.
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// if a binding for the same hotkey exists.
     pub fn register(
         &mut self,
         hotkey: impl Into<Hotkey>,
@@ -215,7 +218,10 @@ impl Dispatcher {
 
     /// Register a [`RegisteredBinding`] with full options control.
     ///
-    /// Returns `Error::AlreadyRegistered` if a binding for the same hotkey exists.
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// if a binding for the same hotkey exists.
     pub fn register_binding(
         &mut self,
         binding: RegisteredBinding,
@@ -248,7 +254,10 @@ impl Dispatcher {
 
     /// Define a named layer. The layer is not active until pushed.
     ///
-    /// Returns `Error::LayerAlreadyDefined` if a layer with the same name exists.
+    /// # Errors
+    ///
+    /// Returns [`Error::LayerAlreadyDefined`](crate::error::Error::LayerAlreadyDefined)
+    /// if a layer with the same name exists.
     pub fn define_layer(&mut self, layer: crate::layer::Layer) -> Result<(), crate::error::Error> {
         let (name, bindings, options) = layer.into_parts();
         match self.layers.entry(name) {
@@ -264,7 +273,10 @@ impl Dispatcher {
 
     /// Push a named layer onto the stack, activating its bindings.
     ///
-    /// Returns `Error::LayerNotDefined` if no layer with this name is defined.
+    /// # Errors
+    ///
+    /// Returns [`Error::LayerNotDefined`](crate::error::Error::LayerNotDefined)
+    /// if no layer with this name is defined.
     pub fn push_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
         let name = name.into();
         let stored = self
@@ -286,7 +298,10 @@ impl Dispatcher {
 
     /// Pop the topmost layer from the stack.
     ///
-    /// Returns the popped layer's name, or `Error::EmptyLayerStack` if empty.
+    /// # Errors
+    ///
+    /// Returns [`Error::EmptyLayerStack`](crate::error::Error::EmptyLayerStack)
+    /// if no layers are on the stack.
     pub fn pop_layer(&mut self) -> Result<LayerName, crate::error::Error> {
         self.layer_stack
             .pop()
@@ -296,7 +311,10 @@ impl Dispatcher {
 
     /// Toggle a layer: push if not active, remove if active.
     ///
-    /// Returns `Error::LayerNotDefined` if no layer with this name is defined.
+    /// # Errors
+    ///
+    /// Returns [`Error::LayerNotDefined`](crate::error::Error::LayerNotDefined)
+    /// if no layer with this name is defined.
     pub fn toggle_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
         let name = name.into();
         if !self.layers.contains_key(&name) {

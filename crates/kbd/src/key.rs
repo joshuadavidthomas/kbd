@@ -923,6 +923,10 @@ pub struct HotkeySequence {
 
 impl HotkeySequence {
     /// Create a sequence from a non-empty list of hotkeys.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] if `steps` is empty.
     pub fn new(steps: Vec<Hotkey>) -> Result<Self, ParseHotkeyError> {
         if steps.is_empty() {
             return Err(ParseHotkeyError::Empty);
