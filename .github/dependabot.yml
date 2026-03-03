@@ -1,17 +1,28 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directory: /
+    directory: "/"
     schedule:
       interval: weekly
+      timezone: America/Chicago
+    cooldown:
+      default-days: 7
+    labels:
+      - dependabot 🤖
     groups:
-      rust-deps:
-        patterns: ["*"]
-
+      cargo:
+        patterns:
+          - "*"
   - package-ecosystem: github-actions
-    directory: /
+    directory: "/"
     schedule:
       interval: weekly
+      timezone: America/Chicago
+    cooldown:
+      default-days: 7
+    labels:
+      - dependabot 🤖
     groups:
-      actions:
-        patterns: ["*"]
+      gha:
+        patterns:
+          - "*"
