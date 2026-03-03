@@ -62,15 +62,12 @@ Layers let you define context-dependent bindings. Define a layer, push
 it onto the stack, and its bindings take priority over global ones:
 
 ```rust,no_run
-use kbd_global::{HotkeyManager, Hotkey, Key, Modifier, Layer, Action};
+use kbd_global::{HotkeyManager, Hotkey, Key, Layer, Action};
 
 let manager = HotkeyManager::new()?;
 
-let mut layer = Layer::new("vim-normal");
-layer.add(
-    Hotkey::new(Key::J),
-    Action::from(|| println!("down")),
-)?;
+let layer = Layer::new("vim-normal")
+    .bind(Hotkey::new(Key::J), Action::from(|| println!("down")));
 
 manager.define_layer(layer)?;
 manager.push_layer("vim-normal")?;

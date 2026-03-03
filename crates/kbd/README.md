@@ -11,14 +11,14 @@ kbd = "0.1"
 ```
 
 ```rust
-use kbd::{Action, Hotkey, Key, MatchResult, Matcher, Modifier};
+use kbd::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
 
 let mut matcher = Matcher::new();
 
 let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
-matcher.add_binding(hotkey, Action::from(|| println!("fired")), Default::default());
+matcher.register(hotkey.clone(), Action::Swallow).unwrap();
 
-let result = matcher.key_down(Key::A, &[Modifier::Ctrl, Modifier::Shift]);
+let result = matcher.process(&hotkey, KeyTransition::Press);
 assert!(matches!(result, MatchResult::Matched { .. }));
 ```
 
