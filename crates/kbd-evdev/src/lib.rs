@@ -14,7 +14,7 @@
 //!   re-emits unmatched events through a virtual device so they still reach
 //!   applications in grab mode
 //! - **Key conversion** — extension traits ([`EvdevKeyCodeExt`], [`KbdKeyExt`])
-//!   for converting between `evdev::KeyCode` and [`kbd::Key`]
+//!   for converting between `evdev::KeyCode` and [`kbd::key::Key`]
 //!
 //! # Prerequisites
 //!
@@ -61,7 +61,7 @@
 //! - [`kbd-global`](https://docs.rs/kbd-global) — threaded runtime built on
 //!   this crate
 
-/// Extension traits for converting between `evdev::KeyCode` and [`kbd::Key`].
+/// Extension traits for converting between `evdev::KeyCode` and [`kbd::key::Key`].
 pub mod convert;
 /// Device discovery, hotplug monitoring, and event polling.
 pub mod devices;
@@ -70,7 +70,7 @@ pub mod error;
 /// Virtual uinput device for forwarding and emitting key events.
 pub mod forwarder;
 
-/// Convert a [`kbd::Key`] to an [`evdev::KeyCode`].
+/// Convert a [`kbd::key::Key`] to an [`evdev::KeyCode`].
 pub use crate::convert::EvdevKeyCodeExt;
-/// Convert an [`evdev::KeyCode`] to a [`kbd::Key`].
+/// Convert an [`evdev::KeyCode`] to a [`kbd::key::Key`].
 pub use crate::convert::KbdKeyExt;

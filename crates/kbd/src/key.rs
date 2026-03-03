@@ -1,4 +1,5 @@
-//! Key types: [`Key`], [`Modifier`], [`Hotkey`], [`HotkeySequence`].
+//! Key types: [`Key`](crate::key::Key), [`Modifier`](crate::key::Modifier),
+//! [`Hotkey`](crate::key::Hotkey), [`HotkeySequence`](crate::key::HotkeySequence).
 //!
 //! `Key` is a newtype wrapping a W3C physical key code. Associated constants
 //! (`Key::A`, `Key::ENTER`, `Key::CONTROL_LEFT`) are the primary API for

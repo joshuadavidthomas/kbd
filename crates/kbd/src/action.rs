@@ -1,4 +1,4 @@
-//! The [`Action`] enum — what happens when a binding matches.
+//! The [`Action`](crate::action::Action) enum — what happens when a binding matches.
 //!
 //! Actions are the output vocabulary of the library. Every place that
 //! currently takes a bare `Fn()` closure should accept an `Action` instead,

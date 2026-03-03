@@ -13,11 +13,11 @@
 //! # Extension traits
 //!
 //! - [`WinitKeyExt`] — converts a winit [`PhysicalKey`] or [`KeyCode`] to
-//!   a [`kbd::Key`].
+//!   a [`kbd::key::Key`].
 //! - [`WinitModifiersExt`] — converts winit [`ModifiersState`] to a
 //!   `Vec<Modifier>`.
 //! - [`WinitEventExt`] — converts a winit [`KeyEvent`] plus
-//!   [`ModifiersState`] to a [`kbd::Hotkey`].
+//!   [`ModifiersState`] to a [`kbd::key::Hotkey`].
 //!
 //! # Key mapping
 //!

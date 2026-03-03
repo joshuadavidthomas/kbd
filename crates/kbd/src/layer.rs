@@ -1,4 +1,4 @@
-//! [`Layer`] — a named collection of bindings, stackable.
+//! [`Layer`](crate::layer::Layer) — a named collection of bindings, stackable.
 //!
 //! Layers are the organizational unit. When active, a layer's bindings
 //! participate in matching. Layers stack: most recently activated is

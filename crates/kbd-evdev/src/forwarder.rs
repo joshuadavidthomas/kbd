@@ -49,7 +49,7 @@ pub struct UinputForwarder {
 impl UinputForwarder {
     /// Create a new virtual keyboard device via `/dev/uinput`.
     ///
-    /// The device is named [`VIRTUAL_DEVICE_NAME`] and supports all key
+    /// The device is named `kbd-virtual-keyboard` and supports all key
     /// codes up to code 767. [`DeviceManager`](crate::devices::DeviceManager)
     /// automatically skips this device during discovery to prevent
     /// feedback loops.

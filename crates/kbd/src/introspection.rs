@@ -93,7 +93,7 @@ pub enum ShadowedStatus {
 pub struct BindingInfo {
     /// The hotkey (key + modifiers) that triggers this binding.
     pub hotkey: Hotkey,
-    /// Human-readable label, if one was set via [`BindingOptions`](crate::BindingOptions).
+    /// Human-readable label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
     pub description: Option<Box<str>>,
     /// Where this binding lives (global or a specific layer).
     pub location: BindingLocation,

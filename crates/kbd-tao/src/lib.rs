@@ -12,11 +12,11 @@
 //!
 //! # Extension traits
 //!
-//! - [`TaoKeyExt`] — converts a tao [`KeyCode`] to a [`kbd::Key`].
+//! - [`TaoKeyExt`] — converts a tao [`KeyCode`] to a [`kbd::key::Key`].
 //! - [`TaoModifiersExt`] — converts tao [`ModifiersState`] to a
 //!   `Vec<Modifier>`.
 //! - [`TaoEventExt`] — converts a tao [`KeyEvent`] plus
-//!   [`ModifiersState`] to a [`kbd::Hotkey`].
+//!   [`ModifiersState`] to a [`kbd::key::Hotkey`].
 //!
 //! # Key mapping
 //!

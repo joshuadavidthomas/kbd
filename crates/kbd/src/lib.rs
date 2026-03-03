@@ -47,7 +47,8 @@
 //!   [`kbd-egui`](https://docs.rs/kbd-egui), [`kbd-iced`](https://docs.rs/kbd-iced),
 //!   [`kbd-tao`](https://docs.rs/kbd-tao), [`kbd-winit`](https://docs.rs/kbd-winit)
 
-/// What happens when a binding matches — callbacks, key emission, layer control.
+/// Actions — what happens when a binding matches (callbacks, key emission,
+/// layer control).
 pub mod action;
 /// Binding types — pattern + action + options, device filtering.
 pub mod binding;
