@@ -70,7 +70,7 @@ pub mod error;
 /// Virtual uinput device for forwarding and emitting key events.
 pub mod forwarder;
 
-/// Convert an [`evdev::KeyCode`] to a [`kbd::Key`].
-pub use crate::convert::KbdKeyExt;
 /// Convert a [`kbd::Key`] to an [`evdev::KeyCode`].
 pub use crate::convert::EvdevKeyCodeExt;
+/// Convert an [`evdev::KeyCode`] to a [`kbd::Key`].
+pub use crate::convert::KbdKeyExt;

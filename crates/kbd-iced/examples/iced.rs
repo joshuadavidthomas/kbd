@@ -11,11 +11,11 @@ use iced::Task;
 use iced::widget::column;
 use iced::widget::scrollable;
 use iced::widget::text;
+use kbd::Dispatcher;
 use kbd::Hotkey;
 use kbd::Key;
 use kbd::KeyTransition;
 use kbd::MatchResult;
-use kbd::Dispatcher;
 use kbd::Modifier;
 use kbd_iced::IcedEventExt;
 

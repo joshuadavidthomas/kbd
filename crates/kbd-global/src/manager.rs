@@ -42,11 +42,11 @@ use kbd::layer::Layer;
 
 use crate::Error;
 use crate::backend::Backend;
+use crate::binding_guard::BindingGuard;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
-use crate::binding_guard::BindingGuard;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackendSelection {

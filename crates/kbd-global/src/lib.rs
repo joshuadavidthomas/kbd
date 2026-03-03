@@ -89,9 +89,9 @@
 //! - [`kbd-evdev`](kbd_evdev) — evdev device management and key conversion
 
 mod backend;
+mod binding_guard;
 mod engine;
 mod error;
-mod binding_guard;
 mod manager;
 
 // Re-exports from kbd — all domain types live there.
@@ -107,12 +107,16 @@ pub use kbd::binding::BindingId;
 pub use kbd::binding::BindingOptions;
 /// Restricts a binding to specific input devices.
 pub use kbd::binding::DeviceFilter;
-/// Controls whether a binding is visible through overlay layers.
-pub use kbd::binding::OverlayVisibility;
 /// Controls whether matched key events are forwarded to the OS.
 pub use kbd::binding::KeyPropagation;
+/// Controls whether a binding is visible through overlay layers.
+pub use kbd::binding::OverlayVisibility;
 /// A fully-configured binding ready for registration.
 pub use kbd::binding::RegisteredBinding;
+/// Core dispatch engine that tracks bindings, layers, and sequences.
+pub use kbd::dispatcher::Dispatcher;
+/// The outcome of feeding a key event into the dispatcher.
+pub use kbd::dispatcher::MatchResult;
 /// Introspection snapshot of an active layer.
 pub use kbd::introspection::ActiveLayerInfo;
 /// Introspection snapshot of a registered binding.
@@ -141,17 +145,13 @@ pub use kbd::layer::Layer;
 pub use kbd::layer::LayerOptions;
 /// What happens to key events that don't match any binding in a layer.
 pub use kbd::layer::UnmatchedKeys;
-/// Core dispatch engine that tracks bindings, layers, and sequences.
-pub use kbd::dispatcher::Dispatcher;
-/// The outcome of feeding a key event into the dispatcher.
-pub use kbd::dispatcher::MatchResult;
 
 /// Which input backend to use.
 pub use crate::backend::Backend;
-/// Error type for all kbd-global operations.
-pub use crate::error::Error;
 /// RAII guard that keeps a binding alive until dropped.
 pub use crate::binding_guard::BindingGuard;
+/// Error type for all kbd-global operations.
+pub use crate::error::Error;
 /// The main entry point — manages the engine thread and hotkey registration.
 pub use crate::manager::HotkeyManager;
 /// Builder for configuring backend and runtime options before starting.

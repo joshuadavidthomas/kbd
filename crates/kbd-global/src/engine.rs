@@ -48,14 +48,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 
-use kbd::Key;
 use kbd::Dispatcher;
+use kbd::Key;
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
+use kbd::dispatcher::MatchResult;
 use kbd::key::Hotkey;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
-use kbd::dispatcher::MatchResult;
 
 use crate::Error;
 use crate::engine::devices::DeviceKeyEvent;
@@ -321,11 +321,15 @@ impl Engine {
         // Determine event disposition based on match outcome and grab state
         let disposition = match outcome {
             MatchOutcome::Matched { propagation } => match propagation {
-                KeyPropagation::Continue if matches!(self.grab_state, GrabState::Enabled { .. }) => {
+                KeyPropagation::Continue
+                    if matches!(self.grab_state, GrabState::Enabled { .. }) =>
+                {
                     self.forward_event(event.key, event.transition);
                     KeyEventDisposition::MatchedForwarded
                 }
-                KeyPropagation::Continue | KeyPropagation::Stop => KeyEventDisposition::MatchedConsumed,
+                KeyPropagation::Continue | KeyPropagation::Stop => {
+                    KeyEventDisposition::MatchedConsumed
+                }
             },
             MatchOutcome::Suppressed => KeyEventDisposition::MatchedConsumed,
             MatchOutcome::NoMatch | MatchOutcome::Ignored => {
@@ -735,7 +739,7 @@ mod tests {
             panic!("intentional test panic");
         });
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(id1, hotkey1, action1))
             .unwrap();
 
@@ -746,7 +750,7 @@ mod tests {
             post_panic_clone.fetch_add(1, Ordering::Relaxed);
         });
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(id2, hotkey2, action2))
             .unwrap();
 
@@ -793,7 +797,7 @@ mod tests {
         let id = BindingId::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(id, hotkey, Action::Suppress))
             .unwrap();
 
@@ -820,7 +824,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(id, hotkey, action))
             .unwrap();
 
@@ -1078,21 +1082,24 @@ mod tests {
         // Verify layer was stored by pushing and checking behavior:
         // the oneshot layer should auto-pop after 1 keypress
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("oneshot-nav"))
             .unwrap();
 
         // H should match in the layer
         let result = engine
-            .matcher
+            .dispatcher
             .process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, kbd::matcher::MatchResult::Matched { .. }));
+        assert!(matches!(
+            result,
+            kbd::dispatcher::MatchResult::Matched { .. }
+        ));
 
         // After oneshot depth of 1, layer should be gone
         let result = engine
-            .matcher
+            .dispatcher
             .process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, kbd::matcher::MatchResult::NoMatch));
+        assert!(matches!(result, kbd::dispatcher::MatchResult::NoMatch));
     }
 
     #[test]
@@ -1104,7 +1111,7 @@ mod tests {
 
         // Push the empty layer — should succeed and have 0 bindings
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("empty"))
             .unwrap();
         let active = engine.dispatcher.active_layers();
@@ -1182,7 +1189,7 @@ mod tests {
         }
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from(name))
             .unwrap();
     }
@@ -1249,7 +1256,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
 
         engine
-            .matcher
+            .dispatcher
             .toggle_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1276,7 +1283,7 @@ mod tests {
 
         // Toggle off
         engine
-            .matcher
+            .dispatcher
             .toggle_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1289,7 +1296,7 @@ mod tests {
     fn toggle_undefined_layer_returns_error() {
         let mut engine = test_engine();
         let result = engine
-            .matcher
+            .dispatcher
             .toggle_layer(kbd::action::LayerName::from("nonexistent"));
         assert!(matches!(result, Err(kbd::Error::LayerNotDefined)));
     }
@@ -1345,7 +1352,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
@@ -1369,7 +1376,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
@@ -1384,7 +1391,7 @@ mod tests {
             .swallow();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
@@ -1410,7 +1417,7 @@ mod tests {
 
         // Register a global binding that pushes the layer
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F1),
@@ -1442,7 +1449,7 @@ mod tests {
             .bind(Key::ESCAPE, Action::PopLayer);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1476,7 +1483,7 @@ mod tests {
 
         // Register toggle binding
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F2),
@@ -1507,7 +1514,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
@@ -1558,7 +1565,7 @@ mod tests {
             .oneshot(1);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("oneshot"))
             .unwrap();
 
@@ -1588,7 +1595,7 @@ mod tests {
             .oneshot(1);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("oneshot"))
             .unwrap();
 
@@ -1617,7 +1624,7 @@ mod tests {
             .oneshot(2);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("oneshot2"))
             .unwrap();
 
@@ -1764,7 +1771,7 @@ mod tests {
             .timeout(Duration::from_millis(50));
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("timed"))
             .unwrap();
 
@@ -1800,7 +1807,7 @@ mod tests {
             .timeout(Duration::from_millis(100));
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("timed"))
             .unwrap();
 
@@ -1870,7 +1877,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -1898,7 +1905,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -1935,7 +1942,7 @@ mod tests {
             .swallow();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
@@ -1962,7 +1969,7 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -1992,7 +1999,7 @@ mod tests {
             .bind(Key::J, Action::Suppress);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -2020,7 +2027,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -2055,7 +2062,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -2092,7 +2099,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -2153,7 +2160,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
@@ -2164,7 +2171,7 @@ mod tests {
         let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -2203,11 +2210,11 @@ mod tests {
         engine.dispatcher.define_layer(layer2).unwrap();
 
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
@@ -2249,7 +2256,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -2261,7 +2268,7 @@ mod tests {
             .unwrap();
 
         let result = engine
-            .matcher
+            .dispatcher
             .bindings_for_key(&Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert!(result.is_some());
 
@@ -2276,7 +2283,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -2285,7 +2292,7 @@ mod tests {
             .unwrap();
 
         let result = engine
-            .matcher
+            .dispatcher
             .bindings_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
         assert!(result.is_none());
     }
@@ -2295,7 +2302,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Suppress)
                     .with_options(
@@ -2307,7 +2314,7 @@ mod tests {
         let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -2344,11 +2351,11 @@ mod tests {
         engine.dispatcher.define_layer(layer2).unwrap();
 
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
@@ -2369,7 +2376,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -2386,7 +2393,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
@@ -2397,7 +2404,7 @@ mod tests {
         let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -2427,11 +2434,11 @@ mod tests {
         engine.dispatcher.define_layer(layer2).unwrap();
 
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
@@ -2524,7 +2531,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
@@ -2551,7 +2558,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
@@ -2564,7 +2571,7 @@ mod tests {
             .swallow();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
@@ -2583,7 +2590,7 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::CONTROL_LEFT),
@@ -2592,7 +2599,7 @@ mod tests {
             .unwrap();
 
         let result = engine
-            .matcher
+            .dispatcher
             .bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
         assert!(
             result.is_none(),

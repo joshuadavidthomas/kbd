@@ -11,9 +11,9 @@ use kbd_global::DeviceFilter;
 use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;
 use kbd_global::Key;
+use kbd_global::KeyPropagation;
 use kbd_global::Modifier;
 use kbd_global::OverlayVisibility;
-use kbd_global::KeyPropagation;
 
 #[test]
 fn action_from_closure_runs_callback() {

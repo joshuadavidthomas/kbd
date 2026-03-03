@@ -6,11 +6,11 @@
 //! ```
 
 use eframe::egui;
+use kbd::Dispatcher;
 use kbd::Hotkey;
 use kbd::Key;
 use kbd::KeyTransition;
 use kbd::MatchResult;
-use kbd::Dispatcher;
 use kbd::Modifier;
 use kbd_egui::EguiEventExt;
 

@@ -87,9 +87,7 @@ impl fmt::Debug for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Callback(_) => f.write_str("Action::Callback(..)"),
-            Self::EmitHotkey(hotkey) => {
-                f.debug_tuple("Action::EmitHotkey").field(hotkey).finish()
-            }
+            Self::EmitHotkey(hotkey) => f.debug_tuple("Action::EmitHotkey").field(hotkey).finish(),
             Self::EmitSequence(sequence) => f
                 .debug_tuple("Action::EmitSequence")
                 .field(sequence)

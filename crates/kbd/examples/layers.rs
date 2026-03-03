@@ -12,12 +12,12 @@
 use std::time::Duration;
 
 use kbd::Action;
+use kbd::Dispatcher;
 use kbd::Hotkey;
 use kbd::Key;
 use kbd::KeyTransition;
 use kbd::Layer;
 use kbd::MatchResult;
-use kbd::Dispatcher;
 use kbd::Modifier;
 
 fn main() {

@@ -449,8 +449,8 @@ mod tests {
     use evdev::KeyCode;
     use kbd::Key;
 
-    use super::KbdKeyExt;
     use super::EvdevKeyCodeExt;
+    use super::KbdKeyExt;
 
     #[test]
     fn keycode_to_key_round_trip() {

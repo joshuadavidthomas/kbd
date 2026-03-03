@@ -49,6 +49,8 @@
 pub mod action;
 /// Binding types — pattern + action + options, device filtering.
 pub mod binding;
+/// Synchronous dispatch engine — feed key events, get match results.
+pub mod dispatcher;
 /// Error types for parsing, conflicts, and layer operations.
 pub mod error;
 /// Read-only snapshots of dispatcher state for UI and debugging.
@@ -59,17 +61,17 @@ pub mod key;
 pub mod key_state;
 /// Named binding groups that stack — oneshot, timeout, swallow modes.
 pub mod layer;
-/// Synchronous dispatch engine — feed key events, get match results.
-pub mod dispatcher;
 
 pub use crate::action::Action;
 pub use crate::action::LayerName;
 pub use crate::binding::BindingId;
 pub use crate::binding::BindingOptions;
 pub use crate::binding::DeviceFilter;
-pub use crate::binding::OverlayVisibility;
 pub use crate::binding::KeyPropagation;
+pub use crate::binding::OverlayVisibility;
 pub use crate::binding::RegisteredBinding;
+pub use crate::dispatcher::Dispatcher;
+pub use crate::dispatcher::MatchResult;
 pub use crate::error::Error;
 pub use crate::introspection::ActiveLayerInfo;
 pub use crate::introspection::BindingInfo;
@@ -85,8 +87,6 @@ pub use crate::key_state::KeyTransition;
 pub use crate::layer::Layer;
 pub use crate::layer::LayerOptions;
 pub use crate::layer::UnmatchedKeys;
-pub use crate::dispatcher::Dispatcher;
-pub use crate::dispatcher::MatchResult;
 
 #[cfg(test)]
 mod tests {
@@ -138,7 +138,9 @@ mod tests {
     fn core_dispatcher_finds_binding() {
         let mut dispatcher = Dispatcher::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-        dispatcher.register(hotkey.clone(), Action::Suppress).unwrap();
+        dispatcher
+            .register(hotkey.clone(), Action::Suppress)
+            .unwrap();
 
         let result = dispatcher.process(&hotkey, key_state::KeyTransition::Press);
         assert!(matches!(result, dispatcher::MatchResult::Matched { .. }));

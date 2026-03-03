@@ -381,10 +381,7 @@ impl WinitModifiersExt for ModifiersState {
 ///
 /// Returns `None` if the physical key has no `kbd` equivalent.
 #[must_use]
-pub fn winit_key_to_hotkey(
-    physical_key: PhysicalKey,
-    modifiers: ModifiersState,
-) -> Option<Hotkey> {
+pub fn winit_key_to_hotkey(physical_key: PhysicalKey, modifiers: ModifiersState) -> Option<Hotkey> {
     let key = physical_key.to_key()?;
 
     let mut mods = modifiers.to_modifiers();
@@ -731,15 +728,13 @@ mod tests {
 
     #[test]
     fn simple_key_to_hotkey() {
-        let hotkey =
-            winit_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyC), ModifiersState::empty());
+        let hotkey = winit_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyC), ModifiersState::empty());
         assert_eq!(hotkey, Some(Hotkey::new(Key::C)));
     }
 
     #[test]
     fn key_with_ctrl_to_hotkey() {
-        let hotkey =
-            winit_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyC), ModifiersState::CONTROL);
+        let hotkey = winit_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyC), ModifiersState::CONTROL);
         assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
     }
 
