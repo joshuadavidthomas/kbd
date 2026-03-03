@@ -558,6 +558,25 @@ mod tests {
         assert_eq!(KeyCode::Char('中').to_key(), None);
     }
 
+    #[test]
+    fn reverse_media_key_returns_none() {
+        assert_eq!(KeyCode::Media(MediaKeyCode::Reverse).to_key(), None);
+    }
+
+    #[test]
+    fn unmappable_modifier_keycodes_return_none() {
+        assert_eq!(KeyCode::Modifier(ModifierKeyCode::LeftMeta).to_key(), None);
+        assert_eq!(KeyCode::Modifier(ModifierKeyCode::RightMeta).to_key(), None);
+        assert_eq!(
+            KeyCode::Modifier(ModifierKeyCode::IsoLevel3Shift).to_key(),
+            None
+        );
+        assert_eq!(
+            KeyCode::Modifier(ModifierKeyCode::IsoLevel5Shift).to_key(),
+            None
+        );
+    }
+
     // CrosstermModifiersExt tests
 
     #[test]
