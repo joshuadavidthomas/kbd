@@ -6,7 +6,6 @@
 //! - All registered bindings
 //! - The layer stack
 //! - Key state (what's currently pressed)
-//! - Sequence and tap-hold state machines
 //! - The press cache (for correct releases across layer transitions)
 //! - Device handles and the uinput forwarder
 //!
@@ -20,17 +19,15 @@
 //!     poll(device_fds + wake_fd, timeout)
 //!     drain_commands()        // process register/unregister/layer ops
 //!     process_key_events()    // for each ready device
-//!     check_timers()          // sequence timeouts, tap-hold thresholds
+//!     check_timers()          // layer timeouts
 //! }
 //! ```
 //!
 //! # Modules
 //!
-//! - [`sequence`] — sequence pattern state machine
-//! - [`tap_hold`] — tap-hold pattern state machine
 //! - [`devices`] — device discovery, hotplug, capability detection
 //! - [`forwarder`] — uinput virtual device for event forwarding/emission
-//! - [`types`] — shared engine types (grab state, dispositions, layer stack entries)
+//! - [`types`] — shared engine types (grab state, dispositions)
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
 //!
@@ -58,8 +55,6 @@ pub(crate) mod command;
 pub(crate) mod devices;
 pub(crate) mod forwarder;
 pub(crate) mod runtime;
-pub(crate) mod sequence;
-pub(crate) mod tap_hold;
 pub(crate) mod types;
 mod wake;
 

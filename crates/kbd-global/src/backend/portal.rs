@@ -1,2 +1,0 @@
-//! XDG `GlobalShortcuts` portal backend.
-//!

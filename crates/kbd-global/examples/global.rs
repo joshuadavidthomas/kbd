@@ -10,11 +10,7 @@
 
 use std::sync::mpsc;
 
-use kbd::action::Action;
-use kbd::hotkey::Hotkey;
-use kbd::hotkey::Modifier;
-use kbd::key::Key;
-use kbd::layer::Layer;
+use kbd::prelude::*;
 use kbd_global::Error;
 use kbd_global::HotkeyManager;
 
