@@ -1,5 +1,11 @@
 # kbd: Implementation Plan
 
+> **Note:** This document was written during implementation. Some names
+> have since changed (e.g., `Matcher` → `Dispatcher`, `Handle` →
+> `BindingGuard`, `Passthrough` → `KeyPropagation`, `EmitKey` →
+> `EmitHotkey`, `kbd-core` → `kbd`). See `docs/api-review-v0.1.0.md`
+> for the full list of renames.
+
 Ground-up rebuild based on [DESIGN.md](DESIGN.md). The project is
 `kbd`; all crates use the `kbd-` prefix: `kbd-core`, `kbd-global`,
 `kbd-crossterm`, etc.

@@ -1,9 +1,8 @@
 # kbd-evdev
 
-[![crates.io](https://img.shields.io/crates/v/kbd-evdev.svg)](https://crates.io/crates/kbd-evdev)
-[![docs.rs](https://docs.rs/kbd-evdev/badge.svg)](https://docs.rs/kbd-evdev)
+> **Internal crate** — not published to crates.io. Used by [`kbd-global`](../kbd-global).
 
-Linux evdev backend for [`kbd`](https://crates.io/crates/kbd) — device discovery, hotplug, grab, and event forwarding. Most users want [`kbd-global`](https://crates.io/crates/kbd-global), which wraps this in a threaded runtime.
+Linux evdev backend for [`kbd`](../kbd) — device discovery, hotplug, grab, and event forwarding.
 
 ## Features
 

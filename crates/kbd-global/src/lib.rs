@@ -85,8 +85,7 @@
 //!
 //! # See also
 //!
-//! - [`kbd`] — core matching engine, key types, and layer logic
-//! - [`kbd-evdev`](kbd_evdev) — evdev device management and key conversion
+//! - [`kbd`] — core dispatch engine, key types, and layer logic
 
 mod backend;
 mod binding_guard;

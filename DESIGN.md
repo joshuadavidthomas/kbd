@@ -1,5 +1,11 @@
 # kbd: Redesign
 
+> **Note:** This document was written during initial design. Some names
+> have since changed (e.g., `Matcher` → `Dispatcher`, `Handle` →
+> `BindingGuard`, `Passthrough` → `KeyPropagation`, `EmitKey` →
+> `EmitHotkey`, `kbd-core` → `kbd`). See `docs/api-review-v0.1.0.md`
+> for the full list of renames.
+
 This document captures the core ideas, domain model, and architectural
 direction for kbd. It's not a task list — it's the conceptual
 foundation that the task list should serve.

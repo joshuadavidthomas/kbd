@@ -43,7 +43,6 @@
 //! # See Also
 //!
 //! - [`kbd-global`](https://docs.rs/kbd-global) — threaded manager with message passing and handles
-//! - [`kbd-evdev`](https://docs.rs/kbd-evdev) — Linux evdev key conversion and device monitoring
 //! - Bridge crates: [`kbd-crossterm`](https://docs.rs/kbd-crossterm),
 //!   [`kbd-egui`](https://docs.rs/kbd-egui), [`kbd-iced`](https://docs.rs/kbd-iced),
 //!   [`kbd-tao`](https://docs.rs/kbd-tao), [`kbd-winit`](https://docs.rs/kbd-winit)
