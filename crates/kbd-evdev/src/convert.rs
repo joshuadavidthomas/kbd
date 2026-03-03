@@ -8,7 +8,7 @@
 //!
 //! ```rust
 //! use evdev::KeyCode;
-//! use kbd::key::Key;
+//! use kbd::prelude::*;
 //! use kbd_evdev::EvdevKeyCodeExt;
 //!
 //! let key: Key = KeyCode::KEY_A.to_key();
@@ -18,11 +18,19 @@
 use evdev::KeyCode;
 use kbd::key::Key;
 
+mod private {
+    pub trait Sealed {}
+    impl Sealed for evdev::KeyCode {}
+    impl Sealed for kbd::key::Key {}
+}
+
 /// Extension trait on [`evdev::KeyCode`] for converting to [`kbd::key::Key`].
 ///
 /// Returns [`Key::UNIDENTIFIED`] for key codes that have no `kbd` mapping
 /// (e.g., `KEY_PROG2`, `KEY_COFFEE`).
-pub trait EvdevKeyCodeExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait EvdevKeyCodeExt: private::Sealed {
     /// Convert this evdev key code to a [`Key`].
     ///
     /// Returns [`Key::UNIDENTIFIED`] for key codes that don't have a mapping.
@@ -31,7 +39,7 @@ pub trait EvdevKeyCodeExt {
     ///
     /// ```
     /// use evdev::KeyCode;
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_evdev::EvdevKeyCodeExt;
     ///
     /// assert_eq!(KeyCode::KEY_A.to_key(), Key::A);
@@ -40,6 +48,7 @@ pub trait EvdevKeyCodeExt {
     /// // Unmapped codes return UNIDENTIFIED
     /// assert_eq!(KeyCode::KEY_PROG2.to_key(), Key::UNIDENTIFIED);
     /// ```
+    #[must_use]
     fn to_key(self) -> Key;
 }
 
@@ -47,7 +56,9 @@ pub trait EvdevKeyCodeExt {
 ///
 /// [`Key::UNIDENTIFIED`] and any key without a known evdev equivalent maps
 /// to `KeyCode::KEY_UNKNOWN`.
-pub trait KbdKeyExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait KbdKeyExt: private::Sealed {
     /// Convert this key to an evdev [`KeyCode`].
     ///
     /// [`Key::UNIDENTIFIED`] maps to `KeyCode::KEY_UNKNOWN`.
@@ -56,7 +67,7 @@ pub trait KbdKeyExt {
     ///
     /// ```
     /// use evdev::KeyCode;
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_evdev::KbdKeyExt;
     ///
     /// assert_eq!(Key::A.to_key_code(), KeyCode::KEY_A);
@@ -65,6 +76,7 @@ pub trait KbdKeyExt {
     /// // UNIDENTIFIED maps to KEY_UNKNOWN
     /// assert_eq!(Key::UNIDENTIFIED.to_key_code(), KeyCode::KEY_UNKNOWN);
     /// ```
+    #[must_use]
     fn to_key_code(self) -> KeyCode;
 }
 
@@ -627,6 +639,166 @@ mod tests {
             Key::META_RIGHT,
         ];
         for key in modifiers {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn all_digits_round_trip() {
+        for key in [
+            Key::DIGIT0,
+            Key::DIGIT1,
+            Key::DIGIT2,
+            Key::DIGIT3,
+            Key::DIGIT4,
+            Key::DIGIT5,
+            Key::DIGIT6,
+            Key::DIGIT7,
+            Key::DIGIT8,
+            Key::DIGIT9,
+        ] {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn all_function_keys_round_trip() {
+        for key in [
+            Key::F1,
+            Key::F2,
+            Key::F3,
+            Key::F4,
+            Key::F5,
+            Key::F6,
+            Key::F7,
+            Key::F8,
+            Key::F9,
+            Key::F10,
+            Key::F11,
+            Key::F12,
+            Key::F13,
+            Key::F14,
+            Key::F15,
+            Key::F16,
+            Key::F17,
+            Key::F18,
+            Key::F19,
+            Key::F20,
+            Key::F21,
+            Key::F22,
+            Key::F23,
+            Key::F24,
+        ] {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn all_numpad_keys_round_trip() {
+        for key in [
+            Key::NUMPAD0,
+            Key::NUMPAD1,
+            Key::NUMPAD2,
+            Key::NUMPAD3,
+            Key::NUMPAD4,
+            Key::NUMPAD5,
+            Key::NUMPAD6,
+            Key::NUMPAD7,
+            Key::NUMPAD8,
+            Key::NUMPAD9,
+            Key::NUMPAD_DECIMAL,
+            Key::NUMPAD_ADD,
+            Key::NUMPAD_SUBTRACT,
+            Key::NUMPAD_MULTIPLY,
+            Key::NUMPAD_DIVIDE,
+            Key::NUMPAD_ENTER,
+            Key::NUMPAD_EQUAL,
+            Key::NUMPAD_COMMA,
+            Key::NUMPAD_PAREN_LEFT,
+            Key::NUMPAD_PAREN_RIGHT,
+        ] {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn punctuation_keys_round_trip() {
+        for key in [
+            Key::MINUS,
+            Key::EQUAL,
+            Key::BRACKET_LEFT,
+            Key::BRACKET_RIGHT,
+            Key::BACKSLASH,
+            Key::SEMICOLON,
+            Key::QUOTE,
+            Key::BACKQUOTE,
+            Key::COMMA,
+            Key::PERIOD,
+            Key::SLASH,
+        ] {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn navigation_keys_round_trip() {
+        for key in [
+            Key::ARROW_UP,
+            Key::ARROW_DOWN,
+            Key::ARROW_LEFT,
+            Key::ARROW_RIGHT,
+            Key::HOME,
+            Key::END,
+            Key::PAGE_UP,
+            Key::PAGE_DOWN,
+            Key::INSERT,
+            Key::DELETE,
+        ] {
+            let code = key.to_key_code();
+            let parsed = code.to_key();
+            assert_eq!(parsed, key, "round-trip failed for {key:?}");
+        }
+    }
+
+    #[test]
+    fn multiple_unmapped_keycodes_return_unidentified() {
+        for code in [
+            KeyCode::KEY_PROG2,
+            KeyCode::KEY_COFFEE,
+            KeyCode::KEY_DASHBOARD,
+        ] {
+            assert_eq!(
+                code.to_key(),
+                Key::UNIDENTIFIED,
+                "expected UNIDENTIFIED for {code:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cjk_keys_round_trip() {
+        for key in [
+            Key::CONVERT,
+            Key::NON_CONVERT,
+            Key::KANA_MODE,
+            Key::HIRAGANA,
+            Key::KATAKANA,
+            Key::LANG1,
+            Key::LANG2,
+            Key::INTL_BACKSLASH,
+            Key::INTL_RO,
+            Key::INTL_YEN,
+        ] {
             let code = key.to_key_code();
             let parsed = code.to_key();
             assert_eq!(parsed, key, "round-trip failed for {key:?}");

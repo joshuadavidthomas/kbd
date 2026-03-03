@@ -1,9 +1,7 @@
 //! uinput virtual device for event forwarding and emission.
 //!
 //! In grab mode, unmatched key events are re-emitted through a virtual
-//! device so they reach applications normally. Also used for `Action::EmitHotkey`
-//! to produce synthetic key events.
-//!
+//! device so they reach applications normally.
 //!
 //! Note: keyd creates two virtual devices (keyboard + pointer). For now
 //! we only need one (keyboard).

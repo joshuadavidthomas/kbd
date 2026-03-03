@@ -36,7 +36,7 @@ kbd-evdev = "0.1"
 
 ```rust
 use evdev::KeyCode;
-use kbd::key::Key;
+use kbd::prelude::*;
 use kbd_evdev::{EvdevKeyCodeExt, KbdKeyExt};
 
 // evdev → kbd
