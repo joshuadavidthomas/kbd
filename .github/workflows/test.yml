@@ -56,4 +56,3 @@ jobs:
 
       - name: Run tests
         run: cargo test -q --all-features
-
