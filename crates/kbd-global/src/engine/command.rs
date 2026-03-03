@@ -7,8 +7,6 @@
 use std::sync::Arc;
 use std::sync::mpsc;
 
-use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::action::LayerName;
 use kbd::binding::BindingId;
 use kbd::binding::RegisteredBinding;
@@ -16,6 +14,8 @@ use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
 use kbd::introspection::ConflictInfo;
 use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use kbd::layer::Layer;
 
 use super::wake::WakeFd;

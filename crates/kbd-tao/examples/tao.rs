@@ -7,11 +7,11 @@
 
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
 use kbd::key::Hotkey;
 use kbd::key::Key;
-use kbd::key_state::KeyTransition;
-use kbd::dispatcher::MatchResult;
 use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 use kbd_tao::TaoEventExt;
 use tao::event::Event;
 use tao::event::WindowEvent;

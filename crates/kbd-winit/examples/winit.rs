@@ -10,11 +10,11 @@ use std::sync::Arc;
 
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
 use kbd::key::Hotkey;
 use kbd::key::Key;
-use kbd::key_state::KeyTransition;
-use kbd::dispatcher::MatchResult;
 use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 use kbd_winit::WinitEventExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;

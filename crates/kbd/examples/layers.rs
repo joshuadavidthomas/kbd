@@ -13,12 +13,12 @@ use std::time::Duration;
 
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
 use kbd::key::Hotkey;
 use kbd::key::Key;
+use kbd::key::Modifier;
 use kbd::key_state::KeyTransition;
 use kbd::layer::Layer;
-use kbd::dispatcher::MatchResult;
-use kbd::key::Modifier;
 
 fn main() {
     let mut matcher = setup_matcher();

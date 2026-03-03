@@ -206,7 +206,7 @@ impl Dispatcher {
         &mut self,
         hotkey: impl Into<Hotkey>,
         action: impl Into<Action>,
-    ) -> Result<BindingId, crate::Error> {
+    ) -> Result<BindingId, crate::error::Error> {
         let id = BindingId::new();
         let binding = RegisteredBinding::new(id, hotkey.into(), action.into());
         self.register_binding(binding)?;
@@ -216,13 +216,16 @@ impl Dispatcher {
     /// Register a [`RegisteredBinding`] with full options control.
     ///
     /// Returns `Error::AlreadyRegistered` if a binding for the same hotkey exists.
-    pub fn register_binding(&mut self, binding: RegisteredBinding) -> Result<(), crate::Error> {
+    pub fn register_binding(
+        &mut self,
+        binding: RegisteredBinding,
+    ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
 
         if self.bindings_by_id.contains_key(&id) || self.binding_ids_by_hotkey.contains_key(&hotkey)
         {
-            return Err(crate::Error::AlreadyRegistered);
+            return Err(crate::error::Error::AlreadyRegistered);
         }
 
         self.binding_ids_by_hotkey.insert(hotkey, id);
@@ -246,11 +249,11 @@ impl Dispatcher {
     /// Define a named layer. The layer is not active until pushed.
     ///
     /// Returns `Error::LayerAlreadyDefined` if a layer with the same name exists.
-    pub fn define_layer(&mut self, layer: crate::layer::Layer) -> Result<(), crate::Error> {
+    pub fn define_layer(&mut self, layer: crate::layer::Layer) -> Result<(), crate::error::Error> {
         let (name, bindings, options) = layer.into_parts();
         match self.layers.entry(name) {
             std::collections::hash_map::Entry::Occupied(_) => {
-                Err(crate::Error::LayerAlreadyDefined)
+                Err(crate::error::Error::LayerAlreadyDefined)
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(StoredLayer { bindings, options });
@@ -262,12 +265,12 @@ impl Dispatcher {
     /// Push a named layer onto the stack, activating its bindings.
     ///
     /// Returns `Error::LayerNotDefined` if no layer with this name is defined.
-    pub fn push_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::Error> {
+    pub fn push_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
         let name = name.into();
         let stored = self
             .layers
             .get(&name)
-            .ok_or(crate::Error::LayerNotDefined)?;
+            .ok_or(crate::error::Error::LayerNotDefined)?;
         let oneshot_remaining = stored.options.oneshot();
         let timeout = stored.options.timeout().map(|duration| LayerTimeout {
             duration,
@@ -284,20 +287,20 @@ impl Dispatcher {
     /// Pop the topmost layer from the stack.
     ///
     /// Returns the popped layer's name, or `Error::EmptyLayerStack` if empty.
-    pub fn pop_layer(&mut self) -> Result<LayerName, crate::Error> {
+    pub fn pop_layer(&mut self) -> Result<LayerName, crate::error::Error> {
         self.layer_stack
             .pop()
             .map(|entry| entry.name)
-            .ok_or(crate::Error::EmptyLayerStack)
+            .ok_or(crate::error::Error::EmptyLayerStack)
     }
 
     /// Toggle a layer: push if not active, remove if active.
     ///
     /// Returns `Error::LayerNotDefined` if no layer with this name is defined.
-    pub fn toggle_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::Error> {
+    pub fn toggle_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
         let name = name.into();
         if !self.layers.contains_key(&name) {
-            return Err(crate::Error::LayerNotDefined);
+            return Err(crate::error::Error::LayerNotDefined);
         }
         if let Some(pos) = self
             .layer_stack
@@ -692,11 +695,11 @@ mod matcher_tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::Key;
     use crate::binding::BindingOptions;
     use crate::binding::OverlayVisibility;
     use crate::introspection::BindingLocation;
     use crate::introspection::ShadowedStatus;
+    use crate::key::Key;
     use crate::key::Modifier;
     use crate::layer::Layer;
 
@@ -729,7 +732,10 @@ mod matcher_tests {
             .register(Hotkey::new(Key::A), Action::Suppress)
             .unwrap();
         let result = matcher.register(Hotkey::new(Key::A), Action::Suppress);
-        assert!(matches!(result, Err(crate::Error::AlreadyRegistered)));
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
     }
 
     #[test]
@@ -937,14 +943,14 @@ mod matcher_tests {
     fn push_undefined_layer_returns_error() {
         let mut matcher = Dispatcher::new();
         let result = matcher.push_layer("nonexistent");
-        assert!(matches!(result, Err(crate::Error::LayerNotDefined)));
+        assert!(matches!(result, Err(crate::error::Error::LayerNotDefined)));
     }
 
     #[test]
     fn pop_empty_stack_returns_error() {
         let mut matcher = Dispatcher::new();
         let result = matcher.pop_layer();
-        assert!(matches!(result, Err(crate::Error::EmptyLayerStack)));
+        assert!(matches!(result, Err(crate::error::Error::EmptyLayerStack)));
     }
 
     #[test]
@@ -954,7 +960,10 @@ mod matcher_tests {
             .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
             .unwrap();
         let result = matcher.define_layer(Layer::new("nav").bind(Key::J, Action::Suppress));
-        assert!(matches!(result, Err(crate::Error::LayerAlreadyDefined)));
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::LayerAlreadyDefined)
+        ));
     }
 
     #[test]

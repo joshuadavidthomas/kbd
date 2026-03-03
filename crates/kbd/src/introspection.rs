@@ -71,7 +71,7 @@ pub enum BindingLocation {
 /// // The global H binding is now shadowed by the nav layer
 /// let bindings = matcher.list_bindings();
 /// let global_h = bindings.iter()
-///     .find(|b| b.location == kbd::BindingLocation::Global)
+///     .find(|b| b.location == kbd::introspection::BindingLocation::Global)
 ///     .unwrap();
 /// assert!(matches!(global_h.shadowed, ShadowedStatus::ShadowedBy(_)));
 /// ```

@@ -7,11 +7,11 @@
 
 use eframe::egui;
 use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
 use kbd::key::Hotkey;
 use kbd::key::Key;
-use kbd::key_state::KeyTransition;
-use kbd::dispatcher::MatchResult;
 use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 use kbd_egui::EguiEventExt;
 
 fn main() -> eframe::Result {

@@ -65,35 +65,18 @@ pub mod key_state;
 /// Named binding groups that stack — oneshot, timeout, swallow modes.
 pub mod layer;
 
-pub use crate::action::Action;
-pub use crate::action::LayerName;
-pub use crate::binding::BindingId;
-pub use crate::binding::BindingOptions;
-pub use crate::binding::DeviceFilter;
-pub use crate::binding::KeyPropagation;
-pub use crate::binding::OverlayVisibility;
-pub use crate::binding::RegisteredBinding;
-pub use crate::dispatcher::Dispatcher;
-pub use crate::dispatcher::MatchResult;
-pub use crate::error::Error;
-pub use crate::introspection::ActiveLayerInfo;
-pub use crate::introspection::BindingInfo;
-pub use crate::introspection::BindingLocation;
-pub use crate::introspection::ConflictInfo;
-pub use crate::introspection::ShadowedStatus;
-pub use crate::key::Hotkey;
-pub use crate::key::HotkeySequence;
-pub use crate::key::Key;
-pub use crate::key::Modifier;
-pub use crate::key::ParseHotkeyError;
-pub use crate::key_state::KeyTransition;
-pub use crate::layer::Layer;
-pub use crate::layer::LayerOptions;
-pub use crate::layer::UnmatchedKeys;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::action::Action;
+    use crate::binding::BindingId;
+    use crate::dispatcher::Dispatcher;
+    use crate::error::Error;
+    use crate::key::Hotkey;
+    use crate::key::Key;
+    use crate::key::Modifier;
+    use crate::key_state::KeyTransition;
+    use crate::layer::Layer;
+    use crate::layer::UnmatchedKeys;
 
     #[test]
     fn core_key_types_exist_and_parse() {
@@ -130,10 +113,10 @@ mod tests {
 
     #[test]
     fn core_key_state_tracks_presses() {
-        let mut state = key_state::KeyState::default();
-        state.apply_device_event(10, Key::A, key_state::KeyTransition::Press);
+        let mut state = crate::key_state::KeyState::default();
+        state.apply_device_event(10, Key::A, KeyTransition::Press);
         assert!(state.is_pressed(Key::A));
-        state.apply_device_event(10, Key::A, key_state::KeyTransition::Release);
+        state.apply_device_event(10, Key::A, KeyTransition::Release);
         assert!(!state.is_pressed(Key::A));
     }
 
@@ -145,7 +128,10 @@ mod tests {
             .register(hotkey.clone(), Action::Suppress)
             .unwrap();
 
-        let result = dispatcher.process(&hotkey, key_state::KeyTransition::Press);
-        assert!(matches!(result, dispatcher::MatchResult::Matched { .. }));
+        let result = dispatcher.process(&hotkey, KeyTransition::Press);
+        assert!(matches!(
+            result,
+            crate::dispatcher::MatchResult::Matched { .. }
+        ));
     }
 }

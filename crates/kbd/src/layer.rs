@@ -266,9 +266,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::Action;
-    use crate::Key;
-    use crate::Modifier;
+    use crate::action::Action;
+    use crate::key::Key;
+    use crate::key::Modifier;
 
     #[test]
     fn layer_new_creates_with_name() {

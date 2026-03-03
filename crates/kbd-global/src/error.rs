@@ -55,14 +55,14 @@ pub enum Error {
     EmptyLayerStack,
 }
 
-impl From<kbd::Error> for Error {
-    fn from(error: kbd::Error) -> Self {
+impl From<kbd::error::Error> for Error {
+    fn from(error: kbd::error::Error) -> Self {
         match error {
-            kbd::Error::Parse(e) => Self::Parse(e),
-            kbd::Error::AlreadyRegistered => Self::AlreadyRegistered,
-            kbd::Error::LayerAlreadyDefined => Self::LayerAlreadyDefined,
-            kbd::Error::LayerNotDefined => Self::LayerNotDefined,
-            kbd::Error::EmptyLayerStack => Self::EmptyLayerStack,
+            kbd::error::Error::Parse(e) => Self::Parse(e),
+            kbd::error::Error::AlreadyRegistered => Self::AlreadyRegistered,
+            kbd::error::Error::LayerAlreadyDefined => Self::LayerAlreadyDefined,
+            kbd::error::Error::LayerNotDefined => Self::LayerNotDefined,
+            kbd::error::Error::EmptyLayerStack => Self::EmptyLayerStack,
         }
     }
 }

@@ -12,17 +12,17 @@
 
 use kbd::action::Action;
 use kbd::binding::BindingId;
-use kbd::introspection::BindingInfo;
-use kbd::introspection::BindingLocation;
 use kbd::binding::BindingOptions;
-use kbd::dispatcher::Dispatcher;
-use kbd::key::Hotkey;
-use kbd::key::Key;
-use kbd::layer::Layer;
-use kbd::key::Modifier;
 use kbd::binding::OverlayVisibility;
 use kbd::binding::RegisteredBinding;
+use kbd::dispatcher::Dispatcher;
+use kbd::introspection::BindingInfo;
+use kbd::introspection::BindingLocation;
 use kbd::introspection::ShadowedStatus;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::layer::Layer;
 
 fn main() {
     let (mut matcher, copy_id) = setup_matcher();

@@ -27,8 +27,6 @@ use std::fmt;
 use std::sync::Mutex;
 use std::sync::mpsc;
 
-use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::action::Action;
 use kbd::action::LayerName;
 use kbd::binding::BindingId;
@@ -38,6 +36,8 @@ use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
 use kbd::introspection::ConflictInfo;
 use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use kbd::layer::Layer;
 
 use crate::Error;
