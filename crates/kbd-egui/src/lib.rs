@@ -11,11 +11,11 @@
 //!
 //! # Extension traits
 //!
-//! - [`EguiKeyExt`] — converts an [`egui::Key`] to a [`kbd::Key`].
+//! - [`EguiKeyExt`] — converts an [`egui::Key`] to a [`kbd::key::Key`].
 //! - [`EguiModifiersExt`] — converts [`egui::Modifiers`] to a
 //!   `Vec<Modifier>`.
 //! - [`EguiEventExt`] — converts a full [`egui::Event`] keyboard event
-//!   to a [`kbd::Hotkey`].
+//!   to a [`kbd::key::Hotkey`].
 //!
 //! # Key mapping
 //!

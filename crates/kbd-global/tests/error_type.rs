@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 use std::error::Error as StdError;
 
+use kbd::key::Hotkey;
 use kbd_global::Error;
-use kbd_global::Hotkey;
 
 #[test]
 fn error_display_messages_are_actionable() {

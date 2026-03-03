@@ -9,11 +9,11 @@
 //! # Extension traits
 //!
 //! - [`CrosstermKeyExt`] — converts a [`crossterm::event::KeyCode`] to a
-//!   [`kbd::Key`].
+//!   [`kbd::key::Key`].
 //! - [`CrosstermModifiersExt`] — converts [`crossterm::event::KeyModifiers`]
 //!   to a `Vec<Modifier>`.
 //! - [`CrosstermEventExt`] — converts a full [`crossterm::event::KeyEvent`]
-//!   to a [`kbd::Hotkey`].
+//!   to a [`kbd::key::Hotkey`].
 //!
 //! # Key mapping
 //!

@@ -1,16 +1,13 @@
 //! Input backends — where key events come from.
 //!
 //! Currently evdev-only: direct `/dev/input/event*` access (universal Linux).
-//! XDG `GlobalShortcuts` portal backend planned for a future release.
+//! XDG `GlobalShortcuts` portal backend is not yet available.
 //!
 //! Explicit selection via `HotkeyManager::builder().backend(Backend::Evdev)`.
 //!
 //! The backend trait is minimal — it provides device access and capability
 //! information. The engine handles all event processing.
 //!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/backend.rs`
 
 pub(crate) mod evdev;
 

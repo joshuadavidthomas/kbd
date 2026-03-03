@@ -18,7 +18,7 @@
 use evdev::KeyCode;
 use kbd::key::Key;
 
-/// Extension trait on [`evdev::KeyCode`] for converting to [`kbd::Key`].
+/// Extension trait on [`evdev::KeyCode`] for converting to [`kbd::key::Key`].
 ///
 /// Returns [`Key::UNIDENTIFIED`] for key codes that have no `kbd` mapping
 /// (e.g., `KEY_PROG2`, `KEY_COFFEE`).
@@ -43,7 +43,7 @@ pub trait EvdevKeyCodeExt {
     fn to_key(self) -> Key;
 }
 
-/// Extension trait on [`kbd::Key`] for converting to [`evdev::KeyCode`].
+/// Extension trait on [`kbd::key::Key`] for converting to [`evdev::KeyCode`].
 ///
 /// [`Key::UNIDENTIFIED`] and any key without a known evdev equivalent maps
 /// to `KeyCode::KEY_UNKNOWN`.

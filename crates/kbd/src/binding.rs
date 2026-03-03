@@ -1,12 +1,14 @@
 //! The unified binding types — pattern + action + options.
 //!
 //! A binding is the core unit: "when this input pattern matches, do this
-//! action." [`BindingId`] uniquely identifies a binding. [`BindingOptions`]
-//! holds per-binding configuration. [`RegisteredBinding`] pairs them with
+//! action." [`BindingId`](crate::binding::BindingId) uniquely identifies a
+//! binding. [`BindingOptions`](crate::binding::BindingOptions) holds
+//! per-binding configuration.
+//! [`RegisteredBinding`](crate::binding::RegisteredBinding) pairs them with
 //! a hotkey and action for engine storage.
 //!
-//! Device filtering ([`DeviceFilter`]) is a pure data type describing
-//! device match criteria (name patterns, USB IDs).
+//! Device filtering ([`DeviceFilter`](crate::binding::DeviceFilter)) is a
+//! pure data type describing device match criteria (name patterns, USB IDs).
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -132,7 +134,7 @@ pub enum DeviceFilter {
 
 /// Per-binding behavioral options.
 ///
-/// Configure a binding's passthrough behavior, description, overlay visibility,
+/// Configure a binding's key propagation behavior, description, overlay visibility,
 /// and optional device filter. Built via method chaining:
 ///
 /// # Examples

@@ -4,11 +4,6 @@
 //! `/dev/input/` for device add/remove events. Probes new devices for
 //! keyboard capabilities before adding them to the poll set.
 //!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/listener/io.rs`,
-//! `archive/v0/src/listener/hotplug.rs`,
-//! `archive/v0/src/device.rs`
 
 use std::collections::HashMap;
 use std::collections::HashSet;

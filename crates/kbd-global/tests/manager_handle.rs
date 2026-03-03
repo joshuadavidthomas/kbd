@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use kbd_global::Error;
-use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;
-use kbd_global::Key;
-use kbd_global::Modifier;
 
 #[test]
 fn register_and_drop_handle_unregisters_hotkey() {

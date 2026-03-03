@@ -12,11 +12,11 @@
 //! # Extension traits
 //!
 //! - [`IcedKeyExt`] — converts an iced [`key::Code`] or [`key::Physical`]
-//!   to a [`kbd::Key`].
+//!   to a [`kbd::key::Key`].
 //! - [`IcedModifiersExt`] — converts iced [`Modifiers`] to a
 //!   `Vec<Modifier>`.
 //! - [`IcedEventExt`] — converts an iced keyboard [`Event`] to a
-//!   [`kbd::Hotkey`].
+//!   [`kbd::key::Hotkey`].
 //!
 //! # Key mapping
 //!

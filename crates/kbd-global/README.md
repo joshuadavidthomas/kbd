@@ -9,17 +9,19 @@ When a key combination happens on a Linux keyboard, do something. Works on Wayla
 
 ```toml
 [dependencies]
+kbd = "0.1"
 kbd-global = "0.1"
 ```
 
 ## Quick start
 
 ```rust,no_run
-use kbd_global::{HotkeyManager, Hotkey, Key, Modifier};
+use kbd::key::{Hotkey, Key, Modifier};
+use kbd_global::HotkeyManager;
 
 let manager = HotkeyManager::new()?;
 
-let _handle = manager.register(
+let _guard = manager.register(
     Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
     || println!("Ctrl+Shift+C pressed!"),
 )?;
@@ -28,7 +30,7 @@ std::thread::park();
 # Ok::<(), kbd_global::Error>(())
 ```
 
-All [`kbd`](https://crates.io/crates/kbd) domain types are re-exported, so this is the only dependency you need.
+Key types, actions, and layers come from [`kbd`](https://crates.io/crates/kbd). `kbd-global` provides the runtime ([`HotkeyManager`], [`BindingGuard`], [`Backend`]).
 
 ## Prerequisites
 
@@ -62,7 +64,10 @@ Layers let you define context-dependent bindings. Define a layer, push
 it onto the stack, and its bindings take priority over global ones:
 
 ```rust,no_run
-use kbd_global::{HotkeyManager, Hotkey, Key, Layer, Action};
+use kbd::action::Action;
+use kbd::key::{Hotkey, Key};
+use kbd::layer::Layer;
+use kbd_global::HotkeyManager;
 
 let manager = HotkeyManager::new()?;
 

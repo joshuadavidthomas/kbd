@@ -4,11 +4,9 @@
 //! - **Tap**: key released before threshold (execute tap action)
 //! - **Hold**: threshold exceeded or another key pressed (execute hold action)
 //!
-//! # Reference
+//! # Status
 //!
-//! Prior art: `archive/v0/src/tap_hold.rs`
-//! Future: overload variants (timeout-only, timeout-tap, idle-timeout)
-//! from `reference/keyd/src/keyboard.c`
+//! Not yet implemented.
 
 // TODO: TapHoldState — tracks pending/resolved tap-hold keys
 // TODO: on_key_event() — start pending, resolve on interrupt

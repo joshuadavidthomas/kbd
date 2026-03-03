@@ -1,15 +1,15 @@
 #![allow(missing_docs)]
 use std::time::Duration;
 
-use kbd_global::Action;
+use kbd::action::Action;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::layer::Layer;
+use kbd::layer::LayerOptions;
+use kbd::layer::UnmatchedKeys;
 use kbd_global::Error;
-use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;
-use kbd_global::Key;
-use kbd_global::Layer;
-use kbd_global::LayerOptions;
-use kbd_global::Modifier;
-use kbd_global::UnmatchedKeys;
 
 #[test]
 fn define_layer_via_manager() {
@@ -99,7 +99,7 @@ fn layer_default_options() {
     assert_eq!(options.description(), None);
 }
 
-// Phase 3.4: Binding metadata on layers
+// Binding metadata on layers
 
 #[test]
 fn layer_options_description_defaults_to_none() {
@@ -137,7 +137,7 @@ fn layer_description_preserved_through_define_layer() {
         .description("Navigation keys");
 
     // If define_layer succeeds, the metadata was accepted by the engine.
-    // Full introspection comes in Phase 3.5.
+    // Full introspection tested separately.
     let result = manager.define_layer(layer);
     assert!(result.is_ok());
 }

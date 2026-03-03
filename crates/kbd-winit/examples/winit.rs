@@ -25,7 +25,7 @@ use winit::window::Window;
 use winit::window::WindowId;
 
 struct App {
-    matcher: Dispatcher,
+    dispatcher: Dispatcher,
     modifiers: ModifiersState,
     window: Option<Arc<Window>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
@@ -33,21 +33,21 @@ struct App {
 
 impl App {
     fn new() -> Self {
-        let mut matcher = Dispatcher::new();
+        let mut dispatcher = Dispatcher::new();
 
-        matcher
+        dispatcher
             .register(
                 Hotkey::new(Key::S).modifier(Modifier::Ctrl),
                 Action::from(|| println!("  → Save!")),
             )
             .expect("register Ctrl+S");
-        matcher
+        dispatcher
             .register(
                 Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
                 Action::from(|| println!("  → Quit!")),
             )
             .expect("register Ctrl+Q");
-        matcher
+        dispatcher
             .register(
                 Hotkey::new(Key::SPACE),
                 Action::from(|| println!("  → Space!")),
@@ -62,7 +62,7 @@ impl App {
         println!("Focus the window and press keys.");
 
         Self {
-            matcher,
+            dispatcher,
             modifiers: ModifiersState::empty(),
             window: None,
             surface: None,
@@ -130,7 +130,7 @@ impl ApplicationHandler for App {
                     return;
                 };
 
-                match self.matcher.process(&hotkey, KeyTransition::Press) {
+                match self.dispatcher.process(&hotkey, KeyTransition::Press) {
                     MatchResult::Matched { action, .. } => {
                         println!("{hotkey} → matched!");
                         if let Action::Callback(cb) = action {

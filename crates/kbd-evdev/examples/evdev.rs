@@ -21,27 +21,27 @@ fn main() {
     println!("kbd-evdev example — press keys to see matches");
     println!();
 
-    let mut matcher = Dispatcher::new();
+    let mut dispatcher = Dispatcher::new();
 
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::A),
             Action::from(|| println!("  → A pressed!")),
         )
         .expect("register A");
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::ESCAPE),
             Action::from(|| println!("  → Escape!")),
         )
         .expect("register Escape");
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::SPACE),
             Action::from(|| println!("  → Space!")),
         )
         .expect("register Space");
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::ENTER),
             Action::from(|| println!("  → Enter!")),
@@ -94,7 +94,7 @@ fn main() {
             match event.transition {
                 KeyTransition::Press => {
                     print!("{hotkey}: ");
-                    match matcher.process(&hotkey, event.transition) {
+                    match dispatcher.process(&hotkey, event.transition) {
                         MatchResult::Matched { action, .. } => {
                             if let Action::Callback(cb) = action {
                                 cb();
@@ -111,7 +111,7 @@ fn main() {
                     }
                 }
                 KeyTransition::Release | KeyTransition::Repeat => {
-                    matcher.process(&hotkey, event.transition);
+                    dispatcher.process(&hotkey, event.transition);
                 }
             }
         }

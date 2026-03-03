@@ -27,22 +27,22 @@ fn main() {
         .build(&event_loop)
         .expect("create window");
 
-    let mut matcher = Dispatcher::new();
+    let mut dispatcher = Dispatcher::new();
     let mut modifiers = ModifiersState::empty();
 
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::S).modifier(Modifier::Ctrl),
             Action::from(|| println!("  → Save!")),
         )
         .expect("register Ctrl+S");
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
             Action::from(|| println!("  → Quit!")),
         )
         .expect("register Ctrl+Q");
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::SPACE),
             Action::from(|| println!("  → Space!")),
@@ -77,8 +77,8 @@ fn main() {
                         return;
                     };
 
-                    // Process through the matcher
-                    match matcher.process(&hotkey, KeyTransition::Press) {
+                    // Process through the dispatcher
+                    match dispatcher.process(&hotkey, KeyTransition::Press) {
                         MatchResult::Matched { action, .. } => {
                             println!("{hotkey} → matched!");
                             if let Action::Callback(cb) = action {

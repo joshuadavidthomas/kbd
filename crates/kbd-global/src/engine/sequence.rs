@@ -4,9 +4,6 @@
 //! timeout. Subsequent key events either advance the sequence, complete it,
 //! or reset it.
 //!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/listener/sequence.rs`
 
 // TODO: SequenceState — tracks all active/pending sequences
 // TODO: on_key_event() — advance, complete, or reset pending sequences

@@ -1,27 +1,23 @@
-name: test
+name: docs
 
 on:
   pull_request:
-    branches: [main]
     paths:
-      - .github/workflows/test.yml
+      - .github/workflows/docs.yml
       - crates/**
       - Cargo.toml
       - Cargo.lock
-      - Justfile
   push:
     branches: [main]
     paths:
-      - .github/workflows/test.yml
+      - .github/workflows/docs.yml
       - crates/**
       - Cargo.toml
       - Cargo.lock
-      - Justfile
   workflow_call:
-  workflow_dispatch:
 
 concurrency:
-  group: test-${{ github.ref }}
+  group: docs-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -37,7 +33,7 @@ jobs:
     steps:
       - run: true
 
-  test:
+  build:
     runs-on: ubuntu-24.04
     needs: [should-run]
     steps:
@@ -52,7 +48,8 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c
         with:
+          toolchain: nightly
           cache: true
 
-      - name: Run tests
-        run: cargo test -q --all-features
+      - name: Check docs build cleanly
+        run: RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo +nightly doc --all-features --workspace --no-deps

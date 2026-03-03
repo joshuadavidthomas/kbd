@@ -4,13 +4,9 @@
 //! device so they reach applications normally. Also used for `Action::EmitHotkey`
 //! to produce synthetic key events.
 //!
-//! # Reference
-//!
-//! Prior art: `archive/v0/src/listener/forwarding.rs`,
-//! `reference/keyd/src/vkbd/uinput.c`
 //!
 //! Note: keyd creates two virtual devices (keyboard + pointer). For now
-//! we only need one (keyboard). Pointer device is a future stretch goal.
+//! we only need one (keyboard).
 
 use kbd::key::Key;
 use kbd::key_state::KeyTransition;
@@ -49,7 +45,7 @@ pub struct UinputForwarder {
 impl UinputForwarder {
     /// Create a new virtual keyboard device via `/dev/uinput`.
     ///
-    /// The device is named [`VIRTUAL_DEVICE_NAME`] and supports all key
+    /// The device is named `kbd-virtual-keyboard` and supports all key
     /// codes up to code 767. [`DeviceManager`](crate::devices::DeviceManager)
     /// automatically skips this device during discovery to prevent
     /// feedback loops.

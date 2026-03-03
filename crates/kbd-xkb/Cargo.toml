@@ -12,7 +12,7 @@ publish = false
 keywords = ["xkb", "keyboard", "layout", "keysym"]
 categories = ["os::linux-apis"]
 
-# No dependencies yet. xkbcommon integration planned for Phase 4.9.
+# No dependencies yet.
 # Dependencies will include: xkbcommon, kbd
 
 [lints]

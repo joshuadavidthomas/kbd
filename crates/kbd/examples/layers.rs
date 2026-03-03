@@ -21,16 +21,16 @@ use kbd::key_state::KeyTransition;
 use kbd::layer::Layer;
 
 fn main() {
-    let mut matcher = setup_matcher();
+    let mut dispatcher = setup_dispatcher();
 
     println!("=== Layer stack demo ===");
     println!();
 
     // Without any layers, global bindings fire
     println!("1. Global bindings (no layers active):");
-    process(&mut matcher, "H", &Hotkey::new(Key::H));
+    process(&mut dispatcher, "H", &Hotkey::new(Key::H));
     process(
-        &mut matcher,
+        &mut dispatcher,
         "Ctrl+Q",
         &Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
     );
@@ -38,53 +38,56 @@ fn main() {
 
     // Push nav layer — H now fires nav binding instead of global
     println!("2. Push 'nav' layer — H is shadowed:");
-    matcher.push_layer("nav").expect("push nav");
-    process(&mut matcher, "H", &Hotkey::new(Key::H));
-    process(&mut matcher, "J", &Hotkey::new(Key::J));
+    dispatcher.push_layer("nav").expect("push nav");
+    process(&mut dispatcher, "H", &Hotkey::new(Key::H));
+    process(&mut dispatcher, "J", &Hotkey::new(Key::J));
     // Ctrl+Q falls through to global
     process(
-        &mut matcher,
+        &mut dispatcher,
         "Ctrl+Q",
         &Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
     );
     // X has no binding in nav → falls through to global → no match
-    process(&mut matcher, "X", &Hotkey::new(Key::X));
-    matcher.pop_layer().expect("pop nav");
+    process(&mut dispatcher, "X", &Hotkey::new(Key::X));
+    dispatcher.pop_layer().expect("pop nav");
     println!();
 
     // Oneshot layer — auto-pops after one keypress
     println!("3. Oneshot 'launcher' layer — pops after one key:");
-    matcher.push_layer("launcher").expect("push launcher");
-    println!("  Active layers: {:?}", layer_names(&matcher));
-    process(&mut matcher, "F", &Hotkey::new(Key::F));
+    dispatcher.push_layer("launcher").expect("push launcher");
+    println!("  Active layers: {:?}", layer_names(&dispatcher));
+    process(&mut dispatcher, "F", &Hotkey::new(Key::F));
     println!(
         "  Active layers after keypress: {:?}",
-        layer_names(&matcher),
+        layer_names(&dispatcher),
     );
     println!();
 
     // Swallow layer — unmatched keys are consumed
     println!("4. Swallow 'confirm' layer — unmatched keys consumed:");
-    matcher.push_layer("confirm").expect("push confirm");
-    process(&mut matcher, "Y", &Hotkey::new(Key::Y));
-    process(&mut matcher, "X", &Hotkey::new(Key::X));
+    dispatcher.push_layer("confirm").expect("push confirm");
+    process(&mut dispatcher, "Y", &Hotkey::new(Key::Y));
+    process(&mut dispatcher, "X", &Hotkey::new(Key::X));
     // Escape pops via Action::PopLayer
-    process(&mut matcher, "Escape", &Hotkey::new(Key::ESCAPE));
-    println!("  Active layers after Escape: {:?}", layer_names(&matcher),);
+    process(&mut dispatcher, "Escape", &Hotkey::new(Key::ESCAPE));
+    println!(
+        "  Active layers after Escape: {:?}",
+        layer_names(&dispatcher),
+    );
     println!();
 
     // Toggle layer
     println!("5. Toggle 'nav' layer:");
-    println!("  Before toggle: {:?}", layer_names(&matcher));
-    matcher.toggle_layer("nav").expect("toggle nav on");
-    println!("  After toggle on: {:?}", layer_names(&matcher));
-    matcher.toggle_layer("nav").expect("toggle nav off");
-    println!("  After toggle off: {:?}", layer_names(&matcher));
+    println!("  Before toggle: {:?}", layer_names(&dispatcher));
+    dispatcher.toggle_layer("nav").expect("toggle nav on");
+    println!("  After toggle on: {:?}", layer_names(&dispatcher));
+    dispatcher.toggle_layer("nav").expect("toggle nav off");
+    println!("  After toggle off: {:?}", layer_names(&dispatcher));
 }
 
-fn process(matcher: &mut Dispatcher, label: &str, hotkey: &Hotkey) {
+fn process(dispatcher: &mut Dispatcher, label: &str, hotkey: &Hotkey) {
     print!("  {label}: ");
-    match matcher.process(hotkey, KeyTransition::Press) {
+    match dispatcher.process(hotkey, KeyTransition::Press) {
         MatchResult::Matched { action, .. } => {
             if let Action::Callback(cb) = action {
                 cb();
@@ -99,25 +102,25 @@ fn process(matcher: &mut Dispatcher, label: &str, hotkey: &Hotkey) {
     }
 }
 
-fn layer_names(matcher: &Dispatcher) -> Vec<String> {
-    matcher
+fn layer_names(dispatcher: &Dispatcher) -> Vec<String> {
+    dispatcher
         .active_layers()
         .into_iter()
         .map(|info| info.name.to_string())
         .collect()
 }
 
-fn setup_matcher() -> Dispatcher {
-    let mut matcher = Dispatcher::new();
+fn setup_dispatcher() -> Dispatcher {
+    let mut dispatcher = Dispatcher::new();
 
     // Global bindings — always active, like a base layer
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
             Action::from(|| println!("  → [global] Quit")),
         )
         .expect("register Ctrl+Q");
-    matcher
+    dispatcher
         .register(
             Hotkey::new(Key::H),
             Action::from(|| println!("  → [global] Help")),
@@ -143,7 +146,7 @@ fn setup_matcher() -> Dispatcher {
             Action::from(|| println!("  → [nav] → Right")),
         )
         .description("Navigation layer — hjkl as arrow keys");
-    matcher.define_layer(nav).expect("define nav layer");
+    dispatcher.define_layer(nav).expect("define nav layer");
 
     // Define a oneshot "launcher" layer — auto-pops after one keypress
     let launcher = Layer::new("launcher")
@@ -161,7 +164,7 @@ fn setup_matcher() -> Dispatcher {
         )
         .oneshot(1)
         .description("App launcher — auto-pops after one key");
-    matcher.define_layer(launcher).expect("define launcher");
+    dispatcher.define_layer(launcher).expect("define launcher");
 
     // Define a "confirm" layer that swallows unmatched keys
     let confirm = Layer::new("confirm")
@@ -176,7 +179,7 @@ fn setup_matcher() -> Dispatcher {
         .bind(Hotkey::new(Key::ESCAPE), Action::PopLayer)
         .swallow()
         .description("Confirmation dialog — only y/n/Escape work");
-    matcher.define_layer(confirm).expect("define confirm");
+    dispatcher.define_layer(confirm).expect("define confirm");
 
     // Define a timeout layer — auto-pops after inactivity
     let quick = Layer::new("quick")
@@ -190,7 +193,7 @@ fn setup_matcher() -> Dispatcher {
         )
         .timeout(Duration::from_secs(3))
         .description("Quick workspace switcher — 3s timeout");
-    matcher.define_layer(quick).expect("define quick");
+    dispatcher.define_layer(quick).expect("define quick");
 
-    matcher
+    dispatcher
 }

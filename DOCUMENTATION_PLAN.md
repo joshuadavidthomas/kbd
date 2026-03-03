@@ -69,7 +69,7 @@ Every crate should meet these standards before we consider it done.
 - [ ] What problem this crate solves and when to use it
 - [ ] Quick-start example (compiling doc test, not `no_run` when possible)
 - [ ] Feature flags section (if any) with `#[doc = "..."]` or prose
-- [ ] Links to important types using intra-doc links (`[Matcher]`, `[Key]`)
+- [ ] Links to important types using intra-doc links (`[Dispatcher]`, `[Key]`)
 - [ ] "See also" links to related crates in the workspace
 
 ### Module-Level (`//!` at top of each .rs file)
@@ -139,16 +139,16 @@ The most important crate. Everything depends on it. Model after `regex` (structu
 - [x] **`pub mod` docs**: Add `///` summary to each of the 8 `pub mod` declarations
 - [x] **`pub use` docs**: Add `///` or `#[doc(inline)]` to all 25 re-exports
 - [x] **key.rs**: `#[allow(missing_docs)]` on constants impl block with group doc comment, `Hotkey` and `HotkeySequence` struct docs with examples, `Modifier` enum and variant docs, `ParseHotkeyError` variant docs
-- [x] **binding.rs**: Examples for `BindingOptions`, `DeviceFilter`, `Passthrough`, `OverlayVisibility`
-- [x] **layer.rs**: Examples for `Layer` construction and `UnmatchedKeyBehavior` variants
-- [x] **matcher.rs**: Examples for `Matcher` lifecycle — create → register bindings → feed keys → match results
+- [x] **binding.rs**: Examples for `BindingOptions`, `DeviceFilter`, `KeyPropagation`, `OverlayVisibility`
+- [x] **layer.rs**: Examples for `Layer` construction and `UnmatchedKeys` variants
+- [x] **dispatcher.rs**: Examples for `Dispatcher` lifecycle — create → register bindings → feed keys → match results
 - [x] **action.rs**: Docs for `LayerName::new`, `LayerName::as_str`
 - [x] **error.rs**: Docs for every error variant
 - [x] **key_state.rs**: Docs for `KeyTransition`, `KeyState`, `apply_device_event`, `disconnect_device`, `is_pressed`
 - [x] **introspection.rs**: Docs for all info types (`ActiveLayerInfo`, `BindingInfo`, `ConflictInfo`, etc.)
 - [-] **Feature: `serde`**: Document what becomes serializable, show JSON example (deferred — serde derives not yet implemented)
 - [x] **binding.rs**: Docs for all undocumented methods on `BindingId`, `BindingOptions`, `RegisteredBinding`, `DeviceFilter` fields
-- [x] **matcher.rs**: Docs for `MatchResult` variant fields
+- [x] **dispatcher.rs**: Docs for `MatchResult` variant fields
 - [x] **Zero `missing_docs` warnings** for `kbd` crate
 
 ### Phase 3 — Bridge Crates (crossterm, egui, iced, tao, winit)
@@ -168,7 +168,7 @@ For each of the 5 bridge crates:
 Linux-specific, more complex. Model after `crossbeam` (clear module docs with usage patterns).
 
 - [x] **lib.rs**: Expand crate docs with prerequisites (Linux, `/dev/input/` access, root/input group)
-- [x] **convert.rs**: Add examples for `EvdevKeyExt` and `KeyCodeExt` traits
+- [x] **convert.rs**: Add examples for `KbdKeyExt` and `EvdevKeyCodeExt` traits
 - [x] **devices.rs**: Document `INPUT_DIRECTORY`, `DeviceEvent` struct fields, `classify_change`
 - [x] **forwarder.rs**: Document `Forwarder::new()` with `# Errors` section
 - [x] **error.rs**: Document every error variant
@@ -183,7 +183,7 @@ Largest non-core crate (17 files). Model after `tokio` (rich module-level docs, 
 - [x] **`pub use` re-exports**: Add `///` or `#[doc(inline)]` to all 29 re-exports
 - [x] **Module docs for engine/**: Add `//!` headers to `command.rs`, `runtime.rs`, `types.rs`, `wake.rs`
 - [x] **manager.rs**: `HotkeyManager` and `HotkeyManagerBuilder` — full lifecycle examples
-- [x] **handle.rs**: `Handle` — what you can do with it, examples
+- [x] **binding_guard.rs**: `BindingGuard` — what you can do with it, examples
 - [x] **events.rs**: Event types — what each event means
 - [x] **backend.rs**: `Backend` enum — when to use each variant
 - [x] **error.rs**: Every error variant documented
@@ -213,7 +213,7 @@ These are stubs. Keep docs proportional but correct.
 
 Post-docs work to do on separate branches:
 
-- **Remove all `pub use` re-exports from `kbd` lib.rs.** 25 top-level re-exports flatten the entire API into the crate root. Popular crates (regex, once_cell, anyhow, thiserror) re-export 0–2 types. Users should import from modules directly (`kbd::key::Hotkey`, `kbd::matcher::Matcher`, etc.). `kbd-global` already does this. Update doc examples and downstream crates to use module paths.
+- ~~**Remove all `pub use` re-exports from `kbd` lib.rs.**~~ Done in PR #62. Users now import from modules directly (`kbd::key::Hotkey`, `kbd::dispatcher::Dispatcher`, etc.).
 
 ## Tracking
 

@@ -1,17 +1,13 @@
-//! The [`Action`] enum — what happens when a binding matches.
+//! The [`Action`](crate::action::Action) enum — what happens when a binding matches.
 //!
-//! Actions are the output vocabulary of the library. Every place that
-//! currently takes a bare `Fn()` closure should accept an `Action` instead,
-//! with a `From` impl so closures auto-convert to `Action::Callback`.
-//!
-//! Variants that are pure data (everything except `Callback`) should be
-//! serializable behind the `serde` feature flag.
+//! Actions are the output vocabulary of the library. Closures auto-convert
+//! to `Action::Callback` via `From`.
 //!
 //! # Variants
 //!
-//! - `Callback` — run user code (available now)
-//! - `EmitHotkey` — emit a different key through uinput (future, requires grab)
-//! - `EmitSequence` — emit a series of keys (future, requires grab)
+//! - `Callback` — run user code
+//! - `EmitHotkey` — emit a different key through uinput (requires grab)
+//! - `EmitSequence` — emit a series of keys (requires grab)
 //! - `PushLayer` / `PopLayer` / `ToggleLayer` — layer stack control
 //! - `Suppress` — explicitly consume the key, do nothing
 

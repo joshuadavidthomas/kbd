@@ -1,9 +1,9 @@
-//! Query matcher state — `list_bindings()`, `bindings_for_key()`,
+//! Query dispatcher state — `list_bindings()`, `bindings_for_key()`,
 //! `active_layers()`, `conflicts()`.
 //!
 //! Introspection lets you build help screens, hotkey overlays, and
 //! keybinding editors. Every binding carries metadata (description,
-//! overlay visibility) and the matcher can tell you what's active,
+//! overlay visibility) and the dispatcher can tell you what's active,
 //! what's shadowed, and what would fire for any given key.
 //!
 //! ```sh
@@ -25,30 +25,32 @@ use kbd::key::Modifier;
 use kbd::layer::Layer;
 
 fn main() {
-    let (mut matcher, copy_id) = setup_matcher();
+    let (mut dispatcher, copy_id) = setup_dispatcher();
 
     println!("=== Introspection demo ===");
     println!();
 
     // List all bindings
     println!("1. All registered bindings:");
-    print_bindings(&matcher.list_bindings());
+    print_bindings(&dispatcher.list_bindings());
     println!();
 
     // Query what would fire for a specific key
     println!("2. What fires for Ctrl+C (no layers active)?");
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-    match matcher.bindings_for_key(&hotkey) {
+    match dispatcher.bindings_for_key(&hotkey) {
         Some(info) => println!("  {}", format_binding(&info)),
         None => println!("  (nothing)"),
     }
     println!();
 
     // Push the vim layer — now Ctrl+C is shadowed
-    matcher.push_layer("vim-normal").expect("push vim-normal");
+    dispatcher
+        .push_layer("vim-normal")
+        .expect("push vim-normal");
 
     println!("3. Active layers:");
-    for layer in matcher.active_layers() {
+    for layer in dispatcher.active_layers() {
         println!(
             "  {} — {} binding(s){}",
             layer.name,
@@ -63,12 +65,12 @@ fn main() {
 
     // List bindings again — now some are shadowed
     println!("4. All bindings with vim-normal layer active:");
-    print_bindings(&matcher.list_bindings());
+    print_bindings(&dispatcher.list_bindings());
     println!();
 
     // What fires for Ctrl+C now?
     println!("5. What fires for Ctrl+C (with vim-normal layer)?");
-    match matcher.bindings_for_key(&hotkey) {
+    match dispatcher.bindings_for_key(&hotkey) {
         Some(info) => println!("  {}", format_binding(&info)),
         None => println!("  (nothing)"),
     }
@@ -76,7 +78,7 @@ fn main() {
 
     // Show conflicts
     println!("6. Conflicts (shadowed bindings):");
-    let conflicts = matcher.conflicts();
+    let conflicts = dispatcher.conflicts();
     if conflicts.is_empty() {
         println!("  (none)");
     } else {
@@ -93,7 +95,7 @@ fn main() {
 
     // Filter for overlay-visible bindings only
     println!("7. Overlay-visible bindings only:");
-    let visible: Vec<_> = matcher
+    let visible: Vec<_> = dispatcher
         .list_bindings()
         .into_iter()
         .filter(|b| b.overlay_visibility == OverlayVisibility::Visible)
@@ -101,11 +103,11 @@ fn main() {
     print_bindings(&visible);
 
     // Clean up — demonstrate that unregister works
-    matcher.unregister(copy_id);
+    dispatcher.unregister(copy_id);
     println!();
     println!(
         "After unregistering global Ctrl+C: {} total bindings",
-        matcher.list_bindings().len()
+        dispatcher.list_bindings().len()
     );
 }
 
@@ -142,18 +144,18 @@ fn format_location(b: &BindingInfo) -> String {
     }
 }
 
-fn setup_matcher() -> (Dispatcher, BindingId) {
-    let mut matcher = Dispatcher::new();
+fn setup_dispatcher() -> (Dispatcher, BindingId) {
+    let mut dispatcher = Dispatcher::new();
 
     // Register global bindings with metadata
-    let copy_id = matcher
+    let copy_id = dispatcher
         .register(
             Hotkey::new(Key::C).modifier(Modifier::Ctrl),
             Action::from(|| {}),
         )
         .expect("register Ctrl+C");
 
-    matcher
+    dispatcher
         .register_binding(
             RegisteredBinding::new(
                 BindingId::new(),
@@ -164,7 +166,7 @@ fn setup_matcher() -> (Dispatcher, BindingId) {
         )
         .expect("register Ctrl+V");
 
-    matcher
+    dispatcher
         .register_binding(
             RegisteredBinding::new(
                 BindingId::new(),
@@ -176,7 +178,7 @@ fn setup_matcher() -> (Dispatcher, BindingId) {
         .expect("register Ctrl+S");
 
     // A hidden binding — won't appear in overlay views
-    matcher
+    dispatcher
         .register_binding(
             RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::F12), Action::from(|| {}))
                 .with_options(
@@ -195,7 +197,9 @@ fn setup_matcher() -> (Dispatcher, BindingId) {
         )
         .bind(Hotkey::new(Key::D), Action::from(|| {}))
         .description("Vim normal mode");
-    matcher.define_layer(vim_layer).expect("define vim-normal");
+    dispatcher
+        .define_layer(vim_layer)
+        .expect("define vim-normal");
 
-    (matcher, copy_id)
+    (dispatcher, copy_id)
 }

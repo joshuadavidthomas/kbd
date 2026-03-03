@@ -34,18 +34,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("kbd-crossterm example — press keys to see matches");
     println!();
 
-    let mut matcher = Dispatcher::new();
+    let mut dispatcher = Dispatcher::new();
 
     // Register some bindings
-    matcher.register(
+    dispatcher.register(
         Hotkey::new(Key::S).modifier(Modifier::Ctrl),
         Action::from(|| print!("  → Save!\r\n")),
     )?;
-    matcher.register(
+    dispatcher.register(
         Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
         Action::from(|| print!("  → Quit!\r\n")),
     )?;
-    matcher.register(
+    dispatcher.register(
         Hotkey::new(Key::SPACE),
         Action::from(|| print!("  → Space pressed!\r\n")),
     )?;
@@ -60,13 +60,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Enable raw mode so we get individual key events
     terminal::enable_raw_mode()?;
-    let result = run_event_loop(&mut matcher);
+    let result = run_event_loop(&mut dispatcher);
     terminal::disable_raw_mode()?;
 
     result
 }
 
-fn run_event_loop(matcher: &mut Dispatcher) -> Result<(), Box<dyn std::error::Error>> {
+fn run_event_loop(dispatcher: &mut Dispatcher) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         // Poll for events with a 100ms timeout
         if event::poll(Duration::from_millis(100))?
@@ -93,8 +93,8 @@ fn run_event_loop(matcher: &mut Dispatcher) -> Result<(), Box<dyn std::error::Er
                 continue;
             };
 
-            // Process through the matcher
-            match matcher.process(&hotkey, KeyTransition::Press) {
+            // Process through the dispatcher
+            match dispatcher.process(&hotkey, KeyTransition::Press) {
                 MatchResult::Matched { action, .. } => {
                     print!("{hotkey}: matched!\r\n");
                     if let Action::Callback(cb) = action {
