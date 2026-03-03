@@ -15,16 +15,16 @@ kbd-egui = "0.1"
 
 ## Extension traits
 
-- **`EguiKeyExt`** — converts an `egui::Key` to a `kbd::Key`
+- **`EguiKeyExt`** — converts an `egui::Key` to a `kbd::key::Key`
 - **`EguiModifiersExt`** — converts `egui::Modifiers` to a `Vec<Modifier>`
-- **`EguiEventExt`** — converts a full `egui::Event` keyboard event to a `kbd::Hotkey`
+- **`EguiEventExt`** — converts a full `egui::Event` keyboard event to a `kbd::hotkey::Hotkey`
 
 ## Usage
 
 ```rust
 use egui::{Key as EguiKey, Modifiers};
-use kbd::key::{Hotkey, Key, Modifier};
-use kbd_egui::{EguiKeyExt, EguiModifiersExt, EguiEventExt};
+use kbd::prelude::*;
+use kbd_egui::{EguiEventExt, EguiKeyExt, EguiModifiersExt};
 
 let key = EguiKey::A.to_key();
 assert_eq!(key, Some(Key::A));
