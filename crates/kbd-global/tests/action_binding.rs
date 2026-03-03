@@ -8,11 +8,12 @@ use kbd_global::Action;
 use kbd_global::BindingId;
 use kbd_global::BindingOptions;
 use kbd_global::DeviceFilter;
+use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;
 use kbd_global::Key;
+use kbd_global::KeyPropagation;
 use kbd_global::Modifier;
 use kbd_global::OverlayVisibility;
-use kbd_global::Passthrough;
 
 #[test]
 fn action_from_closure_runs_callback() {
@@ -46,7 +47,7 @@ fn generated_binding_ids_are_unique() {
 #[test]
 fn binding_options_default_to_consuming_events() {
     let options = BindingOptions::default();
-    assert_eq!(options.passthrough(), Passthrough::Consume);
+    assert_eq!(options.propagation(), KeyPropagation::Stop);
 }
 
 #[test]
@@ -74,11 +75,11 @@ fn device_filter_supports_name_pattern_and_usb_id() {
 
 #[test]
 fn action_variants_exist_for_future_features() {
-    let _ = Action::EmitKey(Key::ESCAPE, vec![Modifier::Ctrl]);
+    let _ = Action::EmitHotkey(Hotkey::new(Key::ESCAPE).modifier(Modifier::Ctrl));
     let _ = Action::PushLayer("nav".into());
     let _ = Action::ToggleLayer("nav".into());
     let _ = Action::PopLayer;
-    let _ = Action::Swallow;
+    let _ = Action::Suppress;
 }
 
 // Phase 3.4: Binding metadata
@@ -112,11 +113,11 @@ fn binding_options_chains_all_metadata() {
     let options = BindingOptions::default()
         .with_description("Quit application")
         .with_overlay_visibility(OverlayVisibility::Hidden)
-        .with_passthrough(Passthrough::Enabled);
+        .with_propagation(KeyPropagation::Continue);
 
     assert_eq!(options.description(), Some("Quit application"));
     assert_eq!(options.overlay_visibility(), OverlayVisibility::Hidden);
-    assert_eq!(options.passthrough(), Passthrough::Enabled);
+    assert_eq!(options.propagation(), KeyPropagation::Continue);
 }
 
 #[test]

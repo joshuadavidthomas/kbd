@@ -48,7 +48,7 @@
 //! # Usage
 //!
 //! ```
-//! use kbd::{Hotkey, Key, Modifier};
+//! use kbd::key::{Hotkey, Key, Modifier};
 //! use kbd_winit::{WinitKeyExt, WinitModifiersExt};
 //! use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 //!
@@ -65,9 +65,9 @@
 //! assert_eq!(mods, vec![Modifier::Ctrl]);
 //! ```
 
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::Modifier;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
 use winit::event::KeyEvent;
 use winit::keyboard::KeyCode;
 use winit::keyboard::ModifiersState;
@@ -83,7 +83,7 @@ pub trait WinitKeyExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::Key;
+    /// use kbd::key::Key;
     /// use kbd_winit::WinitKeyExt;
     /// use winit::keyboard::{KeyCode, PhysicalKey};
     ///
@@ -340,7 +340,7 @@ pub trait WinitModifiersExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::Modifier;
+    /// use kbd::key::Modifier;
     /// use kbd_winit::WinitModifiersExt;
     /// use winit::keyboard::ModifiersState;
     ///
@@ -381,10 +381,7 @@ impl WinitModifiersExt for ModifiersState {
 ///
 /// Returns `None` if the physical key has no `kbd` equivalent.
 #[must_use]
-pub fn physical_key_to_hotkey(
-    physical_key: PhysicalKey,
-    modifiers: ModifiersState,
-) -> Option<Hotkey> {
+pub fn winit_key_to_hotkey(physical_key: PhysicalKey, modifiers: ModifiersState) -> Option<Hotkey> {
     let key = physical_key.to_key()?;
 
     let mut mods = modifiers.to_modifiers();
@@ -417,11 +414,11 @@ pub trait WinitEventExt {
     /// # Examples
     ///
     /// ```
-    /// use kbd::{Hotkey, Key, Modifier};
-    /// use kbd_winit::physical_key_to_hotkey;
+    /// use kbd::key::{Hotkey, Key, Modifier};
+    /// use kbd_winit::winit_key_to_hotkey;
     /// use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
     ///
-    /// let hotkey = physical_key_to_hotkey(
+    /// let hotkey = winit_key_to_hotkey(
     ///     PhysicalKey::Code(KeyCode::KeyS),
     ///     ModifiersState::CONTROL,
     /// );
@@ -435,15 +432,15 @@ pub trait WinitEventExt {
 
 impl WinitEventExt for KeyEvent {
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey> {
-        physical_key_to_hotkey(self.physical_key, modifiers)
+        winit_key_to_hotkey(self.physical_key, modifiers)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use kbd::Hotkey;
-    use kbd::Key;
-    use kbd::Modifier;
+    use kbd::key::Hotkey;
+    use kbd::key::Key;
+    use kbd::key::Modifier;
     use winit::keyboard::KeyCode;
     use winit::keyboard::ModifiersState;
     use winit::keyboard::NativeKeyCode;
@@ -727,26 +724,24 @@ mod tests {
         );
     }
 
-    // physical_key_to_hotkey (exercises the same logic as WinitEventExt)
+    // winit_key_to_hotkey (exercises the same logic as WinitEventExt)
 
     #[test]
     fn simple_key_to_hotkey() {
-        let hotkey =
-            physical_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyC), ModifiersState::empty());
+        let hotkey = winit_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyC), ModifiersState::empty());
         assert_eq!(hotkey, Some(Hotkey::new(Key::C)));
     }
 
     #[test]
     fn key_with_ctrl_to_hotkey() {
-        let hotkey =
-            physical_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyC), ModifiersState::CONTROL);
+        let hotkey = winit_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyC), ModifiersState::CONTROL);
         assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
     }
 
     #[test]
     fn key_with_multiple_modifiers_to_hotkey() {
         let mods = ModifiersState::CONTROL | ModifiersState::SHIFT;
-        let hotkey = physical_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyA), mods);
+        let hotkey = winit_key_to_hotkey(PhysicalKey::Code(KeyCode::KeyA), mods);
         assert_eq!(
             hotkey,
             Some(
@@ -759,7 +754,7 @@ mod tests {
 
     #[test]
     fn unidentified_key_to_hotkey_returns_none() {
-        let hotkey = physical_key_to_hotkey(
+        let hotkey = winit_key_to_hotkey(
             PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
             ModifiersState::empty(),
         );
@@ -771,7 +766,7 @@ mod tests {
         // Pressing ShiftLeft — winit reports SHIFT in ModifiersState.
         // Hotkey should be just "ShiftLeft", not "Shift+ShiftLeft".
         let hotkey =
-            physical_key_to_hotkey(PhysicalKey::Code(KeyCode::ShiftLeft), ModifiersState::SHIFT);
+            winit_key_to_hotkey(PhysicalKey::Code(KeyCode::ShiftLeft), ModifiersState::SHIFT);
         assert_eq!(hotkey, Some(Hotkey::new(Key::SHIFT_LEFT)));
     }
 
@@ -779,7 +774,7 @@ mod tests {
     fn modifier_key_keeps_other_modifiers() {
         // Pressing ControlLeft while Shift is already held
         let mods = ModifiersState::SHIFT | ModifiersState::CONTROL;
-        let hotkey = physical_key_to_hotkey(PhysicalKey::Code(KeyCode::ControlLeft), mods);
+        let hotkey = winit_key_to_hotkey(PhysicalKey::Code(KeyCode::ControlLeft), mods);
         assert_eq!(
             hotkey,
             Some(Hotkey::new(Key::CONTROL_LEFT).modifier(Modifier::Shift))
@@ -789,7 +784,7 @@ mod tests {
     #[test]
     fn ctrl_shift_f5_to_hotkey() {
         let mods = ModifiersState::CONTROL | ModifiersState::SHIFT;
-        let hotkey = physical_key_to_hotkey(PhysicalKey::Code(KeyCode::F5), mods);
+        let hotkey = winit_key_to_hotkey(PhysicalKey::Code(KeyCode::F5), mods);
         assert_eq!(
             hotkey,
             Some(
@@ -803,7 +798,7 @@ mod tests {
     #[test]
     fn space_to_hotkey() {
         let hotkey =
-            physical_key_to_hotkey(PhysicalKey::Code(KeyCode::Space), ModifiersState::empty());
+            winit_key_to_hotkey(PhysicalKey::Code(KeyCode::Space), ModifiersState::empty());
         assert_eq!(hotkey, Some(Hotkey::new(Key::SPACE)));
     }
 
@@ -811,7 +806,7 @@ mod tests {
     fn super_key_strips_self() {
         // Pressing SuperLeft — winit reports SUPER in ModifiersState.
         let hotkey =
-            physical_key_to_hotkey(PhysicalKey::Code(KeyCode::SuperLeft), ModifiersState::SUPER);
+            winit_key_to_hotkey(PhysicalKey::Code(KeyCode::SuperLeft), ModifiersState::SUPER);
         assert_eq!(hotkey, Some(Hotkey::new(Key::META_LEFT)));
     }
 }

@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use crate::action::Action;
 use crate::action::LayerName;
-use crate::binding::Passthrough;
+use crate::binding::KeyPropagation;
 use crate::key::Hotkey;
 
 /// Whether unmatched keys in an active layer fall through to lower layers.
@@ -20,24 +20,26 @@ use crate::key::Hotkey;
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, Key, Layer, UnmatchedKeyBehavior};
+/// use kbd::action::Action;
+/// use kbd::key::Key;
+/// use kbd::layer::{Layer, UnmatchedKeys};
 ///
 /// // A navigation layer that only captures H/J/K/L.
 /// // Other keys (like Ctrl+S) still reach global bindings.
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Swallow)
-///     .bind(Key::J, Action::Swallow);
-/// assert_eq!(nav.options().unmatched(), UnmatchedKeyBehavior::Fallthrough);
+///     .bind(Key::H, Action::Suppress)
+///     .bind(Key::J, Action::Suppress);
+/// assert_eq!(nav.options().unmatched(), UnmatchedKeys::Fallthrough);
 ///
 /// // A modal layer that captures ALL keys — nothing falls through.
 /// // Useful for insert-mode or game-input modes.
 /// let modal = Layer::new("modal")
-///     .bind(Key::H, Action::Swallow)
+///     .bind(Key::H, Action::Suppress)
 ///     .swallow();
-/// assert_eq!(modal.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+/// assert_eq!(modal.options().unmatched(), UnmatchedKeys::Swallow);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum UnmatchedKeyBehavior {
+pub enum UnmatchedKeys {
     /// Unmatched keys pass to the next layer down the stack.
     #[default]
     Fallthrough,
@@ -51,7 +53,7 @@ pub struct LayerOptions {
     /// If set, automatically pop the layer after this many keypresses.
     oneshot: Option<usize>,
     /// Whether unmatched keys are consumed or fall through.
-    unmatched: UnmatchedKeyBehavior,
+    unmatched: UnmatchedKeys,
     /// If set, automatically pop the layer after this duration of inactivity.
     timeout: Option<Duration>,
     /// Human-readable label for this layer, used for overlay grouping.
@@ -67,7 +69,7 @@ impl LayerOptions {
 
     /// Whether unmatched keys are consumed or fall through.
     #[must_use]
-    pub const fn unmatched(&self) -> UnmatchedKeyBehavior {
+    pub const fn unmatched(&self) -> UnmatchedKeys {
         self.unmatched
     }
 
@@ -85,7 +87,7 @@ impl LayerOptions {
 
     /// Set unmatched key behavior.
     #[must_use]
-    pub const fn with_unmatched(mut self, behavior: UnmatchedKeyBehavior) -> Self {
+    pub const fn with_unmatched(mut self, behavior: UnmatchedKeys) -> Self {
         self.unmatched = behavior;
         self
     }
@@ -96,7 +98,7 @@ impl LayerOptions {
 pub(crate) struct LayerBinding {
     pub(crate) hotkey: Hotkey,
     pub(crate) action: Action,
-    pub(crate) passthrough: Passthrough,
+    pub(crate) propagation: KeyPropagation,
 }
 
 /// Engine-internal representation of a stored layer definition.
@@ -117,20 +119,22 @@ impl std::fmt::Debug for StoredLayer {
 /// A named collection of bindings that can be activated and deactivated.
 ///
 /// Construct via the builder pattern, then register with
-/// [`Matcher::define_layer`](crate::Matcher::define_layer).
+/// [`Dispatcher::define_layer`](crate::Dispatcher::define_layer).
 ///
 /// # Examples
 ///
 /// Basic layer with vim-style navigation:
 ///
 /// ```
-/// use kbd::{Action, Key, Layer};
+/// use kbd::action::Action;
+/// use kbd::key::Key;
+/// use kbd::layer::Layer;
 ///
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Swallow)
-///     .bind(Key::J, Action::Swallow)
-///     .bind(Key::K, Action::Swallow)
-///     .bind(Key::L, Action::Swallow)
+///     .bind(Key::H, Action::Suppress)
+///     .bind(Key::J, Action::Suppress)
+///     .bind(Key::K, Action::Suppress)
+///     .bind(Key::L, Action::Suppress)
 ///     .description("Vim navigation keys")
 ///     .swallow();
 ///
@@ -141,11 +145,13 @@ impl std::fmt::Debug for StoredLayer {
 /// Oneshot layer that auto-pops after one keypress:
 ///
 /// ```
-/// use kbd::{Action, Key, Layer};
+/// use kbd::action::Action;
+/// use kbd::key::Key;
+/// use kbd::layer::Layer;
 ///
 /// let leader = Layer::new("leader")
-///     .bind(Key::F, Action::Swallow)
-///     .bind(Key::B, Action::Swallow)
+///     .bind(Key::F, Action::Suppress)
+///     .bind(Key::B, Action::Suppress)
 ///     .oneshot(1);
 /// ```
 ///
@@ -153,11 +159,13 @@ impl std::fmt::Debug for StoredLayer {
 ///
 /// ```
 /// use std::time::Duration;
-/// use kbd::{Action, Key, Layer};
+/// use kbd::action::Action;
+/// use kbd::key::Key;
+/// use kbd::layer::Layer;
 ///
 /// let timed = Layer::new("quick-nav")
-///     .bind(Key::N, Action::Swallow)
-///     .bind(Key::P, Action::Swallow)
+///     .bind(Key::N, Action::Suppress)
+///     .bind(Key::P, Action::Suppress)
 ///     .timeout(Duration::from_secs(2));
 /// ```
 pub struct Layer {
@@ -183,7 +191,7 @@ impl Layer {
         self.bindings.push(LayerBinding {
             hotkey: hotkey.into(),
             action: action.into(),
-            passthrough: Passthrough::default(),
+            propagation: KeyPropagation::default(),
         });
         self
     }
@@ -191,7 +199,7 @@ impl Layer {
     /// Set the layer to swallow unmatched keys (consume instead of fallthrough).
     #[must_use]
     pub fn swallow(mut self) -> Self {
-        self.options.unmatched = UnmatchedKeyBehavior::Swallow;
+        self.options.unmatched = UnmatchedKeys::Swallow;
         self
     }
 
@@ -258,9 +266,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::Action;
-    use crate::Key;
-    use crate::Modifier;
+    use crate::action::Action;
+    use crate::key::Key;
+    use crate::key::Modifier;
 
     #[test]
     fn layer_new_creates_with_name() {
@@ -282,17 +290,17 @@ mod tests {
 
     #[test]
     fn layer_bind_adds_binding() {
-        let layer = Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
         assert_eq!(layer.binding_count(), 1);
     }
 
     #[test]
     fn layer_bind_multiple_bindings() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow)
-            .bind(Key::K, Action::Swallow)
-            .bind(Key::L, Action::Swallow);
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress)
+            .bind(Key::K, Action::Suppress)
+            .bind(Key::L, Action::Suppress);
         assert_eq!(layer.binding_count(), 4);
     }
 
@@ -300,7 +308,7 @@ mod tests {
     fn layer_bind_preserves_hotkey() {
         let layer = Layer::new("nav").bind(
             Hotkey::new(Key::H).modifier(Modifier::Ctrl),
-            Action::Swallow,
+            Action::Suppress,
         );
         let (_, bindings, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
@@ -317,7 +325,7 @@ mod tests {
     #[test]
     fn layer_swallow_sets_option() {
         let layer = Layer::new("test").swallow();
-        assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+        assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
     }
 
     #[test]
@@ -336,8 +344,8 @@ mod tests {
     #[test]
     fn layer_builder_chains_all_options() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress)
             .description("Navigation keys")
             .swallow()
             .oneshot(1)
@@ -346,7 +354,7 @@ mod tests {
         assert_eq!(layer.name().as_str(), "nav");
         assert_eq!(layer.binding_count(), 2);
         assert_eq!(layer.options().description(), Some("Navigation keys"));
-        assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+        assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
         assert_eq!(layer.options().oneshot(), Some(1));
         assert_eq!(layer.options().timeout(), Some(Duration::from_millis(500)));
     }
@@ -355,7 +363,7 @@ mod tests {
     fn layer_options_default_is_fallthrough_no_oneshot_no_timeout_no_description() {
         let options = LayerOptions::default();
         assert_eq!(options.oneshot(), None);
-        assert_eq!(options.unmatched(), UnmatchedKeyBehavior::Fallthrough);
+        assert_eq!(options.unmatched(), UnmatchedKeys::Fallthrough);
         assert_eq!(options.timeout(), None);
         assert_eq!(options.description(), None);
     }
@@ -368,12 +376,12 @@ mod tests {
 
     #[test]
     fn layer_into_parts_decomposes() {
-        let layer = Layer::new("nav").bind(Key::H, Action::Swallow).swallow();
+        let layer = Layer::new("nav").bind(Key::H, Action::Suppress).swallow();
 
         let (name, bindings, options) = layer.into_parts();
         assert_eq!(name.as_str(), "nav");
         assert_eq!(bindings.len(), 1);
-        assert_eq!(options.unmatched(), UnmatchedKeyBehavior::Swallow);
+        assert_eq!(options.unmatched(), UnmatchedKeys::Swallow);
     }
 
     #[test]
@@ -385,7 +393,7 @@ mod tests {
     #[test]
     fn layer_description_preserved_in_into_parts() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .description("Navigation keys");
 
         let (_, _, options) = layer.into_parts();

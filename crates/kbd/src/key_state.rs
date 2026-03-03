@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::Key;
-use crate::Modifier;
+use crate::key::Key;
+use crate::key::Modifier;
 
 /// Whether a key was pressed, released, or repeated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,8 +123,8 @@ impl KeyState {
 mod tests {
     use super::KeyState;
     use super::KeyTransition;
-    use crate::Key;
-    use crate::Modifier;
+    use crate::key::Key;
+    use crate::key::Modifier;
 
     #[test]
     fn pressed_keys_are_tracked_per_device() {

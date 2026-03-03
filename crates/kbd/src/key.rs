@@ -22,7 +22,7 @@ use keyboard_types::Code;
 /// Use the associated constants to refer to specific keys:
 ///
 /// ```
-/// use kbd::Key;
+/// use kbd::key::Key;
 ///
 /// let key = Key::A;
 /// assert_eq!(key.to_string(), "A");
@@ -787,7 +787,7 @@ impl TryFrom<Key> for Modifier {
 /// [`Hotkey::new`] and [`Hotkey::modifier`].
 ///
 /// ```
-/// use kbd::{Hotkey, Key, Modifier};
+/// use kbd::key::{Hotkey, Key, Modifier};
 ///
 /// // From a string
 /// let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
@@ -911,7 +911,7 @@ impl fmt::Display for Hotkey {
 /// in order for the sequence to match.
 ///
 /// ```
-/// use kbd::HotkeySequence;
+/// use kbd::key::HotkeySequence;
 ///
 /// let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse().unwrap();
 /// assert_eq!(seq.steps().len(), 2);

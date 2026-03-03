@@ -1,4 +1,4 @@
-//! Opens an iced window and feeds keyboard events through a `Matcher`.
+//! Opens an iced window and feeds keyboard events through a `Dispatcher`.
 //! Press keys to see matches in the GUI.
 //!
 //! ```sh
@@ -11,12 +11,12 @@ use iced::Task;
 use iced::widget::column;
 use iced::widget::scrollable;
 use iced::widget::text;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Matcher;
-use kbd::Modifier;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 use kbd_iced::IcedEventExt;
 
 fn main() -> iced::Result {
@@ -27,13 +27,13 @@ fn main() -> iced::Result {
 }
 
 struct App {
-    matcher: Matcher,
+    matcher: Dispatcher,
     log: Vec<String>,
 }
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         matcher
             .register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), || {})
@@ -92,7 +92,7 @@ impl App {
                     MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                     MatchResult::NoMatch => format!("{hotkey} → no match"),
                     MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
-                    MatchResult::Swallowed | MatchResult::Ignored => return Task::none(),
+                    MatchResult::Suppressed | MatchResult::Ignored => return Task::none(),
                 };
                 self.log.push(line);
                 Task::none()

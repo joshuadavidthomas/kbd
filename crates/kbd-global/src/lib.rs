@@ -49,10 +49,10 @@
 //! # Lifecycle
 //!
 //! 1. Create a manager with [`HotkeyManager::new()`] or [`HotkeyManager::builder()`]
-//! 2. Register hotkeys with [`HotkeyManager::register()`] — returns a [`Handle`]
+//! 2. Register hotkeys with [`HotkeyManager::register()`] — returns a [`BindingGuard`]
 //! 3. Optionally define and push [`Layer`]s for context-dependent bindings
 //! 4. The engine thread processes key events and fires callbacks
-//! 5. Drop the [`Handle`] to unregister, or call [`Handle::unregister()`]
+//! 5. Drop the [`BindingGuard`] to unregister, or call [`BindingGuard::unregister()`]
 //! 6. Drop the manager (or call [`HotkeyManager::shutdown()`]) to stop
 //!
 //! # Backend selection
@@ -89,9 +89,9 @@
 //! - [`kbd-evdev`](kbd_evdev) — evdev device management and key conversion
 
 mod backend;
+mod binding_guard;
 mod engine;
 mod error;
-mod handle;
 mod manager;
 
 // Re-exports from kbd — all domain types live there.
@@ -107,12 +107,16 @@ pub use kbd::binding::BindingId;
 pub use kbd::binding::BindingOptions;
 /// Restricts a binding to specific input devices.
 pub use kbd::binding::DeviceFilter;
+/// Controls whether matched key events are forwarded to the OS.
+pub use kbd::binding::KeyPropagation;
 /// Controls whether a binding is visible through overlay layers.
 pub use kbd::binding::OverlayVisibility;
-/// Controls whether matched key events are forwarded to the OS.
-pub use kbd::binding::Passthrough;
 /// A fully-configured binding ready for registration.
 pub use kbd::binding::RegisteredBinding;
+/// Core dispatch engine that tracks bindings, layers, and sequences.
+pub use kbd::dispatcher::Dispatcher;
+/// The outcome of feeding a key event into the dispatcher.
+pub use kbd::dispatcher::MatchResult;
 /// Introspection snapshot of an active layer.
 pub use kbd::introspection::ActiveLayerInfo;
 /// Introspection snapshot of a registered binding.
@@ -140,18 +144,14 @@ pub use kbd::layer::Layer;
 /// Configuration for layer behavior (unmatched key handling, overlay mode).
 pub use kbd::layer::LayerOptions;
 /// What happens to key events that don't match any binding in a layer.
-pub use kbd::layer::UnmatchedKeyBehavior;
-/// The outcome of feeding a key event into the matcher.
-pub use kbd::matcher::MatchResult;
-/// Core matching engine that tracks bindings, layers, and key state.
-pub use kbd::matcher::Matcher;
+pub use kbd::layer::UnmatchedKeys;
 
 /// Which input backend to use.
 pub use crate::backend::Backend;
+/// RAII guard that keeps a binding alive until dropped.
+pub use crate::binding_guard::BindingGuard;
 /// Error type for all kbd-global operations.
 pub use crate::error::Error;
-/// RAII guard that keeps a binding alive until dropped.
-pub use crate::handle::Handle;
 /// The main entry point — manages the engine thread and hotkey registration.
 pub use crate::manager::HotkeyManager;
 /// Builder for configuring backend and runtime options before starting.

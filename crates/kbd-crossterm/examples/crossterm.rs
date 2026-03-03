@@ -1,7 +1,7 @@
 //! Minimal TUI loop using `kbd-crossterm` + `kbd`.
 //!
 //! Reads real terminal key events, converts them via the crossterm
-//! extension traits, and feeds them to a `Matcher`. Prints match results
+//! extension traits, and feeds them to a `Dispatcher`. Prints match results
 //! to the terminal.
 //!
 //! ```sh
@@ -21,20 +21,20 @@ use crossterm::event::{
     self,
 };
 use crossterm::terminal;
-use kbd::Action;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Matcher;
-use kbd::Modifier;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 use kbd_crossterm::CrosstermEventExt;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("kbd-crossterm example — press keys to see matches");
     println!();
 
-    let mut matcher = Matcher::new();
+    let mut matcher = Dispatcher::new();
 
     // Register some bindings
     matcher.register(
@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     result
 }
 
-fn run_event_loop(matcher: &mut Matcher) -> Result<(), Box<dyn std::error::Error>> {
+fn run_event_loop(matcher: &mut Dispatcher) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         // Poll for events with a 100ms timeout
         if event::poll(Duration::from_millis(100))?
@@ -110,7 +110,7 @@ fn run_event_loop(matcher: &mut Matcher) -> Result<(), Box<dyn std::error::Error
                 }
                 MatchResult::NoMatch => print!("{hotkey}: no match\r\n"),
                 MatchResult::Pending { .. } => print!("{hotkey}: pending...\r\n"),
-                MatchResult::Swallowed | MatchResult::Ignored => {}
+                MatchResult::Suppressed | MatchResult::Ignored => {}
             }
             io::stdout().flush()?;
         }

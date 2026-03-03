@@ -1,17 +1,17 @@
 //! Opens an eframe/egui window and feeds keyboard events through a
-//! `Matcher`. Press keys to see matches in the GUI.
+//! `Dispatcher`. Press keys to see matches in the GUI.
 //!
 //! ```sh
 //! cargo run -p kbd-egui --example egui
 //! ```
 
 use eframe::egui;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Matcher;
-use kbd::Modifier;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 use kbd_egui::EguiEventExt;
 
 fn main() -> eframe::Result {
@@ -30,13 +30,13 @@ fn main() -> eframe::Result {
 }
 
 struct App {
-    matcher: Matcher,
+    matcher: Dispatcher,
     log: Vec<String>,
 }
 
 impl App {
     fn new() -> Self {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         matcher
             .register(Hotkey::new(Key::S).modifier(Modifier::Ctrl), || {})
@@ -93,7 +93,7 @@ impl eframe::App for App {
                 MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                 MatchResult::NoMatch => format!("{hotkey} → no match"),
                 MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
-                MatchResult::Swallowed | MatchResult::Ignored => continue,
+                MatchResult::Suppressed | MatchResult::Ignored => continue,
             };
             self.log.push(line);
         }

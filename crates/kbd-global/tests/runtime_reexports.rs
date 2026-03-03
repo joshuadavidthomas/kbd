@@ -11,23 +11,23 @@ use kbd_global::BindingLocation;
 use kbd_global::BindingOptions;
 use kbd_global::ConflictInfo;
 use kbd_global::DeviceFilter;
+use kbd_global::Dispatcher;
 use kbd_global::Error;
 use kbd_global::Hotkey;
 use kbd_global::HotkeySequence;
 use kbd_global::Key;
+use kbd_global::KeyPropagation;
 use kbd_global::KeyTransition;
 use kbd_global::Layer;
 use kbd_global::LayerName;
 use kbd_global::LayerOptions;
 use kbd_global::MatchResult;
-use kbd_global::Matcher;
 use kbd_global::Modifier;
 use kbd_global::OverlayVisibility;
 use kbd_global::ParseHotkeyError;
-use kbd_global::Passthrough;
 use kbd_global::RegisteredBinding;
 use kbd_global::ShadowedStatus;
-use kbd_global::UnmatchedKeyBehavior;
+use kbd_global::UnmatchedKeys;
 
 #[test]
 fn core_types_reexported_through_kbd_global() {
@@ -45,19 +45,19 @@ fn core_types_reexported_through_kbd_global() {
 
     // Binding
     let id = BindingId::new();
-    let _binding = RegisteredBinding::new(id, hotkey, Action::Swallow);
+    let _binding = RegisteredBinding::new(id, hotkey, Action::Suppress);
 
     // Options
     let opts = BindingOptions::default()
-        .with_passthrough(Passthrough::Enabled)
+        .with_propagation(KeyPropagation::Continue)
         .with_overlay_visibility(OverlayVisibility::Hidden)
         .with_description("test");
-    assert_eq!(opts.passthrough(), Passthrough::Enabled);
+    assert_eq!(opts.propagation(), KeyPropagation::Continue);
 
     // Layer
-    let layer = Layer::new("test").bind(Key::H, Action::Swallow).swallow();
+    let layer = Layer::new("test").bind(Key::H, Action::Suppress).swallow();
     assert_eq!(layer.name().as_str(), "test");
-    assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+    assert_eq!(layer.options().unmatched(), UnmatchedKeys::Swallow);
 
     // LayerName
     let name = LayerName::from("test");
@@ -74,10 +74,10 @@ fn core_types_reexported_through_kbd_global() {
 
 #[test]
 fn matcher_reexported_through_kbd_global() {
-    let mut matcher = Matcher::new();
+    let mut matcher = Dispatcher::new();
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
     matcher
-        .register(hotkey.clone(), Action::Swallow)
+        .register(hotkey.clone(), Action::Suppress)
         .expect("register should succeed");
 
     let result = matcher.process(&hotkey, KeyTransition::Press);

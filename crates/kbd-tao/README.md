@@ -22,7 +22,7 @@ kbd-tao = "0.1"
 ## Usage
 
 ```rust
-use kbd::{Key, Modifier};
+use kbd::key::{Key, Modifier};
 use kbd_tao::{TaoKeyExt, TaoModifiersExt};
 use tao::keyboard::{KeyCode, ModifiersState};
 

@@ -1,17 +1,17 @@
 //! Minimal tao window that converts key events via `kbd-tao`, feeds them
-//! to a `Matcher`, and prints matches. tao is Tauri's fork of winit.
+//! to a `Dispatcher`, and prints matches. tao is Tauri's fork of winit.
 //!
 //! ```sh
 //! cargo run -p kbd-tao --example tao
 //! ```
 
-use kbd::Action;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Matcher;
-use kbd::Modifier;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 use kbd_tao::TaoEventExt;
 use tao::event::Event;
 use tao::event::WindowEvent;
@@ -27,7 +27,7 @@ fn main() {
         .build(&event_loop)
         .expect("create window");
 
-    let mut matcher = Matcher::new();
+    let mut matcher = Dispatcher::new();
     let mut modifiers = ModifiersState::empty();
 
     matcher
@@ -87,7 +87,7 @@ fn main() {
                         }
                         MatchResult::NoMatch => println!("{hotkey} → no match"),
                         MatchResult::Pending { .. } => println!("{hotkey} → pending..."),
-                        MatchResult::Swallowed | MatchResult::Ignored => {}
+                        MatchResult::Suppressed | MatchResult::Ignored => {}
                     }
                 }
                 _ => {}

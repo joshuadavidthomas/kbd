@@ -1,5 +1,5 @@
 //! Minimal winit window that converts key events via `kbd-winit`, feeds
-//! them to a `Matcher`, and prints matches.
+//! them to a `Dispatcher`, and prints matches.
 //!
 //! ```sh
 //! cargo run -p kbd-winit --example winit
@@ -8,13 +8,13 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use kbd::Action;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Matcher;
-use kbd::Modifier;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 use kbd_winit::WinitEventExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -25,7 +25,7 @@ use winit::window::Window;
 use winit::window::WindowId;
 
 struct App {
-    matcher: Matcher,
+    matcher: Dispatcher,
     modifiers: ModifiersState,
     window: Option<Arc<Window>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
@@ -33,7 +33,7 @@ struct App {
 
 impl App {
     fn new() -> Self {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         matcher
             .register(
@@ -139,7 +139,7 @@ impl ApplicationHandler for App {
                     }
                     MatchResult::NoMatch => println!("{hotkey} → no match"),
                     MatchResult::Pending { .. } => println!("{hotkey} → pending..."),
-                    MatchResult::Swallowed | MatchResult::Ignored => {}
+                    MatchResult::Suppressed | MatchResult::Ignored => {}
                 }
             }
             _ => {}

@@ -34,7 +34,7 @@
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
 //!
-//! Key state and matching logic live in `kbd` (`KeyState`, `Matcher`).
+//! Key state and matching logic live in `kbd` (`KeyState`, `Dispatcher`).
 //!
 //! # Reference
 //!
@@ -48,14 +48,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 
-use kbd::Key;
-use kbd::Matcher;
 use kbd::action::Action;
-use kbd::binding::Passthrough;
+use kbd::binding::KeyPropagation;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
 use kbd::key::Hotkey;
+use kbd::key::Key;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
-use kbd::matcher::MatchResult;
 
 use crate::Error;
 use crate::engine::devices::DeviceKeyEvent;
@@ -80,7 +80,7 @@ use self::wake::WakeFd;
 
 pub(crate) struct Engine {
     /// The synchronous matching engine — owns bindings, layers, and layer stack.
-    matcher: Matcher,
+    dispatcher: Dispatcher,
     /// Press cache: records what happened on key press so the corresponding
     /// release event uses the same disposition. Essential for correct
     /// release behavior across layer transitions — if a key was consumed
@@ -107,7 +107,7 @@ impl Engine {
             GrabState::Enabled { .. } => devices::DeviceGrabMode::Exclusive,
         };
         Self {
-            matcher: Matcher::new(),
+            dispatcher: Dispatcher::new(),
             press_cache: HashMap::new(),
             devices: devices::DeviceManager::new(
                 Path::new(devices::INPUT_DIRECTORY),
@@ -162,7 +162,7 @@ impl Engine {
     /// Returns the poll timeout in milliseconds based on the nearest layer timeout.
     /// Returns -1 (infinite) if no timeouts are pending.
     fn next_timer_deadline_ms(&self) -> i32 {
-        match self.matcher.next_timeout_deadline() {
+        match self.dispatcher.next_timeout_deadline() {
             Some(remaining) => {
                 let ms = remaining.as_millis();
                 // Clamp to i32::MAX, add 1ms to ensure we wake after expiry
@@ -189,36 +189,36 @@ impl Engine {
     fn handle_command(&mut self, command: Command) -> LoopControl {
         match command {
             Command::Register { binding, reply } => {
-                let result = self.matcher.register_binding(binding);
+                let result = self.dispatcher.register_binding(binding);
                 let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::Unregister { id } => {
-                self.matcher.unregister(id);
+                self.dispatcher.unregister(id);
                 LoopControl::Continue
             }
             Command::DefineLayer { layer, reply } => {
-                let result = self.matcher.define_layer(layer);
+                let result = self.dispatcher.define_layer(layer);
                 let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::PushLayer { name, reply } => {
-                let result = self.matcher.push_layer(name);
+                let result = self.dispatcher.push_layer(name);
                 let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::PopLayer { reply } => {
-                let result = self.matcher.pop_layer();
+                let result = self.dispatcher.pop_layer();
                 let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::ToggleLayer { name, reply } => {
-                let result = self.matcher.toggle_layer(name);
+                let result = self.dispatcher.toggle_layer(name);
                 let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
             Command::IsRegistered { hotkey, reply } => {
-                let _ = reply.send(self.matcher.is_registered(&hotkey));
+                let _ = reply.send(self.dispatcher.is_registered(&hotkey));
                 LoopControl::Continue
             }
             Command::IsKeyPressed { key, reply } => {
@@ -230,19 +230,19 @@ impl Engine {
                 LoopControl::Continue
             }
             Command::ListBindings { reply } => {
-                let _ = reply.send(self.matcher.list_bindings());
+                let _ = reply.send(self.dispatcher.list_bindings());
                 LoopControl::Continue
             }
             Command::BindingsForKey { hotkey, reply } => {
-                let _ = reply.send(self.matcher.bindings_for_key(&hotkey));
+                let _ = reply.send(self.dispatcher.bindings_for_key(&hotkey));
                 LoopControl::Continue
             }
             Command::ActiveLayers { reply } => {
-                let _ = reply.send(self.matcher.active_layers());
+                let _ = reply.send(self.dispatcher.active_layers());
                 LoopControl::Continue
             }
             Command::Conflicts { reply } => {
-                let _ = reply.send(self.matcher.conflicts());
+                let _ = reply.send(self.dispatcher.conflicts());
                 LoopControl::Continue
             }
             Command::Shutdown => LoopControl::Shutdown,
@@ -295,23 +295,23 @@ impl Engine {
         let active_modifiers = self.key_state.active_modifiers();
         let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
 
-        // Process through the Matcher which handles matching + layer effects.
-        // The Matcher applies layer effects (PushLayer/PopLayer/ToggleLayer)
+        // Process through the Dispatcher which handles matching + layer effects.
+        // The Dispatcher applies layer effects (PushLayer/PopLayer/ToggleLayer)
         // internally during process(). We extract the outcome to handle
         // callback execution and forwarding.
         let outcome = {
-            let result = self.matcher.process(&candidate, event.transition);
+            let result = self.dispatcher.process(&candidate, event.transition);
             match &result {
                 MatchResult::Matched {
                     action,
-                    passthrough,
+                    propagation,
                 } => {
                     execute_action(action);
                     MatchOutcome::Matched {
-                        passthrough: *passthrough,
+                        propagation: *propagation,
                     }
                 }
-                MatchResult::Swallowed => MatchOutcome::Swallowed,
+                MatchResult::Suppressed => MatchOutcome::Suppressed,
                 MatchResult::NoMatch => MatchOutcome::NoMatch,
                 // Sequences not yet implemented (Phase 4)
                 MatchResult::Ignored | MatchResult::Pending { .. } => MatchOutcome::Ignored,
@@ -320,14 +320,18 @@ impl Engine {
 
         // Determine event disposition based on match outcome and grab state
         let disposition = match outcome {
-            MatchOutcome::Matched { passthrough } => match passthrough {
-                Passthrough::Enabled if matches!(self.grab_state, GrabState::Enabled { .. }) => {
+            MatchOutcome::Matched { propagation } => match propagation {
+                KeyPropagation::Continue
+                    if matches!(self.grab_state, GrabState::Enabled { .. }) =>
+                {
                     self.forward_event(event.key, event.transition);
                     KeyEventDisposition::MatchedForwarded
                 }
-                Passthrough::Enabled | Passthrough::Consume => KeyEventDisposition::MatchedConsumed,
+                KeyPropagation::Continue | KeyPropagation::Stop => {
+                    KeyEventDisposition::MatchedConsumed
+                }
             },
-            MatchOutcome::Swallowed => KeyEventDisposition::MatchedConsumed,
+            MatchOutcome::Suppressed => KeyEventDisposition::MatchedConsumed,
             MatchOutcome::NoMatch | MatchOutcome::Ignored => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
                     self.forward_event(event.key, event.transition);
@@ -362,7 +366,7 @@ impl Engine {
 /// never kills the engine thread.
 ///
 /// Only handles `Action::Callback`. Layer-control actions (`PushLayer`,
-/// `PopLayer`, `ToggleLayer`) are handled by `Matcher::process()` internally.
+/// `PopLayer`, `ToggleLayer`) are handled by `Dispatcher::process()` internally.
 fn execute_action(action: &Action) {
     if let Action::Callback(callback) = action
         && let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -385,7 +389,7 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
         }
 
         engine.process_polled_events(&poll_fds);
-        engine.matcher.check_timeouts();
+        engine.dispatcher.check_timeouts();
     }
 }
 
@@ -397,13 +401,13 @@ mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
-    use kbd::Key;
-    use kbd::Modifier;
     use kbd::action::Action;
     use kbd::binding::BindingId;
-    use kbd::binding::Passthrough;
+    use kbd::binding::KeyPropagation;
     use kbd::binding::RegisteredBinding;
     use kbd::key::Hotkey;
+    use kbd::key::Key;
+    use kbd::key::Modifier;
     use kbd::key_state::KeyTransition;
 
     use super::Command;
@@ -495,7 +499,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: RegisteredBinding::new(BindingId::new(), hotkey.clone(), Action::Swallow),
+                binding: RegisteredBinding::new(BindingId::new(), hotkey.clone(), Action::Suppress),
                 reply: register_reply_tx,
             })
             .expect("register command should send");
@@ -551,7 +555,7 @@ mod tests {
     }
 
     fn test_binding(id: BindingId, hotkey: Hotkey) -> RegisteredBinding {
-        RegisteredBinding::new(id, hotkey, Action::Swallow)
+        RegisteredBinding::new(id, hotkey, Action::Suppress)
     }
 
     /// Create a minimal engine for unit testing (no devices, no grab, no event loop).
@@ -604,7 +608,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.matcher.register_binding(binding).unwrap();
+        engine.dispatcher.register_binding(binding).unwrap();
 
         // Simulate: press Ctrl, then press C
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
@@ -625,7 +629,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.matcher.register_binding(binding).unwrap();
+        engine.dispatcher.register_binding(binding).unwrap();
 
         // Press V instead of C (with Ctrl held)
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
@@ -646,7 +650,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.matcher.register_binding(binding).unwrap();
+        engine.dispatcher.register_binding(binding).unwrap();
 
         // Press Ctrl+Shift+C — binding only wants Ctrl+C
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
@@ -670,7 +674,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.matcher.register_binding(binding).unwrap();
+        engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::SHIFT_LEFT, 10);
@@ -691,7 +695,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.matcher.register_binding(binding).unwrap();
+        engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::ESCAPE, 10);
 
@@ -710,7 +714,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.matcher.register_binding(binding).unwrap();
+        engine.dispatcher.register_binding(binding).unwrap();
 
         // Press the hotkey so it fires once
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
@@ -735,7 +739,7 @@ mod tests {
             panic!("intentional test panic");
         });
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(id1, hotkey1, action1))
             .unwrap();
 
@@ -746,7 +750,7 @@ mod tests {
             post_panic_clone.fetch_add(1, Ordering::Relaxed);
         });
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(id2, hotkey2, action2))
             .unwrap();
 
@@ -774,7 +778,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding = RegisteredBinding::new(id, hotkey, action);
-        engine.matcher.register_binding(binding).unwrap();
+        engine.dispatcher.register_binding(binding).unwrap();
 
         // Use RightCtrl instead of LeftCtrl — should still match
         press_key(&mut engine, Key::CONTROL_RIGHT, 10);
@@ -793,8 +797,8 @@ mod tests {
         let id = BindingId::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         engine
-            .matcher
-            .register_binding(RegisteredBinding::new(id, hotkey, Action::Swallow))
+            .dispatcher
+            .register_binding(RegisteredBinding::new(id, hotkey, Action::Suppress))
             .unwrap();
 
         // Press A with no modifiers — no binding matches, should be forwarded
@@ -820,7 +824,7 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(id, hotkey, action))
             .unwrap();
 
@@ -850,8 +854,8 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding =
-            RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
-        engine.matcher.register_binding(binding).unwrap();
+            RegisteredBinding::new(id, hotkey, action).with_propagation(KeyPropagation::Continue);
+        engine.dispatcher.register_binding(binding).unwrap();
 
         // Press Ctrl+C with passthrough — should fire AND forward
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
@@ -891,8 +895,8 @@ mod tests {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
         let binding =
-            RegisteredBinding::new(id, hotkey, action).with_passthrough(Passthrough::Enabled);
-        engine.matcher.register_binding(binding).unwrap();
+            RegisteredBinding::new(id, hotkey, action).with_propagation(KeyPropagation::Continue);
+        engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
         let disposition = press_key(&mut engine, Key::C, 10);
@@ -1019,15 +1023,15 @@ mod tests {
     #[test]
     fn engine_stores_defined_layer() {
         let mut engine = test_engine();
-        let layer = kbd::Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress);
 
-        let result = engine.matcher.define_layer(layer);
+        let result = engine.dispatcher.define_layer(layer);
         assert!(result.is_ok());
 
         // Verify via introspection: the layer's bindings are listed
-        let bindings = engine.matcher.list_bindings();
+        let bindings = engine.dispatcher.list_bindings();
         let nav_bindings: Vec<_> = bindings
             .iter()
             .filter(|b| {
@@ -1043,15 +1047,15 @@ mod tests {
     #[test]
     fn engine_stores_layer_bindings() {
         let mut engine = test_engine();
-        let layer = kbd::Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow)
-            .bind(Key::K, Action::Swallow);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress)
+            .bind(Key::K, Action::Suppress);
 
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
 
         // Verify via introspection: three bindings in the nav layer
-        let bindings = engine.matcher.list_bindings();
+        let bindings = engine.dispatcher.list_bindings();
         let nav_bindings: Vec<_> = bindings
             .iter()
             .filter(|b| {
@@ -1067,47 +1071,50 @@ mod tests {
     #[test]
     fn engine_stores_layer_options() {
         let mut engine = test_engine();
-        let layer = kbd::Layer::new("oneshot-nav")
-            .bind(Key::H, Action::Swallow)
+        let layer = kbd::layer::Layer::new("oneshot-nav")
+            .bind(Key::H, Action::Suppress)
             .swallow()
             .oneshot(1)
             .timeout(std::time::Duration::from_secs(5));
 
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
 
         // Verify layer was stored by pushing and checking behavior:
         // the oneshot layer should auto-pop after 1 keypress
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("oneshot-nav"))
             .unwrap();
 
         // H should match in the layer
         let result = engine
-            .matcher
+            .dispatcher
             .process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, kbd::matcher::MatchResult::Matched { .. }));
+        assert!(matches!(
+            result,
+            kbd::dispatcher::MatchResult::Matched { .. }
+        ));
 
         // After oneshot depth of 1, layer should be gone
         let result = engine
-            .matcher
+            .dispatcher
             .process(&Hotkey::new(Key::H), KeyTransition::Press);
-        assert!(matches!(result, kbd::matcher::MatchResult::NoMatch));
+        assert!(matches!(result, kbd::dispatcher::MatchResult::NoMatch));
     }
 
     #[test]
     fn engine_stores_empty_layer() {
         let mut engine = test_engine();
-        let layer = kbd::Layer::new("empty");
+        let layer = kbd::layer::Layer::new("empty");
 
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
 
         // Push the empty layer — should succeed and have 0 bindings
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("empty"))
             .unwrap();
-        let active = engine.matcher.active_layers();
+        let active = engine.dispatcher.active_layers();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].name.as_str(), "empty");
         assert_eq!(active[0].binding_count, 0);
@@ -1117,7 +1124,7 @@ mod tests {
     fn define_layer_via_runtime_command() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         runtime
@@ -1141,7 +1148,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define first layer — should succeed
-        let first_layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let first_layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1158,7 +1165,7 @@ mod tests {
         );
 
         // Define second layer with same name — should fail
-        let duplicate_layer = kbd::Layer::new("nav").bind(Key::J, Action::Swallow);
+        let duplicate_layer = kbd::layer::Layer::new("nav").bind(Key::J, Action::Suppress);
         let (dup_reply_tx, dup_reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1176,13 +1183,13 @@ mod tests {
     }
 
     fn define_and_push_layer(engine: &mut Engine, name: &str, bindings: Vec<(Key, Action)>) {
-        let mut layer = kbd::Layer::new(name);
+        let mut layer = kbd::layer::Layer::new(name);
         for (key, action) in bindings {
             layer = layer.bind(key, action);
         }
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from(name))
             .unwrap();
     }
@@ -1226,7 +1233,7 @@ mod tests {
         );
 
         // Pop the layer
-        let popped = engine.matcher.pop_layer().unwrap();
+        let popped = engine.dispatcher.pop_layer().unwrap();
         assert_eq!(popped.as_str(), "nav");
 
         // H should no longer match
@@ -1240,16 +1247,16 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd::Layer::new("nav").bind(
+        let layer = kbd::layer::Layer::new("nav").bind(
             Key::H,
             Action::from(move || {
                 cc.fetch_add(1, Ordering::Relaxed);
             }),
         );
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
 
         engine
-            .matcher
+            .dispatcher
             .toggle_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1276,7 +1283,7 @@ mod tests {
 
         // Toggle off
         engine
-            .matcher
+            .dispatcher
             .toggle_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1289,9 +1296,9 @@ mod tests {
     fn toggle_undefined_layer_returns_error() {
         let mut engine = test_engine();
         let result = engine
-            .matcher
+            .dispatcher
             .toggle_layer(kbd::action::LayerName::from("nonexistent"));
-        assert!(matches!(result, Err(kbd::Error::LayerNotDefined)));
+        assert!(matches!(result, Err(kbd::error::Error::LayerNotDefined)));
     }
 
     #[test]
@@ -1345,7 +1352,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
@@ -1355,7 +1362,7 @@ mod tests {
             ))
             .unwrap();
 
-        define_and_push_layer(&mut engine, "nav", vec![(Key::H, Action::Swallow)]);
+        define_and_push_layer(&mut engine, "nav", vec![(Key::H, Action::Suppress)]);
 
         // X not in layer, falls through to global
         press_key(&mut engine, Key::X, 10);
@@ -1369,7 +1376,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
@@ -1379,12 +1386,12 @@ mod tests {
             ))
             .unwrap();
 
-        let layer = kbd::Layer::new("modal")
-            .bind(Key::H, Action::Swallow)
+        let layer = kbd::layer::Layer::new("modal")
+            .bind(Key::H, Action::Suppress)
             .swallow();
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
@@ -1400,17 +1407,17 @@ mod tests {
 
         let layer_counter = Arc::new(AtomicUsize::new(0));
         let lc = Arc::clone(&layer_counter);
-        let layer = kbd::Layer::new("nav").bind(
+        let layer = kbd::layer::Layer::new("nav").bind(
             Key::H,
             Action::from(move || {
                 lc.fetch_add(1, Ordering::Relaxed);
             }),
         );
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
 
         // Register a global binding that pushes the layer
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F1),
@@ -1432,7 +1439,7 @@ mod tests {
 
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
-        let layer = kbd::Layer::new("nav")
+        let layer = kbd::layer::Layer::new("nav")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1440,9 +1447,9 @@ mod tests {
                 }),
             )
             .bind(Key::ESCAPE, Action::PopLayer);
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
@@ -1466,17 +1473,17 @@ mod tests {
 
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
-        let layer = kbd::Layer::new("nav").bind(
+        let layer = kbd::layer::Layer::new("nav").bind(
             Key::H,
             Action::from(move || {
                 cc.fetch_add(1, Ordering::Relaxed);
             }),
         );
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
 
         // Register toggle binding
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F2),
@@ -1507,7 +1514,7 @@ mod tests {
         let global_counter = Arc::new(AtomicUsize::new(0));
         let gc = Arc::clone(&global_counter);
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
@@ -1535,7 +1542,7 @@ mod tests {
         assert_eq!(layer_counter.load(Ordering::Relaxed), 100);
 
         // Pop layer, now global should fire
-        engine.matcher.pop_layer().unwrap();
+        engine.dispatcher.pop_layer().unwrap();
         release_key(&mut engine, Key::H, 10);
         press_key(&mut engine, Key::H, 10);
         assert_eq!(global_counter.load(Ordering::Relaxed), 1);
@@ -1548,7 +1555,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd::Layer::new("oneshot")
+        let layer = kbd::layer::Layer::new("oneshot")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1556,9 +1563,9 @@ mod tests {
                 }),
             )
             .oneshot(1);
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("oneshot"))
             .unwrap();
 
@@ -1578,7 +1585,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd::Layer::new("oneshot")
+        let layer = kbd::layer::Layer::new("oneshot")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1586,9 +1593,9 @@ mod tests {
                 }),
             )
             .oneshot(1);
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("oneshot"))
             .unwrap();
 
@@ -1607,7 +1614,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd::Layer::new("oneshot2")
+        let layer = kbd::layer::Layer::new("oneshot2")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1615,9 +1622,9 @@ mod tests {
                 }),
             )
             .oneshot(2);
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("oneshot2"))
             .unwrap();
 
@@ -1641,7 +1648,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define layer
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1693,7 +1700,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define and push layer
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1754,7 +1761,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd::Layer::new("timed")
+        let layer = kbd::layer::Layer::new("timed")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1762,9 +1769,9 @@ mod tests {
                 }),
             )
             .timeout(Duration::from_millis(50));
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("timed"))
             .unwrap();
 
@@ -1777,7 +1784,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(80));
 
         // Check timeouts (simulating the engine loop check)
-        engine.matcher.check_timeouts();
+        engine.dispatcher.check_timeouts();
 
         // Layer should be gone — H no longer matches
         press_key(&mut engine, Key::H, 10);
@@ -1790,7 +1797,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd::Layer::new("timed")
+        let layer = kbd::layer::Layer::new("timed")
             .bind(
                 Key::H,
                 Action::from(move || {
@@ -1798,9 +1805,9 @@ mod tests {
                 }),
             )
             .timeout(Duration::from_millis(100));
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("timed"))
             .unwrap();
 
@@ -1812,7 +1819,7 @@ mod tests {
 
         // Wait a bit more but not enough from last activity
         std::thread::sleep(Duration::from_millis(50));
-        engine.matcher.check_timeouts();
+        engine.dispatcher.check_timeouts();
 
         // Layer should still be active
         press_key(&mut engine, Key::H, 10);
@@ -1821,7 +1828,7 @@ mod tests {
 
         // Now wait for full timeout from last activity
         std::thread::sleep(Duration::from_millis(120));
-        engine.matcher.check_timeouts();
+        engine.dispatcher.check_timeouts();
 
         // Layer should be gone
         press_key(&mut engine, Key::H, 10);
@@ -1833,7 +1840,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define layer
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1870,11 +1877,11 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
@@ -1898,14 +1905,14 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
-                .with_passthrough(Passthrough::Enabled),
+                .with_propagation(KeyPropagation::Continue),
             )
             .unwrap();
 
@@ -1930,12 +1937,12 @@ mod tests {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
-        let layer = kbd::Layer::new("modal")
-            .bind(Key::H, Action::Swallow)
+        let layer = kbd::layer::Layer::new("modal")
+            .bind(Key::H, Action::Suppress)
             .swallow();
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
@@ -1962,7 +1969,7 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -1987,19 +1994,19 @@ mod tests {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
-        let layer = kbd::Layer::new("nav")
+        let layer = kbd::layer::Layer::new("nav")
             .bind(Key::H, Action::PopLayer)
-            .bind(Key::J, Action::Swallow);
-        engine.matcher.define_layer(layer).unwrap();
+            .bind(Key::J, Action::Suppress);
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
         let press_disp = press_key(&mut engine, Key::H, 10);
         assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
         assert!(
-            engine.matcher.active_layers().is_empty(),
+            engine.dispatcher.active_layers().is_empty(),
             "layer should have been popped"
         );
 
@@ -2020,11 +2027,11 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
@@ -2055,14 +2062,14 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
-                .with_passthrough(Passthrough::Enabled),
+                .with_propagation(KeyPropagation::Continue),
             )
             .unwrap();
 
@@ -2092,18 +2099,18 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
             )
             .unwrap();
 
-        let bindings = engine.matcher.list_bindings();
+        let bindings = engine.dispatcher.list_bindings();
         assert_eq!(bindings.len(), 1);
 
         let info = &bindings[0];
@@ -2117,12 +2124,12 @@ mod tests {
     fn list_bindings_includes_layer_bindings() {
         let mut engine = test_engine();
 
-        let layer = kbd::Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow);
-        engine.matcher.define_layer(layer).unwrap();
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress);
+        engine.dispatcher.define_layer(layer).unwrap();
 
-        let bindings = engine.matcher.list_bindings();
+        let bindings = engine.dispatcher.list_bindings();
         let layer_bindings: Vec<_> = bindings
             .iter()
             .filter(|b| matches!(b.location, kbd::introspection::BindingLocation::Layer(_)))
@@ -2134,10 +2141,10 @@ mod tests {
     fn list_bindings_inactive_layer_binding_marked_inactive() {
         let mut engine = test_engine();
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
-        engine.matcher.define_layer(layer).unwrap();
+        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        engine.dispatcher.define_layer(layer).unwrap();
 
-        let bindings = engine.matcher.list_bindings();
+        let bindings = engine.dispatcher.list_bindings();
         let nav_binding = bindings
             .iter()
             .find(|b| b.hotkey == Hotkey::new(Key::H))
@@ -2153,22 +2160,22 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
-        engine.matcher.define_layer(layer).unwrap();
+        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
-        let bindings = engine.matcher.list_bindings();
+        let bindings = engine.dispatcher.list_bindings();
 
         let global_h = bindings
             .iter()
@@ -2196,22 +2203,22 @@ mod tests {
     fn list_bindings_higher_layer_shadows_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = kbd::Layer::new("layer1").bind(Key::H, Action::Swallow);
-        engine.matcher.define_layer(layer1).unwrap();
+        let layer1 = kbd::layer::Layer::new("layer1").bind(Key::H, Action::Suppress);
+        engine.dispatcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd::Layer::new("layer2").bind(Key::H, Action::Swallow);
-        engine.matcher.define_layer(layer2).unwrap();
+        let layer2 = kbd::layer::Layer::new("layer2").bind(Key::H, Action::Suppress);
+        engine.dispatcher.define_layer(layer2).unwrap();
 
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
-        let bindings = engine.matcher.list_bindings();
+        let bindings = engine.dispatcher.list_bindings();
 
         let layer1_h = bindings
             .iter()
@@ -2249,19 +2256,19 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
             )
             .unwrap();
 
         let result = engine
-            .matcher
+            .dispatcher
             .bindings_for_key(&Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert!(result.is_some());
 
@@ -2276,16 +2283,16 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
         let result = engine
-            .matcher
+            .dispatcher
             .bindings_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
         assert!(result.is_none());
     }
@@ -2295,23 +2302,23 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
-                RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Swallow)
+                RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Suppress)
                     .with_options(
                         kbd::binding::BindingOptions::default().with_description("Global H"),
                     ),
             )
             .unwrap();
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
-        engine.matcher.define_layer(layer).unwrap();
+        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
-        let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::H));
+        let result = engine.dispatcher.bindings_for_key(&Hotkey::new(Key::H));
         assert!(result.is_some());
 
         let info = result.unwrap();
@@ -2324,7 +2331,7 @@ mod tests {
     #[test]
     fn active_layers_returns_empty_when_no_layers_pushed() {
         let engine = test_engine();
-        let layers = engine.matcher.active_layers();
+        let layers = engine.dispatcher.active_layers();
         assert!(layers.is_empty());
     }
 
@@ -2332,27 +2339,27 @@ mod tests {
     fn active_layers_returns_stack_in_order() {
         let mut engine = test_engine();
 
-        let layer1 = kbd::Layer::new("layer1")
-            .bind(Key::H, Action::Swallow)
+        let layer1 = kbd::layer::Layer::new("layer1")
+            .bind(Key::H, Action::Suppress)
             .description("First layer");
-        engine.matcher.define_layer(layer1).unwrap();
+        engine.dispatcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd::Layer::new("layer2")
-            .bind(Key::J, Action::Swallow)
-            .bind(Key::K, Action::Swallow)
+        let layer2 = kbd::layer::Layer::new("layer2")
+            .bind(Key::J, Action::Suppress)
+            .bind(Key::K, Action::Suppress)
             .description("Second layer");
-        engine.matcher.define_layer(layer2).unwrap();
+        engine.dispatcher.define_layer(layer2).unwrap();
 
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
-        let active = engine.matcher.active_layers();
+        let active = engine.dispatcher.active_layers();
         assert_eq!(active.len(), 2);
 
         assert_eq!(active[0].name.as_str(), "layer1");
@@ -2369,15 +2376,15 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
-        let conflicts = engine.matcher.conflicts();
+        let conflicts = engine.dispatcher.conflicts();
         assert!(conflicts.is_empty());
     }
 
@@ -2386,22 +2393,22 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
-        engine.matcher.define_layer(layer).unwrap();
+        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("nav"))
             .unwrap();
 
-        let conflicts = engine.matcher.conflicts();
+        let conflicts = engine.dispatcher.conflicts();
         assert_eq!(conflicts.len(), 1);
 
         let conflict = &conflicts[0];
@@ -2420,22 +2427,22 @@ mod tests {
     fn conflicts_detects_layer_shadowing_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = kbd::Layer::new("layer1").bind(Key::H, Action::Swallow);
-        engine.matcher.define_layer(layer1).unwrap();
+        let layer1 = kbd::layer::Layer::new("layer1").bind(Key::H, Action::Suppress);
+        engine.dispatcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd::Layer::new("layer2").bind(Key::H, Action::Swallow);
-        engine.matcher.define_layer(layer2).unwrap();
+        let layer2 = kbd::layer::Layer::new("layer2").bind(Key::H, Action::Suppress);
+        engine.dispatcher.define_layer(layer2).unwrap();
 
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer1"))
             .unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("layer2"))
             .unwrap();
 
-        let conflicts = engine.matcher.conflicts();
+        let conflicts = engine.dispatcher.conflicts();
         assert_eq!(conflicts.len(), 1);
 
         let conflict = &conflicts[0];
@@ -2461,7 +2468,7 @@ mod tests {
                 binding: RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
                 reply: reply_tx,
@@ -2524,12 +2531,12 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(
                     kbd::binding::BindingOptions::default()
@@ -2538,7 +2545,7 @@ mod tests {
             )
             .unwrap();
 
-        let bindings = engine.matcher.list_bindings();
+        let bindings = engine.dispatcher.list_bindings();
         assert_eq!(bindings.len(), 1);
         assert_eq!(
             bindings[0].overlay_visibility,
@@ -2551,30 +2558,30 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
-        let layer = kbd::Layer::new("modal")
-            .bind(Key::H, Action::Swallow)
+        let layer = kbd::layer::Layer::new("modal")
+            .bind(Key::H, Action::Suppress)
             .swallow();
-        engine.matcher.define_layer(layer).unwrap();
+        engine.dispatcher.define_layer(layer).unwrap();
         engine
-            .matcher
+            .dispatcher
             .push_layer(kbd::action::LayerName::from("modal"))
             .unwrap();
 
-        let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::X));
+        let result = engine.dispatcher.bindings_for_key(&Hotkey::new(Key::X));
         assert!(
             result.is_none(),
             "swallow layer should block fallthrough to global binding"
         );
 
-        let result = engine.matcher.bindings_for_key(&Hotkey::new(Key::H));
+        let result = engine.dispatcher.bindings_for_key(&Hotkey::new(Key::H));
         assert!(result.is_some());
     }
 
@@ -2583,16 +2590,16 @@ mod tests {
         let mut engine = test_engine();
 
         engine
-            .matcher
+            .dispatcher
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::CONTROL_LEFT),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
         let result = engine
-            .matcher
+            .dispatcher
             .bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
         assert!(
             result.is_none(),

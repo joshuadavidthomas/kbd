@@ -8,21 +8,21 @@
 //!
 //! ```rust
 //! use evdev::KeyCode;
-//! use kbd::Key;
-//! use kbd_evdev::KeyCodeExt;
+//! use kbd::key::Key;
+//! use kbd_evdev::EvdevKeyCodeExt;
 //!
 //! let key: Key = KeyCode::KEY_A.to_key();
 //! assert_eq!(key, Key::A);
 //! ```
 
 use evdev::KeyCode;
-use kbd::Key;
+use kbd::key::Key;
 
 /// Extension trait on [`evdev::KeyCode`] for converting to [`kbd::Key`].
 ///
 /// Returns [`Key::UNIDENTIFIED`] for key codes that have no `kbd` mapping
 /// (e.g., `KEY_PROG2`, `KEY_COFFEE`).
-pub trait KeyCodeExt {
+pub trait EvdevKeyCodeExt {
     /// Convert this evdev key code to a [`Key`].
     ///
     /// Returns [`Key::UNIDENTIFIED`] for key codes that don't have a mapping.
@@ -31,8 +31,8 @@ pub trait KeyCodeExt {
     ///
     /// ```
     /// use evdev::KeyCode;
-    /// use kbd::Key;
-    /// use kbd_evdev::KeyCodeExt;
+    /// use kbd::key::Key;
+    /// use kbd_evdev::EvdevKeyCodeExt;
     ///
     /// assert_eq!(KeyCode::KEY_A.to_key(), Key::A);
     /// assert_eq!(KeyCode::KEY_LEFTCTRL.to_key(), Key::CONTROL_LEFT);
@@ -47,7 +47,7 @@ pub trait KeyCodeExt {
 ///
 /// [`Key::UNIDENTIFIED`] and any key without a known evdev equivalent maps
 /// to `KeyCode::KEY_UNKNOWN`.
-pub trait EvdevKeyExt {
+pub trait KbdKeyExt {
     /// Convert this key to an evdev [`KeyCode`].
     ///
     /// [`Key::UNIDENTIFIED`] maps to `KeyCode::KEY_UNKNOWN`.
@@ -56,8 +56,8 @@ pub trait EvdevKeyExt {
     ///
     /// ```
     /// use evdev::KeyCode;
-    /// use kbd::Key;
-    /// use kbd_evdev::EvdevKeyExt;
+    /// use kbd::key::Key;
+    /// use kbd_evdev::KbdKeyExt;
     ///
     /// assert_eq!(Key::A.to_key_code(), KeyCode::KEY_A);
     /// assert_eq!(Key::CONTROL_LEFT.to_key_code(), KeyCode::KEY_LEFTCTRL);
@@ -68,7 +68,7 @@ pub trait EvdevKeyExt {
     fn to_key_code(self) -> KeyCode;
 }
 
-impl KeyCodeExt for KeyCode {
+impl EvdevKeyCodeExt for KeyCode {
     #[allow(clippy::too_many_lines)]
     fn to_key(self) -> Key {
         match self {
@@ -258,7 +258,7 @@ impl KeyCodeExt for KeyCode {
     }
 }
 
-impl EvdevKeyExt for Key {
+impl KbdKeyExt for Key {
     #[allow(clippy::too_many_lines)]
     fn to_key_code(self) -> KeyCode {
         match self {
@@ -447,10 +447,10 @@ impl EvdevKeyExt for Key {
 #[cfg(test)]
 mod tests {
     use evdev::KeyCode;
-    use kbd::Key;
+    use kbd::key::Key;
 
-    use super::EvdevKeyExt;
-    use super::KeyCodeExt;
+    use super::EvdevKeyCodeExt;
+    use super::KbdKeyExt;
 
     #[test]
     fn keycode_to_key_round_trip() {

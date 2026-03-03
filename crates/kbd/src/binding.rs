@@ -44,25 +44,27 @@ impl Default for BindingId {
 /// # Examples
 ///
 /// ```
-/// use kbd::{Action, BindingId, BindingOptions, Hotkey, Key, Modifier, Passthrough, RegisteredBinding};
+/// use kbd::action::Action;
+/// use kbd::binding::{BindingId, BindingOptions, KeyPropagation, RegisteredBinding};
+/// use kbd::key::{Hotkey, Key, Modifier};
 ///
 /// // A binding that forwards the key event to the application
 /// // while still running its action (e.g., logging keypresses).
 /// let binding = RegisteredBinding::new(
 ///     BindingId::new(),
 ///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-///     Action::Swallow,
-/// ).with_passthrough(Passthrough::Enabled);
+///     Action::Suppress,
+/// ).with_propagation(KeyPropagation::Continue);
 ///
-/// assert_eq!(binding.passthrough(), Passthrough::Enabled);
+/// assert_eq!(binding.propagation(), KeyPropagation::Continue);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum Passthrough {
-    /// Consume the event by default.
+pub enum KeyPropagation {
+    /// Stop propagation — the event is consumed and not forwarded.
     #[default]
-    Consume,
-    /// Forward the event while still running the action.
-    Enabled,
+    Stop,
+    /// Continue propagation — forward the event while still running the action.
+    Continue,
 }
 
 /// Whether a binding appears in hotkey overlays and help screens.
@@ -74,7 +76,7 @@ pub enum Passthrough {
 /// # Examples
 ///
 /// ```
-/// use kbd::{BindingOptions, OverlayVisibility};
+/// use kbd::binding::{BindingOptions, OverlayVisibility};
 ///
 /// // Hide an internal binding from the overlay
 /// let opts = BindingOptions::default()
@@ -102,7 +104,7 @@ pub enum OverlayVisibility {
 /// # Examples
 ///
 /// ```
-/// use kbd::{BindingOptions, DeviceFilter};
+/// use kbd::binding::{BindingOptions, DeviceFilter};
 ///
 /// // Match a device by name pattern
 /// let opts = BindingOptions::default()
@@ -136,19 +138,19 @@ pub enum DeviceFilter {
 /// # Examples
 ///
 /// ```
-/// use kbd::{BindingOptions, OverlayVisibility, Passthrough};
+/// use kbd::binding::{BindingOptions, KeyPropagation, OverlayVisibility};
 ///
 /// let opts = BindingOptions::default()
 ///     .with_description("Copy to clipboard")
-///     .with_passthrough(Passthrough::Consume)
+///     .with_propagation(KeyPropagation::Stop)
 ///     .with_overlay_visibility(OverlayVisibility::Visible);
 ///
 /// assert_eq!(opts.description(), Some("Copy to clipboard"));
-/// assert_eq!(opts.passthrough(), Passthrough::Consume);
+/// assert_eq!(opts.propagation(), KeyPropagation::Stop);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BindingOptions {
-    passthrough: Passthrough,
+    propagation: KeyPropagation,
     /// Human-readable label for this binding ("Copy to clipboard").
     description: Option<Box<str>>,
     /// Whether this binding appears in hotkey overlays and help screens.
@@ -159,14 +161,14 @@ pub struct BindingOptions {
 impl BindingOptions {
     /// How the original key event is handled after matching.
     #[must_use]
-    pub const fn passthrough(&self) -> Passthrough {
-        self.passthrough
+    pub const fn propagation(&self) -> KeyPropagation {
+        self.propagation
     }
 
-    /// Set the passthrough behavior.
+    /// Set the key propagation behavior.
     #[must_use]
-    pub const fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
-        self.passthrough = passthrough;
+    pub const fn with_propagation(mut self, propagation: KeyPropagation) -> Self {
+        self.propagation = propagation;
         self
     }
 
@@ -240,10 +242,10 @@ impl RegisteredBinding {
         self
     }
 
-    /// Set the passthrough behavior for this binding.
+    /// Set the key propagation behavior for this binding.
     #[must_use]
-    pub fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
-        self.options = self.options.with_passthrough(passthrough);
+    pub fn with_propagation(mut self, propagation: KeyPropagation) -> Self {
+        self.options = self.options.with_propagation(propagation);
         self
     }
 
@@ -267,8 +269,8 @@ impl RegisteredBinding {
 
     /// How the original key event is handled after matching.
     #[must_use]
-    pub const fn passthrough(&self) -> Passthrough {
-        self.options.passthrough()
+    pub const fn propagation(&self) -> KeyPropagation {
+        self.options.propagation()
     }
 
     /// The full options for this binding.

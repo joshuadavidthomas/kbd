@@ -1,4 +1,4 @@
-//! Binding matcher — finds which binding (if any) matches a key event.
+//! Binding dispatcher — finds which binding (if any) matches a key event.
 //!
 //! Walks the layer stack top-down, checking bindings in each active layer,
 //! then global bindings. Within each layer, speculative patterns (tap-hold,
@@ -13,23 +13,23 @@ use std::time::Instant;
 use crate::action::Action;
 use crate::action::LayerName;
 use crate::binding::BindingId;
-use crate::binding::Passthrough;
+use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
 use crate::key::Hotkey;
 use crate::key::Modifier;
 use crate::key_state::KeyTransition;
 use crate::layer::StoredLayer;
-use crate::layer::UnmatchedKeyBehavior;
+use crate::layer::UnmatchedKeys;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
 pub enum MatchResult<'a> {
-    /// A binding matched. Contains the action and passthrough setting.
+    /// A binding matched. Contains the action and propagation setting.
     Matched {
         /// The action to execute.
         action: &'a Action,
         /// Whether to consume or forward the original key event.
-        passthrough: Passthrough,
+        propagation: KeyPropagation,
     },
     /// A multi-step sequence is in progress. Consumers can use this for
     /// UI feedback ("waiting for next key…").
@@ -41,8 +41,8 @@ pub enum MatchResult<'a> {
     },
     /// No binding matched the event.
     NoMatch,
-    /// The event was swallowed by a layer with `UnmatchedKeyBehavior::Swallow`.
-    Swallowed,
+    /// The event was suppressed by a layer with `UnmatchedKeys::Swallow`.
+    Suppressed,
     /// The event was not eligible for matching (modifier-only press, release, repeat).
     Ignored,
 }
@@ -64,34 +64,37 @@ struct LayerTimeout {
 
 /// A synchronous hotkey matching engine.
 ///
-/// `Matcher` is the embeddable engine. No threads, no channels, no evdev.
+/// `Dispatcher` is the embeddable engine. No threads, no channels, no evdev.
 /// Consumers drive it from their own event loop — winit, GPUI, Smithay,
 /// a game loop, whatever.
 ///
 /// # Lifecycle
 ///
-/// 1. Create with [`Matcher::new`]
-/// 2. Register global bindings with [`register`](Matcher::register) or
-///    [`register_binding`](Matcher::register_binding)
-/// 3. Define layers with [`define_layer`](Matcher::define_layer), activate
-///    with [`push_layer`](Matcher::push_layer)
-/// 4. Feed key events via [`process`](Matcher::process) — returns a
+/// 1. Create with [`Dispatcher::new`]
+/// 2. Register global bindings with [`register`](Dispatcher::register) or
+///    [`register_binding`](Dispatcher::register_binding)
+/// 3. Define layers with [`define_layer`](Dispatcher::define_layer), activate
+///    with [`push_layer`](Dispatcher::push_layer)
+/// 4. Feed key events via [`process`](Dispatcher::process) — returns a
 ///    [`MatchResult`] telling you what (if anything) matched
-/// 5. Inspect state with [`list_bindings`](Matcher::list_bindings),
-///    [`active_layers`](Matcher::active_layers), and
-///    [`conflicts`](Matcher::conflicts)
+/// 5. Inspect state with [`list_bindings`](Dispatcher::list_bindings),
+///    [`active_layers`](Dispatcher::active_layers), and
+///    [`conflicts`](Dispatcher::conflicts)
 ///
 /// # Examples
 ///
 /// Register a global binding and match against it:
 ///
 /// ```
-/// use kbd::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
+/// use kbd::action::Action;
+/// use kbd::dispatcher::{Dispatcher, MatchResult};
+/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::key_state::KeyTransition;
 ///
-/// let mut matcher = Matcher::new();
+/// let mut matcher = Dispatcher::new();
 /// matcher.register(
 ///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-///     Action::Swallow,
+///     Action::Suppress,
 /// ).unwrap();
 ///
 /// let result = matcher.process(
@@ -104,16 +107,20 @@ struct LayerTimeout {
 /// Using layers for modal editing:
 ///
 /// ```
-/// use kbd::{Action, Hotkey, Key, KeyTransition, Layer, MatchResult, Matcher, Modifier};
+/// use kbd::action::Action;
+/// use kbd::dispatcher::{Dispatcher, MatchResult};
+/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::key_state::KeyTransition;
+/// use kbd::layer::Layer;
 ///
-/// let mut matcher = Matcher::new();
+/// let mut matcher = Dispatcher::new();
 ///
 /// // Define a navigation layer
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Swallow)
-///     .bind(Key::J, Action::Swallow)
-///     .bind(Key::K, Action::Swallow)
-///     .bind(Key::L, Action::Swallow)
+///     .bind(Key::H, Action::Suppress)
+///     .bind(Key::J, Action::Suppress)
+///     .bind(Key::K, Action::Suppress)
+///     .bind(Key::L, Action::Suppress)
 ///     .bind(Key::ESCAPE, Action::PopLayer)
 ///     .swallow();
 /// matcher.define_layer(nav).unwrap();
@@ -132,7 +139,7 @@ struct LayerTimeout {
 /// let result = matcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
 /// assert!(matches!(result, MatchResult::NoMatch));
 /// ```
-pub struct Matcher {
+pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
@@ -151,9 +158,9 @@ enum InternalOutcome {
     Matched {
         binding_ref: MatchedBindingRef,
         layer_effect: LayerEffect,
-        passthrough: Passthrough,
+        propagation: KeyPropagation,
     },
-    Swallowed,
+    Suppressed,
     NoMatch,
     Ignored,
 }
@@ -173,14 +180,14 @@ impl LayerEffect {
             Action::PopLayer => Self::Pop,
             Action::ToggleLayer(name) => Self::Toggle(name.clone()),
             Action::Callback(_)
-            | Action::EmitKey(..)
+            | Action::EmitHotkey(..)
             | Action::EmitSequence(..)
-            | Action::Swallow => Self::None,
+            | Action::Suppress => Self::None,
         }
     }
 }
 
-impl Matcher {
+impl Dispatcher {
     /// Create a new empty matcher with no bindings or layers.
     #[must_use]
     pub fn new() -> Self {
@@ -199,7 +206,7 @@ impl Matcher {
         &mut self,
         hotkey: impl Into<Hotkey>,
         action: impl Into<Action>,
-    ) -> Result<BindingId, crate::Error> {
+    ) -> Result<BindingId, crate::error::Error> {
         let id = BindingId::new();
         let binding = RegisteredBinding::new(id, hotkey.into(), action.into());
         self.register_binding(binding)?;
@@ -209,13 +216,16 @@ impl Matcher {
     /// Register a [`RegisteredBinding`] with full options control.
     ///
     /// Returns `Error::AlreadyRegistered` if a binding for the same hotkey exists.
-    pub fn register_binding(&mut self, binding: RegisteredBinding) -> Result<(), crate::Error> {
+    pub fn register_binding(
+        &mut self,
+        binding: RegisteredBinding,
+    ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
 
         if self.bindings_by_id.contains_key(&id) || self.binding_ids_by_hotkey.contains_key(&hotkey)
         {
-            return Err(crate::Error::AlreadyRegistered);
+            return Err(crate::error::Error::AlreadyRegistered);
         }
 
         self.binding_ids_by_hotkey.insert(hotkey, id);
@@ -239,11 +249,11 @@ impl Matcher {
     /// Define a named layer. The layer is not active until pushed.
     ///
     /// Returns `Error::LayerAlreadyDefined` if a layer with the same name exists.
-    pub fn define_layer(&mut self, layer: crate::layer::Layer) -> Result<(), crate::Error> {
+    pub fn define_layer(&mut self, layer: crate::layer::Layer) -> Result<(), crate::error::Error> {
         let (name, bindings, options) = layer.into_parts();
         match self.layers.entry(name) {
             std::collections::hash_map::Entry::Occupied(_) => {
-                Err(crate::Error::LayerAlreadyDefined)
+                Err(crate::error::Error::LayerAlreadyDefined)
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(StoredLayer { bindings, options });
@@ -255,12 +265,12 @@ impl Matcher {
     /// Push a named layer onto the stack, activating its bindings.
     ///
     /// Returns `Error::LayerNotDefined` if no layer with this name is defined.
-    pub fn push_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::Error> {
+    pub fn push_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
         let name = name.into();
         let stored = self
             .layers
             .get(&name)
-            .ok_or(crate::Error::LayerNotDefined)?;
+            .ok_or(crate::error::Error::LayerNotDefined)?;
         let oneshot_remaining = stored.options.oneshot();
         let timeout = stored.options.timeout().map(|duration| LayerTimeout {
             duration,
@@ -277,20 +287,20 @@ impl Matcher {
     /// Pop the topmost layer from the stack.
     ///
     /// Returns the popped layer's name, or `Error::EmptyLayerStack` if empty.
-    pub fn pop_layer(&mut self) -> Result<LayerName, crate::Error> {
+    pub fn pop_layer(&mut self) -> Result<LayerName, crate::error::Error> {
         self.layer_stack
             .pop()
             .map(|entry| entry.name)
-            .ok_or(crate::Error::EmptyLayerStack)
+            .ok_or(crate::error::Error::EmptyLayerStack)
     }
 
     /// Toggle a layer: push if not active, remove if active.
     ///
     /// Returns `Error::LayerNotDefined` if no layer with this name is defined.
-    pub fn toggle_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::Error> {
+    pub fn toggle_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
         let name = name.into();
         if !self.layers.contains_key(&name) {
-            return Err(crate::Error::LayerNotDefined);
+            return Err(crate::error::Error::LayerNotDefined);
         }
         if let Some(pos) = self
             .layer_stack
@@ -347,16 +357,16 @@ impl Matcher {
         match outcome {
             InternalOutcome::Matched {
                 binding_ref,
-                passthrough,
+                propagation,
                 ..
             } => {
                 let action = self.resolve_binding(&binding_ref);
                 MatchResult::Matched {
                     action,
-                    passthrough,
+                    propagation,
                 }
             }
-            InternalOutcome::Swallowed => MatchResult::Swallowed,
+            InternalOutcome::Suppressed => MatchResult::Suppressed,
             InternalOutcome::NoMatch => MatchResult::NoMatch,
             InternalOutcome::Ignored => MatchResult::Ignored,
         }
@@ -500,7 +510,7 @@ impl Matcher {
 
                 // Swallow layers block all unmatched keys from reaching
                 // lower layers and globals — matches the real matcher.
-                if matches!(stored.options.unmatched(), UnmatchedKeyBehavior::Swallow) {
+                if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
                     return None;
                 }
             }
@@ -594,13 +604,13 @@ impl Matcher {
                                 index,
                             },
                             layer_effect: LayerEffect::from_action(&layer_binding.action),
-                            passthrough: layer_binding.passthrough,
+                            propagation: layer_binding.propagation,
                         };
                     }
                 }
 
-                if matches!(stored.options.unmatched(), UnmatchedKeyBehavior::Swallow) {
-                    return InternalOutcome::Swallowed;
+                if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
+                    return InternalOutcome::Suppressed;
                 }
             }
         }
@@ -612,7 +622,7 @@ impl Matcher {
             return InternalOutcome::Matched {
                 binding_ref: MatchedBindingRef::Global(id),
                 layer_effect: LayerEffect::from_action(binding.action()),
-                passthrough: binding.passthrough(),
+                propagation: binding.propagation(),
             };
         }
 
@@ -671,7 +681,7 @@ impl Matcher {
     }
 }
 
-impl Default for Matcher {
+impl Default for Dispatcher {
     fn default() -> Self {
         Self::new()
     }
@@ -685,11 +695,11 @@ mod matcher_tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::Key;
     use crate::binding::BindingOptions;
     use crate::binding::OverlayVisibility;
     use crate::introspection::BindingLocation;
     use crate::introspection::ShadowedStatus;
+    use crate::key::Key;
     use crate::key::Modifier;
     use crate::layer::Layer;
 
@@ -697,7 +707,7 @@ mod matcher_tests {
 
     #[test]
     fn new_matcher_is_empty() {
-        let matcher = Matcher::new();
+        let matcher = Dispatcher::new();
         assert!(matcher.list_bindings().is_empty());
         assert!(matcher.active_layers().is_empty());
         assert!(matcher.conflicts().is_empty());
@@ -705,41 +715,44 @@ mod matcher_tests {
 
     #[test]
     fn register_returns_unique_id() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let id1 = matcher
-            .register(Hotkey::new(Key::A), Action::Swallow)
+            .register(Hotkey::new(Key::A), Action::Suppress)
             .unwrap();
         let id2 = matcher
-            .register(Hotkey::new(Key::B), Action::Swallow)
+            .register(Hotkey::new(Key::B), Action::Suppress)
             .unwrap();
         assert_ne!(id1, id2);
     }
 
     #[test]
     fn register_duplicate_hotkey_returns_error() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::A), Action::Swallow)
+            .register(Hotkey::new(Key::A), Action::Suppress)
             .unwrap();
-        let result = matcher.register(Hotkey::new(Key::A), Action::Swallow);
-        assert!(matches!(result, Err(crate::Error::AlreadyRegistered)));
+        let result = matcher.register(Hotkey::new(Key::A), Action::Suppress);
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
     }
 
     #[test]
     fn is_registered_reflects_state() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         assert!(!matcher.is_registered(&hotkey));
 
-        matcher.register(hotkey.clone(), Action::Swallow).unwrap();
+        matcher.register(hotkey.clone(), Action::Suppress).unwrap();
         assert!(matcher.is_registered(&hotkey));
     }
 
     #[test]
     fn unregister_removes_binding() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let hotkey = Hotkey::new(Key::A);
-        let id = matcher.register(hotkey.clone(), Action::Swallow).unwrap();
+        let id = matcher.register(hotkey.clone(), Action::Suppress).unwrap();
 
         assert!(matcher.is_registered(&hotkey));
         matcher.unregister(id);
@@ -748,7 +761,7 @@ mod matcher_tests {
 
     #[test]
     fn process_matches_registered_hotkey() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
@@ -776,11 +789,11 @@ mod matcher_tests {
 
     #[test]
     fn process_returns_no_match_for_unregistered_hotkey() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .register(
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             )
             .unwrap();
 
@@ -793,11 +806,11 @@ mod matcher_tests {
 
     #[test]
     fn process_requires_exact_modifiers() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .register(
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             )
             .unwrap();
 
@@ -817,9 +830,9 @@ mod matcher_tests {
 
     #[test]
     fn process_ignores_release_events() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::A), Action::Swallow)
+            .register(Hotkey::new(Key::A), Action::Suppress)
             .unwrap();
 
         let result = matcher.process(&Hotkey::new(Key::A), KeyTransition::Release);
@@ -828,9 +841,9 @@ mod matcher_tests {
 
     #[test]
     fn process_ignores_repeat_events() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::A), Action::Swallow)
+            .register(Hotkey::new(Key::A), Action::Suppress)
             .unwrap();
 
         let result = matcher.process(&Hotkey::new(Key::A), KeyTransition::Repeat);
@@ -839,9 +852,9 @@ mod matcher_tests {
 
     #[test]
     fn process_ignores_modifier_only_presses() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::CONTROL_LEFT), Action::Swallow)
+            .register(Hotkey::new(Key::CONTROL_LEFT), Action::Suppress)
             .unwrap();
 
         let result = matcher.process(&Hotkey::new(Key::CONTROL_LEFT), KeyTransition::Press);
@@ -850,9 +863,9 @@ mod matcher_tests {
 
     #[test]
     fn process_matches_no_modifier_hotkey() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::ESCAPE), Action::Swallow)
+            .register(Hotkey::new(Key::ESCAPE), Action::Suppress)
             .unwrap();
 
         let result = matcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
@@ -863,7 +876,7 @@ mod matcher_tests {
 
     #[test]
     fn define_and_push_layer_activates_bindings() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
@@ -889,8 +902,8 @@ mod matcher_tests {
 
     #[test]
     fn pop_layer_deactivates_bindings() {
-        let mut matcher = Matcher::new();
-        let layer = Layer::new("nav").bind(Key::H, Action::Swallow);
+        let mut matcher = Dispatcher::new();
+        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
         matcher.define_layer(layer).unwrap();
         matcher.push_layer("nav").unwrap();
 
@@ -903,8 +916,8 @@ mod matcher_tests {
 
     #[test]
     fn toggle_layer_pushes_when_not_active() {
-        let mut matcher = Matcher::new();
-        let layer = Layer::new("nav").bind(Key::H, Action::Swallow);
+        let mut matcher = Dispatcher::new();
+        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
         matcher.define_layer(layer).unwrap();
 
         matcher.toggle_layer("nav").unwrap();
@@ -915,8 +928,8 @@ mod matcher_tests {
 
     #[test]
     fn toggle_layer_removes_when_active() {
-        let mut matcher = Matcher::new();
-        let layer = Layer::new("nav").bind(Key::H, Action::Swallow);
+        let mut matcher = Dispatcher::new();
+        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
         matcher.define_layer(layer).unwrap();
         matcher.push_layer("nav").unwrap();
 
@@ -928,31 +941,34 @@ mod matcher_tests {
 
     #[test]
     fn push_undefined_layer_returns_error() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let result = matcher.push_layer("nonexistent");
-        assert!(matches!(result, Err(crate::Error::LayerNotDefined)));
+        assert!(matches!(result, Err(crate::error::Error::LayerNotDefined)));
     }
 
     #[test]
     fn pop_empty_stack_returns_error() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let result = matcher.pop_layer();
-        assert!(matches!(result, Err(crate::Error::EmptyLayerStack)));
+        assert!(matches!(result, Err(crate::error::Error::EmptyLayerStack)));
     }
 
     #[test]
     fn define_duplicate_layer_returns_error() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Swallow))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
             .unwrap();
-        let result = matcher.define_layer(Layer::new("nav").bind(Key::J, Action::Swallow));
-        assert!(matches!(result, Err(crate::Error::LayerAlreadyDefined)));
+        let result = matcher.define_layer(Layer::new("nav").bind(Key::J, Action::Suppress));
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::LayerAlreadyDefined)
+        ));
     }
 
     #[test]
     fn topmost_layer_has_highest_priority() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let layer1_counter = Arc::new(AtomicUsize::new(0));
         let l1c = Arc::clone(&layer1_counter);
         let layer2_counter = Arc::new(AtomicUsize::new(0));
@@ -991,7 +1007,7 @@ mod matcher_tests {
 
     #[test]
     fn unmatched_key_falls_through_to_global() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
@@ -1001,7 +1017,7 @@ mod matcher_tests {
             })
             .unwrap();
         matcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Swallow))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
             .unwrap();
         matcher.push_layer("nav").unwrap();
 
@@ -1018,24 +1034,24 @@ mod matcher_tests {
 
     #[test]
     fn swallow_layer_consumes_unmatched_keys() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::X), Action::Swallow)
+            .register(Hotkey::new(Key::X), Action::Suppress)
             .unwrap();
         matcher
-            .define_layer(Layer::new("modal").bind(Key::H, Action::Swallow).swallow())
+            .define_layer(Layer::new("modal").bind(Key::H, Action::Suppress).swallow())
             .unwrap();
         matcher.push_layer("modal").unwrap();
 
         let result = matcher.process(&Hotkey::new(Key::X), KeyTransition::Press);
-        assert!(matches!(result, MatchResult::Swallowed));
+        assert!(matches!(result, MatchResult::Suppressed));
     }
 
     // Layer actions applied internally by process()
 
     #[test]
     fn process_applies_push_layer_action() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
@@ -1071,10 +1087,10 @@ mod matcher_tests {
 
     #[test]
     fn process_applies_pop_layer_action() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .bind(Key::ESCAPE, Action::PopLayer);
         matcher.define_layer(layer).unwrap();
         matcher.push_layer("nav").unwrap();
@@ -1089,10 +1105,10 @@ mod matcher_tests {
 
     #[test]
     fn process_applies_toggle_layer_action() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         matcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Swallow))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
             .unwrap();
         matcher
             .register(
@@ -1116,7 +1132,7 @@ mod matcher_tests {
 
     #[test]
     fn oneshot_layer_pops_after_n_keypresses() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
@@ -1149,7 +1165,7 @@ mod matcher_tests {
 
     #[test]
     fn oneshot_layer_pushed_via_action_not_immediately_decremented() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
@@ -1194,9 +1210,9 @@ mod matcher_tests {
 
     #[test]
     fn timeout_layer_pops_after_inactivity() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         let layer = Layer::new("timed")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .timeout(Duration::from_millis(50));
         matcher.define_layer(layer).unwrap();
         matcher.push_layer("timed").unwrap();
@@ -1218,13 +1234,13 @@ mod matcher_tests {
 
     #[test]
     fn list_bindings_returns_global_bindings() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(BindingOptions::default().with_description("Copy")),
             )
@@ -1239,12 +1255,12 @@ mod matcher_tests {
 
     #[test]
     fn list_bindings_includes_layer_bindings() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .define_layer(
                 Layer::new("nav")
-                    .bind(Key::H, Action::Swallow)
-                    .bind(Key::J, Action::Swallow),
+                    .bind(Key::H, Action::Suppress)
+                    .bind(Key::J, Action::Suppress),
             )
             .unwrap();
 
@@ -1258,12 +1274,12 @@ mod matcher_tests {
 
     #[test]
     fn list_bindings_detects_shadowed_global() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::H), Action::Swallow)
+            .register(Hotkey::new(Key::H), Action::Suppress)
             .unwrap();
         matcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Swallow))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
             .unwrap();
         matcher.push_layer("nav").unwrap();
 
@@ -1280,13 +1296,13 @@ mod matcher_tests {
 
     #[test]
     fn bindings_for_key_returns_matching_binding() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(BindingOptions::default().with_description("Copy")),
             )
@@ -1299,11 +1315,11 @@ mod matcher_tests {
 
     #[test]
     fn bindings_for_key_returns_none_when_no_match() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .register(
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             )
             .unwrap();
 
@@ -1313,12 +1329,12 @@ mod matcher_tests {
 
     #[test]
     fn bindings_for_key_respects_layer_stack() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::H), Action::Swallow)
+            .register(Hotkey::new(Key::H), Action::Suppress)
             .unwrap();
         matcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Swallow))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
             .unwrap();
         matcher.push_layer("nav").unwrap();
 
@@ -1332,12 +1348,12 @@ mod matcher_tests {
 
     #[test]
     fn bindings_for_key_respects_swallow_layer() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::X), Action::Swallow)
+            .register(Hotkey::new(Key::X), Action::Suppress)
             .unwrap();
         matcher
-            .define_layer(Layer::new("modal").bind(Key::H, Action::Swallow).swallow())
+            .define_layer(Layer::new("modal").bind(Key::H, Action::Suppress).swallow())
             .unwrap();
         matcher.push_layer("modal").unwrap();
 
@@ -1348,9 +1364,9 @@ mod matcher_tests {
 
     #[test]
     fn bindings_for_key_returns_none_for_modifier_key() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::CONTROL_LEFT), Action::Swallow)
+            .register(Hotkey::new(Key::CONTROL_LEFT), Action::Suppress)
             .unwrap();
 
         let result = matcher.bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
@@ -1359,19 +1375,19 @@ mod matcher_tests {
 
     #[test]
     fn active_layers_reflects_stack() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .define_layer(
                 Layer::new("layer1")
-                    .bind(Key::H, Action::Swallow)
+                    .bind(Key::H, Action::Suppress)
                     .description("First"),
             )
             .unwrap();
         matcher
             .define_layer(
                 Layer::new("layer2")
-                    .bind(Key::J, Action::Swallow)
-                    .bind(Key::K, Action::Swallow)
+                    .bind(Key::J, Action::Suppress)
+                    .bind(Key::K, Action::Suppress)
                     .description("Second"),
             )
             .unwrap();
@@ -1390,12 +1406,12 @@ mod matcher_tests {
 
     #[test]
     fn conflicts_detects_layer_shadowing_global() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
-            .register(Hotkey::new(Key::H), Action::Swallow)
+            .register(Hotkey::new(Key::H), Action::Suppress)
             .unwrap();
         matcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Swallow))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
             .unwrap();
         matcher.push_layer("nav").unwrap();
 
@@ -1414,11 +1430,11 @@ mod matcher_tests {
 
     #[test]
     fn conflicts_empty_when_no_overlaps() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .register(
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             )
             .unwrap();
         assert!(matcher.conflicts().is_empty());
@@ -1445,13 +1461,13 @@ mod matcher_tests {
 
     #[test]
     fn list_bindings_preserves_overlay_visibility() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
         matcher
             .register_binding(
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(
                     BindingOptions::default().with_overlay_visibility(OverlayVisibility::Hidden),
@@ -1467,7 +1483,7 @@ mod matcher_tests {
 
     #[test]
     fn standalone_matcher_full_workflow() {
-        let mut matcher = Matcher::new();
+        let mut matcher = Dispatcher::new();
 
         // Register global bindings
         let counter = Arc::new(AtomicUsize::new(0));
@@ -1482,7 +1498,7 @@ mod matcher_tests {
         matcher
             .define_layer(
                 Layer::new("nav")
-                    .bind(Key::H, Action::Swallow)
+                    .bind(Key::H, Action::Suppress)
                     .bind(Key::ESCAPE, Action::PopLayer),
             )
             .unwrap();

@@ -1,24 +1,24 @@
-//! Standalone `Matcher` usage — register bindings, process key events,
+//! Standalone `Dispatcher` usage — register bindings, process key events,
 //! print match results.
 //!
 //! This example shows `kbd` works on its own: no platform dependencies,
-//! no threads, no async. You bring the events, the `Matcher` tells you what
+//! no threads, no async. You bring the events, the `Dispatcher` tells you what
 //! matched.
 //!
 //! ```sh
 //! cargo run -p kbd --example matcher
 //! ```
 
-use kbd::Action;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::MatchResult;
-use kbd::Matcher;
-use kbd::Modifier;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
 
 fn main() {
-    let mut matcher = Matcher::new();
+    let mut matcher = Dispatcher::new();
 
     // Register some bindings
     matcher
@@ -83,7 +83,7 @@ fn main() {
                 println!("  → Pending (matched {steps_matched}, remaining {steps_remaining})");
             }
             MatchResult::NoMatch => println!("  → No match"),
-            MatchResult::Swallowed => println!("  → Swallowed"),
+            MatchResult::Suppressed => println!("  → Suppressed"),
             MatchResult::Ignored => println!("  → Ignored"),
         }
     }

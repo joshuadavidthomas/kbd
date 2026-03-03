@@ -1,7 +1,7 @@
 //! uinput virtual device for event forwarding and emission.
 //!
 //! In grab mode, unmatched key events are re-emitted through a virtual
-//! device so they reach applications normally. Also used for `Action::EmitKey`
+//! device so they reach applications normally. Also used for `Action::EmitHotkey`
 //! to produce synthetic key events.
 //!
 //! # Reference
@@ -12,14 +12,14 @@
 //! Note: keyd creates two virtual devices (keyboard + pointer). For now
 //! we only need one (keyboard). Pointer device is a future stretch goal.
 
-use kbd::Key;
+use kbd::key::Key;
 use kbd::key_state::KeyTransition;
 
-use crate::EvdevKeyExt;
+use crate::KbdKeyExt;
 use crate::error::Error;
 
 /// Name of the virtual device we create, used for self-detection.
-pub const VIRTUAL_DEVICE_NAME: &str = "kbd-virtual-keyboard";
+pub(crate) const VIRTUAL_DEVICE_NAME: &str = "kbd-virtual-keyboard";
 
 /// Sink for forwarding key events through a virtual device.
 ///
@@ -94,13 +94,14 @@ impl ForwardSink for UinputForwarder {
 
 /// Test utilities for the forwarder — recording forwarder for assertions.
 ///
-/// This module is always compiled (not `#[cfg(test)]`) because downstream
-/// crates like `kbd-global` need `RecordingForwarder` in their own tests.
+/// Gated behind the `testing` feature flag. Enable it in downstream
+/// `[dev-dependencies]` to use `RecordingForwarder` in your own tests.
+#[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use std::sync::Arc;
     use std::sync::Mutex;
 
-    use kbd::Key;
+    use kbd::key::Key;
     use kbd::key_state::KeyTransition;
 
     use super::ForwardSink;

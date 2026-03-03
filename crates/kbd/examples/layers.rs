@@ -11,14 +11,14 @@
 
 use std::time::Duration;
 
-use kbd::Action;
-use kbd::Hotkey;
-use kbd::Key;
-use kbd::KeyTransition;
-use kbd::Layer;
-use kbd::MatchResult;
-use kbd::Matcher;
-use kbd::Modifier;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::key::Hotkey;
+use kbd::key::Key;
+use kbd::key::Modifier;
+use kbd::key_state::KeyTransition;
+use kbd::layer::Layer;
 
 fn main() {
     let mut matcher = setup_matcher();
@@ -82,7 +82,7 @@ fn main() {
     println!("  After toggle off: {:?}", layer_names(&matcher));
 }
 
-fn process(matcher: &mut Matcher, label: &str, hotkey: &Hotkey) {
+fn process(matcher: &mut Dispatcher, label: &str, hotkey: &Hotkey) {
     print!("  {label}: ");
     match matcher.process(hotkey, KeyTransition::Press) {
         MatchResult::Matched { action, .. } => {
@@ -93,13 +93,13 @@ fn process(matcher: &mut Matcher, label: &str, hotkey: &Hotkey) {
             }
         }
         MatchResult::NoMatch => println!("  → No match"),
-        MatchResult::Swallowed => println!("  → Swallowed (consumed by layer)"),
+        MatchResult::Suppressed => println!("  → Suppressed (consumed by layer)"),
         MatchResult::Ignored => println!("  → Ignored"),
         MatchResult::Pending { .. } => println!("  → Pending"),
     }
 }
 
-fn layer_names(matcher: &Matcher) -> Vec<String> {
+fn layer_names(matcher: &Dispatcher) -> Vec<String> {
     matcher
         .active_layers()
         .into_iter()
@@ -107,8 +107,8 @@ fn layer_names(matcher: &Matcher) -> Vec<String> {
         .collect()
 }
 
-fn setup_matcher() -> Matcher {
-    let mut matcher = Matcher::new();
+fn setup_matcher() -> Dispatcher {
+    let mut matcher = Dispatcher::new();
 
     // Global bindings — always active, like a base layer
     matcher
