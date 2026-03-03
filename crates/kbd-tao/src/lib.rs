@@ -365,7 +365,7 @@ impl TaoModifiersExt for ModifiersState {
 ///
 /// Returns `None` if the key code has no `kbd` equivalent.
 #[must_use]
-pub fn keycode_to_hotkey(keycode: KeyCode, modifiers: ModifiersState) -> Option<Hotkey> {
+pub fn tao_key_to_hotkey(keycode: KeyCode, modifiers: ModifiersState) -> Option<Hotkey> {
     let key = keycode.to_key()?;
 
     let mut mods = modifiers.to_modifiers();
@@ -399,10 +399,10 @@ pub trait TaoEventExt {
     ///
     /// ```
     /// use kbd::{Hotkey, Key, Modifier};
-    /// use kbd_tao::keycode_to_hotkey;
+    /// use kbd_tao::tao_key_to_hotkey;
     /// use tao::keyboard::{KeyCode, ModifiersState};
     ///
-    /// let hotkey = keycode_to_hotkey(KeyCode::KeyS, ModifiersState::CONTROL);
+    /// let hotkey = tao_key_to_hotkey(KeyCode::KeyS, ModifiersState::CONTROL);
     /// assert_eq!(
     ///     hotkey,
     ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
@@ -413,7 +413,7 @@ pub trait TaoEventExt {
 
 impl TaoEventExt for KeyEvent {
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey> {
-        keycode_to_hotkey(self.physical_key, modifiers)
+        tao_key_to_hotkey(self.physical_key, modifiers)
     }
 }
 
@@ -600,24 +600,24 @@ mod tests {
         );
     }
 
-    // keycode_to_hotkey / TaoEventExt
+    // tao_key_to_hotkey / TaoEventExt
 
     #[test]
     fn simple_key_to_hotkey() {
-        let hotkey = keycode_to_hotkey(KeyCode::KeyC, ModifiersState::empty());
+        let hotkey = tao_key_to_hotkey(KeyCode::KeyC, ModifiersState::empty());
         assert_eq!(hotkey, Some(Hotkey::new(Key::C)));
     }
 
     #[test]
     fn key_with_ctrl_to_hotkey() {
-        let hotkey = keycode_to_hotkey(KeyCode::KeyC, ModifiersState::CONTROL);
+        let hotkey = tao_key_to_hotkey(KeyCode::KeyC, ModifiersState::CONTROL);
         assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
     }
 
     #[test]
     fn key_with_multiple_modifiers_to_hotkey() {
         let mods = ModifiersState::CONTROL | ModifiersState::SHIFT;
-        let hotkey = keycode_to_hotkey(KeyCode::KeyA, mods);
+        let hotkey = tao_key_to_hotkey(KeyCode::KeyA, mods);
         assert_eq!(
             hotkey,
             Some(
@@ -630,7 +630,7 @@ mod tests {
 
     #[test]
     fn unidentified_key_to_hotkey_returns_none() {
-        let hotkey = keycode_to_hotkey(
+        let hotkey = tao_key_to_hotkey(
             KeyCode::Unidentified(tao::keyboard::NativeKeyCode::Unidentified),
             ModifiersState::empty(),
         );
@@ -641,7 +641,7 @@ mod tests {
     fn modifier_key_strips_self() {
         // Pressing ShiftLeft — tao reports SHIFT in ModifiersState.
         // Hotkey should be just "ShiftLeft", not "Shift+ShiftLeft".
-        let hotkey = keycode_to_hotkey(KeyCode::ShiftLeft, ModifiersState::SHIFT);
+        let hotkey = tao_key_to_hotkey(KeyCode::ShiftLeft, ModifiersState::SHIFT);
         assert_eq!(hotkey, Some(Hotkey::new(Key::SHIFT_LEFT)));
     }
 
@@ -649,7 +649,7 @@ mod tests {
     fn modifier_key_keeps_other_modifiers() {
         // Pressing ControlLeft while Shift is already held
         let mods = ModifiersState::SHIFT | ModifiersState::CONTROL;
-        let hotkey = keycode_to_hotkey(KeyCode::ControlLeft, mods);
+        let hotkey = tao_key_to_hotkey(KeyCode::ControlLeft, mods);
         assert_eq!(
             hotkey,
             Some(Hotkey::new(Key::CONTROL_LEFT).modifier(Modifier::Shift))
@@ -659,7 +659,7 @@ mod tests {
     #[test]
     fn ctrl_shift_f5_to_hotkey() {
         let mods = ModifiersState::CONTROL | ModifiersState::SHIFT;
-        let hotkey = keycode_to_hotkey(KeyCode::F5, mods);
+        let hotkey = tao_key_to_hotkey(KeyCode::F5, mods);
         assert_eq!(
             hotkey,
             Some(
@@ -672,14 +672,14 @@ mod tests {
 
     #[test]
     fn space_to_hotkey() {
-        let hotkey = keycode_to_hotkey(KeyCode::Space, ModifiersState::empty());
+        let hotkey = tao_key_to_hotkey(KeyCode::Space, ModifiersState::empty());
         assert_eq!(hotkey, Some(Hotkey::new(Key::SPACE)));
     }
 
     #[test]
     fn super_key_strips_self() {
         // Pressing SuperLeft — tao reports SUPER in ModifiersState.
-        let hotkey = keycode_to_hotkey(KeyCode::SuperLeft, ModifiersState::SUPER);
+        let hotkey = tao_key_to_hotkey(KeyCode::SuperLeft, ModifiersState::SUPER);
         assert_eq!(hotkey, Some(Hotkey::new(Key::META_LEFT)));
     }
 }
