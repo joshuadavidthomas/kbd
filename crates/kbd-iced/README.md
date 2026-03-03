@@ -5,6 +5,8 @@
 
 [`kbd`](https://crates.io/crates/kbd) bridge for [iced](https://docs.rs/iced) — converts key events and modifiers to `kbd` types.
 
+This lets GUI key events (from iced) and global hotkey events (from [`kbd-global`](https://docs.rs/kbd-global)) feed into the same `Dispatcher`. Useful in iced apps that want both in-window shortcuts and system-wide hotkeys handled through a single hotkey registry.
+
 Iced defines its own W3C-derived key types: `key::Code` for physical key positions and `key::Physical` wrapping `Code` with an unidentified fallback. This crate only converts physical keys — they are layout-independent and match `kbd`'s model.
 
 ```toml

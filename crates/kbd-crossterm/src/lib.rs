@@ -2,7 +2,11 @@
 
 //! Crossterm key event conversions for `kbd`.
 //!
-//! This crate bridges crossterm's logical key model to `kbd`'s key types. Crossterm reports keys as characters (`Char('a')`) and modifier
+//! This crate converts crossterm's key events into `kbd`'s unified types
+//! so you can use `kbd`'s [`Dispatcher`](kbd::dispatcher::Dispatcher),
+//! hotkey parsing, layers, and sequences in a TUI app.
+//!
+//! Crossterm reports keys as characters (`Char('a')`) and modifier
 //! bitflags, while `kbd` uses physical key positions (`Key::A`) and
 //! typed `Modifier` values.
 //!
