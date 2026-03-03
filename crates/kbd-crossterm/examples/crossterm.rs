@@ -9,13 +9,17 @@
 //! ```
 
 use std::io::Write;
-use std::io::{self};
+use std::io::{
+    self,
+};
 use std::time::Duration;
 
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEventKind;
-use crossterm::event::{self};
+use crossterm::event::{
+    self,
+};
 use crossterm::terminal;
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
