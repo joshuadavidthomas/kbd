@@ -20,3 +20,6 @@ doc *ARGS:
 
 fmt *ARGS:
     cargo +nightly fmt {{ ARGS }}
+
+lint *ARGS:
+    uvx prek run --all-files --show-diff-on-failure --color always
