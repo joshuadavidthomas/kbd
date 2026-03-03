@@ -161,20 +161,12 @@ pub trait CrosstermModifiersExt: private::Sealed {
 
 impl CrosstermModifiersExt for KeyModifiers {
     fn to_modifiers(&self) -> Vec<Modifier> {
-        let mut modifiers = Vec::new();
-        if self.contains(KeyModifiers::CONTROL) {
-            modifiers.push(Modifier::Ctrl);
-        }
-        if self.contains(KeyModifiers::SHIFT) {
-            modifiers.push(Modifier::Shift);
-        }
-        if self.contains(KeyModifiers::ALT) {
-            modifiers.push(Modifier::Alt);
-        }
-        if self.contains(KeyModifiers::SUPER) {
-            modifiers.push(Modifier::Super);
-        }
-        modifiers
+        Modifier::collect_active([
+            (self.contains(KeyModifiers::CONTROL), Modifier::Ctrl),
+            (self.contains(KeyModifiers::SHIFT), Modifier::Shift),
+            (self.contains(KeyModifiers::ALT), Modifier::Alt),
+            (self.contains(KeyModifiers::SUPER), Modifier::Super),
+        ])
     }
 }
 

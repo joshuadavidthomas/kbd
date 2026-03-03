@@ -371,20 +371,12 @@ pub trait IcedModifiersExt: private::Sealed {
 
 impl IcedModifiersExt for Modifiers {
     fn to_modifiers(&self) -> Vec<Modifier> {
-        let mut modifiers = Vec::new();
-        if self.control() {
-            modifiers.push(Modifier::Ctrl);
-        }
-        if self.shift() {
-            modifiers.push(Modifier::Shift);
-        }
-        if self.alt() {
-            modifiers.push(Modifier::Alt);
-        }
-        if self.logo() {
-            modifiers.push(Modifier::Super);
-        }
-        modifiers
+        Modifier::collect_active([
+            (self.control(), Modifier::Ctrl),
+            (self.shift(), Modifier::Shift),
+            (self.alt(), Modifier::Alt),
+            (self.logo(), Modifier::Super),
+        ])
     }
 }
 

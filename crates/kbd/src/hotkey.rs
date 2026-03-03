@@ -77,6 +77,36 @@ impl Modifier {
             Self::Super => (Key::META_LEFT, Key::META_RIGHT),
         }
     }
+
+    /// Collect active modifiers from a list of `(flag, modifier)` pairs.
+    ///
+    /// Bridge crates all perform the same conversion: check each
+    /// framework-specific modifier flag and collect the active ones into
+    /// a `Vec<Modifier>`. This helper centralizes that logic.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kbd::hotkey::Modifier;
+    ///
+    /// let modifiers = Modifier::collect_active([
+    ///     (true, Modifier::Ctrl),
+    ///     (true, Modifier::Shift),
+    ///     (false, Modifier::Alt),
+    ///     (false, Modifier::Super),
+    /// ]);
+    /// assert_eq!(modifiers, vec![Modifier::Ctrl, Modifier::Shift]);
+    /// ```
+    #[must_use]
+    pub fn collect_active<const N: usize>(flags: [(bool, Modifier); N]) -> Vec<Modifier> {
+        let mut modifiers = Vec::with_capacity(N);
+        for (active, modifier) in flags {
+            if active {
+                modifiers.push(modifier);
+            }
+        }
+        modifiers
+    }
 }
 
 impl fmt::Display for Modifier {
@@ -361,6 +391,59 @@ mod tests {
         let hotkey = "Ctrl+Shift".parse::<Hotkey>().unwrap();
         assert_eq!(hotkey.key(), Key::SHIFT_LEFT);
         assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl]);
+    }
+
+    #[test]
+    fn collect_active_returns_only_active_modifiers() {
+        let modifiers = Modifier::collect_active([
+            (true, Modifier::Ctrl),
+            (false, Modifier::Shift),
+            (true, Modifier::Alt),
+            (false, Modifier::Super),
+        ]);
+        assert_eq!(modifiers, vec![Modifier::Ctrl, Modifier::Alt]);
+    }
+
+    #[test]
+    fn collect_active_all_true() {
+        let modifiers = Modifier::collect_active([
+            (true, Modifier::Ctrl),
+            (true, Modifier::Shift),
+            (true, Modifier::Alt),
+            (true, Modifier::Super),
+        ]);
+        assert_eq!(
+            modifiers,
+            vec![
+                Modifier::Ctrl,
+                Modifier::Shift,
+                Modifier::Alt,
+                Modifier::Super,
+            ]
+        );
+    }
+
+    #[test]
+    fn collect_active_none_true() {
+        let modifiers = Modifier::collect_active([
+            (false, Modifier::Ctrl),
+            (false, Modifier::Shift),
+            (false, Modifier::Alt),
+            (false, Modifier::Super),
+        ]);
+        assert!(modifiers.is_empty());
+    }
+
+    #[test]
+    fn collect_active_single() {
+        let modifiers = Modifier::collect_active([(true, Modifier::Shift)]);
+        assert_eq!(modifiers, vec![Modifier::Shift]);
+    }
+
+    #[test]
+    fn collect_active_empty_array() {
+        let modifiers = Modifier::collect_active([]);
+        assert!(modifiers.is_empty());
     }
 
     #[test]

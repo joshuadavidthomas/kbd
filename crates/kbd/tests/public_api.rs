@@ -555,6 +555,32 @@ fn topmost_layer_wins() {
     assert_eq!(layer1_counter.load(Ordering::Relaxed), 0);
 }
 
+// Modifier::collect_active builds modifiers that dispatch correctly
+#[test]
+fn collect_active_builds_dispatchable_hotkey() {
+    let mut dispatcher = Dispatcher::new();
+    dispatcher
+        .register(
+            Hotkey::new(Key::S)
+                .modifier(Modifier::Ctrl)
+                .modifier(Modifier::Shift),
+            Action::Suppress,
+        )
+        .unwrap();
+
+    // Simulate what a bridge crate does: collect framework flags into modifiers
+    let mods = Modifier::collect_active([
+        (true, Modifier::Ctrl),
+        (true, Modifier::Shift),
+        (false, Modifier::Alt),
+        (false, Modifier::Super),
+    ]);
+    let hotkey = Hotkey::with_modifiers(Key::S, mods);
+
+    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    assert!(matches!(result, MatchResult::Matched { .. }));
+}
+
 // register_binding duplicate returns error
 #[test]
 fn register_binding_duplicate_returns_error() {

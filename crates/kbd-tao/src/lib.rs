@@ -384,20 +384,12 @@ pub trait TaoModifiersExt: private::Sealed {
 
 impl TaoModifiersExt for ModifiersState {
     fn to_modifiers(&self) -> Vec<Modifier> {
-        let mut modifiers = Vec::new();
-        if self.control_key() {
-            modifiers.push(Modifier::Ctrl);
-        }
-        if self.shift_key() {
-            modifiers.push(Modifier::Shift);
-        }
-        if self.alt_key() {
-            modifiers.push(Modifier::Alt);
-        }
-        if self.super_key() {
-            modifiers.push(Modifier::Super);
-        }
-        modifiers
+        Modifier::collect_active([
+            (self.control_key(), Modifier::Ctrl),
+            (self.shift_key(), Modifier::Shift),
+            (self.alt_key(), Modifier::Alt),
+            (self.super_key(), Modifier::Super),
+        ])
     }
 }
 
