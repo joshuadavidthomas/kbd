@@ -99,7 +99,7 @@ fn layer_default_options() {
     assert_eq!(options.description(), None);
 }
 
-// Phase 3.4: Binding metadata on layers
+// Binding metadata on layers
 
 #[test]
 fn layer_options_description_defaults_to_none() {
@@ -137,7 +137,7 @@ fn layer_description_preserved_through_define_layer() {
         .description("Navigation keys");
 
     // If define_layer succeeds, the metadata was accepted by the engine.
-    // Full introspection comes in Phase 3.5.
+    // Full introspection tested separately.
     let result = manager.define_layer(layer);
     assert!(result.is_ok());
 }

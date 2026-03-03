@@ -82,7 +82,7 @@ fn action_variants_exist_for_future_features() {
     let _ = Action::Suppress;
 }
 
-// Phase 3.4: Binding metadata
+// Binding metadata
 
 #[test]
 fn binding_options_description_defaults_to_none() {
