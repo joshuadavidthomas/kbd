@@ -27,4 +27,4 @@ The core [`kbd`](crates/kbd) crate has no platform dependencies and works synchr
 
 ## License
 
-MIT
+kdb is licensed under the MIT license. See the [`LICENSE`](LICENSE) file for more information.
