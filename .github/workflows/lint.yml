@@ -85,14 +85,4 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features --benches -- -D warnings
 
-  lint:
-    runs-on: ubuntu-latest
-    needs: [rustfmt, clippy]
-    if: always()
-    steps:
-      - name: OK
-        if: ${{ !(contains(needs.*.result, 'failure')) }}
-        run: exit 0
-      - name: Fail
-        if: ${{ contains(needs.*.result, 'failure') }}
-        run: exit 1
+
