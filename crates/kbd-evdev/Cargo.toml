@@ -1,14 +1,13 @@
 [package]
 name = "kbd-evdev"
 version = "0.1.0"
+description = "evdev backend for kbd — Linux input device discovery, hotplug, grab, and event forwarding."
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license-file.workspace = true
 repository.workspace = true
 readme = "README.md"
-
-description = "evdev backend for kbd — Linux input device discovery, hotplug, grab, and event forwarding."
 keywords = ["evdev", "keyboard", "input", "linux"]
 categories = ["os::linux-apis"]
 
