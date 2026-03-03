@@ -1010,6 +1010,10 @@ mod tests {
         assert_eq!(Modifier::from_key(Key::CONTROL_RIGHT), Some(Modifier::Ctrl));
         assert_eq!(Modifier::from_key(Key::SHIFT_LEFT), Some(Modifier::Shift));
         assert_eq!(Modifier::from_key(Key::SHIFT_RIGHT), Some(Modifier::Shift));
+        assert_eq!(Modifier::from_key(Key::ALT_LEFT), Some(Modifier::Alt));
+        assert_eq!(Modifier::from_key(Key::ALT_RIGHT), Some(Modifier::Alt));
+        assert_eq!(Modifier::from_key(Key::META_LEFT), Some(Modifier::Super));
+        assert_eq!(Modifier::from_key(Key::META_RIGHT), Some(Modifier::Super));
         assert_eq!(Modifier::from_key(Key::A), None);
     }
 
@@ -1340,6 +1344,56 @@ mod tests {
             let s = key.to_string();
             let parsed: Key = s.parse().unwrap();
             assert_eq!(parsed, key, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn parses_modifier_key_as_trigger_when_no_non_modifier_key_exists() {
+        let hotkey = "Ctrl".parse::<Hotkey>().unwrap();
+        assert_eq!(hotkey.key(), Key::CONTROL_LEFT);
+        assert!(hotkey.modifiers().is_empty());
+    }
+
+    #[test]
+    fn parses_all_modifier_combo_with_last_modifier_as_trigger() {
+        let hotkey = "Ctrl+Shift".parse::<Hotkey>().unwrap();
+        assert_eq!(hotkey.key(), Key::SHIFT_LEFT);
+        assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl]);
+    }
+
+    #[test]
+    fn display_round_trips_hotkey() {
+        let parsed = "Super+Shift+A".parse::<Hotkey>().unwrap();
+        let round_trip = parsed.to_string().parse::<Hotkey>().unwrap();
+        assert_eq!(parsed, round_trip);
+    }
+
+    #[test]
+    fn parses_extended_key_ranges() {
+        let cases = [
+            ("F24", Key::F24),
+            ("Left", Key::ARROW_LEFT),
+            ("Delete", Key::DELETE),
+            ("Backspace", Key::BACKSPACE),
+            ("Insert", Key::INSERT),
+            ("Home", Key::HOME),
+            ("End", Key::END),
+            ("PageUp", Key::PAGE_UP),
+            ("PageDown", Key::PAGE_DOWN),
+            ("Numpad1", Key::NUMPAD1),
+            ("NumpadEnter", Key::NUMPAD_ENTER),
+            ("Equal", Key::EQUAL),
+            ("Minus", Key::MINUS),
+            ("Comma", Key::COMMA),
+            ("Slash", Key::SLASH),
+        ];
+
+        for (input, expected) in cases {
+            let hotkey = format!("Ctrl+{input}").parse::<Hotkey>().unwrap();
+            assert_eq!(hotkey.key(), expected, "failed parsing {input}");
+
+            let round_trip = hotkey.to_string().parse::<Hotkey>().unwrap();
+            assert_eq!(round_trip, hotkey, "failed round-trip for {input}");
         }
     }
 }
