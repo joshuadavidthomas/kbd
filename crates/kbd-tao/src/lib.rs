@@ -2,13 +2,17 @@
 
 //! Tao key event conversions for `kbd`.
 //!
-//! This crate bridges tao's physical key model to `kbd`'s key types.
+//! This crate converts tao's key events into `kbd`'s unified types so
+//! that window-focused key events (from tao) and global hotkey events
+//! (from [`kbd-global`](https://docs.rs/kbd-global)) can feed into the
+//! same [`Dispatcher`](kbd::dispatcher::Dispatcher). This is especially
+//! useful in Tauri apps where you want both in-window shortcuts and
+//! system-wide hotkeys handled through a single hotkey registry.
+//!
 //! tao is Tauri's fork of winit — both derive from the W3C UI Events
 //! specification, so the variant names are nearly identical and the
-//! mapping is mechanical.
-//!
-//! Unlike winit, tao uses [`KeyCode`] directly in [`KeyEvent`] rather
-//! than wrapping it in a `PhysicalKey` type.
+//! mapping is mechanical. Unlike winit, tao uses [`KeyCode`] directly
+//! in [`KeyEvent`] rather than wrapping it in a `PhysicalKey` type.
 //!
 //! # Extension traits
 //!
@@ -45,17 +49,47 @@
 //!
 //! # Usage
 //!
+//! Inside tao's event loop, use [`TaoEventExt`] to convert key events
+//! directly:
+//!
+//! ```no_run
+//! use kbd::prelude::*;
+//! use kbd_tao::TaoEventExt;
+//! use tao::event::{Event, WindowEvent};
+//! use tao::event_loop::{ControlFlow, EventLoop};
+//! use tao::keyboard::ModifiersState;
+//! use tao::window::WindowBuilder;
+//!
+//! let event_loop = EventLoop::new();
+//! let _window = WindowBuilder::new().build(&event_loop).unwrap();
+//! let mut modifiers = ModifiersState::empty();
+//!
+//! event_loop.run(move |event, _, control_flow| {
+//!     *control_flow = ControlFlow::Wait;
+//!     if let Event::WindowEvent { event, .. } = event {
+//!         match event {
+//!             WindowEvent::ModifiersChanged(mods) => modifiers = mods,
+//!             WindowEvent::KeyboardInput { event, .. } => {
+//!                 if let Some(hotkey) = event.to_hotkey(modifiers) {
+//!                     println!("{hotkey}");
+//!                 }
+//!             }
+//!             _ => {}
+//!         }
+//!     }
+//! });
 //! ```
-//! use kbd::hotkey::{Hotkey, Modifier};
-//! use kbd::key::Key;
+//!
+//! The individual conversion traits can also be used separately:
+//!
+//! ```
+//! use kbd::prelude::*;
 //! use kbd_tao::{TaoKeyExt, TaoModifiersExt};
 //! use tao::keyboard::{KeyCode, ModifiersState};
 //!
-//! // KeyCode conversion
 //! let key = KeyCode::KeyA.to_key();
 //! assert_eq!(key, Some(Key::A));
 //!
-//! // Modifier conversion
 //! let mods = ModifiersState::CONTROL.to_modifiers();
 //! assert_eq!(mods, vec![Modifier::Ctrl]);
 //! ```
@@ -67,17 +101,26 @@ use tao::event::KeyEvent;
 use tao::keyboard::KeyCode;
 use tao::keyboard::ModifiersState;
 
+mod private {
+    pub trait Sealed {}
+    impl Sealed for tao::keyboard::KeyCode {}
+    impl Sealed for tao::keyboard::ModifiersState {}
+    impl Sealed for tao::event::KeyEvent {}
+}
+
 /// Convert a tao key type to a `kbd` [`Key`].
 ///
 /// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24).
-pub trait TaoKeyExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait TaoKeyExt: private::Sealed {
     /// Convert this tao key code to a `kbd` [`Key`], or `None` if unmappable.
     ///
     /// # Examples
     ///
     /// ```
-    /// use kbd::key::Key;
+    /// use kbd::prelude::*;
     /// use kbd_tao::TaoKeyExt;
     /// use tao::keyboard::KeyCode;
     ///
@@ -85,6 +128,7 @@ pub trait TaoKeyExt {
     /// assert_eq!(KeyCode::F5.to_key(), Some(Key::F5));
     /// assert_eq!(KeyCode::SuperLeft.to_key(), Some(Key::META_LEFT));
     /// ```
+    #[must_use]
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -319,19 +363,22 @@ impl TaoKeyExt for KeyCode {
 }
 
 /// Convert tao [`ModifiersState`] bitflags to a sorted `Vec<Modifier>`.
-pub trait TaoModifiersExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait TaoModifiersExt: private::Sealed {
     /// Convert these tao modifier flags to a `Vec<Modifier>`.
     ///
     /// # Examples
     ///
     /// ```
-    /// use kbd::hotkey::Modifier;
+    /// use kbd::prelude::*;
     /// use kbd_tao::TaoModifiersExt;
     /// use tao::keyboard::ModifiersState;
     ///
     /// let mods = (ModifiersState::CONTROL | ModifiersState::SHIFT).to_modifiers();
     /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
     /// ```
+    #[must_use]
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -356,8 +403,11 @@ impl TaoModifiersExt for ModifiersState {
 
 /// Build a [`Hotkey`] from a tao key code and modifier state.
 ///
-/// This is the logic behind [`TaoEventExt::to_hotkey`], exposed as a
-/// standalone function for use when a [`KeyEvent`] is not available.
+/// This is the same conversion performed by [`TaoEventExt::to_hotkey`],
+/// exposed as a standalone function for use when you have a raw
+/// [`KeyCode`] and [`ModifiersState`] but no [`KeyEvent`]. If you do
+/// have a `KeyEvent`, prefer calling [`event.to_hotkey(modifiers)`](TaoEventExt::to_hotkey)
+/// instead.
 ///
 /// When the key is itself a modifier (e.g., `ControlLeft`), the
 /// corresponding modifier flag is stripped — tao includes the pressed
@@ -390,7 +440,9 @@ pub fn tao_key_to_hotkey(keycode: KeyCode, modifiers: ModifiersState) -> Option<
 /// corresponding modifier flag is stripped from the modifiers — tao
 /// includes the pressed modifier key in its own state, but `kbd`
 /// treats the key as the trigger, not as a modifier of itself.
-pub trait TaoEventExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait TaoEventExt: private::Sealed {
     /// Convert this key event to a [`Hotkey`], or `None` if the key is unmappable.
     ///
     /// Pass the current [`ModifiersState`] from
@@ -398,18 +450,43 @@ pub trait TaoEventExt {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use kbd::hotkey::{Hotkey, Modifier};
-    /// use kbd::key::Key;
-    /// use kbd_tao::tao_key_to_hotkey;
-    /// use tao::keyboard::{KeyCode, ModifiersState};
+    /// Tao's [`KeyEvent`] cannot be constructed outside the tao crate
+    /// (it has a `pub(crate)` field), so this trait is used inside
+    /// tao's event loop where the framework provides the event:
     ///
-    /// let hotkey = tao_key_to_hotkey(KeyCode::KeyS, ModifiersState::CONTROL);
-    /// assert_eq!(
-    ///     hotkey,
-    ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
-    /// );
+    /// ```no_run
+    /// use kbd::prelude::*;
+    /// use kbd_tao::TaoEventExt;
+    /// use tao::event::{Event, WindowEvent};
+    /// use tao::event_loop::{ControlFlow, EventLoop};
+    /// use tao::keyboard::ModifiersState;
+    /// use tao::window::WindowBuilder;
+    ///
+    /// let event_loop = EventLoop::new();
+    /// let _window = WindowBuilder::new().build(&event_loop).unwrap();
+    /// let mut modifiers = ModifiersState::empty();
+    ///
+    /// event_loop.run(move |event, _, control_flow| {
+    ///     *control_flow = ControlFlow::Wait;
+    ///     if let Event::WindowEvent { event, .. } = event {
+    ///         match event {
+    ///             WindowEvent::ModifiersChanged(mods) => modifiers = mods,
+    ///             WindowEvent::KeyboardInput { event, .. } => {
+    ///                 // Convert the tao KeyEvent to a kbd Hotkey
+    ///                 if let Some(hotkey) = event.to_hotkey(modifiers) {
+    ///                     println!("{hotkey}");
+    ///                 }
+    ///             }
+    ///             _ => {}
+    ///         }
+    ///     }
+    /// });
     /// ```
+    ///
+    /// When you have a [`KeyCode`] and [`ModifiersState`] but no
+    /// [`KeyEvent`], use the standalone [`tao_key_to_hotkey`] function
+    /// instead.
+    #[must_use]
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey>;
 }
 
