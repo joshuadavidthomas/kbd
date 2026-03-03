@@ -351,21 +351,37 @@ impl Engine {
     }
 }
 
-/// Execute a callback action with panic isolation — a panicking callback
+/// Execute a user-facing action with panic isolation — a panicking callback
 /// never kills the engine thread.
 ///
-/// Only handles `Action::Callback`. Layer-control actions (`PushLayer`,
-/// `PopLayer`, `ToggleLayer`) are handled by `Dispatcher::process()` internally.
+/// Handles `Action::Callback` directly. Layer-control actions (`PushLayer`,
+/// `PopLayer`, `ToggleLayer`) are handled by `Dispatcher::process()` internally
+/// and never reach this function. `Action::Suppress` is a no-op by design.
+///
+/// `Action::EmitHotkey` and `Action::EmitSequence` are not yet implemented —
+/// they will panic if reached. Key emission support is planned.
 fn execute_action(action: &Action) {
-    if let Action::Callback(callback) = action
-        && let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            callback();
-        }))
-    {
-        tracing::error!(
-            panic_info = format!("{panic:?}"),
-            "user callback panicked — panic caught, engine continues"
-        );
+    match action {
+        Action::Callback(callback) => {
+            if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                callback();
+            })) {
+                tracing::error!(
+                    panic_info = format!("{panic:?}"),
+                    "user callback panicked — panic caught, engine continues"
+                );
+            }
+        }
+        Action::EmitHotkey(_) => {
+            todo!("Action::EmitHotkey is not yet implemented in the kbd-global runtime")
+        }
+        Action::EmitSequence(_) => {
+            todo!("Action::EmitSequence is not yet implemented in the kbd-global runtime")
+        }
+        // Layer actions (PushLayer, PopLayer, ToggleLayer) are handled by
+        // Dispatcher::process(). Suppress is a no-op by design. Future
+        // variants from #[non_exhaustive] are also no-ops until implemented.
+        _ => {}
     }
 }
 

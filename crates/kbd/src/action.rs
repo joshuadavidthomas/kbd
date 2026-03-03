@@ -6,8 +6,8 @@
 //! # Variants
 //!
 //! - `Callback` — run user code
-//! - `EmitHotkey` — emit a different key through uinput (requires grab)
-//! - `EmitSequence` — emit a series of keys (requires grab)
+//! - `EmitHotkey` — emit a different key through uinput (not yet implemented)
+//! - `EmitSequence` — emit a series of keys (not yet implemented)
 //! - `PushLayer` / `PopLayer` / `ToggleLayer` — layer stack control
 //! - `Suppress` — explicitly consume the key, do nothing
 
@@ -23,8 +23,18 @@ pub enum Action {
     /// Execute user callback code.
     Callback(Box<dyn Fn() + Send + Sync + 'static>),
     /// Emit a single key (with optional modifiers) through the virtual device.
+    ///
+    /// **Not yet implemented in `kbd-global`'s runtime.** The variant exists
+    /// for forward compatibility — key emission support is planned. Using this
+    /// variant with [`kbd-global`](https://docs.rs/kbd-global) will currently
+    /// panic at runtime.
     EmitHotkey(Hotkey),
     /// Emit a sequence of hotkeys.
+    ///
+    /// **Not yet implemented in `kbd-global`'s runtime.** The variant exists
+    /// for forward compatibility — key emission support is planned. Using this
+    /// variant with [`kbd-global`](https://docs.rs/kbd-global) will currently
+    /// panic at runtime.
     EmitSequence(HotkeySequence),
     /// Push a named layer onto the stack.
     PushLayer(LayerName),
