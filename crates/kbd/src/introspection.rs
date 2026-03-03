@@ -14,7 +14,8 @@
 //! use kbd::action::Action;
 //! use kbd::dispatcher::Dispatcher;
 //! use kbd::introspection::{BindingLocation, ShadowedStatus};
-//! use kbd::key::{Hotkey, Key, Modifier};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
 //! use kbd::layer::Layer;
 //!
 //! let mut dispatcher = Dispatcher::new();
@@ -29,14 +30,15 @@
 //! assert_eq!(bindings[0].shadowed, ShadowedStatus::Active);
 //! ```
 
-use crate::action::LayerName;
 use crate::binding::OverlayVisibility;
-use crate::key::Hotkey;
+use crate::hotkey::Hotkey;
+use crate::layer::LayerName;
 
 /// Where a binding lives in the registration hierarchy.
 ///
 /// Returned as part of [`BindingInfo`] from dispatcher introspection methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BindingLocation {
     /// Registered globally (always active, checked after layers).
     Global,
@@ -56,7 +58,8 @@ pub enum BindingLocation {
 /// use kbd::action::Action;
 /// use kbd::dispatcher::Dispatcher;
 /// use kbd::introspection::ShadowedStatus;
-/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::hotkey::{Hotkey, Modifier};
+/// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
 /// let mut dispatcher = Dispatcher::new();
@@ -76,6 +79,7 @@ pub enum BindingLocation {
 /// assert!(matches!(global_h.shadowed, ShadowedStatus::ShadowedBy(_)));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ShadowedStatus {
     /// This binding would fire if its hotkey were pressed now.
     Active,
@@ -149,7 +153,8 @@ pub struct ActiveLayerInfo {
 /// ```
 /// use kbd::action::Action;
 /// use kbd::dispatcher::Dispatcher;
-/// use kbd::key::{Hotkey, Key};
+/// use kbd::hotkey::Hotkey;
+/// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
 /// let mut dispatcher = Dispatcher::new();

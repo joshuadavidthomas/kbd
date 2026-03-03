@@ -11,9 +11,9 @@
 use std::sync::mpsc;
 
 use kbd::action::Action;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::layer::Layer;
 use kbd_global::Error;
 use kbd_global::HotkeyManager;

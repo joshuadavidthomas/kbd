@@ -13,46 +13,12 @@
 
 use std::fmt;
 
-use crate::key::Hotkey;
-use crate::key::HotkeySequence;
-
-/// Layer identifier used by layer-control actions.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LayerName(Box<str>);
-
-impl LayerName {
-    /// Create a new layer name.
-    #[must_use]
-    pub fn new(value: impl Into<Box<str>>) -> Self {
-        Self(value.into())
-    }
-
-    /// Return the name as a string slice.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&str> for LayerName {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
-
-impl From<String> for LayerName {
-    fn from(value: String) -> Self {
-        Self::new(value)
-    }
-}
-
-impl std::fmt::Display for LayerName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+use crate::hotkey::Hotkey;
+use crate::hotkey::HotkeySequence;
+use crate::layer::LayerName;
 
 /// Action executed when a binding matches.
+#[non_exhaustive]
 pub enum Action {
     /// Execute user callback code.
     Callback(Box<dyn Fn() + Send + Sync + 'static>),

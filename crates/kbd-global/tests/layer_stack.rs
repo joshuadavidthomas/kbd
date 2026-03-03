@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 use kbd::action::Action;
-use kbd::action::LayerName;
 use kbd::key::Key;
 use kbd::layer::Layer;
+use kbd::layer::LayerName;
 use kbd_global::Error;
 use kbd_global::HotkeyManager;
 

@@ -22,17 +22,17 @@ use std::sync::Mutex;
 use std::sync::mpsc;
 
 use kbd::action::Action;
-use kbd::action::LayerName;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::RegisteredBinding;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
 use kbd::introspection::ConflictInfo;
-use kbd::key::Hotkey;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::layer::Layer;
+use kbd::layer::LayerName;
 
 use crate::Error;
 use crate::backend::Backend;

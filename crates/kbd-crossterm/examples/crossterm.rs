@@ -24,9 +24,9 @@ use crossterm::terminal;
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::key_state::KeyTransition;
 use kbd_crossterm::CrosstermEventExt;
 
@@ -109,8 +109,7 @@ fn run_event_loop(dispatcher: &mut Dispatcher) -> Result<(), Box<dyn std::error:
                     }
                 }
                 MatchResult::NoMatch => print!("{hotkey}: no match\r\n"),
-                MatchResult::Pending { .. } => print!("{hotkey}: pending...\r\n"),
-                MatchResult::Suppressed | MatchResult::Ignored => {}
+                _ => {}
             }
             io::stdout().flush()?;
         }

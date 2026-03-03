@@ -8,9 +8,9 @@
 use eframe::egui;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::key_state::KeyTransition;
 use kbd_egui::EguiEventExt;
 
@@ -92,8 +92,7 @@ impl eframe::App for App {
             let line = match self.dispatcher.process(&hotkey, KeyTransition::Press) {
                 MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                 MatchResult::NoMatch => format!("{hotkey} → no match"),
-                MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
-                MatchResult::Suppressed | MatchResult::Ignored => continue,
+                _ => continue,
             };
             self.log.push(line);
         }

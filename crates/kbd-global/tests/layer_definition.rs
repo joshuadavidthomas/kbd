@@ -2,9 +2,9 @@
 use std::time::Duration;
 
 use kbd::action::Action;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::layer::Layer;
 use kbd::layer::LayerOptions;
 use kbd::layer::UnmatchedKeys;

@@ -8,27 +8,26 @@
 //! Returns a [`MatchResult`](crate::dispatcher::MatchResult) — the matched
 //! binding's action (or "no match" for forwarding).
 
+mod query;
+
 use std::collections::HashMap;
 use std::time::Duration;
 use std::time::Instant;
 
 use crate::action::Action;
-use crate::action::LayerName;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
-use crate::introspection::BindingInfo;
-use crate::introspection::BindingLocation;
-use crate::introspection::ConflictInfo;
-use crate::introspection::ShadowedStatus;
-use crate::key::Hotkey;
-use crate::key::Modifier;
+use crate::hotkey::Hotkey;
+use crate::hotkey::Modifier;
 use crate::key_state::KeyTransition;
+use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum MatchResult<'a> {
     /// A binding matched. Contains the action and propagation setting.
     Matched {
@@ -36,14 +35,6 @@ pub enum MatchResult<'a> {
         action: &'a Action,
         /// Whether to consume or forward the original key event.
         propagation: KeyPropagation,
-    },
-    /// A multi-step sequence is in progress. Consumers can use this for
-    /// UI feedback ("waiting for next key…").
-    Pending {
-        /// Number of sequence steps completed so far.
-        steps_matched: usize,
-        /// Number of sequence steps still needed.
-        steps_remaining: usize,
     },
     /// No binding matched the event.
     NoMatch,
@@ -94,7 +85,8 @@ struct LayerTimeout {
 /// ```
 /// use kbd::action::Action;
 /// use kbd::dispatcher::{Dispatcher, MatchResult};
-/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::hotkey::{Hotkey, Modifier};
+/// use kbd::key::Key;
 /// use kbd::key_state::KeyTransition;
 ///
 /// let mut dispatcher = Dispatcher::new();
@@ -115,7 +107,8 @@ struct LayerTimeout {
 /// ```
 /// use kbd::action::Action;
 /// use kbd::dispatcher::{Dispatcher, MatchResult};
-/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::hotkey::{Hotkey, Modifier};
+/// use kbd::key::Key;
 /// use kbd::key_state::KeyTransition;
 /// use kbd::layer::Layer;
 ///
@@ -434,162 +427,6 @@ impl Dispatcher {
         });
     }
 
-    /// Return a snapshot of all registered bindings with their status.
-    #[must_use]
-    pub fn list_bindings(&self) -> Vec<crate::introspection::BindingInfo> {
-        // Build a map of hotkey → claiming layer name for active layers.
-        // Walk top-down so the topmost layer claiming a hotkey "wins".
-        let mut claimed_by: HashMap<&Hotkey, &LayerName> = HashMap::new();
-        for entry in self.layer_stack.iter().rev() {
-            if let Some(stored) = self.layers.get(&entry.name) {
-                for binding in &stored.bindings {
-                    claimed_by.entry(&binding.hotkey).or_insert(&entry.name);
-                }
-            }
-        }
-
-        let mut results = Vec::new();
-
-        // Global bindings
-        for binding in self.bindings_by_id.values() {
-            let shadowed = if let Some(&layer_name) = claimed_by.get(binding.hotkey()) {
-                ShadowedStatus::ShadowedBy(layer_name.clone())
-            } else {
-                ShadowedStatus::Active
-            };
-
-            results.push(BindingInfo {
-                hotkey: binding.hotkey().clone(),
-                description: binding.options().description().map(Box::from),
-                location: BindingLocation::Global,
-                shadowed,
-                overlay_visibility: binding.options().overlay_visibility(),
-            });
-        }
-
-        // Layer bindings (all defined layers, active or not)
-        for (layer_name, stored) in &self.layers {
-            let is_active = self.layer_stack.iter().any(|e| &e.name == layer_name);
-
-            for binding in &stored.bindings {
-                let shadowed = if !is_active {
-                    ShadowedStatus::Inactive
-                } else if let Some(&claiming_layer) = claimed_by.get(&binding.hotkey) {
-                    if claiming_layer == layer_name {
-                        ShadowedStatus::Active
-                    } else {
-                        ShadowedStatus::ShadowedBy(claiming_layer.clone())
-                    }
-                } else {
-                    ShadowedStatus::Active
-                };
-
-                results.push(BindingInfo {
-                    hotkey: binding.hotkey.clone(),
-                    description: None,
-                    location: BindingLocation::Layer(layer_name.clone()),
-                    shadowed,
-                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
-                });
-            }
-        }
-
-        results
-    }
-
-    /// Query what would fire if this hotkey were pressed now.
-    ///
-    /// Considers the current layer stack. Returns `None` if nothing
-    /// would match (including swallow-layer suppression).
-    #[must_use]
-    pub fn bindings_for_key(&self, hotkey: &Hotkey) -> Option<crate::introspection::BindingInfo> {
-        // Modifier-only keys never fire bindings in the real dispatcher,
-        // so they can't match here either.
-        if Modifier::from_key(hotkey.key()).is_some() {
-            return None;
-        }
-
-        // Walk layer stack top-down, same as the dispatcher
-        for entry in self.layer_stack.iter().rev() {
-            if let Some(stored) = self.layers.get(&entry.name) {
-                for binding in &stored.bindings {
-                    if binding.hotkey == *hotkey {
-                        return Some(BindingInfo {
-                            hotkey: binding.hotkey.clone(),
-                            description: None,
-                            location: BindingLocation::Layer(entry.name.clone()),
-                            shadowed: ShadowedStatus::Active,
-                            overlay_visibility: crate::binding::OverlayVisibility::Visible,
-                        });
-                    }
-                }
-
-                // Swallow layers block all unmatched keys from reaching
-                // lower layers and globals — matches the real dispatcher.
-                if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
-                    return None;
-                }
-            }
-        }
-
-        // Fall through to global bindings
-        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey)
-            && let Some(binding) = self.bindings_by_id.get(&id)
-        {
-            return Some(BindingInfo {
-                hotkey: binding.hotkey().clone(),
-                description: binding.options().description().map(Box::from),
-                location: BindingLocation::Global,
-                shadowed: ShadowedStatus::Active,
-                overlay_visibility: binding.options().overlay_visibility(),
-            });
-        }
-
-        None
-    }
-
-    /// Return the current layer stack (bottom to top).
-    #[must_use]
-    pub fn active_layers(&self) -> Vec<crate::introspection::ActiveLayerInfo> {
-        self.layer_stack
-            .iter()
-            .filter_map(|entry| {
-                self.layers
-                    .get(&entry.name)
-                    .map(|stored| crate::introspection::ActiveLayerInfo {
-                        name: entry.name.clone(),
-                        description: stored.options.description().map(Box::from),
-                        binding_count: stored.bindings.len(),
-                    })
-            })
-            .collect()
-    }
-
-    /// Return bindings shadowed by higher-priority layers.
-    #[must_use]
-    pub fn conflicts(&self) -> Vec<crate::introspection::ConflictInfo> {
-        let all_bindings = self.list_bindings();
-        let mut conflicts = Vec::new();
-
-        for shadowed in &all_bindings {
-            if let ShadowedStatus::ShadowedBy(ref shadowing_layer) = shadowed.shadowed
-                && let Some(shadowing) = all_bindings.iter().find(|b| {
-                    b.hotkey == shadowed.hotkey
-                        && matches!(&b.location, BindingLocation::Layer(name) if name == shadowing_layer)
-                        && matches!(b.shadowed, ShadowedStatus::Active)
-                })
-            {
-                conflicts.push(ConflictInfo {
-                    hotkey: shadowed.hotkey.clone(),
-                    shadowed_binding: shadowed.clone(),
-                    shadowing_binding: shadowing.clone(),
-                });
-            }
-        }
-
-        conflicts
-    }
-
     // Internal matching logic
 
     /// Match a hotkey against the layer stack and global bindings.
@@ -709,6 +546,8 @@ mod tests {
     use super::*;
     use crate::binding::BindingOptions;
     use crate::binding::OverlayVisibility;
+    use crate::introspection::BindingLocation;
+    use crate::introspection::ShadowedStatus;
     use crate::key::Key;
     use crate::layer::Layer;
 
@@ -1439,21 +1278,6 @@ mod tests {
             )
             .unwrap();
         assert!(dispatcher.conflicts().is_empty());
-    }
-
-    #[test]
-    fn pending_variant_exists() {
-        let result: MatchResult<'_> = MatchResult::Pending {
-            steps_matched: 1,
-            steps_remaining: 2,
-        };
-        assert!(matches!(
-            result,
-            MatchResult::Pending {
-                steps_matched: 1,
-                steps_remaining: 2
-            }
-        ));
     }
 
     #[test]

@@ -7,12 +7,11 @@ use std::sync::atomic::Ordering;
 use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
-use kbd::binding::DeviceFilter;
 use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd_global::HotkeyManager;
 
 #[test]
@@ -48,29 +47,6 @@ fn generated_binding_ids_are_unique() {
 fn binding_options_default_to_consuming_events() {
     let options = BindingOptions::default();
     assert_eq!(options.propagation(), KeyPropagation::Stop);
-}
-
-#[test]
-fn device_filter_supports_name_pattern_and_usb_id() {
-    let by_name = DeviceFilter::NamePattern("kbd-*".into());
-    let by_usb = DeviceFilter::Usb {
-        vendor_id: 0x1209,
-        product_id: 0x0001,
-    };
-
-    let options = BindingOptions::default().with_device_filter(by_name.clone());
-    assert_eq!(options.device_filter(), Some(&by_name));
-
-    match by_usb {
-        DeviceFilter::Usb {
-            vendor_id,
-            product_id,
-        } => {
-            assert_eq!(vendor_id, 0x1209);
-            assert_eq!(product_id, 0x0001);
-        }
-        DeviceFilter::NamePattern(_) => panic!("expected usb filter"),
-    }
 }
 
 #[test]

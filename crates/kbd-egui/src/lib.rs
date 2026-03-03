@@ -15,7 +15,7 @@
 //! - [`EguiModifiersExt`] — converts [`egui::Modifiers`] to a
 //!   `Vec<Modifier>`.
 //! - [`EguiEventExt`] — converts a full [`egui::Event`] keyboard event
-//!   to a [`kbd::key::Hotkey`].
+//!   to a [`kbd::hotkey::Hotkey`].
 //!
 //! # Key mapping
 //!
@@ -42,7 +42,8 @@
 //!
 //! ```
 //! use egui::{Key as EguiKey, Modifiers};
-//! use kbd::key::{Hotkey, Key, Modifier};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
 //! use kbd_egui::{EguiKeyExt, EguiModifiersExt};
 //!
 //! // Single key conversion
@@ -68,9 +69,9 @@
 
 use egui::Key as EguiKey;
 use egui::Modifiers;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 
 /// Convert an [`egui::Key`] to a `kbd` [`Key`].
 ///
@@ -248,7 +249,7 @@ pub trait EguiModifiersExt {
     ///
     /// ```
     /// use egui::Modifiers;
-    /// use kbd::key::Modifier;
+    /// use kbd::hotkey::Modifier;
     /// use kbd_egui::EguiModifiersExt;
     ///
     /// let mods = Modifiers {
@@ -293,7 +294,8 @@ pub trait EguiEventExt {
     ///
     /// ```
     /// use egui::{Key as EguiKey, Modifiers};
-    /// use kbd::key::{Hotkey, Key, Modifier};
+    /// use kbd::hotkey::{Hotkey, Modifier};
+    /// use kbd::key::Key;
     /// use kbd_egui::EguiEventExt;
     ///
     /// let event = egui::Event::Key {
@@ -327,9 +329,9 @@ impl EguiEventExt for egui::Event {
 mod tests {
     use egui::Key as EguiKey;
     use egui::Modifiers;
-    use kbd::key::Hotkey;
+    use kbd::hotkey::Hotkey;
+    use kbd::hotkey::Modifier;
     use kbd::key::Key;
-    use kbd::key::Modifier;
 
     use super::*;
 

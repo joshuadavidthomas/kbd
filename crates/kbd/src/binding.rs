@@ -6,15 +6,12 @@
 //! per-binding configuration.
 //! [`RegisteredBinding`](crate::binding::RegisteredBinding) pairs them with
 //! a hotkey and action for engine storage.
-//!
-//! Device filtering ([`DeviceFilter`](crate::binding::DeviceFilter)) is a
-//! pure data type describing device match criteria (name patterns, USB IDs).
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use crate::action::Action;
-use crate::key::Hotkey;
+use crate::hotkey::Hotkey;
 
 /// Unique identifier for a registered binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -48,7 +45,8 @@ impl Default for BindingId {
 /// ```
 /// use kbd::action::Action;
 /// use kbd::binding::{BindingId, BindingOptions, KeyPropagation, RegisteredBinding};
-/// use kbd::key::{Hotkey, Key, Modifier};
+/// use kbd::hotkey::{Hotkey, Modifier};
+/// use kbd::key::Key;
 ///
 /// // A binding that forwards the key event to the application
 /// // while still running its action (e.g., logging keypresses).
@@ -61,6 +59,7 @@ impl Default for BindingId {
 /// assert_eq!(binding.propagation(), KeyPropagation::Continue);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
 pub enum KeyPropagation {
     /// Stop propagation — the event is consumed and not forwarded.
     #[default]
@@ -90,6 +89,7 @@ pub enum KeyPropagation {
 /// assert_eq!(opts.overlay_visibility(), OverlayVisibility::Visible);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
 pub enum OverlayVisibility {
     /// Binding is shown in overlays and help screens.
     #[default]
@@ -98,44 +98,10 @@ pub enum OverlayVisibility {
     Hidden,
 }
 
-/// Device filter expression for restricting binding scope.
-///
-/// Used with [`BindingOptions::with_device_filter`] to make a binding
-/// respond only to events from a specific input device.
-///
-/// # Examples
-///
-/// ```
-/// use kbd::binding::{BindingOptions, DeviceFilter};
-///
-/// // Match a device by name pattern
-/// let opts = BindingOptions::default()
-///     .with_device_filter(DeviceFilter::NamePattern("Ergodox*".into()));
-///
-/// // Match a device by USB vendor and product IDs
-/// let opts = BindingOptions::default()
-///     .with_device_filter(DeviceFilter::Usb {
-///         vendor_id: 0x1234,
-///         product_id: 0x5678,
-///     });
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum DeviceFilter {
-    /// Match devices whose names fit a glob-like pattern.
-    NamePattern(Box<str>),
-    /// Match devices by USB vendor/product IDs.
-    Usb {
-        /// USB vendor ID.
-        vendor_id: u16,
-        /// USB product ID.
-        product_id: u16,
-    },
-}
-
 /// Per-binding behavioral options.
 ///
-/// Configure a binding's key propagation behavior, description, overlay visibility,
-/// and optional device filter. Built via method chaining:
+/// Configure a binding's key propagation behavior, description, and overlay
+/// visibility. Built via method chaining:
 ///
 /// # Examples
 ///
@@ -157,7 +123,6 @@ pub struct BindingOptions {
     description: Option<Box<str>>,
     /// Whether this binding appears in hotkey overlays and help screens.
     overlay_visibility: OverlayVisibility,
-    device_filter: Option<DeviceFilter>,
 }
 
 impl BindingOptions {
@@ -198,19 +163,6 @@ impl BindingOptions {
     pub const fn with_overlay_visibility(mut self, visibility: OverlayVisibility) -> Self {
         self.overlay_visibility = visibility;
         self
-    }
-
-    /// Restrict this binding to a specific input device.
-    #[must_use]
-    pub fn with_device_filter(mut self, device_filter: DeviceFilter) -> Self {
-        self.device_filter = Some(device_filter);
-        self
-    }
-
-    /// The device filter for this binding, if set.
-    #[must_use]
-    pub fn device_filter(&self) -> Option<&DeviceFilter> {
-        self.device_filter.as_ref()
     }
 }
 
@@ -279,5 +231,91 @@ impl RegisteredBinding {
     #[must_use]
     pub const fn options(&self) -> &BindingOptions {
         &self.options
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hotkey::Modifier;
+    use crate::key::Key;
+
+    #[test]
+    fn binding_id_produces_unique_ids() {
+        let a = BindingId::new();
+        let b = BindingId::new();
+        let c = BindingId::new();
+        assert_ne!(a, b);
+        assert_ne!(b, c);
+    }
+
+    #[test]
+    fn binding_id_monotonically_increases() {
+        let a = BindingId::new();
+        let b = BindingId::new();
+        assert!(b.as_u64() > a.as_u64());
+    }
+
+    #[test]
+    fn binding_id_default_calls_new() {
+        let a = BindingId::default();
+        let b = BindingId::default();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn binding_options_defaults() {
+        let opts = BindingOptions::default();
+        assert_eq!(opts.propagation(), KeyPropagation::Stop);
+        assert_eq!(opts.description(), None);
+        assert_eq!(opts.overlay_visibility(), OverlayVisibility::Visible);
+    }
+
+    #[test]
+    fn binding_options_builder_chain() {
+        let opts = BindingOptions::default()
+            .with_propagation(KeyPropagation::Continue)
+            .with_description("Save file")
+            .with_overlay_visibility(OverlayVisibility::Hidden);
+
+        assert_eq!(opts.propagation(), KeyPropagation::Continue);
+        assert_eq!(opts.description(), Some("Save file"));
+        assert_eq!(opts.overlay_visibility(), OverlayVisibility::Hidden);
+    }
+
+    #[test]
+    fn registered_binding_stores_fields() {
+        let id = BindingId::new();
+        let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
+        let binding = RegisteredBinding::new(id, hotkey.clone(), Action::Suppress);
+
+        assert_eq!(binding.id(), id);
+        assert_eq!(*binding.hotkey(), hotkey);
+        assert_eq!(binding.propagation(), KeyPropagation::Stop);
+    }
+
+    #[test]
+    fn registered_binding_with_propagation() {
+        let id = BindingId::new();
+        let binding = RegisteredBinding::new(id, Hotkey::new(Key::A), Action::Suppress)
+            .with_propagation(KeyPropagation::Continue);
+
+        assert_eq!(binding.propagation(), KeyPropagation::Continue);
+    }
+
+    #[test]
+    fn registered_binding_with_options() {
+        let id = BindingId::new();
+        let opts = BindingOptions::default()
+            .with_description("test")
+            .with_overlay_visibility(OverlayVisibility::Hidden);
+        let binding =
+            RegisteredBinding::new(id, Hotkey::new(Key::A), Action::Suppress).with_options(opts);
+
+        assert_eq!(binding.options().description(), Some("test"));
+        assert_eq!(
+            binding.options().overlay_visibility(),
+            OverlayVisibility::Hidden
+        );
     }
 }

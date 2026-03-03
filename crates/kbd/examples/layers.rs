@@ -14,9 +14,9 @@ use std::time::Duration;
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::key_state::KeyTransition;
 use kbd::layer::Layer;
 
@@ -98,7 +98,7 @@ fn process(dispatcher: &mut Dispatcher, label: &str, hotkey: &Hotkey) {
         MatchResult::NoMatch => println!("  → No match"),
         MatchResult::Suppressed => println!("  → Suppressed (consumed by layer)"),
         MatchResult::Ignored => println!("  → Ignored"),
-        MatchResult::Pending { .. } => println!("  → Pending"),
+        _ => {}
     }
 }
 

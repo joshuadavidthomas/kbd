@@ -13,9 +13,9 @@ use iced::widget::scrollable;
 use iced::widget::text;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd::key::Modifier;
 use kbd::key_state::KeyTransition;
 use kbd_iced::IcedEventExt;
 
@@ -91,8 +91,7 @@ impl App {
                 let line = match self.dispatcher.process(&hotkey, KeyTransition::Press) {
                     MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                     MatchResult::NoMatch => format!("{hotkey} → no match"),
-                    MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
-                    MatchResult::Suppressed | MatchResult::Ignored => return Task::none(),
+                    _ => return Task::none(),
                 };
                 self.log.push(line);
                 Task::none()

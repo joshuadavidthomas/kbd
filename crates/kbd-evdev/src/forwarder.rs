@@ -79,6 +79,7 @@ impl ForwardSink for UinputForwarder {
             KeyTransition::Press => 1,
             KeyTransition::Release => 0,
             KeyTransition::Repeat => 2,
+            _ => return Ok(()),
         };
 
         let event = evdev::InputEvent::new(evdev::EventType::KEY.0, key_code.code(), value);

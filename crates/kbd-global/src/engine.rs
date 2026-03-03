@@ -46,7 +46,7 @@ use kbd::action::Action;
 use kbd::binding::KeyPropagation;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
-use kbd::key::Hotkey;
+use kbd::hotkey::Hotkey;
 use kbd::key::Key;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
@@ -307,8 +307,7 @@ impl Engine {
                 }
                 MatchResult::Suppressed => MatchOutcome::Suppressed,
                 MatchResult::NoMatch => MatchOutcome::NoMatch,
-                // Sequences not yet implemented
-                MatchResult::Ignored | MatchResult::Pending { .. } => MatchOutcome::Ignored,
+                _ => MatchOutcome::Ignored,
             }
         };
 
@@ -324,6 +323,7 @@ impl Engine {
                 KeyPropagation::Continue | KeyPropagation::Stop => {
                     KeyEventDisposition::MatchedConsumed
                 }
+                _ => KeyEventDisposition::MatchedConsumed,
             },
             MatchOutcome::Suppressed => KeyEventDisposition::MatchedConsumed,
             MatchOutcome::NoMatch | MatchOutcome::Ignored => {
@@ -339,7 +339,7 @@ impl Engine {
         // Cache the disposition for non-modifier key presses so the
         // corresponding release uses the same disposition.
         if matches!(event.transition, KeyTransition::Press)
-            && kbd::key::Modifier::from_key(event.key).is_none()
+            && kbd::hotkey::Modifier::from_key(event.key).is_none()
         {
             self.press_cache.insert(event.key, disposition);
         }
@@ -399,9 +399,9 @@ mod tests {
     use kbd::binding::BindingId;
     use kbd::binding::KeyPropagation;
     use kbd::binding::RegisteredBinding;
-    use kbd::key::Hotkey;
+    use kbd::hotkey::Hotkey;
+    use kbd::hotkey::Modifier;
     use kbd::key::Key;
-    use kbd::key::Modifier;
     use kbd::key_state::KeyTransition;
 
     use super::Command;
@@ -1030,7 +1030,7 @@ mod tests {
             .iter()
             .filter(|b| {
                 b.location
-                    == kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
+                    == kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from(
                         "nav",
                     ))
             })
@@ -1054,7 +1054,7 @@ mod tests {
             .iter()
             .filter(|b| {
                 b.location
-                    == kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
+                    == kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from(
                         "nav",
                     ))
             })
@@ -1077,7 +1077,7 @@ mod tests {
         // the oneshot layer should auto-pop after 1 keypress
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("oneshot-nav"))
+            .push_layer(kbd::layer::LayerName::from("oneshot-nav"))
             .unwrap();
 
         // H should match in the layer
@@ -1106,7 +1106,7 @@ mod tests {
         // Push the empty layer — should succeed and have 0 bindings
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("empty"))
+            .push_layer(kbd::layer::LayerName::from("empty"))
             .unwrap();
         let active = engine.dispatcher.active_layers();
         assert_eq!(active.len(), 1);
@@ -1184,7 +1184,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from(name))
+            .push_layer(kbd::layer::LayerName::from(name))
             .unwrap();
     }
 
@@ -1251,7 +1251,7 @@ mod tests {
 
         engine
             .dispatcher
-            .toggle_layer(kbd::action::LayerName::from("nav"))
+            .toggle_layer(kbd::layer::LayerName::from("nav"))
             .unwrap();
 
         press_key(&mut engine, Key::H, 10);
@@ -1278,7 +1278,7 @@ mod tests {
         // Toggle off
         engine
             .dispatcher
-            .toggle_layer(kbd::action::LayerName::from("nav"))
+            .toggle_layer(kbd::layer::LayerName::from("nav"))
             .unwrap();
 
         // H should no longer match
@@ -1291,7 +1291,7 @@ mod tests {
         let mut engine = test_engine();
         let result = engine
             .dispatcher
-            .toggle_layer(kbd::action::LayerName::from("nonexistent"));
+            .toggle_layer(kbd::layer::LayerName::from("nonexistent"));
         assert!(matches!(result, Err(kbd::error::Error::LayerNotDefined)));
     }
 
@@ -1386,7 +1386,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("modal"))
+            .push_layer(kbd::layer::LayerName::from("modal"))
             .unwrap();
 
         // X not in swallow layer — consumed, global should NOT fire
@@ -1415,7 +1415,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F1),
-                Action::PushLayer(kbd::action::LayerName::from("nav")),
+                Action::PushLayer(kbd::layer::LayerName::from("nav")),
             ))
             .unwrap();
 
@@ -1444,7 +1444,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("nav"))
+            .push_layer(kbd::layer::LayerName::from("nav"))
             .unwrap();
 
         // H fires in nav layer
@@ -1481,7 +1481,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F2),
-                Action::ToggleLayer(kbd::action::LayerName::from("nav")),
+                Action::ToggleLayer(kbd::layer::LayerName::from("nav")),
             ))
             .unwrap();
 
@@ -1560,7 +1560,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("oneshot"))
+            .push_layer(kbd::layer::LayerName::from("oneshot"))
             .unwrap();
 
         // First keypress — should match and auto-pop
@@ -1590,7 +1590,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("oneshot"))
+            .push_layer(kbd::layer::LayerName::from("oneshot"))
             .unwrap();
 
         // Press an unmatched key — should count toward oneshot depth and pop
@@ -1619,7 +1619,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("oneshot2"))
+            .push_layer(kbd::layer::LayerName::from("oneshot2"))
             .unwrap();
 
         // First keypress — layer still active
@@ -1661,7 +1661,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::PushLayer {
-                name: kbd::action::LayerName::from("nav"),
+                name: kbd::layer::LayerName::from("nav"),
                 reply: reply_tx,
             })
             .unwrap();
@@ -1679,7 +1679,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::PushLayer {
-                name: kbd::action::LayerName::from("nonexistent"),
+                name: kbd::layer::LayerName::from("nonexistent"),
                 reply: reply_tx,
             })
             .unwrap();
@@ -1712,7 +1712,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::PushLayer {
-                name: kbd::action::LayerName::from("nav"),
+                name: kbd::layer::LayerName::from("nav"),
                 reply: reply_tx,
             })
             .unwrap();
@@ -1766,7 +1766,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("timed"))
+            .push_layer(kbd::layer::LayerName::from("timed"))
             .unwrap();
 
         // H fires while layer is active
@@ -1802,7 +1802,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("timed"))
+            .push_layer(kbd::layer::LayerName::from("timed"))
             .unwrap();
 
         // Activity within the timeout window
@@ -1853,7 +1853,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::ToggleLayer {
-                name: kbd::action::LayerName::from("nav"),
+                name: kbd::layer::LayerName::from("nav"),
                 reply: reply_tx,
             })
             .unwrap();
@@ -1937,7 +1937,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("modal"))
+            .push_layer(kbd::layer::LayerName::from("modal"))
             .unwrap();
 
         let press_disp = press_key(&mut engine, Key::X, 10);
@@ -1994,7 +1994,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("nav"))
+            .push_layer(kbd::layer::LayerName::from("nav"))
             .unwrap();
 
         let press_disp = press_key(&mut engine, Key::H, 10);
@@ -2166,7 +2166,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("nav"))
+            .push_layer(kbd::layer::LayerName::from("nav"))
             .unwrap();
 
         let bindings = engine.dispatcher.list_bindings();
@@ -2180,7 +2180,7 @@ mod tests {
             .expect("should find global H");
         assert_eq!(
             global_h.shadowed,
-            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::action::LayerName::from("nav"))
+            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::layer::LayerName::from("nav"))
         );
 
         let layer_h = bindings
@@ -2205,11 +2205,11 @@ mod tests {
 
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("layer1"))
+            .push_layer(kbd::layer::LayerName::from("layer1"))
             .unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("layer2"))
+            .push_layer(kbd::layer::LayerName::from("layer2"))
             .unwrap();
 
         let bindings = engine.dispatcher.list_bindings();
@@ -2219,14 +2219,14 @@ mod tests {
             .find(|b| {
                 b.hotkey == Hotkey::new(Key::H)
                     && b.location
-                        == kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
+                        == kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from(
                             "layer1",
                         ))
             })
             .expect("should find layer1 H");
         assert_eq!(
             layer1_h.shadowed,
-            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::action::LayerName::from("layer2"))
+            kbd::introspection::ShadowedStatus::ShadowedBy(kbd::layer::LayerName::from("layer2"))
         );
 
         let layer2_h = bindings
@@ -2234,7 +2234,7 @@ mod tests {
             .find(|b| {
                 b.hotkey == Hotkey::new(Key::H)
                     && b.location
-                        == kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from(
+                        == kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from(
                             "layer2",
                         ))
             })
@@ -2309,7 +2309,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("nav"))
+            .push_layer(kbd::layer::LayerName::from("nav"))
             .unwrap();
 
         let result = engine.dispatcher.bindings_for_key(&Hotkey::new(Key::H));
@@ -2318,7 +2318,7 @@ mod tests {
         let info = result.unwrap();
         assert_eq!(
             info.location,
-            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from("nav"))
+            kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from("nav"))
         );
     }
 
@@ -2346,11 +2346,11 @@ mod tests {
 
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("layer1"))
+            .push_layer(kbd::layer::LayerName::from("layer1"))
             .unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("layer2"))
+            .push_layer(kbd::layer::LayerName::from("layer2"))
             .unwrap();
 
         let active = engine.dispatcher.active_layers();
@@ -2399,7 +2399,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("nav"))
+            .push_layer(kbd::layer::LayerName::from("nav"))
             .unwrap();
 
         let conflicts = engine.dispatcher.conflicts();
@@ -2413,7 +2413,7 @@ mod tests {
         );
         assert_eq!(
             conflict.shadowing_binding.location,
-            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from("nav"))
+            kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from("nav"))
         );
     }
 
@@ -2429,11 +2429,11 @@ mod tests {
 
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("layer1"))
+            .push_layer(kbd::layer::LayerName::from("layer1"))
             .unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("layer2"))
+            .push_layer(kbd::layer::LayerName::from("layer2"))
             .unwrap();
 
         let conflicts = engine.dispatcher.conflicts();
@@ -2443,11 +2443,11 @@ mod tests {
         assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
         assert_eq!(
             conflict.shadowed_binding.location,
-            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from("layer1"))
+            kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from("layer1"))
         );
         assert_eq!(
             conflict.shadowing_binding.location,
-            kbd::introspection::BindingLocation::Layer(kbd::action::LayerName::from("layer2"))
+            kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from("layer2"))
         );
     }
 
@@ -2566,7 +2566,7 @@ mod tests {
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
-            .push_layer(kbd::action::LayerName::from("modal"))
+            .push_layer(kbd::layer::LayerName::from("modal"))
             .unwrap();
 
         let result = engine.dispatcher.bindings_for_key(&Hotkey::new(Key::X));

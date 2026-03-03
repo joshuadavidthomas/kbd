@@ -15,7 +15,8 @@
 //! ```
 //! use kbd::action::Action;
 //! use kbd::dispatcher::{Dispatcher, MatchResult};
-//! use kbd::key::{Hotkey, Key, Modifier};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
 //! use kbd::key_state::KeyTransition;
 //!
 //! let mut dispatcher = Dispatcher::new();
@@ -51,6 +52,7 @@ pub mod action;
 pub mod binding;
 pub mod dispatcher;
 pub mod error;
+pub mod hotkey;
 pub mod introspection;
 pub mod key;
 pub mod key_state;
