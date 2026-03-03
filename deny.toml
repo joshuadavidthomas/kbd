@@ -1,0 +1,48 @@
+[graph]
+all-features = true
+
+[advisories]
+ignore = [
+    # GTK3 bindings are unmaintained — transitive dep from `tao` (Tauri's winit fork).
+    # Nothing we can do until tao migrates to GTK4.
+    { id = "RUSTSEC-2024-0411", reason = "transitive via tao → gtk3-rs, no fix available" },
+    { id = "RUSTSEC-2024-0412", reason = "transitive via tao → gtk3-rs, no fix available" },
+    { id = "RUSTSEC-2024-0413", reason = "transitive via tao → gtk3-rs, no fix available" },
+    { id = "RUSTSEC-2024-0415", reason = "transitive via tao → gtk3-rs, no fix available" },
+    { id = "RUSTSEC-2024-0416", reason = "transitive via tao → gtk3-rs, no fix available" },
+    { id = "RUSTSEC-2024-0418", reason = "transitive via tao → gtk3-rs, no fix available" },
+    { id = "RUSTSEC-2024-0419", reason = "transitive via tao → gtk3-rs, no fix available" },
+    { id = "RUSTSEC-2024-0420", reason = "transitive via tao → gtk3-rs, no fix available" },
+
+    # paste is unmaintained — transitive via iced → wgpu → metal
+    { id = "RUSTSEC-2024-0436", reason = "transitive via iced → wgpu → metal, no fix available" },
+
+    # proc-macro-error is unmaintained — transitive via tao → gtk3-rs
+    { id = "RUSTSEC-2024-0370", reason = "transitive via tao → gtk3-rs, no fix available" },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "OFL-1.1",
+    "Unicode-3.0",
+    "Ubuntu-font-1.0",
+    "Zlib",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
