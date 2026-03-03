@@ -13,11 +13,7 @@
 //! Register a hotkey, feed key events, and check for matches:
 //!
 //! ```
-//! use kbd::action::Action;
-//! use kbd::dispatcher::{Dispatcher, MatchResult};
-//! use kbd::hotkey::{Hotkey, Modifier};
-//! use kbd::key::Key;
-//! use kbd::key_state::KeyTransition;
+//! use kbd::prelude::*;
 //!
 //! let mut dispatcher = Dispatcher::new();
 //!
@@ -57,3 +53,34 @@ pub mod introspection;
 pub mod key;
 pub mod key_state;
 pub mod layer;
+
+/// Convenience re-exports for common types.
+///
+/// ```
+/// use kbd::prelude::*;
+///
+/// let mut dispatcher = Dispatcher::new();
+/// dispatcher.register(
+///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     Action::Suppress,
+/// ).unwrap();
+///
+/// let result = dispatcher.process(
+///     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     KeyTransition::Press,
+/// );
+/// assert!(matches!(result, MatchResult::Matched { .. }));
+/// ```
+pub mod prelude {
+    pub use crate::action::Action;
+    pub use crate::binding::KeyPropagation;
+    pub use crate::binding::OverlayVisibility;
+    pub use crate::dispatcher::Dispatcher;
+    pub use crate::dispatcher::MatchResult;
+    pub use crate::hotkey::Hotkey;
+    pub use crate::hotkey::Modifier;
+    pub use crate::key::Key;
+    pub use crate::key_state::KeyTransition;
+    pub use crate::layer::Layer;
+    pub use crate::layer::LayerName;
+}
