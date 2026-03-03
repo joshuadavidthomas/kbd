@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project attempts to adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!--
-## [${version}]
+## [${version}](https://github.com/joshuadavidthomas/kbd/releases/tag/${tag})
 
 _For multi-package releases, list package versions here_
 
@@ -17,10 +17,11 @@ _For multi-package releases, list package versions here_
 ### Fixed - for any bug fixes
 ### Security - in case of vulnerabilities
 
-[${version}]: https://github.com/joshuadavidthomas/kbd/releases/tag/${tag}
 -->
 
 ## [Unreleased]
+
+## [0.1.0](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.1.0)
 
 ### Added
 
@@ -32,5 +33,3 @@ _For multi-package releases, list package versions here_
 - **kbd-iced** — iced bridge: iced key event and modifier conversions.
 - **kbd-tao** — tao bridge: tao (Tauri's winit fork) key event conversions.
 - **kbd-winit** — winit bridge: `KeyCode`/`KeyEvent`/`ModifiersState` to `kbd` type conversions.
-
-[0.1.0]: https://github.com/joshuadavidthomas/kbd/releases/tag/v0.1.0
