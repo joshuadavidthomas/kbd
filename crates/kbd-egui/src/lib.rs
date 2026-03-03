@@ -220,6 +220,9 @@ impl EguiKeyExt for EguiKey {
             EguiKey::F33 => Some(Key::F33),
             EguiKey::F34 => Some(Key::F34),
             EguiKey::F35 => Some(Key::F35),
+
+            // Browser keys
+            EguiKey::BrowserBack => Some(Key::BROWSER_BACK),
         }
     }
 }
