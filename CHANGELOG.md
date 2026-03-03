@@ -2,32 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project attempts to adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-03-01
+<!--
+## [${version}]
 
-Initial release.
+_For multi-package releases, list package versions here_
 
-### Crates
+### Added - for new features
+### Changed - for changes in existing functionality
+### Deprecated - for soon-to-be removed features
+### Removed - for now removed features
+### Fixed - for any bug fixes
+### Security - in case of vulnerabilities
 
-- **kbd** — Pure-logic keyboard shortcut engine: key types (newtype over
-  `keyboard-types` W3C physical key codes), modifier tracking, hotkey
-  parsing/display with aliases, binding matching, layer stacks (oneshot,
-  swallow, timeout), press cache, and introspection API. No platform
-  dependencies.
-- **kbd-evdev** — Linux evdev backend: device discovery, hotplug via
-  inotify, `EVIOCGRAB` exclusive grab, and uinput virtual device
-  forwarding.
-- **kbd-global** — Threaded global hotkey runtime: message-passing
-  architecture, `HotkeyManager` with RAII handles, evdev backend
-  integration, grab mode, and `kbd` type re-exports.
-- **kbd-crossterm** — crossterm bridge: `KeyCode`/`KeyEvent`/`KeyModifiers`
-  to `kbd` type conversions via extension traits.
-- **kbd-winit** — winit bridge: `KeyCode`/`KeyEvent`/`ModifiersState` to
-  `kbd` type conversions.
-- **kbd-tao** — tao bridge: tao (Tauri's winit fork) key event conversions.
-- **kbd-iced** — iced bridge: iced key event and modifier conversions.
+[${version}]: https://github.com/joshuadavidthomas/kbd/releases/tag/${tag}
+-->
+
+## [Unreleased]
+
+### Added
+
+- **kbd** — Pure-logic keyboard shortcut engine: key types (newtype over `keyboard-types` W3C physical key codes), modifier tracking, hotkey parsing/display with aliases, binding matching, layer stacks (oneshot, swallow, timeout), press cache, and introspection API. No platform dependencies.
+- **kbd-crossterm** — crossterm bridge: `KeyCode`/`KeyEvent`/`KeyModifiers` to `kbd` type conversions via extension traits.
 - **kbd-egui** — egui bridge: egui key and modifier conversions.
+- **kbd-evdev** — Linux evdev backend: device discovery, hotplug via inotify, `EVIOCGRAB` exclusive grab, and uinput virtual device forwarding.
+- **kbd-global** — Threaded global hotkey runtime: message-passing architecture, `HotkeyManager` with RAII handles, evdev backend integration, grab mode, and `kbd` type re-exports.
+- **kbd-iced** — iced bridge: iced key event and modifier conversions.
+- **kbd-tao** — tao bridge: tao (Tauri's winit fork) key event conversions.
+- **kbd-winit** — winit bridge: `KeyCode`/`KeyEvent`/`ModifiersState` to `kbd` type conversions.
 
 [0.1.0]: https://github.com/joshuadavidthomas/kbd/releases/tag/v0.1.0
