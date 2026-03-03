@@ -70,11 +70,20 @@ use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
 
+mod private {
+    pub trait Sealed {}
+    impl Sealed for crossterm::event::KeyCode {}
+    impl Sealed for crossterm::event::KeyModifiers {}
+    impl Sealed for crossterm::event::KeyEvent {}
+}
+
 /// Convert a crossterm [`KeyCode`] to a `kbd` [`Key`].
 ///
 /// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `BackTab`, `Null`, `KeypadBegin`, non-ASCII characters).
-pub trait CrosstermKeyExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait CrosstermKeyExt: private::Sealed {
     /// Convert this key code to a `kbd` [`Key`], or `None` if unmappable.
     ///
     /// # Examples
@@ -88,6 +97,7 @@ pub trait CrosstermKeyExt {
     /// assert_eq!(KeyCode::F(5).to_key(), Some(Key::F5));
     /// assert_eq!(KeyCode::Null.to_key(), None);
     /// ```
+    #[must_use]
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -127,7 +137,9 @@ impl CrosstermKeyExt for KeyCode {
 ///
 /// Crossterm's `HYPER` and `META` flags have no `kbd` equivalent and
 /// are silently ignored.
-pub trait CrosstermModifiersExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait CrosstermModifiersExt: private::Sealed {
     /// Convert these modifier flags to a `Vec<Modifier>`.
     ///
     /// # Examples
@@ -140,6 +152,7 @@ pub trait CrosstermModifiersExt {
     /// let mods = (KeyModifiers::CONTROL | KeyModifiers::SHIFT).to_modifiers();
     /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
     /// ```
+    #[must_use]
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -170,7 +183,9 @@ impl CrosstermModifiersExt for KeyModifiers {
 /// modifier flag is stripped from the modifiers — crossterm includes the
 /// pressed modifier key in its own modifier bitflags, but `kbd` treats
 /// the key as the trigger, not as a modifier of itself.
-pub trait CrosstermEventExt {
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait CrosstermEventExt: private::Sealed {
     /// Convert this key event to a [`Hotkey`], or `None` if the key is unmappable.
     ///
     /// # Examples
@@ -187,6 +202,7 @@ pub trait CrosstermEventExt {
     ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
     /// );
     /// ```
+    #[must_use]
     fn to_hotkey(&self) -> Option<Hotkey>;
 }
 
@@ -556,6 +572,25 @@ mod tests {
     fn non_ascii_chars_return_none() {
         assert_eq!(KeyCode::Char('é').to_key(), None);
         assert_eq!(KeyCode::Char('中').to_key(), None);
+    }
+
+    #[test]
+    fn reverse_media_key_returns_none() {
+        assert_eq!(KeyCode::Media(MediaKeyCode::Reverse).to_key(), None);
+    }
+
+    #[test]
+    fn unmappable_modifier_keycodes_return_none() {
+        assert_eq!(KeyCode::Modifier(ModifierKeyCode::LeftMeta).to_key(), None);
+        assert_eq!(KeyCode::Modifier(ModifierKeyCode::RightMeta).to_key(), None);
+        assert_eq!(
+            KeyCode::Modifier(ModifierKeyCode::IsoLevel3Shift).to_key(),
+            None
+        );
+        assert_eq!(
+            KeyCode::Modifier(ModifierKeyCode::IsoLevel5Shift).to_key(),
+            None
+        );
     }
 
     // CrosstermModifiersExt tests
