@@ -166,3 +166,285 @@ impl Dispatcher {
         conflicts
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::action::Action;
+    use crate::binding::BindingId;
+    use crate::binding::BindingOptions;
+    use crate::binding::OverlayVisibility;
+    use crate::binding::RegisteredBinding;
+    use crate::dispatcher::Dispatcher;
+    use crate::hotkey::Hotkey;
+    use crate::hotkey::Modifier;
+    use crate::introspection::BindingLocation;
+    use crate::introspection::ShadowedStatus;
+    use crate::key::Key;
+    use crate::layer::Layer;
+    use crate::layer::LayerName;
+
+    #[test]
+    fn list_bindings_returns_global_bindings() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Suppress,
+                )
+                .with_options(BindingOptions::default().with_description("Copy")),
+            )
+            .unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].description.as_deref(), Some("Copy"));
+        assert_eq!(bindings[0].location, BindingLocation::Global);
+        assert_eq!(bindings[0].shadowed, ShadowedStatus::Active);
+    }
+
+    #[test]
+    fn list_bindings_includes_layer_bindings() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(
+                Layer::new("nav")
+                    .bind(Key::H, Action::Suppress)
+                    .bind(Key::J, Action::Suppress),
+            )
+            .unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        let layer_bindings: Vec<_> = bindings
+            .iter()
+            .filter(|b| matches!(b.location, BindingLocation::Layer(_)))
+            .collect();
+        assert_eq!(layer_bindings.len(), 2);
+    }
+
+    #[test]
+    fn list_bindings_detects_shadowed_global() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(Hotkey::new(Key::H), Action::Suppress)
+            .unwrap();
+        dispatcher
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        let global_h = bindings
+            .iter()
+            .find(|b| b.hotkey == Hotkey::new(Key::H) && b.location == BindingLocation::Global)
+            .expect("should find global H");
+        assert_eq!(
+            global_h.shadowed,
+            ShadowedStatus::ShadowedBy(LayerName::from("nav"))
+        );
+    }
+
+    #[test]
+    fn list_bindings_preserves_overlay_visibility() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Suppress,
+                )
+                .with_options(
+                    BindingOptions::default().with_overlay_visibility(OverlayVisibility::Hidden),
+                ),
+            )
+            .unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings[0].overlay_visibility, OverlayVisibility::Hidden);
+    }
+
+    #[test]
+    fn list_bindings_marks_inactive_layer_bindings() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .unwrap();
+        // Layer defined but not pushed
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].shadowed, ShadowedStatus::Inactive);
+    }
+
+    #[test]
+    fn bindings_for_key_returns_matching_binding() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_binding(
+                RegisteredBinding::new(
+                    BindingId::new(),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                    Action::Suppress,
+                )
+                .with_options(BindingOptions::default().with_description("Copy")),
+            )
+            .unwrap();
+
+        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::C).modifier(Modifier::Ctrl));
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().description.as_deref(), Some("Copy"));
+    }
+
+    #[test]
+    fn bindings_for_key_returns_none_when_no_match() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn bindings_for_key_respects_layer_stack() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(Hotkey::new(Key::H), Action::Suppress)
+            .unwrap();
+        dispatcher
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::H));
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap().location,
+            BindingLocation::Layer(LayerName::from("nav"))
+        );
+    }
+
+    #[test]
+    fn bindings_for_key_respects_swallow_layer() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(Hotkey::new(Key::X), Action::Suppress)
+            .unwrap();
+        dispatcher
+            .define_layer(Layer::new("modal").bind(Key::H, Action::Suppress).swallow())
+            .unwrap();
+        dispatcher.push_layer("modal").unwrap();
+
+        // X not in swallow layer → blocked from reaching global
+        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::X));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn bindings_for_key_returns_none_for_modifier_key() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(Hotkey::new(Key::CONTROL_LEFT), Action::Suppress)
+            .unwrap();
+
+        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn active_layers_reflects_stack() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(
+                Layer::new("layer1")
+                    .bind(Key::H, Action::Suppress)
+                    .description("First"),
+            )
+            .unwrap();
+        dispatcher
+            .define_layer(
+                Layer::new("layer2")
+                    .bind(Key::J, Action::Suppress)
+                    .bind(Key::K, Action::Suppress)
+                    .description("Second"),
+            )
+            .unwrap();
+        dispatcher.push_layer("layer1").unwrap();
+        dispatcher.push_layer("layer2").unwrap();
+
+        let active = dispatcher.active_layers();
+        assert_eq!(active.len(), 2);
+        assert_eq!(active[0].name.as_str(), "layer1");
+        assert_eq!(active[0].description.as_deref(), Some("First"));
+        assert_eq!(active[0].binding_count, 1);
+        assert_eq!(active[1].name.as_str(), "layer2");
+        assert_eq!(active[1].description.as_deref(), Some("Second"));
+        assert_eq!(active[1].binding_count, 2);
+    }
+
+    #[test]
+    fn active_layers_empty_when_none_pushed() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .unwrap();
+
+        assert!(dispatcher.active_layers().is_empty());
+    }
+
+    #[test]
+    fn conflicts_detects_layer_shadowing_global() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(Hotkey::new(Key::H), Action::Suppress)
+            .unwrap();
+        dispatcher
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let conflicts = dispatcher.conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].hotkey, Hotkey::new(Key::H));
+        assert_eq!(
+            conflicts[0].shadowed_binding.location,
+            BindingLocation::Global
+        );
+        assert_eq!(
+            conflicts[0].shadowing_binding.location,
+            BindingLocation::Layer(LayerName::from("nav"))
+        );
+    }
+
+    #[test]
+    fn conflicts_empty_when_no_overlaps() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::Suppress,
+            )
+            .unwrap();
+        assert!(dispatcher.conflicts().is_empty());
+    }
+
+    #[test]
+    fn conflicts_empty_when_layer_not_active() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(Hotkey::new(Key::H), Action::Suppress)
+            .unwrap();
+        dispatcher
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .unwrap();
+        // Layer defined but not pushed — no conflict
+
+        assert!(dispatcher.conflicts().is_empty());
+    }
+}
