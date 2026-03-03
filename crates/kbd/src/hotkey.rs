@@ -158,8 +158,12 @@ impl Hotkey {
 
     /// Create a hotkey from a key and a list of modifiers. Modifiers are
     /// sorted and deduplicated.
+    ///
+    /// Accepts anything convertible to a `Vec<Modifier>` — a `Vec`, a slice,
+    /// an array, etc.
     #[must_use]
-    pub fn with_modifiers(key: Key, mut modifiers: Vec<Modifier>) -> Self {
+    pub fn with_modifiers(key: Key, modifiers: impl Into<Vec<Modifier>>) -> Self {
+        let mut modifiers = modifiers.into();
         modifiers.sort();
         modifiers.dedup();
         Self { key, modifiers }
