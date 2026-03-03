@@ -29,6 +29,7 @@ use crate::key::Key;
 /// Left and right physical variants are canonicalized — both `ControlLeft`
 /// and `ControlRight` map to `Modifier::Ctrl`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Modifier {
     /// The Control modifier (left or right).
     Ctrl,
@@ -284,6 +285,21 @@ impl fmt::Display for Hotkey {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Hotkey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Hotkey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = <&str>::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 /// A multi-step hotkey sequence like `"Ctrl+K, Ctrl+C"`.
 ///
 /// Sequences are comma-separated hotkeys. Each step must be pressed
@@ -344,6 +360,21 @@ impl fmt::Display for HotkeySequence {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for HotkeySequence {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for HotkeySequence {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = <&str>::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
     }
 }
 

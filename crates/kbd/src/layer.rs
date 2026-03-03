@@ -26,6 +26,8 @@ use crate::hotkey::Hotkey;
 ///
 /// Converts from `&str` and `String` for convenience.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct LayerName(Box<str>);
 
 impl LayerName {
@@ -84,6 +86,7 @@ impl std::fmt::Display for LayerName {
 /// assert_eq!(modal.options().unmatched(), UnmatchedKeys::Swallow);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum UnmatchedKeys {
     /// Unmatched keys pass to the next layer down the stack.
@@ -95,6 +98,7 @@ pub enum UnmatchedKeys {
 
 /// Per-layer behavioral options.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LayerOptions {
     /// If set, automatically pop the layer after this many keypresses.
     oneshot: Option<usize>,
