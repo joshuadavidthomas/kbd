@@ -280,16 +280,12 @@ pub trait EguiModifiersExt: private::Sealed {
 
 impl EguiModifiersExt for Modifiers {
     fn to_modifiers(&self) -> Vec<Modifier> {
-        [
+        Modifier::collect_active([
             (self.ctrl, Modifier::Ctrl),
             (self.shift, Modifier::Shift),
             (self.alt, Modifier::Alt),
             (self.mac_cmd, Modifier::Super),
-        ]
-        .into_iter()
-        .filter(|(active, _)| *active)
-        .map(|(_, m)| m)
-        .collect()
+        ])
     }
 }
 
