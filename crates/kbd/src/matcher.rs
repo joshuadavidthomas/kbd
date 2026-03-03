@@ -26,14 +26,17 @@ use crate::layer::UnmatchedKeyBehavior;
 pub enum MatchResult<'a> {
     /// A binding matched. Contains the action and passthrough setting.
     Matched {
+        /// The action to execute.
         action: &'a Action,
+        /// Whether to consume or forward the original key event.
         passthrough: Passthrough,
     },
     /// A multi-step sequence is in progress. Consumers can use this for
-    /// UI feedback ("waiting for next key…"). Produced by the sequence
-    /// state machine (Phase 4).
+    /// UI feedback ("waiting for next key…").
     Pending {
+        /// Number of sequence steps completed so far.
         steps_matched: usize,
+        /// Number of sequence steps still needed.
         steps_remaining: usize,
     },
     /// No binding matched the event.
@@ -59,24 +62,75 @@ struct LayerTimeout {
     last_activity: Instant,
 }
 
-/// A synchronous keyboard shortcut matching engine.
+/// A synchronous hotkey matching engine.
 ///
 /// `Matcher` is the embeddable engine. No threads, no channels, no evdev.
 /// Consumers drive it from their own event loop — winit, GPUI, Smithay,
 /// a game loop, whatever.
 ///
-/// # Example
+/// # Lifecycle
 ///
-/// ```rust
+/// 1. Create with [`Matcher::new`]
+/// 2. Register global bindings with [`register`](Matcher::register) or
+///    [`register_binding`](Matcher::register_binding)
+/// 3. Define layers with [`define_layer`](Matcher::define_layer), activate
+///    with [`push_layer`](Matcher::push_layer)
+/// 4. Feed key events via [`process`](Matcher::process) — returns a
+///    [`MatchResult`] telling you what (if anything) matched
+/// 5. Inspect state with [`list_bindings`](Matcher::list_bindings),
+///    [`active_layers`](Matcher::active_layers), and
+///    [`conflicts`](Matcher::conflicts)
+///
+/// # Examples
+///
+/// Register a global binding and match against it:
+///
+/// ```
+/// use kbd::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
+///
+/// let mut matcher = Matcher::new();
+/// matcher.register(
+///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     Action::Swallow,
+/// ).unwrap();
+///
+/// let result = matcher.process(
+///     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     KeyTransition::Press,
+/// );
+/// assert!(matches!(result, MatchResult::Matched { .. }));
+/// ```
+///
+/// Using layers for modal editing:
+///
+/// ```
 /// use kbd::{Action, Hotkey, Key, KeyTransition, Layer, MatchResult, Matcher, Modifier};
 ///
 /// let mut matcher = Matcher::new();
-/// let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
-/// matcher.register(hotkey, Action::Swallow).unwrap();
 ///
-/// let candidate = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
-/// let result = matcher.process(&candidate, KeyTransition::Press);
+/// // Define a navigation layer
+/// let nav = Layer::new("nav")
+///     .bind(Key::H, Action::Swallow)
+///     .bind(Key::J, Action::Swallow)
+///     .bind(Key::K, Action::Swallow)
+///     .bind(Key::L, Action::Swallow)
+///     .bind(Key::ESCAPE, Action::PopLayer)
+///     .swallow();
+/// matcher.define_layer(nav).unwrap();
+///
+/// // Activate the layer
+/// matcher.push_layer("nav").unwrap();
+///
+/// // H matches in the nav layer
+/// let result = matcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
 /// assert!(matches!(result, MatchResult::Matched { .. }));
+///
+/// // Escape pops the layer via Action::PopLayer
+/// matcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
+///
+/// // H no longer matches
+/// let result = matcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+/// assert!(matches!(result, MatchResult::NoMatch));
 /// ```
 pub struct Matcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,

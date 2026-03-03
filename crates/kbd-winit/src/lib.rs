@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! Winit key event conversions for `kbd`.
 //!
 //! This crate bridges winit's physical key model to `kbd`'s key types.
@@ -16,6 +18,32 @@
 //!   `Vec<Modifier>`.
 //! - [`WinitEventExt`] — converts a winit [`KeyEvent`] plus
 //!   [`ModifiersState`] to a [`kbd::Hotkey`].
+//!
+//! # Key mapping
+//!
+//! | winit | kbd | Notes |
+//! |---|---|---|
+//! | `KeyCode::KeyA` – `KeyCode::KeyZ` | [`Key::A`] – [`Key::Z`] | Letters |
+//! | `KeyCode::Digit0` – `KeyCode::Digit9` | [`Key::DIGIT0`] – [`Key::DIGIT9`] | Digits |
+//! | `KeyCode::F1` – `KeyCode::F35` | [`Key::F1`] – [`Key::F35`] | Function keys |
+//! | `KeyCode::Numpad0` – `KeyCode::Numpad9` | [`Key::NUMPAD0`] – [`Key::NUMPAD9`] | Numpad |
+//! | `KeyCode::Enter`, `KeyCode::Escape`, … | [`Key::ENTER`], [`Key::ESCAPE`], … | Navigation / editing |
+//! | `KeyCode::ControlLeft`, … | [`Key::CONTROL_LEFT`], … | Modifier keys as triggers |
+//! | `KeyCode::SuperLeft` / `KeyCode::Meta` | [`Key::META_LEFT`] | winit's Super = kbd's Meta |
+//! | `KeyCode::SuperRight` | [`Key::META_RIGHT`] | |
+//! | `KeyCode::MediaPlayPause`, … | [`Key::MEDIA_PLAY_PAUSE`], … | Media keys |
+//! | `KeyCode::BrowserBack`, … | [`Key::BROWSER_BACK`], … | Browser keys |
+//! | `KeyCode::Convert`, `KeyCode::Lang1`, … | [`Key::CONVERT`], [`Key::LANG1`], … | CJK / international |
+//! | `PhysicalKey::Unidentified(_)` | `None` | No mapping possible |
+//!
+//! # Modifier mapping
+//!
+//! | winit | kbd |
+//! |---|---|
+//! | `CONTROL` | [`Modifier::Ctrl`] |
+//! | `SHIFT` | [`Modifier::Shift`] |
+//! | `ALT` | [`Modifier::Alt`] |
+//! | `SUPER` | [`Modifier::Super`] |
 //!
 //! # Usage
 //!
@@ -50,6 +78,18 @@ use winit::keyboard::PhysicalKey;
 /// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24, TV remote keys).
 pub trait WinitKeyExt {
+    /// Convert this winit key to a `kbd` [`Key`], or `None` if unmappable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kbd::Key;
+    /// use kbd_winit::WinitKeyExt;
+    /// use winit::keyboard::{KeyCode, PhysicalKey};
+    ///
+    /// assert_eq!(KeyCode::KeyA.to_key(), Some(Key::A));
+    /// assert_eq!(PhysicalKey::Code(KeyCode::Enter).to_key(), Some(Key::ENTER));
+    /// ```
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -295,6 +335,18 @@ impl WinitKeyExt for PhysicalKey {
 
 /// Convert winit [`ModifiersState`] bitflags to a sorted `Vec<Modifier>`.
 pub trait WinitModifiersExt {
+    /// Convert these winit modifier flags to a `Vec<Modifier>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kbd::Modifier;
+    /// use kbd_winit::WinitModifiersExt;
+    /// use winit::keyboard::ModifiersState;
+    ///
+    /// let mods = (ModifiersState::CONTROL | ModifiersState::SHIFT).to_modifiers();
+    /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
+    /// ```
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -357,6 +409,27 @@ pub fn physical_key_to_hotkey(
 /// includes the pressed modifier key in its own state, but `kbd`
 /// treats the key as the trigger, not as a modifier of itself.
 pub trait WinitEventExt {
+    /// Convert this key event to a [`Hotkey`], or `None` if the key is unmappable.
+    ///
+    /// Pass the current [`ModifiersState`] from
+    /// `WindowEvent::ModifiersChanged`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kbd::{Hotkey, Key, Modifier};
+    /// use kbd_winit::physical_key_to_hotkey;
+    /// use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
+    ///
+    /// let hotkey = physical_key_to_hotkey(
+    ///     PhysicalKey::Code(KeyCode::KeyS),
+    ///     ModifiersState::CONTROL,
+    /// );
+    /// assert_eq!(
+    ///     hotkey,
+    ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
+    /// );
+    /// ```
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey>;
 }
 

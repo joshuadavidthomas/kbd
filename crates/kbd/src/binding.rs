@@ -26,6 +26,7 @@ impl BindingId {
         Self(NEXT_ID.fetch_add(1, Ordering::Relaxed))
     }
 
+    /// Return the raw `u64` value of this ID.
     #[must_use]
     pub const fn as_u64(self) -> u64 {
         self.0
@@ -39,6 +40,22 @@ impl Default for BindingId {
 }
 
 /// How a matched binding handles the original key event.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{Action, BindingId, BindingOptions, Hotkey, Key, Modifier, Passthrough, RegisteredBinding};
+///
+/// // A binding that forwards the key event to the application
+/// // while still running its action (e.g., logging keypresses).
+/// let binding = RegisteredBinding::new(
+///     BindingId::new(),
+///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     Action::Swallow,
+/// ).with_passthrough(Passthrough::Enabled);
+///
+/// assert_eq!(binding.passthrough(), Passthrough::Enabled);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Passthrough {
     /// Consume the event by default.
@@ -53,6 +70,21 @@ pub enum Passthrough {
 /// Lets consumers build discoverable hotkey overlays while excluding
 /// internal or administrative bindings. Follows the pattern from
 /// Niri's `hotkey-overlay-title=null`.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{BindingOptions, OverlayVisibility};
+///
+/// // Hide an internal binding from the overlay
+/// let opts = BindingOptions::default()
+///     .with_overlay_visibility(OverlayVisibility::Hidden);
+/// assert_eq!(opts.overlay_visibility(), OverlayVisibility::Hidden);
+///
+/// // By default, bindings are visible
+/// let opts = BindingOptions::default();
+/// assert_eq!(opts.overlay_visibility(), OverlayVisibility::Visible);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum OverlayVisibility {
     /// Binding is shown in overlays and help screens.
@@ -63,15 +95,57 @@ pub enum OverlayVisibility {
 }
 
 /// Device filter expression for restricting binding scope.
+///
+/// Used with [`BindingOptions::with_device_filter`] to make a binding
+/// respond only to events from a specific input device.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{BindingOptions, DeviceFilter};
+///
+/// // Match a device by name pattern
+/// let opts = BindingOptions::default()
+///     .with_device_filter(DeviceFilter::NamePattern("Ergodox*".into()));
+///
+/// // Match a device by USB vendor and product IDs
+/// let opts = BindingOptions::default()
+///     .with_device_filter(DeviceFilter::Usb {
+///         vendor_id: 0x1234,
+///         product_id: 0x5678,
+///     });
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DeviceFilter {
     /// Match devices whose names fit a glob-like pattern.
     NamePattern(Box<str>),
     /// Match devices by USB vendor/product IDs.
-    Usb { vendor_id: u16, product_id: u16 },
+    Usb {
+        /// USB vendor ID.
+        vendor_id: u16,
+        /// USB product ID.
+        product_id: u16,
+    },
 }
 
 /// Per-binding behavioral options.
+///
+/// Configure a binding's passthrough behavior, description, overlay visibility,
+/// and optional device filter. Built via method chaining:
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{BindingOptions, OverlayVisibility, Passthrough};
+///
+/// let opts = BindingOptions::default()
+///     .with_description("Copy to clipboard")
+///     .with_passthrough(Passthrough::Consume)
+///     .with_overlay_visibility(OverlayVisibility::Visible);
+///
+/// assert_eq!(opts.description(), Some("Copy to clipboard"));
+/// assert_eq!(opts.passthrough(), Passthrough::Consume);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BindingOptions {
     passthrough: Passthrough,
@@ -83,11 +157,13 @@ pub struct BindingOptions {
 }
 
 impl BindingOptions {
+    /// How the original key event is handled after matching.
     #[must_use]
     pub const fn passthrough(&self) -> Passthrough {
         self.passthrough
     }
 
+    /// Set the passthrough behavior.
     #[must_use]
     pub const fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
         self.passthrough = passthrough;
@@ -120,12 +196,14 @@ impl BindingOptions {
         self
     }
 
+    /// Restrict this binding to a specific input device.
     #[must_use]
     pub fn with_device_filter(mut self, device_filter: DeviceFilter) -> Self {
         self.device_filter = Some(device_filter);
         self
     }
 
+    /// The device filter for this binding, if set.
     #[must_use]
     pub fn device_filter(&self) -> Option<&DeviceFilter> {
         self.device_filter.as_ref()
@@ -144,6 +222,7 @@ pub struct RegisteredBinding {
 }
 
 impl RegisteredBinding {
+    /// Create a registered binding with default options.
     #[must_use]
     pub fn new(id: BindingId, hotkey: Hotkey, action: Action) -> Self {
         Self {
@@ -154,38 +233,45 @@ impl RegisteredBinding {
         }
     }
 
+    /// Replace the binding's options.
     #[must_use]
     pub fn with_options(mut self, options: BindingOptions) -> Self {
         self.options = options;
         self
     }
 
+    /// Set the passthrough behavior for this binding.
     #[must_use]
     pub fn with_passthrough(mut self, passthrough: Passthrough) -> Self {
         self.options = self.options.with_passthrough(passthrough);
         self
     }
 
+    /// The unique ID of this binding.
     #[must_use]
     pub const fn id(&self) -> BindingId {
         self.id
     }
 
+    /// The hotkey pattern that triggers this binding.
     #[must_use]
     pub fn hotkey(&self) -> &Hotkey {
         &self.hotkey
     }
 
+    /// The action to execute when this binding matches.
     #[must_use]
     pub const fn action(&self) -> &Action {
         &self.action
     }
 
+    /// How the original key event is handled after matching.
     #[must_use]
     pub const fn passthrough(&self) -> Passthrough {
         self.options.passthrough()
     }
 
+    /// The full options for this binding.
     #[must_use]
     pub const fn options(&self) -> &BindingOptions {
         &self.options

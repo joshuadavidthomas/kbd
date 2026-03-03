@@ -18,19 +18,53 @@
 use evdev::KeyCode;
 use kbd::Key;
 
-/// Extension trait on `evdev::KeyCode` for converting to `kbd::Key`.
+/// Extension trait on [`evdev::KeyCode`] for converting to [`kbd::Key`].
+///
+/// Returns [`Key::UNIDENTIFIED`] for key codes that have no `kbd` mapping
+/// (e.g., `KEY_PROG2`, `KEY_COFFEE`).
 pub trait KeyCodeExt {
-    /// Convert this evdev key code to a `Key`.
+    /// Convert this evdev key code to a [`Key`].
     ///
-    /// Returns `Key::UNIDENTIFIED` for key codes that don't have a mapping.
+    /// Returns [`Key::UNIDENTIFIED`] for key codes that don't have a mapping.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use evdev::KeyCode;
+    /// use kbd::Key;
+    /// use kbd_evdev::KeyCodeExt;
+    ///
+    /// assert_eq!(KeyCode::KEY_A.to_key(), Key::A);
+    /// assert_eq!(KeyCode::KEY_LEFTCTRL.to_key(), Key::CONTROL_LEFT);
+    ///
+    /// // Unmapped codes return UNIDENTIFIED
+    /// assert_eq!(KeyCode::KEY_PROG2.to_key(), Key::UNIDENTIFIED);
+    /// ```
     fn to_key(self) -> Key;
 }
 
-/// Extension trait on `kbd::Key` for converting to `evdev::KeyCode`.
+/// Extension trait on [`kbd::Key`] for converting to [`evdev::KeyCode`].
+///
+/// [`Key::UNIDENTIFIED`] and any key without a known evdev equivalent maps
+/// to `KeyCode::KEY_UNKNOWN`.
 pub trait EvdevKeyExt {
-    /// Convert this key to an evdev `KeyCode`.
+    /// Convert this key to an evdev [`KeyCode`].
     ///
-    /// `Key::UNIDENTIFIED` maps to `KeyCode::KEY_UNKNOWN`.
+    /// [`Key::UNIDENTIFIED`] maps to `KeyCode::KEY_UNKNOWN`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use evdev::KeyCode;
+    /// use kbd::Key;
+    /// use kbd_evdev::EvdevKeyExt;
+    ///
+    /// assert_eq!(Key::A.to_key_code(), KeyCode::KEY_A);
+    /// assert_eq!(Key::CONTROL_LEFT.to_key_code(), KeyCode::KEY_LEFTCTRL);
+    ///
+    /// // UNIDENTIFIED maps to KEY_UNKNOWN
+    /// assert_eq!(Key::UNIDENTIFIED.to_key_code(), KeyCode::KEY_UNKNOWN);
+    /// ```
     fn to_key_code(self) -> KeyCode;
 }
 

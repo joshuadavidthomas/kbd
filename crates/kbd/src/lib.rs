@@ -1,33 +1,65 @@
-//! Pure-logic keyboard shortcut engine.
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
+//! Pure-logic hotkey engine.
 //!
-//! `kbd` provides the domain types and matching logic that every keyboard
-//! shortcut system needs: key types, modifier tracking, binding matching, layer
+//! `kbd` provides the domain types and matching logic that every hotkey
+//! system needs: key types, modifier tracking, binding matching, layer
 //! stacks, and sequence resolution. It has zero platform dependencies and can
 //! be embedded in any event loop — winit, GPUI, Smithay, a game loop, or a
 //! compositor.
 //!
-//! # What belongs here
+//! # Quick Start
 //!
-//! - `Key`, `Modifier`, `Hotkey`, `HotkeySequence` — the input vocabulary
-//! - `Action`, `Binding`, `BindingOptions`, `BindingId` — what to match and do
-//! - `Layer`, `LayerOptions` — named binding groups that stack
-//! - `Matcher`, `MatchResult`, `KeyState` — the synchronous matching engine
-//! - Core error types (parse, conflict, layer)
+//! Register a hotkey, feed key events, and check for matches:
 //!
-//! # What does NOT belong here
+//! ```
+//! use kbd::{Action, Hotkey, Key, KeyTransition, MatchResult, Matcher, Modifier};
 //!
-//! - evdev types or Linux-specific I/O (`kbd-evdev`)
-//! - Portal / D-Bus integration (`kbd-portal`)
-//! - Keyboard layout / xkbcommon (`kbd-xkb`)
-//! - Threaded manager, message passing, handles (`kbd-global`)
+//! let mut matcher = Matcher::new();
+//!
+//! // Register Ctrl+S as a global binding
+//! let id = matcher.register(
+//!     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+//!     Action::Swallow,
+//! ).unwrap();
+//!
+//! // Simulate a key press
+//! let result = matcher.process(
+//!     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+//!     KeyTransition::Press,
+//! );
+//! assert!(matches!(result, MatchResult::Matched { .. }));
+//! ```
+//!
+//! # Feature Flags
+//!
+//! | Flag | Default | Effect |
+//! |------|---------|--------|
+//! | `serde` | off | Enables `serde` dependency (serialization support planned) |
+//!
+//! # See Also
+//!
+//! - [`kbd-global`](https://docs.rs/kbd-global) — threaded manager with message passing and handles
+//! - [`kbd-evdev`](https://docs.rs/kbd-evdev) — Linux evdev key conversion and device monitoring
+//! - Bridge crates: [`kbd-crossterm`](https://docs.rs/kbd-crossterm),
+//!   [`kbd-egui`](https://docs.rs/kbd-egui), [`kbd-iced`](https://docs.rs/kbd-iced),
+//!   [`kbd-tao`](https://docs.rs/kbd-tao), [`kbd-winit`](https://docs.rs/kbd-winit)
 
+/// What happens when a binding matches — callbacks, key emission, layer control.
 pub mod action;
+/// Binding types — pattern + action + options, device filtering.
 pub mod binding;
+/// Error types for parsing, conflicts, and layer operations.
 pub mod error;
+/// Read-only snapshots of matcher state for UI and debugging.
 pub mod introspection;
+/// Physical key types, modifiers, hotkeys, and string parsing.
 pub mod key;
+/// Per-device key press/release tracking and modifier derivation.
 pub mod key_state;
+/// Named binding groups that stack — oneshot, timeout, swallow modes.
 pub mod layer;
+/// Synchronous matching engine — feed key events, get match results.
 pub mod matcher;
 
 pub use crate::action::Action;

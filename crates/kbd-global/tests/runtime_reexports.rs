@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Tests that `kbd-global` re-exports all kbd public types
 //! and that the public API surface is correct after the runtime rewire.
 

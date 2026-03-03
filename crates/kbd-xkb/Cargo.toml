@@ -7,6 +7,7 @@ authors.workspace = true
 license-file.workspace = true
 repository.workspace = true
 description = "Keyboard layout awareness for kbd — xkbcommon integration for keycode-to-keysym resolution and layout change detection."
+readme = "README.md"
 publish = false
 keywords = ["xkb", "keyboard", "layout", "keysym"]
 categories = ["os::linux-apis"]

@@ -16,6 +16,26 @@ use crate::binding::Passthrough;
 use crate::key::Hotkey;
 
 /// Whether unmatched keys in an active layer fall through to lower layers.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::{Action, Key, Layer, UnmatchedKeyBehavior};
+///
+/// // A navigation layer that only captures H/J/K/L.
+/// // Other keys (like Ctrl+S) still reach global bindings.
+/// let nav = Layer::new("nav")
+///     .bind(Key::H, Action::Swallow)
+///     .bind(Key::J, Action::Swallow);
+/// assert_eq!(nav.options().unmatched(), UnmatchedKeyBehavior::Fallthrough);
+///
+/// // A modal layer that captures ALL keys — nothing falls through.
+/// // Useful for insert-mode or game-input modes.
+/// let modal = Layer::new("modal")
+///     .bind(Key::H, Action::Swallow)
+///     .swallow();
+/// assert_eq!(modal.options().unmatched(), UnmatchedKeyBehavior::Swallow);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum UnmatchedKeyBehavior {
     /// Unmatched keys pass to the next layer down the stack.
@@ -96,17 +116,49 @@ impl std::fmt::Debug for StoredLayer {
 
 /// A named collection of bindings that can be activated and deactivated.
 ///
-/// Construct via the builder pattern:
+/// Construct via the builder pattern, then register with
+/// [`Matcher::define_layer`](crate::Matcher::define_layer).
 ///
-/// ```rust
-/// use kbd::{Action, Hotkey, Key, Layer, Modifier};
+/// # Examples
+///
+/// Basic layer with vim-style navigation:
+///
+/// ```
+/// use kbd::{Action, Key, Layer};
 ///
 /// let nav = Layer::new("nav")
 ///     .bind(Key::H, Action::Swallow)
 ///     .bind(Key::J, Action::Swallow)
-///     .bind(Hotkey::new(Key::K).modifier(Modifier::Ctrl), Action::Swallow)
+///     .bind(Key::K, Action::Swallow)
 ///     .bind(Key::L, Action::Swallow)
+///     .description("Vim navigation keys")
 ///     .swallow();
+///
+/// assert_eq!(nav.name().as_str(), "nav");
+/// assert_eq!(nav.binding_count(), 4);
+/// ```
+///
+/// Oneshot layer that auto-pops after one keypress:
+///
+/// ```
+/// use kbd::{Action, Key, Layer};
+///
+/// let leader = Layer::new("leader")
+///     .bind(Key::F, Action::Swallow)
+///     .bind(Key::B, Action::Swallow)
+///     .oneshot(1);
+/// ```
+///
+/// Layer with a timeout that auto-pops after inactivity:
+///
+/// ```
+/// use std::time::Duration;
+/// use kbd::{Action, Key, Layer};
+///
+/// let timed = Layer::new("quick-nav")
+///     .bind(Key::N, Action::Swallow)
+///     .bind(Key::P, Action::Swallow)
+///     .timeout(Duration::from_secs(2));
 /// ```
 pub struct Layer {
     name: LayerName,

@@ -6,8 +6,8 @@ rust-version.workspace = true
 authors.workspace = true
 license-file.workspace = true
 repository.workspace = true
-readme = "../../README.md"
-description = "Pure-logic keyboard shortcut engine — key types, modifier tracking, binding matching, layer stacks, sequence resolution. No platform dependencies."
+readme = "README.md"
+description = "Pure-logic hotkey engine — key types, modifier tracking, binding matching, layer stacks, sequence resolution. No platform dependencies."
 keywords = ["keyboard", "hotkey", "keybinding", "shortcut"]
 categories = ["data-structures"]
 
@@ -18,6 +18,10 @@ serde = ["dep:serde"]
 keyboard-types = { workspace = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]
 workspace = true

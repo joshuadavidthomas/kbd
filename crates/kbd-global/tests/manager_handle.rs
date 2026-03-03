@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use kbd_global::Error;
 use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;

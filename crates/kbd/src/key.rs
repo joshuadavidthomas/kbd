@@ -34,6 +34,12 @@ use keyboard_types::Code;
 #[repr(transparent)]
 pub struct Key(Code);
 
+/// Key constants grouped by category.
+///
+/// All constants use the W3C UI Events specification names. The list covers
+/// the full 104/105-key PC layout, function keys through F35, media and
+/// browser keys, numpad, international input, and system keys.
+#[allow(missing_docs)]
 impl Key {
     // Letters
     pub const A: Self = Self(Code::KeyA);
@@ -680,15 +686,24 @@ impl From<Modifier> for Key {
     }
 }
 
+/// A canonical modifier key (Ctrl, Shift, Alt, Super).
+///
+/// Left and right physical variants are canonicalized — both `ControlLeft`
+/// and `ControlRight` map to `Modifier::Ctrl`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Modifier {
+    /// The Control modifier (left or right).
     Ctrl,
+    /// The Shift modifier (left or right).
     Shift,
+    /// The Alt modifier (left or right).
     Alt,
+    /// The Super/Meta/Win modifier (left or right).
     Super,
 }
 
 impl Modifier {
+    /// Human-readable name for this modifier.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -714,6 +729,7 @@ impl Modifier {
         }
     }
 
+    /// Return the left and right physical [`Key`] variants for this modifier.
     #[must_use]
     pub const fn keys(self) -> (Key, Key) {
         match self {
@@ -764,6 +780,21 @@ impl TryFrom<Key> for Modifier {
     }
 }
 
+/// A key combined with zero or more modifiers.
+///
+/// Hotkeys are the matching unit — `"Ctrl+C"`, `"Shift+F5"`, or just `"Escape"`.
+/// Parse from strings with [`str::parse`] or build programmatically with
+/// [`Hotkey::new`] and [`Hotkey::modifier`].
+///
+/// ```
+/// use kbd::{Hotkey, Key, Modifier};
+///
+/// // From a string
+/// let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
+///
+/// // Programmatic
+/// let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl).modifier(Modifier::Shift);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Hotkey {
     key: Key,
@@ -780,7 +811,8 @@ impl Hotkey {
         }
     }
 
-    /// Create a hotkey from a key and a list of modifiers.
+    /// Create a hotkey from a key and a list of modifiers. Modifiers are
+    /// sorted and deduplicated.
     #[must_use]
     pub fn with_modifiers(key: Key, mut modifiers: Vec<Modifier>) -> Self {
         modifiers.sort();
@@ -798,11 +830,13 @@ impl Hotkey {
         self
     }
 
+    /// The non-modifier key in this hotkey.
     #[must_use]
     pub fn key(&self) -> Key {
         self.key
     }
 
+    /// The modifiers required for this hotkey (sorted, deduplicated).
     #[must_use]
     pub fn modifiers(&self) -> &[Modifier] {
         &self.modifiers
@@ -871,12 +905,24 @@ impl fmt::Display for Hotkey {
     }
 }
 
+/// A multi-step hotkey sequence like `"Ctrl+K, Ctrl+C"`.
+///
+/// Sequences are comma-separated hotkeys. Each step must be pressed
+/// in order for the sequence to match.
+///
+/// ```
+/// use kbd::HotkeySequence;
+///
+/// let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse().unwrap();
+/// assert_eq!(seq.steps().len(), 2);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HotkeySequence {
     steps: Vec<Hotkey>,
 }
 
 impl HotkeySequence {
+    /// Create a sequence from a non-empty list of hotkeys.
     pub fn new(steps: Vec<Hotkey>) -> Result<Self, ParseHotkeyError> {
         if steps.is_empty() {
             return Err(ParseHotkeyError::Empty);
@@ -885,6 +931,7 @@ impl HotkeySequence {
         Ok(Self { steps })
     }
 
+    /// The individual hotkey steps in this sequence.
     #[must_use]
     pub fn steps(&self) -> &[Hotkey] {
         &self.steps
@@ -917,16 +964,22 @@ impl fmt::Display for HotkeySequence {
     }
 }
 
+/// Error returned when parsing a hotkey or key from a string fails.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ParseHotkeyError {
+    /// The input string was empty.
     #[error("hotkey string is empty")]
     Empty,
+    /// A segment between `+` separators was empty (e.g., `"Ctrl++A"`).
     #[error("hotkey contains an empty token")]
     EmptySegment,
+    /// A token could not be recognized as a key or modifier.
     #[error("unknown hotkey token: {0}")]
     UnknownToken(String),
+    /// The hotkey contained only modifiers with no trigger key.
     #[error("hotkey is missing a non-modifier key")]
     MissingKey,
+    /// The hotkey contained more than one non-modifier key.
     #[error("hotkey has multiple non-modifier keys")]
     MultipleKeys,
 }

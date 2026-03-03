@@ -1,6 +1,8 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! Egui key event conversions for `kbd`.
 //!
-//! This crate bridges egui's key types to `kbd`'s physical key types.
+//! This crate bridges egui's key types to `kbd`'s key types.
 //! Egui has a smaller, custom key enum that is not 1:1 with the W3C
 //! specification — some physical keys have no egui equivalent, some egui
 //! keys are logical/shifted characters without a single physical key
@@ -14,6 +16,27 @@
 //!   `Vec<Modifier>`.
 //! - [`EguiEventExt`] — converts a full [`egui::Event`] keyboard event
 //!   to a [`kbd::Hotkey`].
+//!
+//! # Key mapping
+//!
+//! | egui | kbd | Notes |
+//! |---|---|---|
+//! | `Key::A` – `Key::Z` | [`Key::A`] – [`Key::Z`] | Letters |
+//! | `Key::Num0` – `Key::Num9` | [`Key::DIGIT0`] – [`Key::DIGIT9`] | Digits |
+//! | `Key::F1` – `Key::F35` | [`Key::F1`] – [`Key::F35`] | Function keys |
+//! | `Key::Minus`, `Key::Period`, … | [`Key::MINUS`], [`Key::PERIOD`], … | Physical-position punctuation |
+//! | `Key::ArrowDown`, `Key::Enter`, … | [`Key::ARROW_DOWN`], [`Key::ENTER`], … | Navigation / editing |
+//! | `Key::Copy`, `Key::Cut`, `Key::Paste` | [`Key::COPY`], [`Key::CUT`], [`Key::PASTE`] | Clipboard |
+//! | `Key::Colon`, `Key::Pipe`, `Key::Plus`, … | `None` | Logical/shifted — no single physical key |
+//!
+//! # Modifier mapping
+//!
+//! | egui | kbd | Notes |
+//! |---|---|---|
+//! | `ctrl` | [`Modifier::Ctrl`] | |
+//! | `shift` | [`Modifier::Shift`] | |
+//! | `alt` | [`Modifier::Alt`] | |
+//! | `mac_cmd` | [`Modifier::Super`] | Avoids double-counting with `command` on macOS |
 //!
 //! # Usage
 //!
@@ -56,6 +79,20 @@ use kbd::Modifier;
 /// `Plus`, `Questionmark`). Most egui keys map directly to a physical
 /// key position.
 pub trait EguiKeyExt {
+    /// Convert this egui key to a `kbd` [`Key`], or `None` if unmappable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use egui::Key as EguiKey;
+    /// use kbd::Key;
+    /// use kbd_egui::EguiKeyExt;
+    ///
+    /// assert_eq!(EguiKey::A.to_key(), Some(Key::A));
+    /// assert_eq!(EguiKey::F5.to_key(), Some(Key::F5));
+    /// // Shifted characters have no physical key equivalent
+    /// assert_eq!(EguiKey::Colon.to_key(), None);
+    /// ```
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -202,6 +239,21 @@ impl EguiKeyExt for EguiKey {
 /// - `alt` → `Modifier::Alt`
 /// - `mac_cmd` → `Modifier::Super`
 pub trait EguiModifiersExt {
+    /// Convert these egui modifiers to a `Vec<Modifier>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use egui::Modifiers;
+    /// use kbd::Modifier;
+    /// use kbd_egui::EguiModifiersExt;
+    ///
+    /// let mods = Modifiers {
+    ///     alt: false, ctrl: true, shift: true,
+    ///     mac_cmd: false, command: false,
+    /// };
+    /// assert_eq!(mods.to_modifiers(), vec![Modifier::Ctrl, Modifier::Shift]);
+    /// ```
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -232,6 +284,27 @@ impl EguiModifiersExt for Modifiers {
 /// Only `Event::Key { .. }` variants produce a hotkey. All other event
 /// variants return `None`.
 pub trait EguiEventExt {
+    /// Convert this event to a [`Hotkey`], or `None` if not a keyboard event.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use egui::{Key as EguiKey, Modifiers};
+    /// use kbd::{Hotkey, Key, Modifier};
+    /// use kbd_egui::EguiEventExt;
+    ///
+    /// let event = egui::Event::Key {
+    ///     key: EguiKey::S,
+    ///     physical_key: None,
+    ///     pressed: true,
+    ///     repeat: false,
+    ///     modifiers: Modifiers::CTRL,
+    /// };
+    /// assert_eq!(
+    ///     event.to_hotkey(),
+    ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
+    /// );
+    /// ```
     fn to_hotkey(&self) -> Option<Hotkey>;
 }
 

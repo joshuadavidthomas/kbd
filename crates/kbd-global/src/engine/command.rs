@@ -1,3 +1,9 @@
+//! Command protocol for manager→engine communication.
+//!
+//! Every [`HotkeyManager`](crate::HotkeyManager) method translates to a
+//! [`Command`] sent through the channel. Commands that need a response
+//! include a one-shot reply sender.
+
 use std::sync::Arc;
 use std::sync::mpsc;
 

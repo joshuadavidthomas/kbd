@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! Tao key event conversions for `kbd`.
 //!
 //! This crate bridges tao's physical key model to `kbd`'s key types.
@@ -15,6 +17,31 @@
 //!   `Vec<Modifier>`.
 //! - [`TaoEventExt`] — converts a tao [`KeyEvent`] plus
 //!   [`ModifiersState`] to a [`kbd::Hotkey`].
+//!
+//! # Key mapping
+//!
+//! | tao | kbd | Notes |
+//! |---|---|---|
+//! | `KeyCode::KeyA` – `KeyCode::KeyZ` | [`Key::A`] – [`Key::Z`] | Letters |
+//! | `KeyCode::Digit0` – `KeyCode::Digit9` | [`Key::DIGIT0`] – [`Key::DIGIT9`] | Digits |
+//! | `KeyCode::F1` – `KeyCode::F35` | [`Key::F1`] – [`Key::F35`] | Function keys |
+//! | `KeyCode::Numpad0` – `KeyCode::Numpad9` | [`Key::NUMPAD0`] – [`Key::NUMPAD9`] | Numpad |
+//! | `KeyCode::Enter`, `KeyCode::Escape`, … | [`Key::ENTER`], [`Key::ESCAPE`], … | Navigation / editing |
+//! | `KeyCode::ControlLeft`, … | [`Key::CONTROL_LEFT`], … | Modifier keys as triggers |
+//! | `KeyCode::SuperLeft` / `KeyCode::SuperRight` | [`Key::META_LEFT`] / [`Key::META_RIGHT`] | tao's Super = kbd's Meta |
+//! | `KeyCode::Equal` / `KeyCode::Plus` | [`Key::EQUAL`] | Same physical key |
+//! | `KeyCode::MediaPlayPause`, … | [`Key::MEDIA_PLAY_PAUSE`], … | Media keys |
+//! | `KeyCode::BrowserBack`, … | [`Key::BROWSER_BACK`], … | Browser keys |
+//! | `KeyCode::Unidentified(_)` | `None` | No mapping possible |
+//!
+//! # Modifier mapping
+//!
+//! | tao | kbd |
+//! |---|---|
+//! | `CONTROL` | [`Modifier::Ctrl`] |
+//! | `SHIFT` | [`Modifier::Shift`] |
+//! | `ALT` | [`Modifier::Alt`] |
+//! | `SUPER` | [`Modifier::Super`] |
 //!
 //! # Usage
 //!
@@ -44,6 +71,19 @@ use tao::keyboard::ModifiersState;
 /// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24).
 pub trait TaoKeyExt {
+    /// Convert this tao key code to a `kbd` [`Key`], or `None` if unmappable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kbd::Key;
+    /// use kbd_tao::TaoKeyExt;
+    /// use tao::keyboard::KeyCode;
+    ///
+    /// assert_eq!(KeyCode::KeyA.to_key(), Some(Key::A));
+    /// assert_eq!(KeyCode::F5.to_key(), Some(Key::F5));
+    /// assert_eq!(KeyCode::SuperLeft.to_key(), Some(Key::META_LEFT));
+    /// ```
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -279,6 +319,18 @@ impl TaoKeyExt for KeyCode {
 
 /// Convert tao [`ModifiersState`] bitflags to a sorted `Vec<Modifier>`.
 pub trait TaoModifiersExt {
+    /// Convert these tao modifier flags to a `Vec<Modifier>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kbd::Modifier;
+    /// use kbd_tao::TaoModifiersExt;
+    /// use tao::keyboard::ModifiersState;
+    ///
+    /// let mods = (ModifiersState::CONTROL | ModifiersState::SHIFT).to_modifiers();
+    /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
+    /// ```
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -338,6 +390,24 @@ pub fn keycode_to_hotkey(keycode: KeyCode, modifiers: ModifiersState) -> Option<
 /// includes the pressed modifier key in its own state, but `kbd`
 /// treats the key as the trigger, not as a modifier of itself.
 pub trait TaoEventExt {
+    /// Convert this key event to a [`Hotkey`], or `None` if the key is unmappable.
+    ///
+    /// Pass the current [`ModifiersState`] from
+    /// `WindowEvent::ModifiersChanged`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kbd::{Hotkey, Key, Modifier};
+    /// use kbd_tao::keycode_to_hotkey;
+    /// use tao::keyboard::{KeyCode, ModifiersState};
+    ///
+    /// let hotkey = keycode_to_hotkey(KeyCode::KeyS, ModifiersState::CONTROL);
+    /// assert_eq!(
+    ///     hotkey,
+    ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
+    /// );
+    /// ```
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey>;
 }
 

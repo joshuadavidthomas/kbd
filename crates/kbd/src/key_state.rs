@@ -13,19 +13,32 @@ use std::collections::HashSet;
 use crate::Key;
 use crate::Modifier;
 
+/// Whether a key was pressed, released, or repeated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyTransition {
+    /// The key was pressed down.
     Press,
+    /// The key was released.
     Release,
+    /// The key is being held and auto-repeating.
     Repeat,
 }
 
+/// Tracks which keys are currently pressed, per device.
+///
+/// Modifier state is derived from key state, not tracked separately.
+/// "Is Ctrl held?" = "is `ControlLeft` or `ControlRight` in the pressed set?"
 #[derive(Debug, Default)]
 pub struct KeyState {
     pressed_by_device: HashMap<i32, HashSet<Key>>,
 }
 
 impl KeyState {
+    /// Update key state for a device event.
+    ///
+    /// Press and repeat events mark the key as pressed; release events
+    /// remove it. Device entries are cleaned up when their last key is
+    /// released.
     pub fn apply_device_event(&mut self, device_id: i32, key: Key, transition: KeyTransition) {
         match transition {
             KeyTransition::Press | KeyTransition::Repeat => {
@@ -45,10 +58,12 @@ impl KeyState {
         }
     }
 
+    /// Remove all key state for a disconnected device.
     pub fn disconnect_device(&mut self, device_id: i32) {
         self.pressed_by_device.remove(&device_id);
     }
 
+    /// Check whether a key is currently pressed on any device.
     #[must_use]
     pub fn is_pressed(&self, key: Key) -> bool {
         self.pressed_by_device

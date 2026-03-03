@@ -1,3 +1,8 @@
+//! Shared engine types — grab state, key event dispositions, and match outcomes.
+//!
+//! Internal types used by the engine to track grab mode and classify how
+//! each key event was handled.
+
 use kbd::binding::Passthrough;
 
 /// Whether the engine is running in grab mode.

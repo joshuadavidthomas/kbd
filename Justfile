@@ -15,5 +15,8 @@ clean:
 clippy *ARGS:
     cargo clippy --all-targets --all-features --benches --fix --allow-dirty {{ ARGS }} -- -D warnings
 
+doc *ARGS:
+    RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features --workspace --no-deps {{ ARGS }}
+
 fmt *ARGS:
     cargo +nightly fmt {{ ARGS }}

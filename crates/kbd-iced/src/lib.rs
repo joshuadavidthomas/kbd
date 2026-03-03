@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! Iced key event conversions for `kbd`.
 //!
 //! This crate bridges iced's keyboard types to `kbd`'s key types.
@@ -15,6 +17,31 @@
 //!   `Vec<Modifier>`.
 //! - [`IcedEventExt`] — converts an iced keyboard [`Event`] to a
 //!   [`kbd::Hotkey`].
+//!
+//! # Key mapping
+//!
+//! | iced | kbd | Notes |
+//! |---|---|---|
+//! | `Code::KeyA` – `Code::KeyZ` | [`Key::A`] – [`Key::Z`] | Letters |
+//! | `Code::Digit0` – `Code::Digit9` | [`Key::DIGIT0`] – [`Key::DIGIT9`] | Digits |
+//! | `Code::F1` – `Code::F35` | [`Key::F1`] – [`Key::F35`] | Function keys |
+//! | `Code::Numpad0` – `Code::Numpad9` | [`Key::NUMPAD0`] – [`Key::NUMPAD9`] | Numpad |
+//! | `Code::Enter`, `Code::Escape`, … | [`Key::ENTER`], [`Key::ESCAPE`], … | Navigation / editing |
+//! | `Code::ControlLeft`, … | [`Key::CONTROL_LEFT`], … | Modifier keys as triggers |
+//! | `Code::SuperLeft` / `Code::Meta` | [`Key::META_LEFT`] | iced's Super = kbd's Meta |
+//! | `Code::MediaPlayPause`, … | [`Key::MEDIA_PLAY_PAUSE`], … | Media keys |
+//! | `Code::BrowserBack`, … | [`Key::BROWSER_BACK`], … | Browser keys |
+//! | `Code::Convert`, `Code::Lang1`, … | [`Key::CONVERT`], [`Key::LANG1`], … | CJK / international |
+//! | `Physical::Unidentified(_)` | `None` | No mapping possible |
+//!
+//! # Modifier mapping
+//!
+//! | iced | kbd |
+//! |---|---|
+//! | `CTRL` | [`Modifier::Ctrl`] |
+//! | `SHIFT` | [`Modifier::Shift`] |
+//! | `ALT` | [`Modifier::Alt`] |
+//! | `LOGO` | [`Modifier::Super`] |
 //!
 //! # Usage
 //!
@@ -44,6 +71,21 @@ use kbd::Modifier;
 /// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `Unidentified`, keys beyond F24, international input keys).
 pub trait IcedKeyExt {
+    /// Convert this iced key to a `kbd` [`Key`], or `None` if unmappable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use iced_core::keyboard::key;
+    /// use kbd::Key;
+    /// use kbd_iced::IcedKeyExt;
+    ///
+    /// assert_eq!(key::Code::KeyA.to_key(), Some(Key::A));
+    /// assert_eq!(key::Code::F5.to_key(), Some(Key::F5));
+    ///
+    /// let physical = key::Physical::Code(key::Code::Enter);
+    /// assert_eq!(physical.to_key(), Some(Key::ENTER));
+    /// ```
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -292,6 +334,18 @@ impl IcedKeyExt for key::Physical {
 /// Iced uses `LOGO` for the Super/Meta/Windows key. This maps to
 /// `Modifier::Super` in `kbd`.
 pub trait IcedModifiersExt {
+    /// Convert these iced modifier flags to a `Vec<Modifier>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use iced_core::keyboard::Modifiers;
+    /// use kbd::Modifier;
+    /// use kbd_iced::IcedModifiersExt;
+    ///
+    /// let mods = (Modifiers::CTRL | Modifiers::SHIFT).to_modifiers();
+    /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
+    /// ```
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -325,6 +379,29 @@ impl IcedModifiersExt for Modifiers {
 /// includes the pressed modifier key in its own modifier state, but
 /// `kbd` treats the key as the trigger, not as a modifier of itself.
 pub trait IcedEventExt {
+    /// Convert this keyboard event to a [`Hotkey`], or `None` if unmappable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use iced_core::keyboard::{Event, Location, Modifiers, key};
+    /// use kbd::{Hotkey, Key, Modifier};
+    /// use kbd_iced::IcedEventExt;
+    ///
+    /// let event = Event::KeyPressed {
+    ///     key: iced_core::keyboard::Key::Unidentified,
+    ///     modified_key: iced_core::keyboard::Key::Unidentified,
+    ///     physical_key: key::Physical::Code(key::Code::KeyS),
+    ///     location: Location::Standard,
+    ///     modifiers: Modifiers::CTRL,
+    ///     text: None,
+    ///     repeat: false,
+    /// };
+    /// assert_eq!(
+    ///     event.to_hotkey(),
+    ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
+    /// );
+    /// ```
     fn to_hotkey(&self) -> Option<Hotkey>;
 }
 

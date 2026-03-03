@@ -49,6 +49,7 @@ impl Handle {
         }
     }
 
+    /// Returns the unique identifier for this handle's binding.
     #[must_use]
     pub const fn binding_id(&self) -> BindingId {
         self.id
@@ -56,7 +57,13 @@ impl Handle {
 
     /// Explicitly unregister this handle's binding.
     ///
-    /// The same unregistration is attempted automatically on drop.
+    /// Sends an unregister command to the engine. The same unregistration
+    /// is attempted automatically when the handle is dropped.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`](crate::Error::ManagerStopped) if
+    /// the manager has already been shut down.
     pub fn unregister(mut self) -> Result<(), Error> {
         self.unregister_inner()
     }

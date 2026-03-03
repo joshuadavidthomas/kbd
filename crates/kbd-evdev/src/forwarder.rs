@@ -26,6 +26,12 @@ pub const VIRTUAL_DEVICE_NAME: &str = "kbd-virtual-keyboard";
 /// The engine uses this trait to forward unmatched events (in grab mode)
 /// and to emit synthetic key events (for remapping actions).
 pub trait ForwardSink: Send {
+    /// Forward a single key event through the virtual device.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Uinput`] if the underlying `write` to the virtual
+    /// device fails.
     fn forward_key(&mut self, key: Key, transition: KeyTransition) -> Result<(), Error>;
 }
 
@@ -41,6 +47,17 @@ pub struct UinputForwarder {
 }
 
 impl UinputForwarder {
+    /// Create a new virtual keyboard device via `/dev/uinput`.
+    ///
+    /// The device is named [`VIRTUAL_DEVICE_NAME`] and supports all key
+    /// codes up to code 767. [`DeviceManager`](crate::devices::DeviceManager)
+    /// automatically skips this device during discovery to prevent
+    /// feedback loops.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Uinput`] if `/dev/uinput` cannot be opened or
+    /// the virtual device cannot be created (e.g., missing permissions).
     pub fn new() -> Result<Self, Error> {
         let mut keys = evdev::AttributeSet::<evdev::KeyCode>::new();
         for code in 0..=MAX_FORWARDABLE_KEY_CODE {

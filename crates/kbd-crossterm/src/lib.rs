@@ -1,7 +1,8 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! Crossterm key event conversions for `kbd`.
 //!
-//! This crate bridges crossterm's logical key model to `kbd`'s physical
-//! key types. Crossterm reports keys as characters (`Char('a')`) and modifier
+//! This crate bridges crossterm's logical key model to `kbd`'s key types. Crossterm reports keys as characters (`Char('a')`) and modifier
 //! bitflags, while `kbd` uses physical key positions (`Key::A`) and
 //! typed `Modifier` values.
 //!
@@ -13,6 +14,30 @@
 //!   to a `Vec<Modifier>`.
 //! - [`CrosstermEventExt`] — converts a full [`crossterm::event::KeyEvent`]
 //!   to a [`kbd::Hotkey`].
+//!
+//! # Key mapping
+//!
+//! | Crossterm | kbd | Notes |
+//! |---|---|---|
+//! | `Char('a')` – `Char('z')` | [`Key::A`] – [`Key::Z`] | Case-insensitive |
+//! | `Char('0')` – `Char('9')` | [`Key::DIGIT0`] – [`Key::DIGIT9`] | |
+//! | `Char('-')`, `Char('=')`, … | [`Key::MINUS`], [`Key::EQUAL`], … | Physical position |
+//! | `F(1)` – `F(35)` | [`Key::F1`] – [`Key::F35`] | `F(0)` and `F(36+)` → `None` |
+//! | `Enter`, `Esc`, `Tab`, … | [`Key::ENTER`], [`Key::ESCAPE`], [`Key::TAB`], … | Named keys |
+//! | `Media(PlayPause)`, … | [`Key::MEDIA_PLAY_PAUSE`], … | Media keys |
+//! | `Modifier(LeftControl)`, … | [`Key::CONTROL_LEFT`], … | Modifier keys as triggers |
+//! | `BackTab`, `Null`, `KeypadBegin` | `None` | No `kbd` equivalent |
+//! | Non-ASCII `Char` (e.g., `'é'`) | `None` | No physical key mapping |
+//!
+//! # Modifier mapping
+//!
+//! | Crossterm | kbd |
+//! |---|---|
+//! | `CONTROL` | [`Modifier::Ctrl`] |
+//! | `SHIFT` | [`Modifier::Shift`] |
+//! | `ALT` | [`Modifier::Alt`] |
+//! | `SUPER` | [`Modifier::Super`] |
+//! | `HYPER`, `META` | *(ignored)* |
 //!
 //! # Usage
 //!
@@ -49,6 +74,19 @@ use kbd::Modifier;
 /// Returns `None` for keys that have no `kbd` equivalent (e.g.,
 /// `BackTab`, `Null`, `KeypadBegin`, non-ASCII characters).
 pub trait CrosstermKeyExt {
+    /// Convert this key code to a `kbd` [`Key`], or `None` if unmappable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossterm::event::KeyCode;
+    /// use kbd::Key;
+    /// use kbd_crossterm::CrosstermKeyExt;
+    ///
+    /// assert_eq!(KeyCode::Char('a').to_key(), Some(Key::A));
+    /// assert_eq!(KeyCode::F(5).to_key(), Some(Key::F5));
+    /// assert_eq!(KeyCode::Null.to_key(), None);
+    /// ```
     fn to_key(&self) -> Option<Key>;
 }
 
@@ -89,6 +127,18 @@ impl CrosstermKeyExt for KeyCode {
 /// Crossterm's `HYPER` and `META` flags have no `kbd` equivalent and
 /// are silently ignored.
 pub trait CrosstermModifiersExt {
+    /// Convert these modifier flags to a `Vec<Modifier>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossterm::event::KeyModifiers;
+    /// use kbd::Modifier;
+    /// use kbd_crossterm::CrosstermModifiersExt;
+    ///
+    /// let mods = (KeyModifiers::CONTROL | KeyModifiers::SHIFT).to_modifiers();
+    /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
+    /// ```
     fn to_modifiers(&self) -> Vec<Modifier>;
 }
 
@@ -120,6 +170,21 @@ impl CrosstermModifiersExt for KeyModifiers {
 /// pressed modifier key in its own modifier bitflags, but `kbd` treats
 /// the key as the trigger, not as a modifier of itself.
 pub trait CrosstermEventExt {
+    /// Convert this key event to a [`Hotkey`], or `None` if the key is unmappable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    /// use kbd::{Hotkey, Key, Modifier};
+    /// use kbd_crossterm::CrosstermEventExt;
+    ///
+    /// let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    /// assert_eq!(
+    ///     event.to_hotkey(),
+    ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
+    /// );
+    /// ```
     fn to_hotkey(&self) -> Option<Hotkey>;
 }
 

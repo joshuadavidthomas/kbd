@@ -1,44 +1,25 @@
 # kbd
 
-[![crates.io](https://img.shields.io/crates/v/kbd.svg)](https://crates.io/crates/kbd)
-[![docs.rs](https://docs.rs/kbd/badge.svg)](https://docs.rs/kbd)
 [![CI](https://github.com/joshuadavidthomas/kbd/actions/workflows/test.yml/badge.svg)](https://github.com/joshuadavidthomas/kbd/actions/workflows/test.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](#)
 
 A keyboard shortcut engine for Rust. You describe the shortcuts you care about, feed in key events from whatever source you have, and `kbd` tells you when something matches. Same engine whether you're building a text editor, a tiling compositor, or a global hotkey daemon.
 
-```toml
-[dependencies]
-kbd = "0.1"
-```
+## Crates
 
-```rust
-use kbd::{Action, Hotkey, Key, MatchResult, Matcher, Modifier};
+| Crate | | |
+|---|---|---|
+| [`kbd`](crates/kbd) | [![crates.io](https://img.shields.io/crates/v/kbd.svg)](https://crates.io/crates/kbd) | Core engine — key types, matcher, layers, string parsing |
+| [`kbd-global`](crates/kbd-global) | [![crates.io](https://img.shields.io/crates/v/kbd-global.svg)](https://crates.io/crates/kbd-global) | Linux global hotkey runtime (evdev, grab mode, hotplug) |
+| [`kbd-evdev`](crates/kbd-evdev) | [![crates.io](https://img.shields.io/crates/v/kbd-evdev.svg)](https://crates.io/crates/kbd-evdev) | Linux evdev backend (used by `kbd-global`) |
+| [`kbd-crossterm`](crates/kbd-crossterm) | [![crates.io](https://img.shields.io/crates/v/kbd-crossterm.svg)](https://crates.io/crates/kbd-crossterm) | [crossterm](https://docs.rs/crossterm) bridge |
+| [`kbd-winit`](crates/kbd-winit) | [![crates.io](https://img.shields.io/crates/v/kbd-winit.svg)](https://crates.io/crates/kbd-winit) | [winit](https://docs.rs/winit) bridge |
+| [`kbd-tao`](crates/kbd-tao) | [![crates.io](https://img.shields.io/crates/v/kbd-tao.svg)](https://crates.io/crates/kbd-tao) | [tao](https://docs.rs/tao) bridge (Tauri) |
+| [`kbd-iced`](crates/kbd-iced) | [![crates.io](https://img.shields.io/crates/v/kbd-iced.svg)](https://crates.io/crates/kbd-iced) | [iced](https://docs.rs/iced) bridge |
+| [`kbd-egui`](crates/kbd-egui) | [![crates.io](https://img.shields.io/crates/v/kbd-egui.svg)](https://crates.io/crates/kbd-egui) | [egui](https://docs.rs/egui) bridge |
 
-let mut matcher = Matcher::new();
-
-let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
-matcher.add_binding(hotkey, Action::from(|| println!("fired")), Default::default());
-
-let result = matcher.key_down(Key::A, &[Modifier::Ctrl, Modifier::Shift]);
-assert!(matches!(result, MatchResult::Matched { .. }));
-```
-
-The core crate has no platform dependencies and works synchronously in any event loop. It also supports [layers](https://docs.rs/kbd/latest/kbd/layer/), [introspection](https://docs.rs/kbd/latest/kbd/introspection/), and optional `serde` — see the [API docs](https://docs.rs/kbd) for the full picture.
-
-Bridge crates convert framework key events into `kbd` types. [`kbd-global`](crates/kbd-global) adds system-wide hotkeys on Linux.
-
-| Crate | |
-|---|---|
-| [`kbd`](crates/kbd) | Core engine — key types, matcher, layers, string parsing |
-| [`kbd-global`](crates/kbd-global) | Linux global hotkey runtime (evdev, grab mode, hotplug) |
-| [`kbd-evdev`](crates/kbd-evdev) | Linux evdev backend (used by `kbd-global`) |
-| [`kbd-crossterm`](crates/kbd-crossterm) | [crossterm](https://docs.rs/crossterm) bridge |
-| [`kbd-winit`](crates/kbd-winit) | [winit](https://docs.rs/winit) bridge |
-| [`kbd-tao`](crates/kbd-tao) | [tao](https://docs.rs/tao) bridge (Tauri) |
-| [`kbd-iced`](crates/kbd-iced) | [iced](https://docs.rs/iced) bridge |
-| [`kbd-egui`](crates/kbd-egui) | [egui](https://docs.rs/egui) bridge |
+The core [`kbd`](crates/kbd) crate has no platform dependencies and works synchronously in any event loop. Bridge crates convert framework key events into `kbd` types. [`kbd-global`](crates/kbd-global) adds system-wide hotkeys on Linux.
 
 ## Contributing
 
