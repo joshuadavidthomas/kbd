@@ -25,6 +25,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 evdev = { workspace = true }
+kbd-evdev = { workspace = true, features = ["testing"] }
 serde_json = { workspace = true }
 toml = { workspace = true }
 

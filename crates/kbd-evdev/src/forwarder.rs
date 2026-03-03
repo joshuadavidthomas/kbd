@@ -19,7 +19,7 @@ use crate::KbdKeyExt;
 use crate::error::Error;
 
 /// Name of the virtual device we create, used for self-detection.
-pub const VIRTUAL_DEVICE_NAME: &str = "kbd-virtual-keyboard";
+pub(crate) const VIRTUAL_DEVICE_NAME: &str = "kbd-virtual-keyboard";
 
 /// Sink for forwarding key events through a virtual device.
 ///
@@ -94,8 +94,9 @@ impl ForwardSink for UinputForwarder {
 
 /// Test utilities for the forwarder — recording forwarder for assertions.
 ///
-/// This module is always compiled (not `#[cfg(test)]`) because downstream
-/// crates like `kbd-global` need `RecordingForwarder` in their own tests.
+/// Gated behind the `testing` feature flag. Enable it in downstream
+/// `[dev-dependencies]` to use `RecordingForwarder` in your own tests.
+#[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use std::sync::Arc;
     use std::sync::Mutex;

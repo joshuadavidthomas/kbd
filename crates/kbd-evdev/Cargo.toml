@@ -11,6 +11,9 @@ description = "evdev backend for kbd — Linux input device discovery, hotplug, 
 keywords = ["evdev", "keyboard", "input", "linux"]
 categories = ["os::linux-apis"]
 
+[features]
+testing = []
+
 [dependencies]
 evdev = { workspace = true }
 kbd = { workspace = true }
