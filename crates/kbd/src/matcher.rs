@@ -173,7 +173,7 @@ impl LayerEffect {
             Action::PopLayer => Self::Pop,
             Action::ToggleLayer(name) => Self::Toggle(name.clone()),
             Action::Callback(_)
-            | Action::EmitKey(..)
+            | Action::EmitHotkey(..)
             | Action::EmitSequence(..)
             | Action::Swallow => Self::None,
         }

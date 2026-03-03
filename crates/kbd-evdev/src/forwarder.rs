@@ -1,7 +1,7 @@
 //! uinput virtual device for event forwarding and emission.
 //!
 //! In grab mode, unmatched key events are re-emitted through a virtual
-//! device so they reach applications normally. Also used for `Action::EmitKey`
+//! device so they reach applications normally. Also used for `Action::EmitHotkey`
 //! to produce synthetic key events.
 //!
 //! # Reference

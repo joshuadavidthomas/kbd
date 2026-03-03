@@ -8,6 +8,7 @@ use kbd_global::Action;
 use kbd_global::BindingId;
 use kbd_global::BindingOptions;
 use kbd_global::DeviceFilter;
+use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;
 use kbd_global::Key;
 use kbd_global::Modifier;
@@ -74,7 +75,7 @@ fn device_filter_supports_name_pattern_and_usb_id() {
 
 #[test]
 fn action_variants_exist_for_future_features() {
-    let _ = Action::EmitKey(Key::ESCAPE, vec![Modifier::Ctrl]);
+    let _ = Action::EmitHotkey(Hotkey::new(Key::ESCAPE).modifier(Modifier::Ctrl));
     let _ = Action::PushLayer("nav".into());
     let _ = Action::ToggleLayer("nav".into());
     let _ = Action::PopLayer;

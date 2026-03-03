@@ -10,16 +10,15 @@
 //! # Variants
 //!
 //! - `Callback` — run user code (available now)
-//! - `EmitKey` — emit a different key through uinput (future, requires grab)
+//! - `EmitHotkey` — emit a different key through uinput (future, requires grab)
 //! - `EmitSequence` — emit a series of keys (future, requires grab)
 //! - `PushLayer` / `PopLayer` / `ToggleLayer` — layer stack control
 //! - `Swallow` — explicitly consume the key, do nothing
 
 use std::fmt;
 
+use crate::key::Hotkey;
 use crate::key::HotkeySequence;
-use crate::key::Key;
-use crate::key::Modifier;
 
 /// Layer identifier used by layer-control actions.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -61,8 +60,8 @@ impl std::fmt::Display for LayerName {
 pub enum Action {
     /// Execute user callback code.
     Callback(Box<dyn Fn() + Send + Sync + 'static>),
-    /// Emit a single key with optional modifiers.
-    EmitKey(Key, Vec<Modifier>),
+    /// Emit a single key (with optional modifiers) through the virtual device.
+    EmitHotkey(Hotkey),
     /// Emit a sequence of hotkeys.
     EmitSequence(HotkeySequence),
     /// Push a named layer onto the stack.
@@ -88,11 +87,9 @@ impl fmt::Debug for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Callback(_) => f.write_str("Action::Callback(..)"),
-            Self::EmitKey(key, modifiers) => f
-                .debug_tuple("Action::EmitKey")
-                .field(key)
-                .field(modifiers)
-                .finish(),
+            Self::EmitHotkey(hotkey) => {
+                f.debug_tuple("Action::EmitHotkey").field(hotkey).finish()
+            }
             Self::EmitSequence(sequence) => f
                 .debug_tuple("Action::EmitSequence")
                 .field(sequence)
