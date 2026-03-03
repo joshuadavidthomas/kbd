@@ -7,15 +7,23 @@ on:
 permissions: {}
 
 jobs:
+  should-run:
+    if: ${{ github.repository_owner == 'joshuadavidthomas' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+
   release-plz-release:
     runs-on: ubuntu-latest
+    needs: [should-run]
     permissions:
       contents: write
-      id-token: write # trusted publishing (OIDC token exchange with crates.io)
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -27,6 +35,7 @@ jobs:
 
   release-plz-pr:
     runs-on: ubuntu-latest
+    needs: [should-run]
     permissions:
       contents: write
       pull-requests: write
@@ -37,6 +46,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
 
