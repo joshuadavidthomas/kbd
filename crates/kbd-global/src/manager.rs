@@ -14,7 +14,7 @@
 //! HotkeyManager::register()
 //!   → sends Command::Register { id, binding, reply_tx }
 //!   → engine processes command, sends Result back on reply_tx
-//!   → manager returns Handle or Error to caller
+//!   → manager returns BindingGuard or Error to caller
 //! ```
 //!
 //! # Reference
@@ -46,7 +46,7 @@ use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
-use crate::handle::Handle;
+use crate::binding_guard::BindingGuard;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackendSelection {
@@ -167,7 +167,7 @@ impl HotkeyManager {
     ///
     /// Returns [`Error::AlreadyRegistered`] if the hotkey is already bound,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn register<F>(&self, hotkey: impl Into<Hotkey>, callback: F) -> Result<Handle, Error>
+    pub fn register<F>(&self, hotkey: impl Into<Hotkey>, callback: F) -> Result<BindingGuard, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -188,7 +188,7 @@ impl HotkeyManager {
         hotkey: impl Into<Hotkey>,
         action: impl Into<Action>,
         options: BindingOptions,
-    ) -> Result<Handle, Error> {
+    ) -> Result<BindingGuard, Error> {
         let id = BindingId::new();
         let binding =
             RegisteredBinding::new(id, hotkey.into(), action.into()).with_options(options);
@@ -200,7 +200,7 @@ impl HotkeyManager {
         })?;
 
         match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
-            Ok(()) => Ok(Handle::new(id, self.commands.clone())),
+            Ok(()) => Ok(BindingGuard::new(id, self.commands.clone())),
             Err(error) => Err(error),
         }
     }
@@ -288,7 +288,7 @@ impl HotkeyManager {
         self.shutdown_inner()
     }
 
-    fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<Handle, Error> {
+    fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<BindingGuard, Error> {
         self.register_with_options(hotkey, action, BindingOptions::default())
     }
 

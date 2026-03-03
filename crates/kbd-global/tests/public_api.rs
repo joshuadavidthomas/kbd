@@ -8,7 +8,7 @@
 //! `error_type.rs`, `key_types.rs`, `string_parsing.rs`, `manager_handle.rs`).
 
 use kbd_global::Backend;
-use kbd_global::Handle;
+use kbd_global::BindingGuard;
 use kbd_global::Hotkey;
 use kbd_global::HotkeyManager;
 use kbd_global::Key;
@@ -17,7 +17,7 @@ use kbd_global::Modifier;
 #[test]
 fn design_md_simple_example() {
     let manager = HotkeyManager::new().expect("manager should start");
-    let _handle: Handle = manager
+    let _handle: BindingGuard = manager
         .register(
             Hotkey::new(Key::C)
                 .modifier(Modifier::Ctrl)

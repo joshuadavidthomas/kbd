@@ -49,10 +49,10 @@
 //! # Lifecycle
 //!
 //! 1. Create a manager with [`HotkeyManager::new()`] or [`HotkeyManager::builder()`]
-//! 2. Register hotkeys with [`HotkeyManager::register()`] — returns a [`Handle`]
+//! 2. Register hotkeys with [`HotkeyManager::register()`] — returns a [`BindingGuard`]
 //! 3. Optionally define and push [`Layer`]s for context-dependent bindings
 //! 4. The engine thread processes key events and fires callbacks
-//! 5. Drop the [`Handle`] to unregister, or call [`Handle::unregister()`]
+//! 5. Drop the [`BindingGuard`] to unregister, or call [`BindingGuard::unregister()`]
 //! 6. Drop the manager (or call [`HotkeyManager::shutdown()`]) to stop
 //!
 //! # Backend selection
@@ -91,7 +91,7 @@
 mod backend;
 mod engine;
 mod error;
-mod handle;
+mod binding_guard;
 mod manager;
 
 // Re-exports from kbd — all domain types live there.
@@ -151,7 +151,7 @@ pub use crate::backend::Backend;
 /// Error type for all kbd-global operations.
 pub use crate::error::Error;
 /// RAII guard that keeps a binding alive until dropped.
-pub use crate::handle::Handle;
+pub use crate::binding_guard::BindingGuard;
 /// The main entry point — manages the engine thread and hotkey registration.
 pub use crate::manager::HotkeyManager;
 /// Builder for configuring backend and runtime options before starting.

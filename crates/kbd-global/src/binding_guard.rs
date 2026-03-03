@@ -1,9 +1,9 @@
-//! [`Handle`] — RAII guard that keeps a binding alive.
+//! [`BindingGuard`] — RAII guard that keeps a binding alive.
 //!
 //! When dropped, sends `Command::Unregister` to the engine. No shared
 //! state, no locks — just a binding ID and a command sender.
 //!
-//! One handle type for all binding kinds (replaces v0's `Handle`,
+//! One guard type for all binding kinds (replaces v0's `Handle`,
 //! `SequenceHandle`, `TapHoldHandle`).
 //!
 //! # Reference
@@ -25,22 +25,22 @@ enum HandleState {
 }
 
 /// Keeps a registered binding alive.
-pub struct Handle {
+pub struct BindingGuard {
     id: BindingId,
     commands: CommandSender,
     state: HandleState,
 }
 
-impl fmt::Debug for Handle {
+impl fmt::Debug for BindingGuard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Handle")
+        f.debug_struct("BindingGuard")
             .field("id", &self.id)
             .field("state", &self.state)
             .finish_non_exhaustive()
     }
 }
 
-impl Handle {
+impl BindingGuard {
     pub(crate) fn new(id: BindingId, commands: CommandSender) -> Self {
         Self {
             id,
@@ -79,7 +79,7 @@ impl Handle {
     }
 }
 
-impl Drop for Handle {
+impl Drop for BindingGuard {
     fn drop(&mut self) {
         let _ = self.unregister_inner();
     }
