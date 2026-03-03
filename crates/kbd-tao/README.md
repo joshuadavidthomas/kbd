@@ -94,4 +94,4 @@ assert_eq!(mods, vec![Modifier::Ctrl]);
 
 ## License
 
-MIT
+kbd-tao is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.

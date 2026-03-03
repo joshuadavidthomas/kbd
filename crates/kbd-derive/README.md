@@ -8,4 +8,4 @@ Derive macros for [`kbd`](https://crates.io/crates/kbd) — `#[derive(Bindings)]
 
 ## License
 
-MIT
+kbd-derive is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.

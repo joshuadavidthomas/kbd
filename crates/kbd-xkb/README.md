@@ -8,4 +8,4 @@ Keyboard layout awareness for [`kbd`](https://crates.io/crates/kbd) — xkbcommo
 
 ## License
 
-MIT
+kbd-xkb is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.

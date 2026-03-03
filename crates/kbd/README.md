@@ -29,4 +29,4 @@ Supports [layers](https://docs.rs/kbd/latest/kbd/layer/), [introspection](https:
 
 ## License
 
-MIT
+kbd is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.

@@ -65,4 +65,4 @@ assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
 
 ## License
 
-MIT
+kbd-egui is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.

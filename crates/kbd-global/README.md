@@ -89,4 +89,4 @@ The `grab` feature requires udev rules for uinput access — see the [docs](http
 
 ## License
 
-MIT
+kbd-global is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.

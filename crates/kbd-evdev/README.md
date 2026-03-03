@@ -96,4 +96,4 @@ for event in &result.key_events {
 
 ## License
 
-MIT
+kbd-evdev is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.
