@@ -311,7 +311,7 @@ impl Engine {
                         passthrough: *passthrough,
                     }
                 }
-                MatchResult::Swallowed => MatchOutcome::Swallowed,
+                MatchResult::Suppressed => MatchOutcome::Suppressed,
                 MatchResult::NoMatch => MatchOutcome::NoMatch,
                 // Sequences not yet implemented (Phase 4)
                 MatchResult::Ignored | MatchResult::Pending { .. } => MatchOutcome::Ignored,
@@ -327,7 +327,7 @@ impl Engine {
                 }
                 Passthrough::Enabled | Passthrough::Consume => KeyEventDisposition::MatchedConsumed,
             },
-            MatchOutcome::Swallowed => KeyEventDisposition::MatchedConsumed,
+            MatchOutcome::Suppressed => KeyEventDisposition::MatchedConsumed,
             MatchOutcome::NoMatch | MatchOutcome::Ignored => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
                     self.forward_event(event.key, event.transition);
@@ -495,7 +495,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: RegisteredBinding::new(BindingId::new(), hotkey.clone(), Action::Swallow),
+                binding: RegisteredBinding::new(BindingId::new(), hotkey.clone(), Action::Suppress),
                 reply: register_reply_tx,
             })
             .expect("register command should send");
@@ -551,7 +551,7 @@ mod tests {
     }
 
     fn test_binding(id: BindingId, hotkey: Hotkey) -> RegisteredBinding {
-        RegisteredBinding::new(id, hotkey, Action::Swallow)
+        RegisteredBinding::new(id, hotkey, Action::Suppress)
     }
 
     /// Create a minimal engine for unit testing (no devices, no grab, no event loop).
@@ -794,7 +794,7 @@ mod tests {
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         engine
             .matcher
-            .register_binding(RegisteredBinding::new(id, hotkey, Action::Swallow))
+            .register_binding(RegisteredBinding::new(id, hotkey, Action::Suppress))
             .unwrap();
 
         // Press A with no modifiers — no binding matches, should be forwarded
@@ -1020,8 +1020,8 @@ mod tests {
     fn engine_stores_defined_layer() {
         let mut engine = test_engine();
         let layer = kbd::Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow);
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress);
 
         let result = engine.matcher.define_layer(layer);
         assert!(result.is_ok());
@@ -1044,9 +1044,9 @@ mod tests {
     fn engine_stores_layer_bindings() {
         let mut engine = test_engine();
         let layer = kbd::Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow)
-            .bind(Key::K, Action::Swallow);
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress)
+            .bind(Key::K, Action::Suppress);
 
         engine.matcher.define_layer(layer).unwrap();
 
@@ -1068,7 +1068,7 @@ mod tests {
     fn engine_stores_layer_options() {
         let mut engine = test_engine();
         let layer = kbd::Layer::new("oneshot-nav")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .swallow()
             .oneshot(1)
             .timeout(std::time::Duration::from_secs(5));
@@ -1117,7 +1117,7 @@ mod tests {
     fn define_layer_via_runtime_command() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         runtime
@@ -1141,7 +1141,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define first layer — should succeed
-        let first_layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let first_layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1158,7 +1158,7 @@ mod tests {
         );
 
         // Define second layer with same name — should fail
-        let duplicate_layer = kbd::Layer::new("nav").bind(Key::J, Action::Swallow);
+        let duplicate_layer = kbd::Layer::new("nav").bind(Key::J, Action::Suppress);
         let (dup_reply_tx, dup_reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1355,7 +1355,7 @@ mod tests {
             ))
             .unwrap();
 
-        define_and_push_layer(&mut engine, "nav", vec![(Key::H, Action::Swallow)]);
+        define_and_push_layer(&mut engine, "nav", vec![(Key::H, Action::Suppress)]);
 
         // X not in layer, falls through to global
         press_key(&mut engine, Key::X, 10);
@@ -1380,7 +1380,7 @@ mod tests {
             .unwrap();
 
         let layer = kbd::Layer::new("modal")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .swallow();
         engine.matcher.define_layer(layer).unwrap();
         engine
@@ -1641,7 +1641,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define layer
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1693,7 +1693,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define and push layer
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1833,7 +1833,7 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define layer
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1874,7 +1874,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
@@ -1903,7 +1903,7 @@ mod tests {
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_passthrough(Passthrough::Enabled),
             )
@@ -1931,7 +1931,7 @@ mod tests {
         let mut engine = test_engine_with_grab(grab_state);
 
         let layer = kbd::Layer::new("modal")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .swallow();
         engine.matcher.define_layer(layer).unwrap();
         engine
@@ -1989,7 +1989,7 @@ mod tests {
 
         let layer = kbd::Layer::new("nav")
             .bind(Key::H, Action::PopLayer)
-            .bind(Key::J, Action::Swallow);
+            .bind(Key::J, Action::Suppress);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
@@ -2024,7 +2024,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
@@ -2060,7 +2060,7 @@ mod tests {
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_passthrough(Passthrough::Enabled),
             )
@@ -2097,7 +2097,7 @@ mod tests {
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
             )
@@ -2118,8 +2118,8 @@ mod tests {
         let mut engine = test_engine();
 
         let layer = kbd::Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow);
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress);
         engine.matcher.define_layer(layer).unwrap();
 
         let bindings = engine.matcher.list_bindings();
@@ -2134,7 +2134,7 @@ mod tests {
     fn list_bindings_inactive_layer_binding_marked_inactive() {
         let mut engine = test_engine();
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         engine.matcher.define_layer(layer).unwrap();
 
         let bindings = engine.matcher.list_bindings();
@@ -2157,11 +2157,11 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
@@ -2196,10 +2196,10 @@ mod tests {
     fn list_bindings_higher_layer_shadows_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = kbd::Layer::new("layer1").bind(Key::H, Action::Swallow);
+        let layer1 = kbd::Layer::new("layer1").bind(Key::H, Action::Suppress);
         engine.matcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd::Layer::new("layer2").bind(Key::H, Action::Swallow);
+        let layer2 = kbd::Layer::new("layer2").bind(Key::H, Action::Suppress);
         engine.matcher.define_layer(layer2).unwrap();
 
         engine
@@ -2254,7 +2254,7 @@ mod tests {
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
             )
@@ -2280,7 +2280,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
@@ -2297,14 +2297,14 @@ mod tests {
         engine
             .matcher
             .register_binding(
-                RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Swallow)
+                RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Suppress)
                     .with_options(
                         kbd::binding::BindingOptions::default().with_description("Global H"),
                     ),
             )
             .unwrap();
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
@@ -2333,13 +2333,13 @@ mod tests {
         let mut engine = test_engine();
 
         let layer1 = kbd::Layer::new("layer1")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .description("First layer");
         engine.matcher.define_layer(layer1).unwrap();
 
         let layer2 = kbd::Layer::new("layer2")
-            .bind(Key::J, Action::Swallow)
-            .bind(Key::K, Action::Swallow)
+            .bind(Key::J, Action::Suppress)
+            .bind(Key::K, Action::Suppress)
             .description("Second layer");
         engine.matcher.define_layer(layer2).unwrap();
 
@@ -2373,7 +2373,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
@@ -2390,11 +2390,11 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
-        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = kbd::Layer::new("nav").bind(Key::H, Action::Suppress);
         engine.matcher.define_layer(layer).unwrap();
         engine
             .matcher
@@ -2420,10 +2420,10 @@ mod tests {
     fn conflicts_detects_layer_shadowing_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = kbd::Layer::new("layer1").bind(Key::H, Action::Swallow);
+        let layer1 = kbd::Layer::new("layer1").bind(Key::H, Action::Suppress);
         engine.matcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd::Layer::new("layer2").bind(Key::H, Action::Swallow);
+        let layer2 = kbd::Layer::new("layer2").bind(Key::H, Action::Suppress);
         engine.matcher.define_layer(layer2).unwrap();
 
         engine
@@ -2461,7 +2461,7 @@ mod tests {
                 binding: RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(kbd::binding::BindingOptions::default().with_description("Copy")),
                 reply: reply_tx,
@@ -2529,7 +2529,7 @@ mod tests {
                 RegisteredBinding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                    Action::Swallow,
+                    Action::Suppress,
                 )
                 .with_options(
                     kbd::binding::BindingOptions::default()
@@ -2555,12 +2555,12 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 
         let layer = kbd::Layer::new("modal")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .swallow();
         engine.matcher.define_layer(layer).unwrap();
         engine
@@ -2587,7 +2587,7 @@ mod tests {
             .register_binding(RegisteredBinding::new(
                 BindingId::new(),
                 Hotkey::new(Key::CONTROL_LEFT),
-                Action::Swallow,
+                Action::Suppress,
             ))
             .unwrap();
 

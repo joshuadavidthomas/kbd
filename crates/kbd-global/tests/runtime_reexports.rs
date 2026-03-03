@@ -45,7 +45,7 @@ fn core_types_reexported_through_kbd_global() {
 
     // Binding
     let id = BindingId::new();
-    let _binding = RegisteredBinding::new(id, hotkey, Action::Swallow);
+    let _binding = RegisteredBinding::new(id, hotkey, Action::Suppress);
 
     // Options
     let opts = BindingOptions::default()
@@ -55,7 +55,7 @@ fn core_types_reexported_through_kbd_global() {
     assert_eq!(opts.passthrough(), Passthrough::Enabled);
 
     // Layer
-    let layer = Layer::new("test").bind(Key::H, Action::Swallow).swallow();
+    let layer = Layer::new("test").bind(Key::H, Action::Suppress).swallow();
     assert_eq!(layer.name().as_str(), "test");
     assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
 
@@ -77,7 +77,7 @@ fn matcher_reexported_through_kbd_global() {
     let mut matcher = Matcher::new();
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
     matcher
-        .register(hotkey.clone(), Action::Swallow)
+        .register(hotkey.clone(), Action::Suppress)
         .expect("register should succeed");
 
     let result = matcher.process(&hotkey, KeyTransition::Press);

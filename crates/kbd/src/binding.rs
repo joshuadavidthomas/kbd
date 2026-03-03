@@ -51,7 +51,7 @@ impl Default for BindingId {
 /// let binding = RegisteredBinding::new(
 ///     BindingId::new(),
 ///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-///     Action::Swallow,
+///     Action::Suppress,
 /// ).with_passthrough(Passthrough::Enabled);
 ///
 /// assert_eq!(binding.passthrough(), Passthrough::Enabled);

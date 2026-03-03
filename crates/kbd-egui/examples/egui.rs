@@ -93,7 +93,7 @@ impl eframe::App for App {
                 MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                 MatchResult::NoMatch => format!("{hotkey} → no match"),
                 MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
-                MatchResult::Swallowed | MatchResult::Ignored => continue,
+                MatchResult::Suppressed | MatchResult::Ignored => continue,
             };
             self.log.push(line);
         }

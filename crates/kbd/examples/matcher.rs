@@ -83,7 +83,7 @@ fn main() {
                 println!("  → Pending (matched {steps_matched}, remaining {steps_remaining})");
             }
             MatchResult::NoMatch => println!("  → No match"),
-            MatchResult::Swallowed => println!("  → Swallowed"),
+            MatchResult::Suppressed => println!("  → Suppressed"),
             MatchResult::Ignored => println!("  → Ignored"),
         }
     }

@@ -92,7 +92,7 @@ impl App {
                     MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                     MatchResult::NoMatch => format!("{hotkey} → no match"),
                     MatchResult::Pending { .. } => format!("{hotkey} → pending..."),
-                    MatchResult::Swallowed | MatchResult::Ignored => return Task::none(),
+                    MatchResult::Suppressed | MatchResult::Ignored => return Task::none(),
                 };
                 self.log.push(line);
                 Task::none()

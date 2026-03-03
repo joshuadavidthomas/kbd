@@ -105,7 +105,7 @@ fn main() {
                             }
                         }
                         MatchResult::NoMatch => println!("no match"),
-                        MatchResult::Swallowed => println!("swallowed"),
+                        MatchResult::Suppressed => println!("suppressed"),
                         MatchResult::Pending { .. } => println!("pending..."),
                         MatchResult::Ignored => println!("ignored"),
                     }

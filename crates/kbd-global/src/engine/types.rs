@@ -41,7 +41,7 @@ pub(crate) enum KeyEventDisposition {
 /// the match/no-match outcome and passthrough setting.
 pub(super) enum MatchOutcome {
     Matched { passthrough: Passthrough },
-    Swallowed,
+    Suppressed,
     NoMatch,
     Ignored,
 }

@@ -79,7 +79,7 @@ fn action_variants_exist_for_future_features() {
     let _ = Action::PushLayer("nav".into());
     let _ = Action::ToggleLayer("nav".into());
     let _ = Action::PopLayer;
-    let _ = Action::Swallow;
+    let _ = Action::Suppress;
 }
 
 // Phase 3.4: Binding metadata

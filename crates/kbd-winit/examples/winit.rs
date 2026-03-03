@@ -139,7 +139,7 @@ impl ApplicationHandler for App {
                     }
                     MatchResult::NoMatch => println!("{hotkey} → no match"),
                     MatchResult::Pending { .. } => println!("{hotkey} → pending..."),
-                    MatchResult::Swallowed | MatchResult::Ignored => {}
+                    MatchResult::Suppressed | MatchResult::Ignored => {}
                 }
             }
             _ => {}

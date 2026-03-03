@@ -25,14 +25,14 @@ use crate::key::Hotkey;
 /// // A navigation layer that only captures H/J/K/L.
 /// // Other keys (like Ctrl+S) still reach global bindings.
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Swallow)
-///     .bind(Key::J, Action::Swallow);
+///     .bind(Key::H, Action::Suppress)
+///     .bind(Key::J, Action::Suppress);
 /// assert_eq!(nav.options().unmatched(), UnmatchedKeyBehavior::Fallthrough);
 ///
 /// // A modal layer that captures ALL keys — nothing falls through.
 /// // Useful for insert-mode or game-input modes.
 /// let modal = Layer::new("modal")
-///     .bind(Key::H, Action::Swallow)
+///     .bind(Key::H, Action::Suppress)
 ///     .swallow();
 /// assert_eq!(modal.options().unmatched(), UnmatchedKeyBehavior::Swallow);
 /// ```
@@ -127,10 +127,10 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::{Action, Key, Layer};
 ///
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Swallow)
-///     .bind(Key::J, Action::Swallow)
-///     .bind(Key::K, Action::Swallow)
-///     .bind(Key::L, Action::Swallow)
+///     .bind(Key::H, Action::Suppress)
+///     .bind(Key::J, Action::Suppress)
+///     .bind(Key::K, Action::Suppress)
+///     .bind(Key::L, Action::Suppress)
 ///     .description("Vim navigation keys")
 ///     .swallow();
 ///
@@ -144,8 +144,8 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::{Action, Key, Layer};
 ///
 /// let leader = Layer::new("leader")
-///     .bind(Key::F, Action::Swallow)
-///     .bind(Key::B, Action::Swallow)
+///     .bind(Key::F, Action::Suppress)
+///     .bind(Key::B, Action::Suppress)
 ///     .oneshot(1);
 /// ```
 ///
@@ -156,8 +156,8 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::{Action, Key, Layer};
 ///
 /// let timed = Layer::new("quick-nav")
-///     .bind(Key::N, Action::Swallow)
-///     .bind(Key::P, Action::Swallow)
+///     .bind(Key::N, Action::Suppress)
+///     .bind(Key::P, Action::Suppress)
 ///     .timeout(Duration::from_secs(2));
 /// ```
 pub struct Layer {
@@ -282,17 +282,17 @@ mod tests {
 
     #[test]
     fn layer_bind_adds_binding() {
-        let layer = Layer::new("nav").bind(Key::H, Action::Swallow);
+        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
         assert_eq!(layer.binding_count(), 1);
     }
 
     #[test]
     fn layer_bind_multiple_bindings() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow)
-            .bind(Key::K, Action::Swallow)
-            .bind(Key::L, Action::Swallow);
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress)
+            .bind(Key::K, Action::Suppress)
+            .bind(Key::L, Action::Suppress);
         assert_eq!(layer.binding_count(), 4);
     }
 
@@ -300,7 +300,7 @@ mod tests {
     fn layer_bind_preserves_hotkey() {
         let layer = Layer::new("nav").bind(
             Hotkey::new(Key::H).modifier(Modifier::Ctrl),
-            Action::Swallow,
+            Action::Suppress,
         );
         let (_, bindings, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
@@ -336,8 +336,8 @@ mod tests {
     #[test]
     fn layer_builder_chains_all_options() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
-            .bind(Key::J, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
+            .bind(Key::J, Action::Suppress)
             .description("Navigation keys")
             .swallow()
             .oneshot(1)
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn layer_into_parts_decomposes() {
-        let layer = Layer::new("nav").bind(Key::H, Action::Swallow).swallow();
+        let layer = Layer::new("nav").bind(Key::H, Action::Suppress).swallow();
 
         let (name, bindings, options) = layer.into_parts();
         assert_eq!(name.as_str(), "nav");
@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn layer_description_preserved_in_into_parts() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Swallow)
+            .bind(Key::H, Action::Suppress)
             .description("Navigation keys");
 
         let (_, _, options) = layer.into_parts();

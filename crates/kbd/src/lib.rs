@@ -20,7 +20,7 @@
 //! // Register Ctrl+S as a global binding
 //! let id = matcher.register(
 //!     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-//!     Action::Swallow,
+//!     Action::Suppress,
 //! ).unwrap();
 //!
 //! // Simulate a key press
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn core_layer_builder() {
-        let layer = Layer::new("test").bind(Key::H, Action::Swallow).swallow();
+        let layer = Layer::new("test").bind(Key::H, Action::Suppress).swallow();
         assert_eq!(layer.name().as_str(), "test");
         assert_eq!(layer.options().unmatched(), UnmatchedKeyBehavior::Swallow);
     }
@@ -138,7 +138,7 @@ mod tests {
     fn core_matcher_finds_binding() {
         let mut matcher = Matcher::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-        matcher.register(hotkey.clone(), Action::Swallow).unwrap();
+        matcher.register(hotkey.clone(), Action::Suppress).unwrap();
 
         let result = matcher.process(&hotkey, key_state::KeyTransition::Press);
         assert!(matches!(result, matcher::MatchResult::Matched { .. }));

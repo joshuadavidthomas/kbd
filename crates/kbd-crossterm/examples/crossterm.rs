@@ -110,7 +110,7 @@ fn run_event_loop(matcher: &mut Matcher) -> Result<(), Box<dyn std::error::Error
                 }
                 MatchResult::NoMatch => print!("{hotkey}: no match\r\n"),
                 MatchResult::Pending { .. } => print!("{hotkey}: pending...\r\n"),
-                MatchResult::Swallowed | MatchResult::Ignored => {}
+                MatchResult::Suppressed | MatchResult::Ignored => {}
             }
             io::stdout().flush()?;
         }

@@ -13,7 +13,7 @@
 //! - `EmitHotkey` — emit a different key through uinput (future, requires grab)
 //! - `EmitSequence` — emit a series of keys (future, requires grab)
 //! - `PushLayer` / `PopLayer` / `ToggleLayer` — layer stack control
-//! - `Swallow` — explicitly consume the key, do nothing
+//! - `Suppress` — explicitly consume the key, do nothing
 
 use std::fmt;
 
@@ -71,7 +71,7 @@ pub enum Action {
     /// Toggle a named layer on/off.
     ToggleLayer(LayerName),
     /// Consume the triggering event without further action.
-    Swallow,
+    Suppress,
 }
 
 impl<F> From<F> for Action
@@ -97,7 +97,7 @@ impl fmt::Debug for Action {
             Self::PushLayer(layer) => f.debug_tuple("Action::PushLayer").field(layer).finish(),
             Self::PopLayer => f.write_str("Action::PopLayer"),
             Self::ToggleLayer(layer) => f.debug_tuple("Action::ToggleLayer").field(layer).finish(),
-            Self::Swallow => f.write_str("Action::Swallow"),
+            Self::Suppress => f.write_str("Action::Suppress"),
         }
     }
 }

@@ -93,7 +93,7 @@ fn process(matcher: &mut Matcher, label: &str, hotkey: &Hotkey) {
             }
         }
         MatchResult::NoMatch => println!("  → No match"),
-        MatchResult::Swallowed => println!("  → Swallowed (consumed by layer)"),
+        MatchResult::Suppressed => println!("  → Suppressed (consumed by layer)"),
         MatchResult::Ignored => println!("  → Ignored"),
         MatchResult::Pending { .. } => println!("  → Pending"),
     }

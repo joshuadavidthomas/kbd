@@ -17,7 +17,7 @@
 //! let mut matcher = Matcher::new();
 //! matcher.register(
 //!     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-//!     Action::Swallow,
+//!     Action::Suppress,
 //! ).unwrap();
 //!
 //! let bindings = matcher.list_bindings();
@@ -54,11 +54,11 @@ pub enum BindingLocation {
 /// use kbd::ShadowedStatus;
 ///
 /// let mut matcher = Matcher::new();
-/// matcher.register(Hotkey::new(Key::H), Action::Swallow).unwrap();
+/// matcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();
 ///
 /// // Define a layer that also binds H
 /// matcher.define_layer(
-///     Layer::new("nav").bind(Key::H, Action::Swallow)
+///     Layer::new("nav").bind(Key::H, Action::Suppress)
 /// ).unwrap();
 /// matcher.push_layer("nav").unwrap();
 ///
@@ -109,8 +109,8 @@ pub struct BindingInfo {
 /// let mut matcher = Matcher::new();
 /// matcher.define_layer(
 ///     Layer::new("nav")
-///         .bind(Key::H, Action::Swallow)
-///         .bind(Key::J, Action::Swallow)
+///         .bind(Key::H, Action::Suppress)
+///         .bind(Key::J, Action::Suppress)
 ///         .description("Navigation keys")
 /// ).unwrap();
 /// matcher.push_layer("nav").unwrap();
@@ -141,9 +141,9 @@ pub struct ActiveLayerInfo {
 /// use kbd::{Action, Hotkey, Key, Layer, Matcher};
 ///
 /// let mut matcher = Matcher::new();
-/// matcher.register(Hotkey::new(Key::H), Action::Swallow).unwrap();
+/// matcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();
 /// matcher.define_layer(
-///     Layer::new("nav").bind(Key::H, Action::Swallow)
+///     Layer::new("nav").bind(Key::H, Action::Suppress)
 /// ).unwrap();
 /// matcher.push_layer("nav").unwrap();
 ///
