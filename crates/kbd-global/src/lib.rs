@@ -69,7 +69,7 @@
 //! Use the builder for explicit backend selection:
 //!
 //! ```rust,no_run
-//! use kbd_global::{HotkeyManager, Backend};
+//! use kbd_global::{Backend, HotkeyManager};
 //!
 //! let manager = HotkeyManager::builder()
 //!     .backend(Backend::Evdev)
