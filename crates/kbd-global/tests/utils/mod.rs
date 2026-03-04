@@ -3,15 +3,17 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use kbd_global::HotkeyManager;
+use kbd_global::HotkeyManagerBuilder;
 
-pub fn test_manager() -> HotkeyManager {
-    HotkeyManager::builder()
-        .with_input_directory_for_testing(test_input_directory())
-        .build()
-        .expect("manager should initialize")
+pub fn test_builder() -> HotkeyManagerBuilder {
+    HotkeyManager::builder().with_input_directory_for_testing(test_input_directory())
 }
 
-pub fn test_input_directory() -> &'static Path {
+pub fn test_manager() -> HotkeyManager {
+    test_builder().build().expect("manager should initialize")
+}
+
+fn test_input_directory() -> &'static Path {
     static INPUT_DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
     INPUT_DIRECTORY
         .get_or_init(|| {

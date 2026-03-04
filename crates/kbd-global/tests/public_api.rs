@@ -47,19 +47,15 @@ fn manager_debug_shows_backend_and_running_state() {
 
 #[test]
 fn builder_default_produces_evdev_backend() {
-    let manager = HotkeyManager::builder()
-        .with_input_directory_for_testing(utils::test_input_directory())
-        .build()
-        .expect("should build");
+    let manager = utils::test_builder().build().expect("should build");
     assert_eq!(manager.active_backend(), Backend::Evdev);
     manager.shutdown().expect("shutdown should succeed");
 }
 
 #[test]
 fn builder_explicit_evdev_backend() {
-    let manager = HotkeyManager::builder()
+    let manager = utils::test_builder()
         .backend(Backend::Evdev)
-        .with_input_directory_for_testing(utils::test_input_directory())
         .build()
         .expect("should build");
     assert_eq!(manager.active_backend(), Backend::Evdev);
@@ -73,10 +69,7 @@ fn builder_type_is_exported() {
 #[test]
 #[cfg(not(feature = "grab"))]
 fn builder_grab_without_feature_returns_unsupported() {
-    let result = HotkeyManager::builder()
-        .with_input_directory_for_testing(utils::test_input_directory())
-        .grab()
-        .build();
+    let result = utils::test_builder().grab().build();
     assert!(matches!(result, Err(Error::UnsupportedFeature)));
 }
 
