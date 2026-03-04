@@ -3,6 +3,7 @@
 //! [`EngineRuntime`] owns the thread handle and command sender. Created
 //! by [`HotkeyManager`](crate::HotkeyManager) during construction.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
@@ -22,11 +23,18 @@ pub(crate) struct EngineRuntime {
 
 impl EngineRuntime {
     pub(crate) fn spawn(grab_state: GrabState) -> Result<Self, Error> {
+        Self::spawn_with_input_dir(grab_state, Path::new(super::devices::INPUT_DIRECTORY))
+    }
+
+    pub(crate) fn spawn_with_input_dir(
+        grab_state: GrabState,
+        input_directory: &Path,
+    ) -> Result<Self, Error> {
         let wake_fd = Arc::new(WakeFd::new()?);
         let (command_tx, command_rx) = mpsc::channel();
         let commands = CommandSender::new(command_tx, Arc::clone(&wake_fd));
 
-        let engine = Engine::new(command_rx, wake_fd, grab_state);
+        let engine = Engine::new_with_input_dir(command_rx, wake_fd, grab_state, input_directory);
         let join_handle = thread::spawn(move || run(engine));
 
         Ok(Self {

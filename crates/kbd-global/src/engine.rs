@@ -86,10 +86,11 @@ pub(crate) struct Engine {
 }
 
 impl Engine {
-    fn new(
+    fn new_with_input_dir(
         command_rx: mpsc::Receiver<Command>,
         wake_fd: Arc<WakeFd>,
         grab_state: GrabState,
+        input_directory: &Path,
     ) -> Self {
         let device_grab_mode = match &grab_state {
             GrabState::Disabled => devices::DeviceGrabMode::Shared,
@@ -98,10 +99,7 @@ impl Engine {
         Self {
             dispatcher: Dispatcher::new(),
             press_cache: HashMap::new(),
-            devices: devices::DeviceManager::new(
-                Path::new(devices::INPUT_DIRECTORY),
-                device_grab_mode,
-            ),
+            devices: devices::DeviceManager::new(input_directory, device_grab_mode),
             key_state: KeyState::default(),
             grab_state,
             command_rx,
@@ -440,6 +438,7 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
@@ -460,6 +459,7 @@ mod tests {
     use super::EngineRuntime;
     use super::GrabState;
     use super::KeyEventDisposition;
+    use super::devices;
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
     use crate::Error;
@@ -612,7 +612,7 @@ mod tests {
     fn test_engine_with_grab(grab_state: GrabState) -> Engine {
         let wake_fd = Arc::new(WakeFd::new().expect("wake fd should create"));
         let (_tx, rx) = mpsc::channel();
-        Engine::new(rx, wake_fd, grab_state)
+        Engine::new_with_input_dir(rx, wake_fd, grab_state, Path::new(devices::INPUT_DIRECTORY))
     }
 
     /// Create grab state with a recording forwarder for testing.

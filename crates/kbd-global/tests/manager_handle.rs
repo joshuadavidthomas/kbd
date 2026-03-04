@@ -1,14 +1,14 @@
 #![allow(missing_docs)]
-#![cfg(feature = "real-input-tests")]
+mod common;
+
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
 use kbd_global::Error;
-use kbd_global::HotkeyManager;
 
 #[test]
 fn register_and_drop_handle_unregisters_hotkey() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
 
     let handle = manager
@@ -30,7 +30,7 @@ fn register_and_drop_handle_unregisters_hotkey() {
 
 #[test]
 fn duplicate_hotkey_registration_returns_conflict_error() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
     let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
 
     let _first = manager
@@ -43,7 +43,7 @@ fn duplicate_hotkey_registration_returns_conflict_error() {
 
 #[test]
 fn is_key_pressed_returns_false_when_no_keys_pressed() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     assert!(
         !manager
@@ -54,7 +54,7 @@ fn is_key_pressed_returns_false_when_no_keys_pressed() {
 
 #[test]
 fn active_modifiers_returns_empty_when_no_keys_pressed() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let modifiers = manager.active_modifiers().expect("query should succeed");
     assert!(modifiers.is_empty());
@@ -62,7 +62,7 @@ fn active_modifiers_returns_empty_when_no_keys_pressed() {
 
 #[test]
 fn shutdown_stops_handle_unregistration_commands() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let handle = manager
         .register(Hotkey::new(Key::B).modifier(Modifier::Alt), || {})
@@ -76,7 +76,7 @@ fn shutdown_stops_handle_unregistration_commands() {
 
 #[test]
 fn register_sequence_returns_guard() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let sequence = kbd::hotkey::HotkeySequence::new(vec![
         Hotkey::new(Key::K).modifier(Modifier::Ctrl),
@@ -93,7 +93,7 @@ fn register_sequence_returns_guard() {
 
 #[test]
 fn register_sequence_accepts_string_input() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let guard = manager
         .register_sequence("Ctrl+K, Ctrl+C", || {})
@@ -104,7 +104,7 @@ fn register_sequence_accepts_string_input() {
 
 #[test]
 fn register_sequence_accepts_vec_hotkeys_input() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let guard = manager
         .register_sequence(
@@ -121,7 +121,7 @@ fn register_sequence_accepts_vec_hotkeys_input() {
 
 #[test]
 fn register_sequence_reports_parse_error_for_string_input() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let result = manager.register_sequence("Ctrl+K, Ctrl+Nope", || {});
     assert!(matches!(result, Err(Error::Parse(_))));
@@ -129,7 +129,7 @@ fn register_sequence_reports_parse_error_for_string_input() {
 
 #[test]
 fn register_sequence_str_returns_guard() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let guard = manager
         .register_sequence_str("Ctrl+K, Ctrl+C", || {})
@@ -140,7 +140,7 @@ fn register_sequence_str_returns_guard() {
 
 #[test]
 fn register_sequence_str_reports_parse_error() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let result = manager.register_sequence_str("Ctrl+K, Ctrl+Nope", || {});
     assert!(matches!(result, Err(Error::Parse(_))));
@@ -148,7 +148,7 @@ fn register_sequence_str_reports_parse_error() {
 
 #[test]
 fn pending_sequence_is_none_when_idle() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let pending = manager
         .pending_sequence()

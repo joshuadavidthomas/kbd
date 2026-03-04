@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
-#![cfg(feature = "real-input-tests")]
+mod common;
+
 use std::time::Duration;
 
 use kbd::action::Action;
@@ -10,11 +11,10 @@ use kbd::layer::Layer;
 use kbd::layer::LayerOptions;
 use kbd::layer::UnmatchedKeys;
 use kbd_global::Error;
-use kbd_global::HotkeyManager;
 
 #[test]
 fn define_layer_via_manager() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let layer = Layer::new("nav")
         .bind(Key::H, Action::Suppress)
@@ -28,7 +28,7 @@ fn define_layer_via_manager() {
 
 #[test]
 fn define_duplicate_layer_returns_error() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let layer1 = Layer::new("nav").bind(Key::H, Action::Suppress);
     manager.define_layer(layer1).expect("first should succeed");
@@ -40,7 +40,7 @@ fn define_duplicate_layer_returns_error() {
 
 #[test]
 fn define_layers_with_different_names_succeeds() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let nav = Layer::new("nav").bind(Key::H, Action::Suppress);
     let edit = Layer::new("edit").bind(Key::I, Action::Suppress);
@@ -51,7 +51,7 @@ fn define_layers_with_different_names_succeeds() {
 
 #[test]
 fn define_empty_layer_succeeds() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let layer = Layer::new("empty");
     let result = manager.define_layer(layer);
@@ -60,7 +60,7 @@ fn define_empty_layer_succeeds() {
 
 #[test]
 fn define_layer_with_all_options() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let layer = Layer::new("oneshot-nav")
         .bind(Key::H, Action::Suppress)
@@ -131,7 +131,7 @@ fn layer_description_chains_with_other_options() {
 
 #[test]
 fn layer_description_preserved_through_define_layer() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let layer = Layer::new("nav")
         .bind(Key::H, Action::Suppress)

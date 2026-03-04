@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
-#![cfg(feature = "real-input-tests")]
+mod common;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
@@ -13,7 +14,6 @@ use kbd::binding::OverlayVisibility;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd_global::HotkeyManager;
 
 #[test]
 fn action_from_closure_runs_callback() {
@@ -99,7 +99,7 @@ fn binding_options_chains_all_metadata() {
 
 #[test]
 fn register_with_options_accepts_metadata() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let options = BindingOptions::default()
         .with_description("Copy to clipboard")
@@ -111,7 +111,7 @@ fn register_with_options_accepts_metadata() {
 
 #[test]
 fn register_with_options_hidden_binding() {
-    let manager = HotkeyManager::new().expect("manager should initialize");
+    let manager = common::test_manager();
 
     let options = BindingOptions::default()
         .with_description("Internal binding")

@@ -18,6 +18,8 @@
 //! ```
 
 use std::fmt;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -64,6 +66,7 @@ enum GrabConfiguration {
 pub struct HotkeyManagerBuilder {
     backend: BackendSelection,
     grab: GrabConfiguration,
+    input_directory: PathBuf,
 }
 
 impl Default for HotkeyManagerBuilder {
@@ -71,6 +74,7 @@ impl Default for HotkeyManagerBuilder {
         Self {
             backend: BackendSelection::Auto,
             grab: GrabConfiguration::Disabled,
+            input_directory: PathBuf::from(crate::engine::devices::INPUT_DIRECTORY),
         }
     }
 }
@@ -90,6 +94,17 @@ impl HotkeyManagerBuilder {
         self
     }
 
+    /// Override the input-device directory used by the runtime.
+    ///
+    /// This is intended for tests that need an isolated input source and
+    /// should not be used in production.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_input_directory_for_testing(mut self, input_directory: impl Into<PathBuf>) -> Self {
+        self.input_directory = input_directory.into();
+        self
+    }
+
     /// Build and start a new manager instance.
     ///
     /// Spawns the engine thread and begins listening for input device events.
@@ -104,7 +119,12 @@ impl HotkeyManagerBuilder {
         validate_grab_configuration(backend, self.grab)?;
 
         let grab_state = create_grab_state(self.grab)?;
-        let runtime = EngineRuntime::spawn(grab_state)?;
+        let runtime = if self.input_directory == Path::new(crate::engine::devices::INPUT_DIRECTORY)
+        {
+            EngineRuntime::spawn(grab_state)?
+        } else {
+            EngineRuntime::spawn_with_input_dir(grab_state, &self.input_directory)?
+        };
         let commands = runtime.commands();
 
         Ok(HotkeyManager {
