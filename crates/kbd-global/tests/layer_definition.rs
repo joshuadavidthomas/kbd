@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![cfg(feature = "real-input-tests")]
 use std::time::Duration;
 
 use kbd::action::Action;

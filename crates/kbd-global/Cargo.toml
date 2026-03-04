@@ -13,6 +13,7 @@ readme = "README.md"
 
 [features]
 grab = []
+real-input-tests = []
 serde = ["dep:serde", "kbd/serde"]
 
 [dependencies]

@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![cfg(feature = "real-input-tests")]
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;

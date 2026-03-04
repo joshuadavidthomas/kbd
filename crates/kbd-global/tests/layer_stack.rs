@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![cfg(feature = "real-input-tests")]
 use kbd::action::Action;
 use kbd::key::Key;
 use kbd::layer::Layer;

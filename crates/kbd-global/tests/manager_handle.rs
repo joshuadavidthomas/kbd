@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![cfg(feature = "real-input-tests")]
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;

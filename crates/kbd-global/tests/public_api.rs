@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![cfg(feature = "real-input-tests")]
 //! Integration tests that exercise kbd-global's public API as an outside consumer would.
 //!
 //! These complement the unit tests in engine.rs and the focused integration
