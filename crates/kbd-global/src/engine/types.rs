@@ -41,6 +41,7 @@ pub(crate) enum KeyEventDisposition {
 /// the match/no-match outcome and propagation setting.
 pub(super) enum MatchOutcome {
     Matched { propagation: KeyPropagation },
+    Pending,
     Suppressed,
     NoMatch,
     Ignored,

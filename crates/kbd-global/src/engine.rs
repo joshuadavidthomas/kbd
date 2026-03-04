@@ -86,10 +86,11 @@ pub(crate) struct Engine {
 }
 
 impl Engine {
-    fn new(
+    fn new_with_input_dir(
         command_rx: mpsc::Receiver<Command>,
         wake_fd: Arc<WakeFd>,
         grab_state: GrabState,
+        input_directory: &Path,
     ) -> Self {
         let device_grab_mode = match &grab_state {
             GrabState::Disabled => devices::DeviceGrabMode::Shared,
@@ -98,10 +99,7 @@ impl Engine {
         Self {
             dispatcher: Dispatcher::new(),
             press_cache: HashMap::new(),
-            devices: devices::DeviceManager::new(
-                Path::new(devices::INPUT_DIRECTORY),
-                device_grab_mode,
-            ),
+            devices: devices::DeviceManager::new(input_directory, device_grab_mode),
             key_state: KeyState::default(),
             grab_state,
             command_rx,
@@ -180,6 +178,23 @@ impl Engine {
             Command::Register { binding, reply } => {
                 let result = self.dispatcher.register_binding(binding);
                 let _ = reply.send(result.map_err(Error::from));
+                LoopControl::Continue
+            }
+            Command::RegisterSequence {
+                sequence,
+                action,
+                options,
+                reply,
+            } => {
+                let result = self
+                    .dispatcher
+                    .register_sequence_with_options(sequence, action, options)
+                    .map_err(Error::from);
+                let _ = reply.send(result);
+                LoopControl::Continue
+            }
+            Command::PendingSequence { reply } => {
+                let _ = reply.send(self.dispatcher.pending_sequence());
                 LoopControl::Continue
             }
             Command::Unregister { id } => {
@@ -300,6 +315,7 @@ impl Engine {
                         propagation: *propagation,
                     }
                 }
+                MatchResult::Pending { .. } => MatchOutcome::Pending,
                 MatchResult::Suppressed => MatchOutcome::Suppressed,
                 MatchResult::NoMatch => MatchOutcome::NoMatch,
                 _ => MatchOutcome::Ignored,
@@ -320,7 +336,9 @@ impl Engine {
                 }
                 _ => KeyEventDisposition::MatchedConsumed,
             },
-            MatchOutcome::Suppressed => KeyEventDisposition::MatchedConsumed,
+            MatchOutcome::Pending | MatchOutcome::Suppressed => {
+                KeyEventDisposition::MatchedConsumed
+            }
             MatchOutcome::NoMatch | MatchOutcome::Ignored => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
                     self.forward_event(event.key, event.transition);
@@ -394,12 +412,17 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
         }
 
         engine.process_polled_events(&poll_fds);
-        engine.dispatcher.check_timeouts();
+        for timeout_result in engine.dispatcher.check_timeouts_with_results() {
+            if let MatchResult::Matched { action, .. } = timeout_result {
+                execute_action(action);
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
@@ -420,6 +443,7 @@ mod tests {
     use super::EngineRuntime;
     use super::GrabState;
     use super::KeyEventDisposition;
+    use super::devices;
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
     use crate::Error;
@@ -572,7 +596,7 @@ mod tests {
     fn test_engine_with_grab(grab_state: GrabState) -> Engine {
         let wake_fd = Arc::new(WakeFd::new().expect("wake fd should create"));
         let (_tx, rx) = mpsc::channel();
-        Engine::new(rx, wake_fd, grab_state)
+        Engine::new_with_input_dir(rx, wake_fd, grab_state, Path::new(devices::INPUT_DIRECTORY))
     }
 
     /// Create grab state with a recording forwarder for testing.
@@ -1001,6 +1025,59 @@ mod tests {
         assert!(modifiers.is_empty());
 
         runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn pending_sequence_command_reports_progress() {
+        let mut engine = test_engine();
+
+        let sequence = "Ctrl+K, Ctrl+C"
+            .parse::<kbd::hotkey::HotkeySequence>()
+            .unwrap();
+        let (register_reply_tx, register_reply_rx) = mpsc::channel();
+        let _ = engine.handle_command(Command::RegisterSequence {
+            sequence,
+            action: Action::Suppress,
+            options: kbd::sequence::SequenceOptions::default(),
+            reply: register_reply_tx,
+        });
+        assert!(register_reply_rx.recv().unwrap().is_ok());
+
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
+        let _ = press_key(&mut engine, Key::K, 10);
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let _ = engine.handle_command(Command::PendingSequence { reply: reply_tx });
+        let pending = reply_rx.recv().expect("pending sequence reply");
+
+        let pending = pending.expect("sequence should be pending");
+        assert_eq!(pending.steps_matched, 1);
+        assert_eq!(pending.steps_remaining, 1);
+    }
+
+    #[test]
+    fn sequence_timeout_option_applies_to_registration() {
+        let mut engine = test_engine();
+
+        let sequence = "Ctrl+K, Ctrl+C"
+            .parse::<kbd::hotkey::HotkeySequence>()
+            .unwrap();
+        let (register_reply_tx, register_reply_rx) = mpsc::channel();
+        let _ = engine.handle_command(Command::RegisterSequence {
+            sequence,
+            action: Action::Suppress,
+            options: kbd::sequence::SequenceOptions::default()
+                .with_timeout(Duration::from_millis(10)),
+            reply: register_reply_tx,
+        });
+        assert!(register_reply_rx.recv().unwrap().is_ok());
+
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
+        let _ = press_key(&mut engine, Key::K, 10);
+
+        std::thread::sleep(Duration::from_millis(20));
+        let _ = engine.dispatcher.check_timeouts_with_results();
+        assert!(engine.dispatcher.pending_sequence().is_none());
     }
 
     #[test]

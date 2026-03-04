@@ -9,6 +9,8 @@
 //! - Introspection queries return coherent results
 //! - Layer lifecycle (define → push → pop → toggle) works end-to-end
 
+mod utils;
+
 use kbd::prelude::*;
 use kbd_global::Backend;
 use kbd_global::BindingGuard;
@@ -20,7 +22,7 @@ use kbd_global::HotkeyManagerBuilder;
 
 #[test]
 fn quick_start_example_compiles_and_runs() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let _guard: BindingGuard = manager
         .register(
             Hotkey::new(Key::C)
@@ -35,7 +37,7 @@ fn quick_start_example_compiles_and_runs() {
 
 #[test]
 fn manager_debug_shows_backend_and_running_state() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let debug = format!("{manager:?}");
     assert!(debug.contains("Evdev"));
     assert!(debug.contains("running"));
@@ -45,14 +47,14 @@ fn manager_debug_shows_backend_and_running_state() {
 
 #[test]
 fn builder_default_produces_evdev_backend() {
-    let manager = HotkeyManager::builder().build().expect("should build");
+    let manager = utils::test_builder().build().expect("should build");
     assert_eq!(manager.active_backend(), Backend::Evdev);
     manager.shutdown().expect("shutdown should succeed");
 }
 
 #[test]
 fn builder_explicit_evdev_backend() {
-    let manager = HotkeyManager::builder()
+    let manager = utils::test_builder()
         .backend(Backend::Evdev)
         .build()
         .expect("should build");
@@ -67,7 +69,7 @@ fn builder_type_is_exported() {
 #[test]
 #[cfg(not(feature = "grab"))]
 fn builder_grab_without_feature_returns_unsupported() {
-    let result = HotkeyManager::builder().grab().build();
+    let result = utils::test_builder().grab().build();
     assert!(matches!(result, Err(Error::UnsupportedFeature)));
 }
 
@@ -75,7 +77,7 @@ fn builder_grab_without_feature_returns_unsupported() {
 
 #[test]
 fn register_returns_binding_guard() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let guard: BindingGuard = manager
         .register(Key::F5, || {})
         .expect("registration should succeed");
@@ -84,7 +86,7 @@ fn register_returns_binding_guard() {
 
 #[test]
 fn binding_guard_debug_shows_id_and_state() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let guard = manager
         .register(Key::F6, || {})
         .expect("registration should succeed");
@@ -95,7 +97,7 @@ fn binding_guard_debug_shows_id_and_state() {
 
 #[test]
 fn dropping_guard_unregisters_hotkey() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
 
     let guard = manager
@@ -109,7 +111,7 @@ fn dropping_guard_unregisters_hotkey() {
 
 #[test]
 fn explicit_unregister_removes_binding() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let hotkey = Hotkey::new(Key::B).modifier(Modifier::Alt);
 
     let guard = manager
@@ -123,7 +125,7 @@ fn explicit_unregister_removes_binding() {
 
 #[test]
 fn register_with_options_sets_metadata() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
 
     let options = kbd::binding::BindingOptions::default()
@@ -144,7 +146,7 @@ fn register_with_options_sets_metadata() {
 
 #[test]
 fn duplicate_registration_returns_already_registered() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
 
     let _first = manager.register(hotkey.clone(), || {}).unwrap();
@@ -156,13 +158,13 @@ fn duplicate_registration_returns_already_registered() {
 
 #[test]
 fn is_key_pressed_false_at_start() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     assert!(!manager.is_key_pressed(Key::A).unwrap());
 }
 
 #[test]
 fn active_modifiers_empty_at_start() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let mods = manager.active_modifiers().unwrap();
     assert!(mods.is_empty());
 }
@@ -171,7 +173,7 @@ fn active_modifiers_empty_at_start() {
 
 #[test]
 fn define_push_pop_layer_lifecycle() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
         .bind(Key::H, Action::Suppress)
@@ -193,7 +195,7 @@ fn define_push_pop_layer_lifecycle() {
 
 #[test]
 fn toggle_layer_on_off() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
 
     let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
     manager.define_layer(layer).unwrap();
@@ -209,7 +211,7 @@ fn toggle_layer_on_off() {
 
 #[test]
 fn layer_description_visible_in_introspection() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
         .bind(Key::H, Action::Suppress)
@@ -228,7 +230,7 @@ fn layer_description_visible_in_introspection() {
 
 #[test]
 fn list_bindings_returns_registered_bindings() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
 
     let _g1 = manager.register(Key::F1, || {}).unwrap();
     let _g2 = manager.register(Key::F2, || {}).unwrap();
@@ -239,7 +241,7 @@ fn list_bindings_returns_registered_bindings() {
 
 #[test]
 fn bindings_for_key_finds_registered_hotkey() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
 
     let _guard = manager.register(hotkey.clone(), || {}).unwrap();
@@ -253,14 +255,14 @@ fn bindings_for_key_finds_registered_hotkey() {
 
 #[test]
 fn bindings_for_key_returns_none_for_unregistered() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let result = manager.bindings_for_key(Hotkey::new(Key::Z)).unwrap();
     assert!(result.is_none());
 }
 
 #[test]
 fn conflicts_empty_with_no_overlapping_bindings() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
 
     let _g1 = manager.register(Key::F1, || {}).unwrap();
     let _g2 = manager.register(Key::F2, || {}).unwrap();
@@ -271,7 +273,7 @@ fn conflicts_empty_with_no_overlapping_bindings() {
 
 #[test]
 fn conflicts_detected_when_layer_shadows_global() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
 
     let _global = manager.register(Key::H, || {}).unwrap();
 
@@ -288,7 +290,7 @@ fn conflicts_detected_when_layer_shadows_global() {
 
 #[test]
 fn shutdown_then_register_returns_manager_stopped() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     manager.shutdown().expect("shutdown should succeed");
     // HotkeyManager is consumed by shutdown, so we can't call register.
     // Instead test via the guard path:
@@ -296,7 +298,7 @@ fn shutdown_then_register_returns_manager_stopped() {
 
 #[test]
 fn guard_unregister_after_shutdown_returns_manager_stopped() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let guard = manager.register(Key::F7, || {}).unwrap();
     manager.shutdown().expect("shutdown should succeed");
     let result = guard.unregister();
@@ -307,13 +309,13 @@ fn guard_unregister_after_shutdown_returns_manager_stopped() {
 
 #[test]
 fn register_accepts_key_directly() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let _guard = manager.register(Key::ESCAPE, || {}).unwrap();
 }
 
 #[test]
 fn register_accepts_hotkey_with_modifiers() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let _guard = manager
         .register(
             Hotkey::new(Key::A)
@@ -326,7 +328,7 @@ fn register_accepts_hotkey_with_modifiers() {
 
 #[test]
 fn is_registered_accepts_key_directly() {
-    let manager = HotkeyManager::new().expect("manager should start");
+    let manager = utils::test_manager();
     let _guard = manager.register(Key::F8, || {}).unwrap();
     assert!(manager.is_registered(Key::F8).unwrap());
 }

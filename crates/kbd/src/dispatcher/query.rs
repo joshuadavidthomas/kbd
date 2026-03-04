@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
 use super::Dispatcher;
+use super::sequence;
+use super::sequence::RegisteredSequenceBinding;
+use super::sequence::SequencePrefixKind;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
@@ -9,7 +12,14 @@ use crate::introspection::BindingLocation;
 use crate::introspection::ConflictInfo;
 use crate::introspection::ShadowedStatus;
 use crate::layer::LayerName;
+use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
+
+enum SequenceQueryDecision {
+    None,
+    SingleStep(Hotkey),
+    MultiStep,
+}
 
 impl Dispatcher {
     /// Return a snapshot of all registered bindings with their status.
@@ -78,7 +88,8 @@ impl Dispatcher {
     /// Query what would fire if this hotkey were pressed now.
     ///
     /// Considers the current layer stack. Returns `None` if nothing
-    /// would match (including swallow-layer suppression).
+    /// would match (including swallow-layer suppression and multi-step
+    /// sequence prefixes that would enter a pending state).
     #[must_use]
     pub fn bindings_for_key(&self, hotkey: &Hotkey) -> Option<BindingInfo> {
         // Modifier-only keys never fire bindings in the real dispatcher,
@@ -87,9 +98,26 @@ impl Dispatcher {
             return None;
         }
 
-        // Walk layer stack top-down, same as the dispatcher
+        // Walk layer stack top-down, same as the dispatcher.
+        // Sequence bindings are checked before immediate hotkeys.
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
+                match Self::probe_layer_sequence_prefix(stored, hotkey) {
+                    SequenceQueryDecision::None => {}
+                    SequenceQueryDecision::SingleStep(matched_hotkey) => {
+                        return Some(BindingInfo {
+                            hotkey: matched_hotkey,
+                            description: None,
+                            location: BindingLocation::Layer(entry.name.clone()),
+                            shadowed: ShadowedStatus::Active,
+                            overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                        });
+                    }
+                    SequenceQueryDecision::MultiStep => {
+                        return None;
+                    }
+                }
+
                 for binding in &stored.bindings {
                     if binding.hotkey == *hotkey {
                         return Some(BindingInfo {
@@ -110,7 +138,36 @@ impl Dispatcher {
             }
         }
 
-        // Fall through to global bindings
+        // Global sequences are checked before global hotkeys, matching process().
+        let mut global_sequences: Vec<_> = self
+            .sequence_bindings_by_id
+            .values()
+            .filter(|binding| {
+                !matches!(
+                    sequence::classify_sequence_prefix(&binding.sequence, hotkey),
+                    SequencePrefixKind::None
+                )
+            })
+            .collect();
+        global_sequences.sort_by_key(|binding| binding.id.as_u64());
+
+        match Self::probe_global_sequence_prefix(&global_sequences, hotkey) {
+            SequenceQueryDecision::None => {}
+            SequenceQueryDecision::SingleStep(matched_hotkey) => {
+                return Some(BindingInfo {
+                    hotkey: matched_hotkey,
+                    description: None,
+                    location: BindingLocation::Global,
+                    shadowed: ShadowedStatus::Active,
+                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                });
+            }
+            SequenceQueryDecision::MultiStep => {
+                return None;
+            }
+        }
+
+        // Fall through to global immediate bindings.
         if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey)
             && let Some(binding) = self.bindings_by_id.get(&id)
         {
@@ -126,6 +183,55 @@ impl Dispatcher {
         None
     }
 
+    fn probe_layer_sequence_prefix(stored: &StoredLayer, hotkey: &Hotkey) -> SequenceQueryDecision {
+        let mut probe = SequenceQueryDecision::None;
+
+        for sequence_binding in &stored.sequence_bindings {
+            match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
+                SequencePrefixKind::None => {}
+                SequencePrefixKind::SingleStep => {
+                    probe = SequenceQueryDecision::SingleStep(
+                        sequence_binding.sequence.steps()[0].clone(),
+                    );
+                    break;
+                }
+                SequencePrefixKind::MultiStep => {
+                    if matches!(probe, SequenceQueryDecision::None) {
+                        probe = SequenceQueryDecision::MultiStep;
+                    }
+                }
+            }
+        }
+
+        probe
+    }
+
+    fn probe_global_sequence_prefix(
+        global_sequences: &[&RegisteredSequenceBinding],
+        hotkey: &Hotkey,
+    ) -> SequenceQueryDecision {
+        let mut probe = SequenceQueryDecision::None;
+
+        for sequence_binding in global_sequences {
+            match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
+                SequencePrefixKind::None => {}
+                SequencePrefixKind::SingleStep => {
+                    probe = SequenceQueryDecision::SingleStep(
+                        sequence_binding.sequence.steps()[0].clone(),
+                    );
+                    break;
+                }
+                SequencePrefixKind::MultiStep => {
+                    if matches!(probe, SequenceQueryDecision::None) {
+                        probe = SequenceQueryDecision::MultiStep;
+                    }
+                }
+            }
+        }
+
+        probe
+    }
+
     /// Return the current layer stack (bottom to top).
     #[must_use]
     pub fn active_layers(&self) -> Vec<ActiveLayerInfo> {
@@ -135,7 +241,7 @@ impl Dispatcher {
                 self.layers.get(&entry.name).map(|stored| ActiveLayerInfo {
                     name: entry.name.clone(),
                     description: stored.options.description().map(Box::from),
-                    binding_count: stored.bindings.len(),
+                    binding_count: stored.bindings.len() + stored.sequence_bindings.len(),
                 })
             })
             .collect()
@@ -172,7 +278,9 @@ mod tests {
     use crate::action::Action;
     use crate::dispatcher::Dispatcher;
     use crate::hotkey::Hotkey;
+    use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
+    use crate::introspection::BindingLocation;
     use crate::introspection::ShadowedStatus;
     use crate::key::Key;
     use crate::layer::Layer;
@@ -202,6 +310,46 @@ mod tests {
 
         let result = dispatcher.bindings_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn bindings_for_key_returns_none_for_pending_sequence_prefix() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(
+                Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                Action::Suppress,
+            )
+            .unwrap();
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        // Real dispatch enters sequence pending state here, so no immediate
+        // binding action would fire.
+        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::K).modifier(Modifier::Ctrl));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn bindings_for_key_reports_single_step_sequence_match() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence(
+                "Ctrl+K".parse::<HotkeySequence>().unwrap(),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        let result = dispatcher
+            .bindings_for_key(&Hotkey::new(Key::K).modifier(Modifier::Ctrl))
+            .expect("single-step sequence should match immediately");
+
+        assert_eq!(result.hotkey, Hotkey::new(Key::K).modifier(Modifier::Ctrl));
+        assert_eq!(result.location, BindingLocation::Global);
     }
 
     #[test]

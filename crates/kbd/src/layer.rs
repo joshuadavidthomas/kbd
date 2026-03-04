@@ -16,7 +16,11 @@ use std::time::Duration;
 
 use crate::action::Action;
 use crate::binding::KeyPropagation;
+use crate::error::ParseHotkeyError;
 use crate::hotkey::Hotkey;
+use crate::hotkey::HotkeySequence;
+use crate::sequence::SequenceInput;
+use crate::sequence::SequenceOptions;
 
 /// Layer identifier.
 ///
@@ -143,7 +147,7 @@ impl LayerOptions {
     }
 }
 
-/// A single binding within a layer.
+/// A single hotkey binding within a layer.
 #[derive(Debug)]
 pub(crate) struct LayerBinding {
     pub(crate) hotkey: Hotkey,
@@ -151,9 +155,19 @@ pub(crate) struct LayerBinding {
     pub(crate) propagation: KeyPropagation,
 }
 
+/// A single sequence binding within a layer.
+#[derive(Debug)]
+pub(crate) struct LayerSequenceBinding {
+    pub(crate) sequence: HotkeySequence,
+    pub(crate) action: Action,
+    pub(crate) propagation: KeyPropagation,
+    pub(crate) options: SequenceOptions,
+}
+
 /// Engine-internal representation of a stored layer definition.
 pub(crate) struct StoredLayer {
     pub(crate) bindings: Vec<LayerBinding>,
+    pub(crate) sequence_bindings: Vec<LayerSequenceBinding>,
     pub(crate) options: LayerOptions,
 }
 
@@ -161,6 +175,7 @@ impl std::fmt::Debug for StoredLayer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StoredLayer")
             .field("bindings", &self.bindings.len())
+            .field("sequence_bindings", &self.sequence_bindings.len())
             .field("options", &self.options)
             .finish()
     }
@@ -221,6 +236,7 @@ impl std::fmt::Debug for StoredLayer {
 pub struct Layer {
     name: LayerName,
     bindings: Vec<LayerBinding>,
+    sequence_bindings: Vec<LayerSequenceBinding>,
     options: LayerOptions,
 }
 
@@ -231,6 +247,7 @@ impl Layer {
         Self {
             name: name.into(),
             bindings: Vec::new(),
+            sequence_bindings: Vec::new(),
             options: LayerOptions::default(),
         }
     }
@@ -244,6 +261,45 @@ impl Layer {
             propagation: KeyPropagation::default(),
         });
         self
+    }
+
+    /// Add a multi-step sequence binding to this layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] when sequence input conversion fails.
+    pub fn bind_sequence(
+        mut self,
+        sequence: impl SequenceInput,
+        action: impl Into<Action>,
+    ) -> Result<Self, ParseHotkeyError> {
+        self.sequence_bindings.push(LayerSequenceBinding {
+            sequence: sequence.into_sequence()?,
+            action: action.into(),
+            propagation: KeyPropagation::default(),
+            options: SequenceOptions::default(),
+        });
+        Ok(self)
+    }
+
+    /// Add a sequence binding with explicit sequence options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] when sequence input conversion fails.
+    pub fn bind_sequence_with_options(
+        mut self,
+        sequence: impl SequenceInput,
+        action: impl Into<Action>,
+        options: SequenceOptions,
+    ) -> Result<Self, ParseHotkeyError> {
+        self.sequence_bindings.push(LayerSequenceBinding {
+            sequence: sequence.into_sequence()?,
+            action: action.into(),
+            propagation: KeyPropagation::default(),
+            options,
+        });
+        Ok(self)
     }
 
     /// Set the layer to swallow unmatched keys (consume instead of fallthrough).
@@ -291,13 +347,25 @@ impl Layer {
     /// The number of bindings in this layer.
     #[must_use]
     pub fn binding_count(&self) -> usize {
-        self.bindings.len()
+        self.bindings.len() + self.sequence_bindings.len()
     }
 
     /// Consume this layer and return its constituent parts.
     #[must_use]
-    pub(crate) fn into_parts(self) -> (LayerName, Vec<LayerBinding>, LayerOptions) {
-        (self.name, self.bindings, self.options)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        LayerName,
+        Vec<LayerBinding>,
+        Vec<LayerSequenceBinding>,
+        LayerOptions,
+    ) {
+        (
+            self.name,
+            self.bindings,
+            self.sequence_bindings,
+            self.options,
+        )
     }
 }
 
@@ -306,6 +374,7 @@ impl std::fmt::Debug for Layer {
         f.debug_struct("Layer")
             .field("name", &self.name)
             .field("bindings", &self.bindings.len())
+            .field("sequence_bindings", &self.sequence_bindings.len())
             .field("options", &self.options)
             .finish()
     }
@@ -317,6 +386,7 @@ mod tests {
 
     use super::*;
     use crate::action::Action;
+    use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
     use crate::key::Key;
 
@@ -360,7 +430,7 @@ mod tests {
             Hotkey::new(Key::H).modifier(Modifier::Ctrl),
             Action::Suppress,
         );
-        let (_, bindings, _) = layer.into_parts();
+        let (_, bindings, _, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].hotkey.key(), Key::H);
         assert_eq!(bindings[0].hotkey.modifiers(), &[Modifier::Ctrl]);
@@ -428,7 +498,7 @@ mod tests {
     fn layer_into_parts_decomposes() {
         let layer = Layer::new("nav").bind(Key::H, Action::Suppress).swallow();
 
-        let (name, bindings, options) = layer.into_parts();
+        let (name, bindings, _, options) = layer.into_parts();
         assert_eq!(name.as_str(), "nav");
         assert_eq!(bindings.len(), 1);
         assert_eq!(options.unmatched(), UnmatchedKeys::Swallow);
@@ -446,7 +516,47 @@ mod tests {
             .bind(Key::H, Action::Suppress)
             .description("Navigation keys");
 
-        let (_, _, options) = layer.into_parts();
+        let (_, _, _, options) = layer.into_parts();
         assert_eq!(options.description(), Some("Navigation keys"));
+    }
+
+    #[test]
+    fn layer_bind_sequence_accepts_string_input() {
+        let layer = Layer::new("nav")
+            .bind_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+
+        assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_sequence_accepts_typed_input() {
+        let sequence: HotkeySequence = "Ctrl+K, Ctrl+C".parse().expect("valid sequence");
+        let layer = Layer::new("nav")
+            .bind_sequence(sequence, Action::Suppress)
+            .unwrap();
+
+        assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_sequence_reports_parse_error_for_string_input() {
+        let result = Layer::new("nav").bind_sequence("Ctrl+K, Ctrl+Nope", Action::Suppress);
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn layer_bind_sequence_with_options_accepts_string_input() {
+        let options = SequenceOptions::default()
+            .with_timeout(Duration::from_millis(250))
+            .with_abort_key(Key::TAB);
+
+        let layer = Layer::new("nav")
+            .bind_sequence_with_options("Ctrl+K, Ctrl+C", Action::Suppress, options)
+            .unwrap();
+
+        let (_, _, sequence_bindings, _) = layer.into_parts();
+        assert_eq!(sequence_bindings.len(), 1);
+        assert_eq!(sequence_bindings[0].options, options);
     }
 }

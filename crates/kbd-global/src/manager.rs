@@ -18,6 +18,7 @@
 //! ```
 
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::mpsc;
 
@@ -26,6 +27,7 @@ use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::RegisteredBinding;
 use kbd::hotkey::Hotkey;
+use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
 use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
@@ -33,6 +35,9 @@ use kbd::introspection::ConflictInfo;
 use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd::layer::LayerName;
+use kbd::sequence::PendingSequenceInfo;
+use kbd::sequence::SequenceInput;
+use kbd::sequence::SequenceOptions;
 
 use crate::Error;
 use crate::backend::Backend;
@@ -99,7 +104,11 @@ impl HotkeyManagerBuilder {
         validate_grab_configuration(backend, self.grab)?;
 
         let grab_state = create_grab_state(self.grab)?;
-        let runtime = EngineRuntime::spawn(grab_state)?;
+        let runtime = if let Some(input_directory) = internal_test_input_directory() {
+            EngineRuntime::spawn_with_input_dir(grab_state, &input_directory)?
+        } else {
+            EngineRuntime::spawn(grab_state)?
+        };
         let commands = runtime.commands();
 
         Ok(HotkeyManager {
@@ -166,6 +175,42 @@ impl HotkeyManager {
         F: Fn() + Send + Sync + 'static,
     {
         self.register_action(hotkey.into(), Action::from(callback))
+    }
+
+    /// Register a multi-step sequence callback.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when sequence input conversion fails,
+    /// [`Error::AlreadyRegistered`] if the sequence is already bound,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn register_sequence<F>(
+        &self,
+        sequence: impl SequenceInput,
+        callback: F,
+    ) -> Result<BindingGuard, Error>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let sequence = sequence.into_sequence()?;
+        self.register_sequence_action(sequence, Action::from(callback), SequenceOptions::default())
+    }
+
+    /// Register a multi-step sequence with explicit action and options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when sequence input conversion fails,
+    /// [`Error::AlreadyRegistered`] if the sequence is already bound,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn register_sequence_with_options(
+        &self,
+        sequence: impl SequenceInput,
+        action: impl Into<Action>,
+        options: SequenceOptions,
+    ) -> Result<BindingGuard, Error> {
+        let sequence = sequence.into_sequence()?;
+        self.register_sequence_action(sequence, action.into(), options)
     }
 
     /// Register a hotkey with an explicit action and binding options.
@@ -284,6 +329,27 @@ impl HotkeyManager {
 
     fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<BindingGuard, Error> {
         self.register_with_options(hotkey, action, BindingOptions::default())
+    }
+
+    fn register_sequence_action(
+        &self,
+        sequence: HotkeySequence,
+        action: Action,
+        options: SequenceOptions,
+    ) -> Result<BindingGuard, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::RegisterSequence {
+            sequence,
+            action,
+            options,
+            reply: reply_tx,
+        })?;
+
+        match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
+            Ok(id) => Ok(BindingGuard::new(id, self.commands.clone())),
+            Err(error) => Err(error),
+        }
     }
 
     fn shutdown_inner(&self) -> Result<(), Error> {
@@ -407,7 +473,20 @@ impl HotkeyManager {
         reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }
 
-    // TODO: register_sequence() — multi-step hotkey
+    /// Return current in-progress sequence state, if any.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn pending_sequence(&self) -> Result<Option<PendingSequenceInfo>, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands
+            .send(Command::PendingSequence { reply: reply_tx })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
     // TODO: register_tap_hold() — dual-function key
 
     /// Find bindings that are shadowed by higher-priority layers.
@@ -450,6 +529,10 @@ fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
 #[allow(clippy::unnecessary_wraps)]
 fn validate_grab_configuration(_backend: Backend, _grab: GrabConfiguration) -> Result<(), Error> {
     Ok(())
+}
+
+fn internal_test_input_directory() -> Option<PathBuf> {
+    std::env::var_os("_KBD_GLOBAL_INTERNAL_TEST_INPUT_DIR").map(PathBuf::from)
 }
 
 fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, Error> {
