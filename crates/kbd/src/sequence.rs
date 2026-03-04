@@ -9,6 +9,10 @@ use crate::key::Key;
 
 mod private {
     pub trait Sealed {}
+    impl Sealed for crate::hotkey::HotkeySequence {}
+    impl Sealed for &str {}
+    impl Sealed for String {}
+    impl Sealed for Vec<crate::hotkey::Hotkey> {}
 }
 
 /// Input types accepted by sequence registration APIs.
@@ -24,15 +28,11 @@ pub trait SequenceInput: private::Sealed {
     fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError>;
 }
 
-impl private::Sealed for HotkeySequence {}
-
 impl SequenceInput for HotkeySequence {
     fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
         Ok(self)
     }
 }
-
-impl private::Sealed for &str {}
 
 impl SequenceInput for &str {
     fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
@@ -40,15 +40,11 @@ impl SequenceInput for &str {
     }
 }
 
-impl private::Sealed for String {}
-
 impl SequenceInput for String {
     fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
         self.parse()
     }
 }
-
-impl private::Sealed for Vec<Hotkey> {}
 
 impl SequenceInput for Vec<Hotkey> {
     fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
