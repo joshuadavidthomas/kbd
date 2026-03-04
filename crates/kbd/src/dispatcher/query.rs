@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
 use super::Dispatcher;
+use super::sequence;
+use super::sequence::SequencePrefixKind;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
@@ -95,13 +97,9 @@ impl Dispatcher {
                 let mut has_pending_sequence_prefix = false;
 
                 for sequence_binding in &stored.sequence_bindings {
-                    if sequence_binding
-                        .sequence
-                        .steps()
-                        .first()
-                        .is_some_and(|step| step == hotkey)
-                    {
-                        if sequence_binding.sequence.steps().len() == 1 {
+                    match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
+                        SequencePrefixKind::None => {}
+                        SequencePrefixKind::SingleStep => {
                             return Some(BindingInfo {
                                 hotkey: sequence_binding.sequence.steps()[0].clone(),
                                 description: None,
@@ -110,8 +108,9 @@ impl Dispatcher {
                                 overlay_visibility: crate::binding::OverlayVisibility::Visible,
                             });
                         }
-
-                        has_pending_sequence_prefix = true;
+                        SequencePrefixKind::MultiStep => {
+                            has_pending_sequence_prefix = true;
+                        }
                     }
                 }
 
@@ -144,28 +143,31 @@ impl Dispatcher {
             .sequence_bindings_by_id
             .values()
             .filter(|binding| {
-                binding
-                    .sequence
-                    .steps()
-                    .first()
-                    .is_some_and(|step| step == hotkey)
+                !matches!(
+                    sequence::classify_sequence_prefix(&binding.sequence, hotkey),
+                    SequencePrefixKind::None
+                )
             })
             .collect();
         global_sequences.sort_by_key(|binding| binding.id.as_u64());
 
         let mut has_pending_global_sequence_prefix = false;
         for sequence_binding in global_sequences {
-            if sequence_binding.sequence.steps().len() == 1 {
-                return Some(BindingInfo {
-                    hotkey: sequence_binding.sequence.steps()[0].clone(),
-                    description: None,
-                    location: BindingLocation::Global,
-                    shadowed: ShadowedStatus::Active,
-                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
-                });
+            match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
+                SequencePrefixKind::None => {}
+                SequencePrefixKind::SingleStep => {
+                    return Some(BindingInfo {
+                        hotkey: sequence_binding.sequence.steps()[0].clone(),
+                        description: None,
+                        location: BindingLocation::Global,
+                        shadowed: ShadowedStatus::Active,
+                        overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                    });
+                }
+                SequencePrefixKind::MultiStep => {
+                    has_pending_global_sequence_prefix = true;
+                }
             }
-
-            has_pending_global_sequence_prefix = true;
         }
 
         if has_pending_global_sequence_prefix {
