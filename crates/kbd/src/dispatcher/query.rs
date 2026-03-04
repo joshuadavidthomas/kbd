@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use super::Dispatcher;
 use super::sequence;
+use super::sequence::RegisteredSequenceBinding;
 use super::sequence::SequencePrefixKind;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
@@ -11,7 +12,14 @@ use crate::introspection::BindingLocation;
 use crate::introspection::ConflictInfo;
 use crate::introspection::ShadowedStatus;
 use crate::layer::LayerName;
+use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
+
+enum SequencePrefixProbe {
+    None,
+    SingleStep(Hotkey),
+    MultiStep,
+}
 
 impl Dispatcher {
     /// Return a snapshot of all registered bindings with their status.
@@ -94,28 +102,20 @@ impl Dispatcher {
         // Sequence bindings are checked before immediate hotkeys.
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
-                let mut has_pending_sequence_prefix = false;
-
-                for sequence_binding in &stored.sequence_bindings {
-                    match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
-                        SequencePrefixKind::None => {}
-                        SequencePrefixKind::SingleStep => {
-                            return Some(BindingInfo {
-                                hotkey: sequence_binding.sequence.steps()[0].clone(),
-                                description: None,
-                                location: BindingLocation::Layer(entry.name.clone()),
-                                shadowed: ShadowedStatus::Active,
-                                overlay_visibility: crate::binding::OverlayVisibility::Visible,
-                            });
-                        }
-                        SequencePrefixKind::MultiStep => {
-                            has_pending_sequence_prefix = true;
-                        }
+                match Self::probe_layer_sequence_prefix(stored, hotkey) {
+                    SequencePrefixProbe::None => {}
+                    SequencePrefixProbe::SingleStep(matched_hotkey) => {
+                        return Some(BindingInfo {
+                            hotkey: matched_hotkey,
+                            description: None,
+                            location: BindingLocation::Layer(entry.name.clone()),
+                            shadowed: ShadowedStatus::Active,
+                            overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                        });
                     }
-                }
-
-                if has_pending_sequence_prefix {
-                    return None;
+                    SequencePrefixProbe::MultiStep => {
+                        return None;
+                    }
                 }
 
                 for binding in &stored.bindings {
@@ -151,27 +151,20 @@ impl Dispatcher {
             .collect();
         global_sequences.sort_by_key(|binding| binding.id.as_u64());
 
-        let mut has_pending_global_sequence_prefix = false;
-        for sequence_binding in global_sequences {
-            match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
-                SequencePrefixKind::None => {}
-                SequencePrefixKind::SingleStep => {
-                    return Some(BindingInfo {
-                        hotkey: sequence_binding.sequence.steps()[0].clone(),
-                        description: None,
-                        location: BindingLocation::Global,
-                        shadowed: ShadowedStatus::Active,
-                        overlay_visibility: crate::binding::OverlayVisibility::Visible,
-                    });
-                }
-                SequencePrefixKind::MultiStep => {
-                    has_pending_global_sequence_prefix = true;
-                }
+        match Self::probe_global_sequence_prefix(&global_sequences, hotkey) {
+            SequencePrefixProbe::None => {}
+            SequencePrefixProbe::SingleStep(matched_hotkey) => {
+                return Some(BindingInfo {
+                    hotkey: matched_hotkey,
+                    description: None,
+                    location: BindingLocation::Global,
+                    shadowed: ShadowedStatus::Active,
+                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                });
             }
-        }
-
-        if has_pending_global_sequence_prefix {
-            return None;
+            SequencePrefixProbe::MultiStep => {
+                return None;
+            }
         }
 
         // Fall through to global immediate bindings.
@@ -188,6 +181,55 @@ impl Dispatcher {
         }
 
         None
+    }
+
+    fn probe_layer_sequence_prefix(stored: &StoredLayer, hotkey: &Hotkey) -> SequencePrefixProbe {
+        let mut probe = SequencePrefixProbe::None;
+
+        for sequence_binding in &stored.sequence_bindings {
+            match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
+                SequencePrefixKind::None => {}
+                SequencePrefixKind::SingleStep => {
+                    probe = SequencePrefixProbe::SingleStep(
+                        sequence_binding.sequence.steps()[0].clone(),
+                    );
+                    break;
+                }
+                SequencePrefixKind::MultiStep => {
+                    if matches!(probe, SequencePrefixProbe::None) {
+                        probe = SequencePrefixProbe::MultiStep;
+                    }
+                }
+            }
+        }
+
+        probe
+    }
+
+    fn probe_global_sequence_prefix(
+        global_sequences: &[&RegisteredSequenceBinding],
+        hotkey: &Hotkey,
+    ) -> SequencePrefixProbe {
+        let mut probe = SequencePrefixProbe::None;
+
+        for sequence_binding in global_sequences {
+            match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
+                SequencePrefixKind::None => {}
+                SequencePrefixKind::SingleStep => {
+                    probe = SequencePrefixProbe::SingleStep(
+                        sequence_binding.sequence.steps()[0].clone(),
+                    );
+                    break;
+                }
+                SequencePrefixKind::MultiStep => {
+                    if matches!(probe, SequencePrefixProbe::None) {
+                        probe = SequencePrefixProbe::MultiStep;
+                    }
+                }
+            }
+        }
+
+        probe
     }
 
     /// Return the current layer stack (bottom to top).
