@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-mod common;
+mod utils;
 
 use kbd::action::Action;
 use kbd::key::Key;
@@ -9,7 +9,7 @@ use kbd_global::Error;
 
 #[test]
 fn push_layer_succeeds_for_defined_layer() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
     manager.define_layer(layer).unwrap();
@@ -20,7 +20,7 @@ fn push_layer_succeeds_for_defined_layer() {
 
 #[test]
 fn push_undefined_layer_returns_error() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let result = manager.push_layer("nonexistent");
     assert!(matches!(result, Err(Error::LayerNotDefined)));
@@ -28,7 +28,7 @@ fn push_undefined_layer_returns_error() {
 
 #[test]
 fn pop_layer_returns_popped_name() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
     manager.define_layer(layer).unwrap();
@@ -40,7 +40,7 @@ fn pop_layer_returns_popped_name() {
 
 #[test]
 fn pop_empty_stack_returns_error() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let result = manager.pop_layer();
     assert!(matches!(result, Err(Error::EmptyLayerStack)));
@@ -48,7 +48,7 @@ fn pop_empty_stack_returns_error() {
 
 #[test]
 fn toggle_layer_on_and_off() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
     manager.define_layer(layer).unwrap();
@@ -66,7 +66,7 @@ fn toggle_layer_on_and_off() {
 
 #[test]
 fn toggle_undefined_layer_returns_error() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let result = manager.toggle_layer("nonexistent");
     assert!(matches!(result, Err(Error::LayerNotDefined)));
@@ -74,7 +74,7 @@ fn toggle_undefined_layer_returns_error() {
 
 #[test]
 fn push_same_layer_twice_is_allowed() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
     manager.define_layer(layer).unwrap();
@@ -90,7 +90,7 @@ fn push_same_layer_twice_is_allowed() {
 
 #[test]
 fn push_pop_multiple_layers_in_order() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let nav = Layer::new("nav").bind(Key::H, Action::Suppress);
     let edit = Layer::new("edit").bind(Key::I, Action::Suppress);
@@ -107,7 +107,7 @@ fn push_pop_multiple_layers_in_order() {
 
 #[test]
 fn layer_name_accepts_string_and_str() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
     manager.define_layer(layer).unwrap();

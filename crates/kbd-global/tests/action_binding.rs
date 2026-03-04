@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-mod common;
+mod utils;
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -99,7 +99,7 @@ fn binding_options_chains_all_metadata() {
 
 #[test]
 fn register_with_options_accepts_metadata() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let options = BindingOptions::default()
         .with_description("Copy to clipboard")
@@ -111,7 +111,7 @@ fn register_with_options_accepts_metadata() {
 
 #[test]
 fn register_with_options_hidden_binding() {
-    let manager = common::test_manager();
+    let manager = utils::test_manager();
 
     let options = BindingOptions::default()
         .with_description("Internal binding")
