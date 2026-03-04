@@ -282,19 +282,6 @@ impl Layer {
         Ok(self)
     }
 
-    /// Parse and add a multi-step sequence binding from a string.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ParseHotkeyError`] if the sequence string is invalid.
-    pub fn bind_sequence_str(
-        self,
-        sequence: &str,
-        action: impl Into<Action>,
-    ) -> Result<Self, ParseHotkeyError> {
-        self.bind_sequence(sequence, action)
-    }
-
     /// Add a sequence binding with explicit sequence options.
     ///
     /// # Errors
@@ -313,20 +300,6 @@ impl Layer {
             options,
         });
         Ok(self)
-    }
-
-    /// Parse and add a sequence binding with explicit sequence options.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ParseHotkeyError`] if the sequence string is invalid.
-    pub fn bind_sequence_with_options_str(
-        self,
-        sequence: &str,
-        action: impl Into<Action>,
-        options: SequenceOptions,
-    ) -> Result<Self, ParseHotkeyError> {
-        self.bind_sequence_with_options(sequence, action, options)
     }
 
     /// Set the layer to swallow unmatched keys (consume instead of fallthrough).
@@ -545,21 +518,6 @@ mod tests {
 
         let (_, _, _, options) = layer.into_parts();
         assert_eq!(options.description(), Some("Navigation keys"));
-    }
-
-    #[test]
-    fn layer_bind_sequence_str_parses() {
-        let layer = Layer::new("nav")
-            .bind_sequence_str("Ctrl+K, Ctrl+C", Action::Suppress)
-            .unwrap();
-
-        assert_eq!(layer.binding_count(), 1);
-    }
-
-    #[test]
-    fn layer_bind_sequence_str_reports_parse_error() {
-        let result = Layer::new("nav").bind_sequence_str("Ctrl+K, Ctrl+Nope", Action::Suppress);
-        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
     }
 
     #[test]

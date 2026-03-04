@@ -461,25 +461,6 @@ mod tests {
     }
 
     #[test]
-    fn register_sequence_str_parses_and_registers() {
-        let mut dispatcher = Dispatcher::new();
-
-        let id = dispatcher
-            .register_sequence_str("Ctrl+K, Ctrl+C", Action::Suppress)
-            .unwrap();
-
-        dispatcher.unregister(id);
-    }
-
-    #[test]
-    fn register_sequence_str_returns_parse_error() {
-        let mut dispatcher = Dispatcher::new();
-
-        let result = dispatcher.register_sequence_str("Ctrl+K, Ctrl+Nope", Action::Suppress);
-        assert!(matches!(result, Err(crate::error::Error::Parse(_))));
-    }
-
-    #[test]
     fn sequence_reports_pending_then_fires_on_completion() {
         let mut dispatcher = Dispatcher::new();
         let counter = Arc::new(AtomicUsize::new(0));

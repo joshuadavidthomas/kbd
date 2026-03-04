@@ -266,24 +266,6 @@ impl Dispatcher {
         Ok(id)
     }
 
-    /// Parse and register a multi-step sequence binding from a string.
-    ///
-    /// This is convenient for config-driven bindings loaded from text.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`](crate::error::Error::Parse) if the sequence
-    /// string is invalid, or
-    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same sequence already exists.
-    pub fn register_sequence_str(
-        &mut self,
-        sequence: &str,
-        action: impl Into<Action>,
-    ) -> Result<BindingId, crate::error::Error> {
-        self.register_sequence(sequence, action)
-    }
-
     /// Register a sequence with explicit sequence options.
     ///
     /// # Errors
@@ -302,23 +284,6 @@ impl Dispatcher {
         let sequence = sequence.into_sequence()?;
         self.register_sequence_binding_with_id(id, sequence, action.into(), options)?;
         Ok(id)
-    }
-
-    /// Parse and register a sequence with explicit options from a string.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`](crate::error::Error::Parse) if the sequence
-    /// string is invalid, or
-    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same sequence already exists.
-    pub fn register_sequence_with_options_str(
-        &mut self,
-        sequence: &str,
-        action: impl Into<Action>,
-        options: SequenceOptions,
-    ) -> Result<BindingId, crate::error::Error> {
-        self.register_sequence_with_options(sequence, action, options)
     }
 
     /// Register a sequence binding with a caller-provided binding ID.

@@ -128,25 +128,6 @@ fn register_sequence_reports_parse_error_for_string_input() {
 }
 
 #[test]
-fn register_sequence_str_returns_guard() {
-    let manager = utils::test_manager();
-
-    let guard = manager
-        .register_sequence_str("Ctrl+K, Ctrl+C", || {})
-        .expect("sequence string registration should succeed");
-
-    drop(guard);
-}
-
-#[test]
-fn register_sequence_str_reports_parse_error() {
-    let manager = utils::test_manager();
-
-    let result = manager.register_sequence_str("Ctrl+K, Ctrl+Nope", || {});
-    assert!(matches!(result, Err(Error::Parse(_))));
-}
-
-#[test]
 fn pending_sequence_is_none_when_idle() {
     let manager = utils::test_manager();
 
