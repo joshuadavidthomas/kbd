@@ -737,6 +737,11 @@ impl Dispatcher {
 
         if !survivors.is_empty() {
             self.active_sequences = survivors;
+            // The standalone fallback only applies while waiting on step 2
+            // after the initial sequence prefix keypress. Once the user has
+            // progressed the sequence, timing out should not retroactively fire
+            // that first-step standalone action.
+            self.pending_standalone = None;
             if let Some(pending) = self.pending_sequence_snapshot() {
                 return Some(InternalOutcome::Pending {
                     steps_matched: pending.steps_matched,
@@ -1452,6 +1457,45 @@ mod tests {
         }
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn timeout_after_sequence_progress_does_not_fire_first_step_fallback() {
+        let mut dispatcher = Dispatcher::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        dispatcher.set_sequence_timeout(Duration::from_millis(10));
+        dispatcher
+            .register(Hotkey::new(Key::K).modifier(Modifier::Ctrl), move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            })
+            .unwrap();
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Ctrl+S, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                || {},
+            )
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        let second = dispatcher.process(
+            &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(second, MatchResult::Pending { .. }));
+
+        std::thread::sleep(Duration::from_millis(20));
+        for timeout_result in dispatcher.check_timeouts_with_results() {
+            execute_callback(&timeout_result);
+        }
+
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
     }
 
     #[test]
