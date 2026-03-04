@@ -277,7 +277,7 @@ impl Dispatcher {
         sequence: &str,
         action: impl Into<Action>,
     ) -> Result<BindingId, crate::error::Error> {
-        let sequence: HotkeySequence = sequence.parse()?;
+        let sequence = crate::sequence::parse_sequence(sequence)?;
         self.register_sequence(sequence, action)
     }
 
@@ -312,7 +312,7 @@ impl Dispatcher {
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<BindingId, crate::error::Error> {
-        let sequence: HotkeySequence = sequence.parse()?;
+        let sequence = crate::sequence::parse_sequence(sequence)?;
         self.register_sequence_with_options(sequence, action, options)
     }
 

@@ -2,7 +2,13 @@
 
 use std::time::Duration;
 
+use crate::error::ParseHotkeyError;
+use crate::hotkey::HotkeySequence;
 use crate::key::Key;
+
+pub(crate) fn parse_sequence(input: &str) -> Result<HotkeySequence, ParseHotkeyError> {
+    input.parse()
+}
 
 /// Runtime options for sequence matching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

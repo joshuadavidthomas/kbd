@@ -288,7 +288,7 @@ impl Layer {
         sequence: &str,
         action: impl Into<Action>,
     ) -> Result<Self, ParseHotkeyError> {
-        let sequence: HotkeySequence = sequence.parse()?;
+        let sequence = crate::sequence::parse_sequence(sequence)?;
         Ok(self.bind_sequence(sequence, action))
     }
 
@@ -320,7 +320,7 @@ impl Layer {
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<Self, ParseHotkeyError> {
-        let sequence: HotkeySequence = sequence.parse()?;
+        let sequence = crate::sequence::parse_sequence(sequence)?;
         Ok(self.bind_sequence_with_options(sequence, action, options))
     }
 
