@@ -6,7 +6,22 @@ use kbd_global::HotkeyManager;
 use kbd_global::HotkeyManagerBuilder;
 
 pub fn test_builder() -> HotkeyManagerBuilder {
-    HotkeyManager::builder().with_input_directory_for_testing(test_input_directory())
+    initialize_test_input_directory_override();
+    HotkeyManager::builder()
+}
+
+fn initialize_test_input_directory_override() {
+    static INITIALIZED: OnceLock<()> = OnceLock::new();
+    INITIALIZED.get_or_init(|| {
+        // SAFETY: this runs once before constructing any HotkeyManager in
+        // these integration tests and always sets the same deterministic value.
+        unsafe {
+            std::env::set_var(
+                "_KBD_GLOBAL_INTERNAL_TEST_INPUT_DIR",
+                test_input_directory(),
+            );
+        }
+    });
 }
 
 pub fn test_manager() -> HotkeyManager {

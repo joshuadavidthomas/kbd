@@ -18,11 +18,9 @@
 //! ```
 
 use std::fmt;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::mpsc;
-use std::time::Duration;
 
 use kbd::action::Action;
 use kbd::binding::BindingId;
@@ -66,7 +64,6 @@ enum GrabConfiguration {
 pub struct HotkeyManagerBuilder {
     backend: BackendSelection,
     grab: GrabConfiguration,
-    input_directory: PathBuf,
 }
 
 impl Default for HotkeyManagerBuilder {
@@ -74,7 +71,6 @@ impl Default for HotkeyManagerBuilder {
         Self {
             backend: BackendSelection::Auto,
             grab: GrabConfiguration::Disabled,
-            input_directory: PathBuf::from(crate::engine::devices::INPUT_DIRECTORY),
         }
     }
 }
@@ -94,17 +90,6 @@ impl HotkeyManagerBuilder {
         self
     }
 
-    /// Override the input-device directory used by the runtime.
-    ///
-    /// This is intended for tests that need an isolated input source and
-    /// should not be used in production.
-    #[doc(hidden)]
-    #[must_use]
-    pub fn with_input_directory_for_testing(mut self, input_directory: impl Into<PathBuf>) -> Self {
-        self.input_directory = input_directory.into();
-        self
-    }
-
     /// Build and start a new manager instance.
     ///
     /// Spawns the engine thread and begins listening for input device events.
@@ -119,11 +104,10 @@ impl HotkeyManagerBuilder {
         validate_grab_configuration(backend, self.grab)?;
 
         let grab_state = create_grab_state(self.grab)?;
-        let runtime = if self.input_directory == Path::new(crate::engine::devices::INPUT_DIRECTORY)
-        {
-            EngineRuntime::spawn(grab_state)?
+        let runtime = if let Some(input_directory) = internal_test_input_directory() {
+            EngineRuntime::spawn_with_input_dir(grab_state, &input_directory)?
         } else {
-            EngineRuntime::spawn_with_input_dir(grab_state, &self.input_directory)?
+            EngineRuntime::spawn(grab_state)?
         };
         let commands = runtime.commands();
 
@@ -209,7 +193,7 @@ impl HotkeyManager {
         F: Fn() + Send + Sync + 'static,
     {
         let sequence = sequence.into_sequence()?;
-        self.register_sequence_action(sequence, Action::from(callback), None)
+        self.register_sequence_action(sequence, Action::from(callback), SequenceOptions::default())
     }
 
     /// Register a multi-step sequence with explicit action and options.
@@ -226,7 +210,7 @@ impl HotkeyManager {
         options: SequenceOptions,
     ) -> Result<BindingGuard, Error> {
         let sequence = sequence.into_sequence()?;
-        self.register_sequence_action(sequence, action.into(), Some(options))
+        self.register_sequence_action(sequence, action.into(), options)
     }
 
     /// Register a hotkey with an explicit action and binding options.
@@ -351,13 +335,11 @@ impl HotkeyManager {
         &self,
         sequence: HotkeySequence,
         action: Action,
-        options: Option<SequenceOptions>,
+        options: SequenceOptions,
     ) -> Result<BindingGuard, Error> {
-        let id = BindingId::new();
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::RegisterSequence {
-            id,
             sequence,
             action,
             options,
@@ -365,7 +347,7 @@ impl HotkeyManager {
         })?;
 
         match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
-            Ok(()) => Ok(BindingGuard::new(id, self.commands.clone())),
+            Ok(id) => Ok(BindingGuard::new(id, self.commands.clone())),
             Err(error) => Err(error),
         }
     }
@@ -491,44 +473,6 @@ impl HotkeyManager {
         reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }
 
-    /// Set default sequence timeout for future sequence registrations.
-    ///
-    /// Existing sequence bindings keep the timeout they were registered with.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn set_sequence_timeout(&self, timeout: Duration) -> Result<(), Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::SetSequenceTimeout {
-            timeout,
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)?;
-        Ok(())
-    }
-
-    /// Set default sequence abort key for future sequence registrations.
-    ///
-    /// Existing sequence bindings keep their configured abort key.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn set_sequence_abort_key(&self, key: Key) -> Result<(), Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::SetSequenceAbortKey {
-            key,
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)?;
-        Ok(())
-    }
-
     /// Return current in-progress sequence state, if any.
     ///
     /// # Errors
@@ -585,6 +529,10 @@ fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
 #[allow(clippy::unnecessary_wraps)]
 fn validate_grab_configuration(_backend: Backend, _grab: GrabConfiguration) -> Result<(), Error> {
     Ok(())
+}
+
+fn internal_test_input_directory() -> Option<PathBuf> {
+    std::env::var_os("_KBD_GLOBAL_INTERNAL_TEST_INPUT_DIR").map(PathBuf::from)
 }
 
 fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, Error> {

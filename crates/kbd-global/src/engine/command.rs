@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 use std::sync::mpsc;
-use std::time::Duration;
 
 use kbd::binding::BindingId;
 use kbd::binding::RegisteredBinding;
@@ -31,19 +30,10 @@ pub(crate) enum Command {
         reply: mpsc::Sender<Result<(), Error>>,
     },
     RegisterSequence {
-        id: BindingId,
         sequence: HotkeySequence,
         action: kbd::action::Action,
-        options: Option<SequenceOptions>,
-        reply: mpsc::Sender<Result<(), Error>>,
-    },
-    SetSequenceTimeout {
-        timeout: Duration,
-        reply: mpsc::Sender<()>,
-    },
-    SetSequenceAbortKey {
-        key: Key,
-        reply: mpsc::Sender<()>,
+        options: SequenceOptions,
+        reply: mpsc::Sender<Result<BindingId, Error>>,
     },
     PendingSequence {
         reply: mpsc::Sender<Option<PendingSequenceInfo>>,

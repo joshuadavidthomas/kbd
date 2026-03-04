@@ -496,14 +496,17 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        dispatcher.set_sequence_timeout(Duration::from_millis(10));
         dispatcher
             .register(Hotkey::new(Key::K).modifier(Modifier::Ctrl), move || {
                 cc.fetch_add(1, Ordering::Relaxed);
             })
             .unwrap();
         dispatcher
-            .register_sequence("Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(), || {})
+            .register_sequence_with_options(
+                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                || {},
+                SequenceOptions::default().with_timeout(Duration::from_millis(10)),
+            )
             .unwrap();
 
         let first = dispatcher.process(
@@ -602,14 +605,17 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        dispatcher.set_sequence_timeout(Duration::from_millis(10));
         dispatcher
             .register(Hotkey::new(Key::K).modifier(Modifier::Ctrl), move || {
                 cc.fetch_add(1, Ordering::Relaxed);
             })
             .unwrap();
         dispatcher
-            .register_sequence("Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(), || {})
+            .register_sequence_with_options(
+                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                || {},
+                SequenceOptions::default().with_timeout(Duration::from_millis(10)),
+            )
             .unwrap();
 
         let pending = dispatcher.process(
@@ -632,16 +638,16 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        dispatcher.set_sequence_timeout(Duration::from_millis(10));
         dispatcher
             .register(Hotkey::new(Key::K).modifier(Modifier::Ctrl), move || {
                 cc.fetch_add(1, Ordering::Relaxed);
             })
             .unwrap();
         dispatcher
-            .register_sequence(
+            .register_sequence_with_options(
                 "Ctrl+K, Ctrl+S, Ctrl+C".parse::<HotkeySequence>().unwrap(),
                 || {},
+                SequenceOptions::default().with_timeout(Duration::from_millis(10)),
             )
             .unwrap();
 
@@ -774,7 +780,6 @@ mod tests {
     #[test]
     fn unregistering_standalone_while_sequence_pending_does_not_panic_or_fire_fallback() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.set_sequence_timeout(Duration::from_millis(10));
 
         let standalone_id = dispatcher
             .register(
@@ -783,9 +788,10 @@ mod tests {
             )
             .unwrap();
         dispatcher
-            .register_sequence(
+            .register_sequence_with_options(
                 "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
                 Action::Suppress,
+                SequenceOptions::default().with_timeout(Duration::from_millis(10)),
             )
             .unwrap();
 
@@ -813,7 +819,6 @@ mod tests {
                 cc.fetch_add(1, Ordering::Relaxed);
             }))
             .unwrap();
-        dispatcher.set_sequence_timeout(Duration::from_millis(10));
         dispatcher
             .register(
                 Hotkey::new(Key::K).modifier(Modifier::Ctrl),
@@ -821,9 +826,10 @@ mod tests {
             )
             .unwrap();
         dispatcher
-            .register_sequence(
+            .register_sequence_with_options(
                 "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
                 Action::Suppress,
+                SequenceOptions::default().with_timeout(Duration::from_millis(10)),
             )
             .unwrap();
 

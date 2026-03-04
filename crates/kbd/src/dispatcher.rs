@@ -166,7 +166,6 @@ pub struct Dispatcher {
     layer_stack: Vec<LayerStackEntry>,
     active_sequences: Vec<ActiveSequence>,
     pending_standalone: Option<PendingStandalone>,
-    default_sequence_options: SequenceOptions,
 }
 
 /// Internal reference to a matched binding, used to re-find the action
@@ -255,15 +254,7 @@ impl Dispatcher {
         sequence: impl SequenceInput,
         action: impl Into<Action>,
     ) -> Result<BindingId, crate::error::Error> {
-        let id = BindingId::new();
-        let sequence = sequence.into_sequence()?;
-        self.register_sequence_binding_with_id(
-            id,
-            sequence,
-            action.into(),
-            self.default_sequence_options,
-        )?;
-        Ok(id)
+        self.register_sequence_with_options(sequence, action, SequenceOptions::default())
     }
 
     /// Register a sequence with explicit sequence options.
@@ -292,7 +283,7 @@ impl Dispatcher {
     ///
     /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
-    pub fn register_sequence_binding_with_id(
+    pub(crate) fn register_sequence_binding_with_id(
         &mut self,
         id: BindingId,
         sequence: HotkeySequence,
@@ -301,31 +292,6 @@ impl Dispatcher {
     ) -> Result<(), crate::error::Error> {
         let binding = RegisteredSequenceBinding::new(id, sequence, action, options);
         self.register_sequence_binding(binding)
-    }
-
-    /// Register a sequence binding with caller-provided ID using current defaults.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same sequence already exists.
-    pub fn register_sequence_binding_with_default_options(
-        &mut self,
-        id: BindingId,
-        sequence: HotkeySequence,
-        action: Action,
-    ) -> Result<(), crate::error::Error> {
-        self.register_sequence_binding_with_id(id, sequence, action, self.default_sequence_options)
-    }
-
-    /// Set default sequence timeout for future sequence registrations.
-    pub fn set_sequence_timeout(&mut self, timeout: Duration) {
-        self.default_sequence_options = self.default_sequence_options.with_timeout(timeout);
-    }
-
-    /// Set default sequence abort key for future sequence registrations.
-    pub fn set_sequence_abort_key(&mut self, abort_key: crate::key::Key) {
-        self.default_sequence_options = self.default_sequence_options.with_abort_key(abort_key);
     }
 
     /// Return current in-progress sequence state, if any.

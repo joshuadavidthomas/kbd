@@ -181,32 +181,16 @@ impl Engine {
                 LoopControl::Continue
             }
             Command::RegisterSequence {
-                id,
                 sequence,
                 action,
                 options,
                 reply,
             } => {
-                let result = match options {
-                    Some(options) => self
-                        .dispatcher
-                        .register_sequence_binding_with_id(id, sequence, action, options),
-                    None => self
-                        .dispatcher
-                        .register_sequence_binding_with_default_options(id, sequence, action),
-                }
-                .map_err(Error::from);
+                let result = self
+                    .dispatcher
+                    .register_sequence_with_options(sequence, action, options)
+                    .map_err(Error::from);
                 let _ = reply.send(result);
-                LoopControl::Continue
-            }
-            Command::SetSequenceTimeout { timeout, reply } => {
-                self.dispatcher.set_sequence_timeout(timeout);
-                let _ = reply.send(());
-                LoopControl::Continue
-            }
-            Command::SetSequenceAbortKey { key, reply } => {
-                self.dispatcher.set_sequence_abort_key(key);
-                let _ = reply.send(());
                 LoopControl::Continue
             }
             Command::PendingSequence { reply } => {
@@ -1047,16 +1031,14 @@ mod tests {
     fn pending_sequence_command_reports_progress() {
         let mut engine = test_engine();
 
-        let id = BindingId::new();
         let sequence = "Ctrl+K, Ctrl+C"
             .parse::<kbd::hotkey::HotkeySequence>()
             .unwrap();
         let (register_reply_tx, register_reply_rx) = mpsc::channel();
         let _ = engine.handle_command(Command::RegisterSequence {
-            id,
             sequence,
             action: Action::Suppress,
-            options: Some(kbd::sequence::SequenceOptions::default()),
+            options: kbd::sequence::SequenceOptions::default(),
             reply: register_reply_tx,
         });
         assert!(register_reply_rx.recv().unwrap().is_ok());
@@ -1074,26 +1056,18 @@ mod tests {
     }
 
     #[test]
-    fn set_sequence_timeout_command_applies_to_new_registrations() {
+    fn sequence_timeout_option_applies_to_registration() {
         let mut engine = test_engine();
 
-        let (timeout_reply_tx, timeout_reply_rx) = mpsc::channel();
-        let _ = engine.handle_command(Command::SetSequenceTimeout {
-            timeout: Duration::from_millis(10),
-            reply: timeout_reply_tx,
-        });
-        timeout_reply_rx.recv().expect("timeout ack");
-
-        let id = BindingId::new();
         let sequence = "Ctrl+K, Ctrl+C"
             .parse::<kbd::hotkey::HotkeySequence>()
             .unwrap();
         let (register_reply_tx, register_reply_rx) = mpsc::channel();
         let _ = engine.handle_command(Command::RegisterSequence {
-            id,
             sequence,
             action: Action::Suppress,
-            options: None,
+            options: kbd::sequence::SequenceOptions::default()
+                .with_timeout(Duration::from_millis(10)),
             reply: register_reply_tx,
         });
         assert!(register_reply_rx.recv().unwrap().is_ok());
