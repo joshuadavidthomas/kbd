@@ -6,10 +6,12 @@
 
 use std::sync::Arc;
 use std::sync::mpsc;
+use std::time::Duration;
 
 use kbd::binding::BindingId;
 use kbd::binding::RegisteredBinding;
 use kbd::hotkey::Hotkey;
+use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
 use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
@@ -17,6 +19,8 @@ use kbd::introspection::ConflictInfo;
 use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd::layer::LayerName;
+use kbd::sequence::PendingSequenceInfo;
+use kbd::sequence::SequenceOptions;
 
 use super::wake::WakeFd;
 use crate::Error;
@@ -25,6 +29,24 @@ pub(crate) enum Command {
     Register {
         binding: RegisteredBinding,
         reply: mpsc::Sender<Result<(), Error>>,
+    },
+    RegisterSequence {
+        id: BindingId,
+        sequence: HotkeySequence,
+        action: kbd::action::Action,
+        options: Option<SequenceOptions>,
+        reply: mpsc::Sender<Result<(), Error>>,
+    },
+    SetSequenceTimeout {
+        timeout: Duration,
+        reply: mpsc::Sender<()>,
+    },
+    SetSequenceAbortKey {
+        key: Key,
+        reply: mpsc::Sender<()>,
+    },
+    PendingSequence {
+        reply: mpsc::Sender<Option<PendingSequenceInfo>>,
     },
     Unregister {
         id: BindingId,

@@ -53,6 +53,7 @@ pub mod introspection;
 pub mod key;
 pub mod key_state;
 pub mod layer;
+pub mod sequence;
 
 /// Convenience re-exports for common types.
 ///
@@ -78,9 +79,12 @@ pub mod prelude {
     pub use crate::dispatcher::Dispatcher;
     pub use crate::dispatcher::MatchResult;
     pub use crate::hotkey::Hotkey;
+    pub use crate::hotkey::HotkeySequence;
     pub use crate::hotkey::Modifier;
     pub use crate::key::Key;
     pub use crate::key_state::KeyTransition;
     pub use crate::layer::Layer;
     pub use crate::layer::LayerName;
+    pub use crate::sequence::PendingSequenceInfo;
+    pub use crate::sequence::SequenceOptions;
 }

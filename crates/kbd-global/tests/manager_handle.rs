@@ -72,3 +72,29 @@ fn shutdown_stops_handle_unregistration_commands() {
     let unregister = handle.unregister();
     assert!(matches!(unregister, Err(Error::ManagerStopped)));
 }
+
+#[test]
+fn register_sequence_returns_guard() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let guard = manager
+        .register_sequence(
+            "Ctrl+K, Ctrl+C"
+                .parse::<kbd::hotkey::HotkeySequence>()
+                .unwrap(),
+            || {},
+        )
+        .expect("sequence registration should succeed");
+
+    drop(guard);
+}
+
+#[test]
+fn pending_sequence_is_none_when_idle() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let pending = manager
+        .pending_sequence()
+        .expect("pending query should succeed");
+    assert!(pending.is_none());
+}

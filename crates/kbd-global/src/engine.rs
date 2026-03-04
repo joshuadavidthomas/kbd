@@ -182,6 +182,39 @@ impl Engine {
                 let _ = reply.send(result.map_err(Error::from));
                 LoopControl::Continue
             }
+            Command::RegisterSequence {
+                id,
+                sequence,
+                action,
+                options,
+                reply,
+            } => {
+                let result = match options {
+                    Some(options) => self
+                        .dispatcher
+                        .register_sequence_binding_with_id(id, sequence, action, options),
+                    None => self
+                        .dispatcher
+                        .register_sequence_binding_with_default_options(id, sequence, action),
+                }
+                .map_err(Error::from);
+                let _ = reply.send(result);
+                LoopControl::Continue
+            }
+            Command::SetSequenceTimeout { timeout, reply } => {
+                self.dispatcher.set_sequence_timeout(timeout);
+                let _ = reply.send(());
+                LoopControl::Continue
+            }
+            Command::SetSequenceAbortKey { key, reply } => {
+                self.dispatcher.set_sequence_abort_key(key);
+                let _ = reply.send(());
+                LoopControl::Continue
+            }
+            Command::PendingSequence { reply } => {
+                let _ = reply.send(self.dispatcher.pending_sequence());
+                LoopControl::Continue
+            }
             Command::Unregister { id } => {
                 self.dispatcher.unregister(id);
                 LoopControl::Continue
@@ -300,6 +333,7 @@ impl Engine {
                         propagation: *propagation,
                     }
                 }
+                MatchResult::Pending { .. } => MatchOutcome::Pending,
                 MatchResult::Suppressed => MatchOutcome::Suppressed,
                 MatchResult::NoMatch => MatchOutcome::NoMatch,
                 _ => MatchOutcome::Ignored,
@@ -320,7 +354,9 @@ impl Engine {
                 }
                 _ => KeyEventDisposition::MatchedConsumed,
             },
-            MatchOutcome::Suppressed => KeyEventDisposition::MatchedConsumed,
+            MatchOutcome::Pending | MatchOutcome::Suppressed => {
+                KeyEventDisposition::MatchedConsumed
+            }
             MatchOutcome::NoMatch | MatchOutcome::Ignored => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
                     self.forward_event(event.key, event.transition);
@@ -394,7 +430,11 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
         }
 
         engine.process_polled_events(&poll_fds);
-        engine.dispatcher.check_timeouts();
+        for timeout_result in engine.dispatcher.check_timeouts_with_results() {
+            if let MatchResult::Matched { action, .. } = timeout_result {
+                execute_action(action);
+            }
+        }
     }
 }
 
@@ -1001,6 +1041,69 @@ mod tests {
         assert!(modifiers.is_empty());
 
         runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn pending_sequence_command_reports_progress() {
+        let mut engine = test_engine();
+
+        let id = BindingId::new();
+        let sequence = "Ctrl+K, Ctrl+C"
+            .parse::<kbd::hotkey::HotkeySequence>()
+            .unwrap();
+        let (register_reply_tx, register_reply_rx) = mpsc::channel();
+        let _ = engine.handle_command(Command::RegisterSequence {
+            id,
+            sequence,
+            action: Action::Suppress,
+            options: Some(kbd::sequence::SequenceOptions::default()),
+            reply: register_reply_tx,
+        });
+        assert!(register_reply_rx.recv().unwrap().is_ok());
+
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
+        let _ = press_key(&mut engine, Key::K, 10);
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let _ = engine.handle_command(Command::PendingSequence { reply: reply_tx });
+        let pending = reply_rx.recv().expect("pending sequence reply");
+
+        let pending = pending.expect("sequence should be pending");
+        assert_eq!(pending.steps_matched, 1);
+        assert_eq!(pending.steps_remaining, 1);
+    }
+
+    #[test]
+    fn set_sequence_timeout_command_applies_to_new_registrations() {
+        let mut engine = test_engine();
+
+        let (timeout_reply_tx, timeout_reply_rx) = mpsc::channel();
+        let _ = engine.handle_command(Command::SetSequenceTimeout {
+            timeout: Duration::from_millis(10),
+            reply: timeout_reply_tx,
+        });
+        timeout_reply_rx.recv().expect("timeout ack");
+
+        let id = BindingId::new();
+        let sequence = "Ctrl+K, Ctrl+C"
+            .parse::<kbd::hotkey::HotkeySequence>()
+            .unwrap();
+        let (register_reply_tx, register_reply_rx) = mpsc::channel();
+        let _ = engine.handle_command(Command::RegisterSequence {
+            id,
+            sequence,
+            action: Action::Suppress,
+            options: None,
+            reply: register_reply_tx,
+        });
+        assert!(register_reply_rx.recv().unwrap().is_ok());
+
+        press_key(&mut engine, Key::CONTROL_LEFT, 10);
+        let _ = press_key(&mut engine, Key::K, 10);
+
+        std::thread::sleep(Duration::from_millis(20));
+        let _ = engine.dispatcher.check_timeouts_with_results();
+        assert!(engine.dispatcher.pending_sequence().is_none());
     }
 
     #[test]

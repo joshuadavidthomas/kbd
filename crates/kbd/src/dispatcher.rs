@@ -19,11 +19,14 @@ use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
+use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
 use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
+use crate::sequence::PendingSequenceInfo;
+use crate::sequence::SequenceOptions;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
@@ -35,6 +38,13 @@ pub enum MatchResult<'a> {
         action: &'a Action,
         /// Whether to consume or forward the original key event.
         propagation: KeyPropagation,
+    },
+    /// Sequence is in progress and waiting for more steps.
+    Pending {
+        /// Number of steps already matched.
+        steps_matched: usize,
+        /// Number of steps still required.
+        steps_remaining: usize,
     },
     /// No binding matched the event.
     NoMatch,
@@ -57,6 +67,50 @@ struct LayerStackEntry {
 struct LayerTimeout {
     duration: Duration,
     last_activity: Instant,
+}
+
+struct RegisteredSequenceBinding {
+    id: BindingId,
+    sequence: HotkeySequence,
+    action: Action,
+    propagation: KeyPropagation,
+    options: SequenceOptions,
+}
+
+impl RegisteredSequenceBinding {
+    fn new(
+        id: BindingId,
+        sequence: HotkeySequence,
+        action: Action,
+        options: SequenceOptions,
+    ) -> Self {
+        Self {
+            id,
+            sequence,
+            action,
+            propagation: KeyPropagation::Stop,
+            options,
+        }
+    }
+}
+
+#[derive(Clone)]
+enum SequenceBindingRef {
+    Global(BindingId),
+    Layer { name: LayerName, index: usize },
+}
+
+struct ActiveSequence {
+    binding_ref: SequenceBindingRef,
+    next_step_index: usize,
+    deadline: Instant,
+    priority: usize,
+}
+
+struct PendingStandalone {
+    binding_ref: MatchedBindingRef,
+    propagation: KeyPropagation,
+    layer_effect: LayerEffect,
 }
 
 /// A synchronous hotkey matching engine.
@@ -142,15 +196,23 @@ struct LayerTimeout {
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
+    sequence_bindings_by_id: HashMap<BindingId, RegisteredSequenceBinding>,
+    sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
     layer_stack: Vec<LayerStackEntry>,
+    active_sequences: Vec<ActiveSequence>,
+    pending_standalone: Option<PendingStandalone>,
+    default_sequence_options: SequenceOptions,
 }
 
 /// Internal reference to a matched binding, used to re-find the action
 /// after layer mutations are applied.
+#[derive(Clone)]
 enum MatchedBindingRef {
     Global(BindingId),
     Layer { name: LayerName, index: usize },
+    SequenceGlobal(BindingId),
+    SequenceLayer { name: LayerName, index: usize },
 }
 
 /// Internal match outcome that carries binding refs and layer effects.
@@ -160,12 +222,17 @@ enum InternalOutcome {
         layer_effect: LayerEffect,
         propagation: KeyPropagation,
     },
+    Pending {
+        steps_matched: usize,
+        steps_remaining: usize,
+    },
     Suppressed,
     NoMatch,
     Ignored,
 }
 
 /// Layer stack mutation extracted from a matched action.
+#[derive(Clone)]
 enum LayerEffect {
     None,
     Push(LayerName),
@@ -211,6 +278,92 @@ impl Dispatcher {
         Ok(id)
     }
 
+    /// Register a multi-step sequence binding with default sequence options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// if a binding for the same sequence already exists.
+    pub fn register_sequence(
+        &mut self,
+        sequence: impl Into<HotkeySequence>,
+        action: impl Into<Action>,
+    ) -> Result<BindingId, crate::error::Error> {
+        let id = BindingId::new();
+        self.register_sequence_binding_with_id(
+            id,
+            sequence.into(),
+            action.into(),
+            self.default_sequence_options,
+        )?;
+        Ok(id)
+    }
+
+    /// Register a sequence with explicit sequence options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// if a binding for the same sequence already exists.
+    pub fn register_sequence_with_options(
+        &mut self,
+        sequence: impl Into<HotkeySequence>,
+        action: impl Into<Action>,
+        options: SequenceOptions,
+    ) -> Result<BindingId, crate::error::Error> {
+        let id = BindingId::new();
+        self.register_sequence_binding_with_id(id, sequence.into(), action.into(), options)?;
+        Ok(id)
+    }
+
+    /// Register a sequence binding with a caller-provided binding ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// if a binding for the same sequence already exists.
+    pub fn register_sequence_binding_with_id(
+        &mut self,
+        id: BindingId,
+        sequence: HotkeySequence,
+        action: Action,
+        options: SequenceOptions,
+    ) -> Result<(), crate::error::Error> {
+        let binding = RegisteredSequenceBinding::new(id, sequence, action, options);
+        self.register_sequence_binding(binding)
+    }
+
+    /// Register a sequence binding with caller-provided ID using current defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// if a binding for the same sequence already exists.
+    pub fn register_sequence_binding_with_default_options(
+        &mut self,
+        id: BindingId,
+        sequence: HotkeySequence,
+        action: Action,
+    ) -> Result<(), crate::error::Error> {
+        self.register_sequence_binding_with_id(id, sequence, action, self.default_sequence_options)
+    }
+
+    /// Set default sequence timeout for future sequence registrations.
+    pub fn set_sequence_timeout(&mut self, timeout: Duration) {
+        self.default_sequence_options = self.default_sequence_options.with_timeout(timeout);
+    }
+
+    /// Set default sequence abort key for future sequence registrations.
+    pub fn set_sequence_abort_key(&mut self, abort_key: crate::key::Key) {
+        self.default_sequence_options = self.default_sequence_options.with_abort_key(abort_key);
+    }
+
+    /// Return current in-progress sequence state, if any.
+    #[must_use]
+    pub fn pending_sequence(&self) -> Option<PendingSequenceInfo> {
+        self.pending_sequence_snapshot()
+    }
+
     /// Register a [`RegisteredBinding`] with full options control.
     ///
     /// # Errors
@@ -224,7 +377,9 @@ impl Dispatcher {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
 
-        if self.bindings_by_id.contains_key(&id) || self.binding_ids_by_hotkey.contains_key(&hotkey)
+        if self.bindings_by_id.contains_key(&id)
+            || self.sequence_bindings_by_id.contains_key(&id)
+            || self.binding_ids_by_hotkey.contains_key(&hotkey)
         {
             return Err(crate::error::Error::AlreadyRegistered);
         }
@@ -234,10 +389,50 @@ impl Dispatcher {
         Ok(())
     }
 
+    fn register_sequence_binding(
+        &mut self,
+        binding: RegisteredSequenceBinding,
+    ) -> Result<(), crate::error::Error> {
+        let id = binding.id;
+        let sequence = binding.sequence.clone();
+
+        if self.sequence_bindings_by_id.contains_key(&id)
+            || self.bindings_by_id.contains_key(&id)
+            || self.sequence_ids_by_value.contains_key(&sequence)
+        {
+            return Err(crate::error::Error::AlreadyRegistered);
+        }
+
+        self.sequence_ids_by_value.insert(sequence, id);
+        self.sequence_bindings_by_id.insert(id, binding);
+        Ok(())
+    }
+
     /// Unregister a binding by its [`BindingId`].
     pub fn unregister(&mut self, id: BindingId) {
         if let Some(binding) = self.bindings_by_id.remove(&id) {
             self.binding_ids_by_hotkey.remove(binding.hotkey());
+        }
+
+        if let Some(binding) = self.sequence_bindings_by_id.remove(&id) {
+            self.sequence_ids_by_value.remove(&binding.sequence);
+        }
+
+        self.active_sequences
+            .retain(|active| !matches!(active.binding_ref, SequenceBindingRef::Global(global_id) if global_id == id));
+
+        if self.pending_standalone.as_ref().is_some_and(|pending| {
+            matches!(
+                pending.binding_ref,
+                MatchedBindingRef::Global(global_id) | MatchedBindingRef::SequenceGlobal(global_id)
+                    if global_id == id
+            )
+        }) {
+            self.pending_standalone = None;
+        }
+
+        if self.active_sequences.is_empty() {
+            self.pending_standalone = None;
         }
     }
 
@@ -254,13 +449,17 @@ impl Dispatcher {
     /// Returns [`Error::LayerAlreadyDefined`](crate::error::Error::LayerAlreadyDefined)
     /// if a layer with the same name exists.
     pub fn define_layer(&mut self, layer: crate::layer::Layer) -> Result<(), crate::error::Error> {
-        let (name, bindings, options) = layer.into_parts();
+        let (name, bindings, sequence_bindings, options) = layer.into_parts();
         match self.layers.entry(name) {
             std::collections::hash_map::Entry::Occupied(_) => {
                 Err(crate::error::Error::LayerAlreadyDefined)
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(StoredLayer { bindings, options });
+                entry.insert(StoredLayer {
+                    bindings,
+                    sequence_bindings,
+                    options,
+                });
                 Ok(())
             }
         }
@@ -298,10 +497,13 @@ impl Dispatcher {
     /// Returns [`Error::EmptyLayerStack`](crate::error::Error::EmptyLayerStack)
     /// if no layers are on the stack.
     pub fn pop_layer(&mut self) -> Result<LayerName, crate::error::Error> {
-        self.layer_stack
+        let name = self
+            .layer_stack
             .pop()
             .map(|entry| entry.name)
-            .ok_or(crate::error::Error::EmptyLayerStack)
+            .ok_or(crate::error::Error::EmptyLayerStack)?;
+        self.clear_sequences_for_layer(&name);
+        Ok(name)
     }
 
     /// Toggle a layer: push if not active, remove if active.
@@ -320,7 +522,8 @@ impl Dispatcher {
             .iter()
             .rposition(|entry| entry.name == name)
         {
-            self.layer_stack.remove(pos);
+            let removed = self.layer_stack.remove(pos);
+            self.clear_sequences_for_layer(&removed.name);
         } else {
             self.push_layer(name)?;
         }
@@ -338,10 +541,8 @@ impl Dispatcher {
     /// return `MatchResult::Ignored`. Modifier-only presses also return
     /// `MatchResult::Ignored`.
     pub fn process(&mut self, hotkey: &Hotkey, transition: KeyTransition) -> MatchResult<'_> {
-        // Match and extract outcome (temporary borrow of &self)
         let outcome = self.match_extract(hotkey, transition);
 
-        // Apply layer effects (&mut self)
         if let InternalOutcome::Matched {
             ref layer_effect, ..
         } = outcome
@@ -349,24 +550,19 @@ impl Dispatcher {
             self.apply_layer_effect(layer_effect);
         }
 
-        // Tick oneshot and reset timeouts for actionable events
         if !matches!(outcome, InternalOutcome::Ignored) {
             self.reset_layer_timeouts();
-            // Skip oneshot tick for layer mutation events — the mutation
-            // changes the stack, and the triggering keypress shouldn't
-            // count against a newly-pushed oneshot layer.
             if !matches!(
                 outcome,
                 InternalOutcome::Matched {
                     layer_effect: LayerEffect::Push(_) | LayerEffect::Pop | LayerEffect::Toggle(_),
                     ..
-                }
+                } | InternalOutcome::Pending { .. }
             ) {
                 self.tick_oneshot_layers();
             }
         }
 
-        // Convert to MatchResult by re-borrowing &self
         match outcome {
             InternalOutcome::Matched {
                 binding_ref,
@@ -379,16 +575,20 @@ impl Dispatcher {
                     propagation,
                 }
             }
+            InternalOutcome::Pending {
+                steps_matched,
+                steps_remaining,
+            } => MatchResult::Pending {
+                steps_matched,
+                steps_remaining,
+            },
             InternalOutcome::Suppressed => MatchResult::Suppressed,
             InternalOutcome::NoMatch => MatchResult::NoMatch,
             InternalOutcome::Ignored => MatchResult::Ignored,
         }
     }
 
-    /// Return the nearest layer timeout deadline, if any.
-    ///
-    /// Returns `None` if no timeout layers are active. The caller can
-    /// use this to set poll timeouts in their event loop.
+    /// Return the nearest layer or sequence timeout deadline, if any.
     #[must_use]
     pub fn next_timeout_deadline(&self) -> Option<Duration> {
         let now = Instant::now();
@@ -405,71 +605,444 @@ impl Dispatcher {
             }
         }
 
+        for active in &self.active_sequences {
+            let remaining = active.deadline.saturating_duration_since(now);
+            min_remaining = Some(match min_remaining {
+                Some(current) => std::cmp::min(current, remaining),
+                None => remaining,
+            });
+        }
+
         min_remaining
     }
 
-    /// Check all active timeout layers and pop any that have expired.
+    /// Check timeout-driven state transitions.
     ///
-    /// Call this periodically from your event loop (e.g., on each poll
-    /// cycle) to ensure timeout layers auto-pop on schedule.
+    /// This includes layer auto-pop timeouts and sequence step timeouts.
+    /// Use [`check_timeouts_with_results`](Self::check_timeouts_with_results)
+    /// when you need timeout-triggered match results (e.g. standalone fallback
+    /// actions for sequence prefixes).
     pub fn check_timeouts(&mut self) {
+        let _ = self.check_timeouts_with_results();
+    }
+
+    /// Check timeout-driven state transitions and return any timeout matches.
+    pub fn check_timeouts_with_results(&mut self) -> Vec<MatchResult<'_>> {
         let now = Instant::now();
+
+        let mut timed_out_layers = Vec::new();
         self.layer_stack.retain(|entry| {
-            if let Some(timeout) = &entry.timeout {
+            let keep = if let Some(timeout) = &entry.timeout {
                 now.duration_since(timeout.last_activity) < timeout.duration
             } else {
                 true
+            };
+            if !keep {
+                timed_out_layers.push(entry.name.clone());
             }
+            keep
         });
+        for layer_name in timed_out_layers {
+            self.clear_sequences_for_layer(&layer_name);
+        }
+
+        if self.active_sequences.is_empty() {
+            return Vec::new();
+        }
+
+        let before = self.active_sequences.len();
+        self.active_sequences.retain(|active| active.deadline > now);
+        let expired = before.saturating_sub(self.active_sequences.len());
+
+        if expired > 0 && self.active_sequences.is_empty() {
+            if let Some(standalone) = self.pending_standalone.take() {
+                self.apply_layer_effect(&standalone.layer_effect);
+                let action = self.resolve_binding(&standalone.binding_ref);
+                return vec![MatchResult::Matched {
+                    action,
+                    propagation: standalone.propagation,
+                }];
+            }
+
+            self.pending_standalone = None;
+        }
+
+        Vec::new()
     }
 
-    /// Match a hotkey against the layer stack and global bindings.
-    /// Returns an `InternalOutcome` that carries binding refs and layer effects.
-    fn match_extract(&self, hotkey: &Hotkey, transition: KeyTransition) -> InternalOutcome {
-        // Only match on key press events
+    fn match_extract(&mut self, hotkey: &Hotkey, transition: KeyTransition) -> InternalOutcome {
         if !matches!(transition, KeyTransition::Press) {
             return InternalOutcome::Ignored;
         }
 
-        // Modifier-only presses don't trigger hotkeys
         if Modifier::from_key(hotkey.key()).is_some() {
             return InternalOutcome::Ignored;
         }
 
-        // Walk layer stack top-down
-        for entry in self.layer_stack.iter().rev() {
-            if let Some(stored) = self.layers.get(&entry.name) {
-                for (index, layer_binding) in stored.bindings.iter().enumerate() {
-                    if layer_binding.hotkey == *hotkey {
-                        return InternalOutcome::Matched {
-                            binding_ref: MatchedBindingRef::Layer {
-                                name: entry.name.clone(),
-                                index,
-                            },
-                            layer_effect: LayerEffect::from_action(&layer_binding.action),
-                            propagation: layer_binding.propagation,
-                        };
-                    }
-                }
+        if let Some(outcome) = self.match_active_sequences(hotkey) {
+            return outcome;
+        }
 
-                if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
-                    return InternalOutcome::Suppressed;
+        let now = Instant::now();
+        let mut next_priority = 0usize;
+
+        if let Some(outcome) = self.match_layers(hotkey, now, &mut next_priority) {
+            return outcome;
+        }
+
+        self.match_globals(hotkey, now, next_priority)
+    }
+
+    fn match_active_sequences(&mut self, hotkey: &Hotkey) -> Option<InternalOutcome> {
+        if self.active_sequences.is_empty() {
+            return None;
+        }
+
+        let abort_pressed = self
+            .active_sequences
+            .iter()
+            .any(|active| self.sequence_options(&active.binding_ref).abort_key() == hotkey.key());
+        if abort_pressed {
+            self.active_sequences.clear();
+            self.pending_standalone = None;
+            return Some(InternalOutcome::NoMatch);
+        }
+
+        let now = Instant::now();
+        let mut survivors = Vec::new();
+        let mut completed: Vec<(usize, SequenceBindingRef)> = Vec::new();
+        let mut expired = false;
+        let active_sequences = std::mem::take(&mut self.active_sequences);
+
+        for mut active in active_sequences {
+            if active.deadline <= now {
+                expired = true;
+                continue;
+            }
+
+            if self.sequence_step_matches(&active.binding_ref, active.next_step_index, hotkey) {
+                active.next_step_index += 1;
+                let total = self.sequence_step_count(&active.binding_ref);
+                if active.next_step_index >= total {
+                    completed.push((active.priority, active.binding_ref));
+                } else {
+                    active.deadline = now + self.sequence_options(&active.binding_ref).timeout();
+                    survivors.push(active);
                 }
             }
         }
 
-        // Fall through to global bindings
-        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey)
-            && let Some(binding) = self.bindings_by_id.get(&id)
+        if let Some((_, sequence_ref)) = completed.into_iter().min_by_key(|(priority, _)| *priority)
         {
+            self.active_sequences.clear();
+            self.pending_standalone = None;
+            return Some(self.matched_outcome_for_sequence(sequence_ref));
+        }
+
+        if !survivors.is_empty() {
+            self.active_sequences = survivors;
+            if let Some(pending) = self.pending_sequence_snapshot() {
+                return Some(InternalOutcome::Pending {
+                    steps_matched: pending.steps_matched,
+                    steps_remaining: pending.steps_remaining,
+                });
+            }
+            return Some(InternalOutcome::NoMatch);
+        }
+
+        self.active_sequences.clear();
+        if expired && let Some(standalone) = self.pending_standalone.take() {
+            return Some(InternalOutcome::Matched {
+                binding_ref: standalone.binding_ref,
+                layer_effect: standalone.layer_effect,
+                propagation: standalone.propagation,
+            });
+        }
+
+        self.pending_standalone = None;
+        None
+    }
+
+    fn match_layers(
+        &mut self,
+        hotkey: &Hotkey,
+        now: Instant,
+        next_priority: &mut usize,
+    ) -> Option<InternalOutcome> {
+        for entry in self.layer_stack.iter().rev() {
+            if let Some(stored) = self.layers.get(&entry.name) {
+                let mut started = Vec::new();
+                for (index, sequence_binding) in stored.sequence_bindings.iter().enumerate() {
+                    if sequence_binding
+                        .sequence
+                        .steps()
+                        .first()
+                        .is_some_and(|step| step == hotkey)
+                    {
+                        if sequence_binding.sequence.steps().len() == 1 {
+                            return Some(InternalOutcome::Matched {
+                                binding_ref: MatchedBindingRef::SequenceLayer {
+                                    name: entry.name.clone(),
+                                    index,
+                                },
+                                layer_effect: LayerEffect::from_action(&sequence_binding.action),
+                                propagation: sequence_binding.propagation,
+                            });
+                        }
+
+                        started.push(ActiveSequence {
+                            binding_ref: SequenceBindingRef::Layer {
+                                name: entry.name.clone(),
+                                index,
+                            },
+                            next_step_index: 1,
+                            deadline: now + sequence_binding.options.timeout(),
+                            priority: *next_priority,
+                        });
+                        *next_priority += 1;
+                    }
+                }
+
+                if !started.is_empty() {
+                    self.active_sequences = started;
+                    self.pending_standalone = self.match_layer_hotkey(&entry.name, hotkey).map(
+                        |(binding_ref, propagation)| PendingStandalone {
+                            layer_effect: LayerEffect::from_action(
+                                self.resolve_binding(&binding_ref),
+                            ),
+                            binding_ref,
+                            propagation,
+                        },
+                    );
+
+                    if let Some(pending) = self.pending_sequence_snapshot() {
+                        return Some(InternalOutcome::Pending {
+                            steps_matched: pending.steps_matched,
+                            steps_remaining: pending.steps_remaining,
+                        });
+                    }
+
+                    return Some(InternalOutcome::NoMatch);
+                }
+
+                if let Some((binding_ref, propagation)) =
+                    self.match_layer_hotkey(&entry.name, hotkey)
+                {
+                    return Some(InternalOutcome::Matched {
+                        layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
+                        binding_ref,
+                        propagation,
+                    });
+                }
+
+                if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
+                    return Some(InternalOutcome::Suppressed);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn match_globals(
+        &mut self,
+        hotkey: &Hotkey,
+        now: Instant,
+        mut next_priority: usize,
+    ) -> InternalOutcome {
+        let mut started = Vec::new();
+        let mut global_sequences: Vec<_> = self
+            .sequence_bindings_by_id
+            .values()
+            .filter(|binding| {
+                binding
+                    .sequence
+                    .steps()
+                    .first()
+                    .is_some_and(|step| step == hotkey)
+            })
+            .collect();
+        global_sequences.sort_by_key(|binding| binding.id.as_u64());
+
+        for binding in global_sequences {
+            if binding.sequence.steps().len() == 1 {
+                return InternalOutcome::Matched {
+                    binding_ref: MatchedBindingRef::SequenceGlobal(binding.id),
+                    layer_effect: LayerEffect::from_action(&binding.action),
+                    propagation: binding.propagation,
+                };
+            }
+
+            started.push(ActiveSequence {
+                binding_ref: SequenceBindingRef::Global(binding.id),
+                next_step_index: 1,
+                deadline: now + binding.options.timeout(),
+                priority: next_priority,
+            });
+            next_priority += 1;
+        }
+
+        if !started.is_empty() {
+            self.active_sequences = started;
+            self.pending_standalone =
+                self.match_global_hotkey(hotkey)
+                    .map(|(binding_ref, propagation)| PendingStandalone {
+                        layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
+                        binding_ref,
+                        propagation,
+                    });
+
+            if let Some(pending) = self.pending_sequence_snapshot() {
+                return InternalOutcome::Pending {
+                    steps_matched: pending.steps_matched,
+                    steps_remaining: pending.steps_remaining,
+                };
+            }
+
+            return InternalOutcome::NoMatch;
+        }
+
+        if let Some((binding_ref, propagation)) = self.match_global_hotkey(hotkey) {
             return InternalOutcome::Matched {
-                binding_ref: MatchedBindingRef::Global(id),
-                layer_effect: LayerEffect::from_action(binding.action()),
-                propagation: binding.propagation(),
+                layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
+                binding_ref,
+                propagation,
             };
         }
 
         InternalOutcome::NoMatch
+    }
+
+    fn match_layer_hotkey(
+        &self,
+        layer_name: &LayerName,
+        hotkey: &Hotkey,
+    ) -> Option<(MatchedBindingRef, KeyPropagation)> {
+        let stored = self.layers.get(layer_name)?;
+        stored
+            .bindings
+            .iter()
+            .enumerate()
+            .find_map(|(index, layer_binding)| {
+                if layer_binding.hotkey == *hotkey {
+                    Some((
+                        MatchedBindingRef::Layer {
+                            name: layer_name.clone(),
+                            index,
+                        },
+                        layer_binding.propagation,
+                    ))
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn match_global_hotkey(&self, hotkey: &Hotkey) -> Option<(MatchedBindingRef, KeyPropagation)> {
+        let id = *self.binding_ids_by_hotkey.get(hotkey)?;
+        let binding = self.bindings_by_id.get(&id)?;
+        Some((MatchedBindingRef::Global(id), binding.propagation()))
+    }
+
+    fn sequence_step_count(&self, binding_ref: &SequenceBindingRef) -> usize {
+        match binding_ref {
+            SequenceBindingRef::Global(id) => {
+                self.sequence_bindings_by_id[id].sequence.steps().len()
+            }
+            SequenceBindingRef::Layer { name, index } => self.layers[name].sequence_bindings
+                [*index]
+                .sequence
+                .steps()
+                .len(),
+        }
+    }
+
+    fn sequence_step_matches(
+        &self,
+        binding_ref: &SequenceBindingRef,
+        step_index: usize,
+        hotkey: &Hotkey,
+    ) -> bool {
+        match binding_ref {
+            SequenceBindingRef::Global(id) => self.sequence_bindings_by_id[id]
+                .sequence
+                .steps()
+                .get(step_index)
+                .is_some_and(|step| step == hotkey),
+            SequenceBindingRef::Layer { name, index } => self.layers[name].sequence_bindings
+                [*index]
+                .sequence
+                .steps()
+                .get(step_index)
+                .is_some_and(|step| step == hotkey),
+        }
+    }
+
+    fn sequence_options(&self, binding_ref: &SequenceBindingRef) -> SequenceOptions {
+        match binding_ref {
+            SequenceBindingRef::Global(id) => self.sequence_bindings_by_id[id].options,
+            SequenceBindingRef::Layer { name, index } => {
+                self.layers[name].sequence_bindings[*index].options
+            }
+        }
+    }
+
+    fn matched_outcome_for_sequence(&self, sequence_ref: SequenceBindingRef) -> InternalOutcome {
+        match sequence_ref {
+            SequenceBindingRef::Global(id) => {
+                let binding = &self.sequence_bindings_by_id[&id];
+                InternalOutcome::Matched {
+                    binding_ref: MatchedBindingRef::SequenceGlobal(id),
+                    layer_effect: LayerEffect::from_action(&binding.action),
+                    propagation: binding.propagation,
+                }
+            }
+            SequenceBindingRef::Layer { name, index } => {
+                let binding = &self.layers[&name].sequence_bindings[index];
+                InternalOutcome::Matched {
+                    binding_ref: MatchedBindingRef::SequenceLayer { name, index },
+                    layer_effect: LayerEffect::from_action(&binding.action),
+                    propagation: binding.propagation,
+                }
+            }
+        }
+    }
+
+    fn pending_sequence_snapshot(&self) -> Option<PendingSequenceInfo> {
+        self.active_sequences
+            .iter()
+            .map(|active| {
+                let total = self.sequence_step_count(&active.binding_ref);
+                PendingSequenceInfo {
+                    steps_matched: active.next_step_index,
+                    steps_remaining: total.saturating_sub(active.next_step_index),
+                }
+            })
+            .max_by_key(|pending| pending.steps_matched)
+    }
+
+    fn clear_sequences_for_layer(&mut self, layer_name: &LayerName) {
+        self.active_sequences.retain(|active| {
+            !matches!(
+                active.binding_ref,
+                SequenceBindingRef::Layer { ref name, .. } if name == layer_name
+            )
+        });
+
+        if self.pending_standalone.as_ref().is_some_and(|pending| {
+            matches!(
+                pending.binding_ref,
+                MatchedBindingRef::Layer { ref name, .. }
+                    | MatchedBindingRef::SequenceLayer { ref name, .. }
+                    if name == layer_name
+            )
+        }) {
+            self.pending_standalone = None;
+        }
+
+        if self.active_sequences.is_empty() {
+            self.pending_standalone = None;
+        }
     }
 
     /// Resolve a binding reference back to its action.
@@ -477,6 +1050,10 @@ impl Dispatcher {
         match binding_ref {
             MatchedBindingRef::Global(id) => self.bindings_by_id[id].action(),
             MatchedBindingRef::Layer { name, index } => &self.layers[name].bindings[*index].action,
+            MatchedBindingRef::SequenceGlobal(id) => &self.sequence_bindings_by_id[id].action,
+            MatchedBindingRef::SequenceLayer { name, index } => {
+                &self.layers[name].sequence_bindings[*index].action
+            }
         }
     }
 
@@ -496,7 +1073,6 @@ impl Dispatcher {
         }
     }
 
-    /// Reset timeout clocks on all active timeout layers (activity occurred).
     fn reset_layer_timeouts(&mut self) {
         let now = Instant::now();
         for entry in &mut self.layer_stack {
@@ -506,7 +1082,6 @@ impl Dispatcher {
         }
     }
 
-    /// Decrement oneshot counters and pop expired layers.
     fn tick_oneshot_layers(&mut self) {
         let mut pop_index = None;
         for (i, entry) in self.layer_stack.iter_mut().enumerate().rev() {
@@ -519,7 +1094,8 @@ impl Dispatcher {
             }
         }
         if let Some(index) = pop_index {
-            self.layer_stack.remove(index);
+            let removed = self.layer_stack.remove(index);
+            self.clear_sequences_for_layer(&removed.name);
         }
     }
 }
@@ -529,6 +1105,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
+    use std::time::Duration;
 
     use super::*;
     use crate::key::Key;
@@ -697,5 +1274,370 @@ mod tests {
         // Second press → layer should be gone now
         let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
         assert!(matches!(result, MatchResult::NoMatch));
+    }
+
+    fn execute_callback(result: &MatchResult<'_>) {
+        if let MatchResult::Matched {
+            action: Action::Callback(callback),
+            ..
+        } = result
+        {
+            callback();
+        }
+    }
+
+    #[test]
+    fn sequence_reports_pending_then_fires_on_completion() {
+        let mut dispatcher = Dispatcher::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                },
+            )
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        let second = dispatcher.process(
+            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        execute_callback(&second);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn sequence_timeout_fires_standalone_binding() {
+        let mut dispatcher = Dispatcher::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        dispatcher.set_sequence_timeout(Duration::from_millis(10));
+        dispatcher
+            .register(Hotkey::new(Key::K).modifier(Modifier::Ctrl), move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            })
+            .unwrap();
+        dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(), || {})
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        std::thread::sleep(Duration::from_millis(20));
+        for timeout_result in dispatcher.check_timeouts_with_results() {
+            execute_callback(&timeout_result);
+        }
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn sequence_wrong_key_resets_and_current_key_re_matches() {
+        let mut dispatcher = Dispatcher::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(), || {})
+            .unwrap();
+        dispatcher
+            .register(Hotkey::new(Key::X).modifier(Modifier::Ctrl), move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            })
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        let wrong = dispatcher.process(
+            &Hotkey::new(Key::X).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        execute_callback(&wrong);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+        assert!(dispatcher.pending_sequence().is_none());
+    }
+
+    #[test]
+    fn abort_key_cancels_pending_sequence() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(), || {})
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        let aborted = dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
+        assert!(matches!(aborted, MatchResult::NoMatch));
+        assert!(dispatcher.pending_sequence().is_none());
+    }
+
+    #[test]
+    fn overlapping_prefix_falls_back_to_standalone_on_timeout() {
+        let mut dispatcher = Dispatcher::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        dispatcher.set_sequence_timeout(Duration::from_millis(10));
+        dispatcher
+            .register(Hotkey::new(Key::K).modifier(Modifier::Ctrl), move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            })
+            .unwrap();
+        dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(), || {})
+            .unwrap();
+
+        let pending = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(pending, MatchResult::Pending { .. }));
+
+        std::thread::sleep(Duration::from_millis(20));
+        for timeout_result in dispatcher.check_timeouts_with_results() {
+            execute_callback(&timeout_result);
+        }
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn multiple_sequences_with_shared_prefix_progress_independently() {
+        let mut dispatcher = Dispatcher::new();
+        let c_counter = Arc::new(AtomicUsize::new(0));
+        let d_counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&c_counter);
+        let dc = Arc::clone(&d_counter);
+
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Ctrl+S, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                },
+            )
+            .unwrap();
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Ctrl+S, Ctrl+D".parse::<HotkeySequence>().unwrap(),
+                move || {
+                    dc.fetch_add(1, Ordering::Relaxed);
+                },
+            )
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+        let second = dispatcher.process(
+            &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(second, MatchResult::Pending { .. }));
+
+        let third = dispatcher.process(
+            &Hotkey::new(Key::D).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        execute_callback(&third);
+
+        assert_eq!(c_counter.load(Ordering::Relaxed), 0);
+        assert_eq!(d_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn layer_timeout_clears_pending_layer_sequence_state() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(
+                Layer::new("timed")
+                    .bind_sequence(
+                        "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                        Action::Suppress,
+                    )
+                    .timeout(Duration::from_millis(10)),
+            )
+            .unwrap();
+        dispatcher.push_layer("timed").unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        std::thread::sleep(Duration::from_millis(20));
+        dispatcher.check_timeouts();
+
+        assert!(dispatcher.pending_sequence().is_none());
+    }
+
+    #[test]
+    fn unregistering_standalone_while_sequence_pending_does_not_panic_or_fire_fallback() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.set_sequence_timeout(Duration::from_millis(10));
+
+        let standalone_id = dispatcher
+            .register(
+                Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                Action::Suppress,
+            )
+            .unwrap();
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        dispatcher.unregister(standalone_id);
+
+        std::thread::sleep(Duration::from_millis(20));
+        let timeout_results = dispatcher.check_timeouts_with_results();
+        assert!(timeout_results.is_empty());
+    }
+
+    #[test]
+    fn timeout_fallback_applies_layer_effects() {
+        let mut dispatcher = Dispatcher::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        dispatcher
+            .define_layer(Layer::new("nav").bind(Key::H, move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }))
+            .unwrap();
+        dispatcher.set_sequence_timeout(Duration::from_millis(10));
+        dispatcher
+            .register(
+                Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                Action::PushLayer(LayerName::from("nav")),
+            )
+            .unwrap();
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        std::thread::sleep(Duration::from_millis(20));
+        for timeout_result in dispatcher.check_timeouts_with_results() {
+            execute_callback(&timeout_result);
+        }
+
+        let h = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+        execute_callback(&h);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn registering_sequence_with_existing_hotkey_id_is_rejected() {
+        let mut dispatcher = Dispatcher::new();
+        let id = BindingId::new();
+
+        dispatcher
+            .register_binding(RegisteredBinding::new(
+                id,
+                Hotkey::new(Key::A),
+                Action::Suppress,
+            ))
+            .unwrap();
+
+        let result = dispatcher.register_sequence_binding_with_id(
+            id,
+            "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+            Action::Suppress,
+            SequenceOptions::default(),
+        );
+
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn registering_hotkey_with_existing_sequence_id_is_rejected() {
+        let mut dispatcher = Dispatcher::new();
+        let id = BindingId::new();
+
+        dispatcher
+            .register_sequence_binding_with_id(
+                id,
+                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                Action::Suppress,
+                SequenceOptions::default(),
+            )
+            .unwrap();
+
+        let result = dispatcher.register_binding(RegisteredBinding::new(
+            id,
+            Hotkey::new(Key::A),
+            Action::Suppress,
+        ));
+
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn pending_sequence_query_reports_progress() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(), || {})
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        let pending = dispatcher.pending_sequence().expect("pending sequence");
+        assert_eq!(pending.steps_matched, 1);
+        assert_eq!(pending.steps_remaining, 1);
     }
 }

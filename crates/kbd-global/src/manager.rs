@@ -20,12 +20,14 @@
 use std::fmt;
 use std::sync::Mutex;
 use std::sync::mpsc;
+use std::time::Duration;
 
 use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::RegisteredBinding;
 use kbd::hotkey::Hotkey;
+use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
 use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
@@ -33,6 +35,8 @@ use kbd::introspection::ConflictInfo;
 use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd::layer::LayerName;
+use kbd::sequence::PendingSequenceInfo;
+use kbd::sequence::SequenceOptions;
 
 use crate::Error;
 use crate::backend::Backend;
@@ -168,6 +172,38 @@ impl HotkeyManager {
         self.register_action(hotkey.into(), Action::from(callback))
     }
 
+    /// Register a multi-step sequence callback.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`] if the sequence is already bound,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn register_sequence<F>(
+        &self,
+        sequence: impl Into<HotkeySequence>,
+        callback: F,
+    ) -> Result<BindingGuard, Error>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        self.register_sequence_action(sequence.into(), Action::from(callback), None)
+    }
+
+    /// Register a multi-step sequence with explicit action and options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::AlreadyRegistered`] if the sequence is already bound,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn register_sequence_with_options(
+        &self,
+        sequence: impl Into<HotkeySequence>,
+        action: impl Into<Action>,
+        options: SequenceOptions,
+    ) -> Result<BindingGuard, Error> {
+        self.register_sequence_action(sequence.into(), action.into(), Some(options))
+    }
+
     /// Register a hotkey with an explicit action and binding options.
     ///
     /// Use when you need metadata (description, overlay visibility) or
@@ -284,6 +320,29 @@ impl HotkeyManager {
 
     fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<BindingGuard, Error> {
         self.register_with_options(hotkey, action, BindingOptions::default())
+    }
+
+    fn register_sequence_action(
+        &self,
+        sequence: HotkeySequence,
+        action: Action,
+        options: Option<SequenceOptions>,
+    ) -> Result<BindingGuard, Error> {
+        let id = BindingId::new();
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::RegisterSequence {
+            id,
+            sequence,
+            action,
+            options,
+            reply: reply_tx,
+        })?;
+
+        match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
+            Ok(()) => Ok(BindingGuard::new(id, self.commands.clone())),
+            Err(error) => Err(error),
+        }
     }
 
     fn shutdown_inner(&self) -> Result<(), Error> {
@@ -407,7 +466,58 @@ impl HotkeyManager {
         reply_rx.recv().map_err(|_| Error::ManagerStopped)
     }
 
-    // TODO: register_sequence() — multi-step hotkey
+    /// Set default sequence timeout for future sequence registrations.
+    ///
+    /// Existing sequence bindings keep the timeout they were registered with.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn set_sequence_timeout(&self, timeout: Duration) -> Result<(), Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::SetSequenceTimeout {
+            timeout,
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)?;
+        Ok(())
+    }
+
+    /// Set default sequence abort key for future sequence registrations.
+    ///
+    /// Existing sequence bindings keep their configured abort key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn set_sequence_abort_key(&self, key: Key) -> Result<(), Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands.send(Command::SetSequenceAbortKey {
+            key,
+            reply: reply_tx,
+        })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)?;
+        Ok(())
+    }
+
+    /// Return current in-progress sequence state, if any.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn pending_sequence(&self) -> Result<Option<PendingSequenceInfo>, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+
+        self.commands
+            .send(Command::PendingSequence { reply: reply_tx })?;
+
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
     // TODO: register_tap_hold() — dual-function key
 
     /// Find bindings that are shadowed by higher-priority layers.

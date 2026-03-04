@@ -135,7 +135,7 @@ impl Dispatcher {
                 self.layers.get(&entry.name).map(|stored| ActiveLayerInfo {
                     name: entry.name.clone(),
                     description: stored.options.description().map(Box::from),
-                    binding_count: stored.bindings.len(),
+                    binding_count: stored.bindings.len() + stored.sequence_bindings.len(),
                 })
             })
             .collect()
