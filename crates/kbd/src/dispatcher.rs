@@ -698,20 +698,11 @@ impl Dispatcher {
             return None;
         }
 
-        let abort_pressed = self
-            .active_sequences
-            .iter()
-            .any(|active| self.sequence_options(&active.binding_ref).abort_key() == hotkey.key());
-        if abort_pressed {
-            self.active_sequences.clear();
-            self.pending_standalone = None;
-            return Some(InternalOutcome::NoMatch);
-        }
-
         let now = Instant::now();
         let mut survivors = Vec::new();
         let mut completed: Vec<(usize, SequenceBindingRef)> = Vec::new();
         let mut expired = false;
+        let mut aborted = false;
         let active_sequences = std::mem::take(&mut self.active_sequences);
 
         for mut active in active_sequences {
@@ -729,6 +720,11 @@ impl Dispatcher {
                     active.deadline = now + self.sequence_options(&active.binding_ref).timeout();
                     survivors.push(active);
                 }
+                continue;
+            }
+
+            if self.sequence_options(&active.binding_ref).abort_key() == hotkey.key() {
+                aborted = true;
             }
         }
 
@@ -751,6 +747,12 @@ impl Dispatcher {
         }
 
         self.active_sequences.clear();
+
+        if aborted {
+            self.pending_standalone = None;
+            return Some(InternalOutcome::NoMatch);
+        }
+
         if expired && let Some(standalone) = self.pending_standalone.take() {
             return Some(InternalOutcome::Matched {
                 binding_ref: standalone.binding_ref,
@@ -1393,6 +1395,33 @@ mod tests {
         let aborted = dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
         assert!(matches!(aborted, MatchResult::NoMatch));
         assert!(dispatcher.pending_sequence().is_none());
+    }
+
+    #[test]
+    fn abort_key_step_can_still_complete_sequence() {
+        let mut dispatcher = Dispatcher::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Escape".parse::<HotkeySequence>().unwrap(),
+                move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                },
+            )
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        let second = dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
+        execute_callback(&second);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 
     #[test]
