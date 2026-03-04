@@ -15,7 +15,7 @@ use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
 
-enum SequencePrefixProbe {
+enum SequenceQueryDecision {
     None,
     SingleStep(Hotkey),
     MultiStep,
@@ -103,8 +103,8 @@ impl Dispatcher {
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
                 match Self::probe_layer_sequence_prefix(stored, hotkey) {
-                    SequencePrefixProbe::None => {}
-                    SequencePrefixProbe::SingleStep(matched_hotkey) => {
+                    SequenceQueryDecision::None => {}
+                    SequenceQueryDecision::SingleStep(matched_hotkey) => {
                         return Some(BindingInfo {
                             hotkey: matched_hotkey,
                             description: None,
@@ -113,7 +113,7 @@ impl Dispatcher {
                             overlay_visibility: crate::binding::OverlayVisibility::Visible,
                         });
                     }
-                    SequencePrefixProbe::MultiStep => {
+                    SequenceQueryDecision::MultiStep => {
                         return None;
                     }
                 }
@@ -152,8 +152,8 @@ impl Dispatcher {
         global_sequences.sort_by_key(|binding| binding.id.as_u64());
 
         match Self::probe_global_sequence_prefix(&global_sequences, hotkey) {
-            SequencePrefixProbe::None => {}
-            SequencePrefixProbe::SingleStep(matched_hotkey) => {
+            SequenceQueryDecision::None => {}
+            SequenceQueryDecision::SingleStep(matched_hotkey) => {
                 return Some(BindingInfo {
                     hotkey: matched_hotkey,
                     description: None,
@@ -162,7 +162,7 @@ impl Dispatcher {
                     overlay_visibility: crate::binding::OverlayVisibility::Visible,
                 });
             }
-            SequencePrefixProbe::MultiStep => {
+            SequenceQueryDecision::MultiStep => {
                 return None;
             }
         }
@@ -183,21 +183,21 @@ impl Dispatcher {
         None
     }
 
-    fn probe_layer_sequence_prefix(stored: &StoredLayer, hotkey: &Hotkey) -> SequencePrefixProbe {
-        let mut probe = SequencePrefixProbe::None;
+    fn probe_layer_sequence_prefix(stored: &StoredLayer, hotkey: &Hotkey) -> SequenceQueryDecision {
+        let mut probe = SequenceQueryDecision::None;
 
         for sequence_binding in &stored.sequence_bindings {
             match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
                 SequencePrefixKind::None => {}
                 SequencePrefixKind::SingleStep => {
-                    probe = SequencePrefixProbe::SingleStep(
+                    probe = SequenceQueryDecision::SingleStep(
                         sequence_binding.sequence.steps()[0].clone(),
                     );
                     break;
                 }
                 SequencePrefixKind::MultiStep => {
-                    if matches!(probe, SequencePrefixProbe::None) {
-                        probe = SequencePrefixProbe::MultiStep;
+                    if matches!(probe, SequenceQueryDecision::None) {
+                        probe = SequenceQueryDecision::MultiStep;
                     }
                 }
             }
@@ -209,21 +209,21 @@ impl Dispatcher {
     fn probe_global_sequence_prefix(
         global_sequences: &[&RegisteredSequenceBinding],
         hotkey: &Hotkey,
-    ) -> SequencePrefixProbe {
-        let mut probe = SequencePrefixProbe::None;
+    ) -> SequenceQueryDecision {
+        let mut probe = SequenceQueryDecision::None;
 
         for sequence_binding in global_sequences {
             match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
                 SequencePrefixKind::None => {}
                 SequencePrefixKind::SingleStep => {
-                    probe = SequencePrefixProbe::SingleStep(
+                    probe = SequenceQueryDecision::SingleStep(
                         sequence_binding.sequence.steps()[0].clone(),
                     );
                     break;
                 }
                 SequencePrefixKind::MultiStep => {
-                    if matches!(probe, SequencePrefixProbe::None) {
-                        probe = SequencePrefixProbe::MultiStep;
+                    if matches!(probe, SequenceQueryDecision::None) {
+                        probe = SequenceQueryDecision::MultiStep;
                     }
                 }
             }
