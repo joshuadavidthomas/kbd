@@ -24,14 +24,11 @@ pub trait SequenceInput: private::Sealed {
     fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError>;
 }
 
-impl<T> private::Sealed for T where T: Into<HotkeySequence> {}
+impl private::Sealed for HotkeySequence {}
 
-impl<T> SequenceInput for T
-where
-    T: Into<HotkeySequence>,
-{
+impl SequenceInput for HotkeySequence {
     fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
-        Ok(self.into())
+        Ok(self)
     }
 }
 
@@ -57,10 +54,6 @@ impl SequenceInput for Vec<Hotkey> {
     fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
         HotkeySequence::new(self)
     }
-}
-
-pub(crate) fn parse_sequence(input: &str) -> Result<HotkeySequence, ParseHotkeyError> {
-    input.parse()
 }
 
 /// Runtime options for sequence matching.
@@ -133,23 +126,6 @@ mod tests {
             .expect("valid sequence");
         let parsed = <HotkeySequence as SequenceInput>::into_sequence(sequence.clone())
             .expect("typed sequence input should not fail");
-        assert_eq!(parsed, sequence);
-    }
-
-    #[test]
-    fn into_hotkey_sequence_input_round_trips() {
-        struct Wrapper(HotkeySequence);
-
-        impl From<Wrapper> for HotkeySequence {
-            fn from(value: Wrapper) -> Self {
-                value.0
-            }
-        }
-
-        let sequence = HotkeySequence::new(vec![Hotkey::new(Key::K), Hotkey::new(Key::C)])
-            .expect("valid sequence");
-        let parsed = <Wrapper as SequenceInput>::into_sequence(Wrapper(sequence.clone()))
-            .expect("into-based sequence input should not fail");
         assert_eq!(parsed, sequence);
     }
 

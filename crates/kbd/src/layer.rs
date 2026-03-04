@@ -19,6 +19,7 @@ use crate::binding::KeyPropagation;
 use crate::error::ParseHotkeyError;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
+use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 
 /// Layer identifier.
@@ -263,19 +264,22 @@ impl Layer {
     }
 
     /// Add a multi-step sequence binding to this layer.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] when sequence input conversion fails.
     pub fn bind_sequence(
         mut self,
-        sequence: impl Into<HotkeySequence>,
+        sequence: impl SequenceInput,
         action: impl Into<Action>,
-    ) -> Self {
+    ) -> Result<Self, ParseHotkeyError> {
         self.sequence_bindings.push(LayerSequenceBinding {
-            sequence: sequence.into(),
+            sequence: sequence.into_sequence()?,
             action: action.into(),
             propagation: KeyPropagation::default(),
             options: SequenceOptions::default(),
         });
-        self
+        Ok(self)
     }
 
     /// Parse and add a multi-step sequence binding from a string.
@@ -288,25 +292,27 @@ impl Layer {
         sequence: &str,
         action: impl Into<Action>,
     ) -> Result<Self, ParseHotkeyError> {
-        let sequence = crate::sequence::parse_sequence(sequence)?;
-        Ok(self.bind_sequence(sequence, action))
+        self.bind_sequence(sequence, action)
     }
 
     /// Add a sequence binding with explicit sequence options.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] when sequence input conversion fails.
     pub fn bind_sequence_with_options(
         mut self,
-        sequence: impl Into<HotkeySequence>,
+        sequence: impl SequenceInput,
         action: impl Into<Action>,
         options: SequenceOptions,
-    ) -> Self {
+    ) -> Result<Self, ParseHotkeyError> {
         self.sequence_bindings.push(LayerSequenceBinding {
-            sequence: sequence.into(),
+            sequence: sequence.into_sequence()?,
             action: action.into(),
             propagation: KeyPropagation::default(),
             options,
         });
-        self
+        Ok(self)
     }
 
     /// Parse and add a sequence binding with explicit sequence options.
@@ -320,8 +326,7 @@ impl Layer {
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<Self, ParseHotkeyError> {
-        let sequence = crate::sequence::parse_sequence(sequence)?;
-        Ok(self.bind_sequence_with_options(sequence, action, options))
+        self.bind_sequence_with_options(sequence, action, options)
     }
 
     /// Set the layer to swallow unmatched keys (consume instead of fallthrough).
@@ -408,6 +413,7 @@ mod tests {
 
     use super::*;
     use crate::action::Action;
+    use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
     use crate::key::Key;
 
@@ -554,5 +560,45 @@ mod tests {
     fn layer_bind_sequence_str_reports_parse_error() {
         let result = Layer::new("nav").bind_sequence_str("Ctrl+K, Ctrl+Nope", Action::Suppress);
         assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn layer_bind_sequence_accepts_string_input() {
+        let layer = Layer::new("nav")
+            .bind_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+
+        assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_sequence_accepts_typed_input() {
+        let sequence: HotkeySequence = "Ctrl+K, Ctrl+C".parse().expect("valid sequence");
+        let layer = Layer::new("nav")
+            .bind_sequence(sequence, Action::Suppress)
+            .unwrap();
+
+        assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_sequence_reports_parse_error_for_string_input() {
+        let result = Layer::new("nav").bind_sequence("Ctrl+K, Ctrl+Nope", Action::Suppress);
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn layer_bind_sequence_with_options_accepts_string_input() {
+        let options = SequenceOptions::default()
+            .with_timeout(Duration::from_millis(250))
+            .with_abort_key(Key::TAB);
+
+        let layer = Layer::new("nav")
+            .bind_sequence_with_options("Ctrl+K, Ctrl+C", Action::Suppress, options)
+            .unwrap();
+
+        let (_, _, sequence_bindings, _) = layer.into_parts();
+        assert_eq!(sequence_bindings.len(), 1);
+        assert_eq!(sequence_bindings[0].options, options);
     }
 }

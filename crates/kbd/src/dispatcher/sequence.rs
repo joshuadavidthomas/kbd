@@ -736,10 +736,8 @@ mod tests {
         dispatcher
             .define_layer(
                 Layer::new("timed")
-                    .bind_sequence(
-                        "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
-                        Action::Suppress,
-                    )
+                    .bind_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+                    .unwrap()
                     .timeout(Duration::from_millis(10)),
             )
             .unwrap();
@@ -763,10 +761,8 @@ mod tests {
         dispatcher
             .define_layer(
                 Layer::new("nav")
-                    .bind_sequence(
-                        "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
-                        Action::Suppress,
-                    )
+                    .bind_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+                    .unwrap()
                     .swallow(),
             )
             .unwrap();
