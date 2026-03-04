@@ -189,6 +189,27 @@ impl HotkeyManager {
         self.register_sequence_action(sequence.into(), Action::from(callback), None)
     }
 
+    /// Parse and register a multi-step sequence callback from a string.
+    ///
+    /// This is useful for config-defined bindings loaded from text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] if the sequence string is invalid,
+    /// [`Error::AlreadyRegistered`] if the sequence is already bound,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn register_sequence_str<F>(
+        &self,
+        sequence: &str,
+        callback: F,
+    ) -> Result<BindingGuard, Error>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let sequence: HotkeySequence = sequence.parse()?;
+        self.register_sequence(sequence, callback)
+    }
+
     /// Register a multi-step sequence with explicit action and options.
     ///
     /// # Errors
@@ -202,6 +223,23 @@ impl HotkeyManager {
         options: SequenceOptions,
     ) -> Result<BindingGuard, Error> {
         self.register_sequence_action(sequence.into(), action.into(), Some(options))
+    }
+
+    /// Parse and register a multi-step sequence with explicit options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] if the sequence string is invalid,
+    /// [`Error::AlreadyRegistered`] if the sequence is already bound,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn register_sequence_with_options_str(
+        &self,
+        sequence: &str,
+        action: impl Into<Action>,
+        options: SequenceOptions,
+    ) -> Result<BindingGuard, Error> {
+        let sequence: HotkeySequence = sequence.parse()?;
+        self.register_sequence_with_options(sequence, action, options)
     }
 
     /// Register a hotkey with an explicit action and binding options.

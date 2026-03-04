@@ -77,16 +77,36 @@ fn shutdown_stops_handle_unregistration_commands() {
 fn register_sequence_returns_guard() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 
+    let sequence = kbd::hotkey::HotkeySequence::new(vec![
+        Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+        Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+    ])
+    .unwrap();
+
     let guard = manager
-        .register_sequence(
-            "Ctrl+K, Ctrl+C"
-                .parse::<kbd::hotkey::HotkeySequence>()
-                .unwrap(),
-            || {},
-        )
+        .register_sequence(sequence, || {})
         .expect("sequence registration should succeed");
 
     drop(guard);
+}
+
+#[test]
+fn register_sequence_str_returns_guard() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let guard = manager
+        .register_sequence_str("Ctrl+K, Ctrl+C", || {})
+        .expect("sequence string registration should succeed");
+
+    drop(guard);
+}
+
+#[test]
+fn register_sequence_str_reports_parse_error() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let result = manager.register_sequence_str("Ctrl+K, Ctrl+Nope", || {});
+    assert!(matches!(result, Err(Error::Parse(_))));
 }
 
 #[test]
