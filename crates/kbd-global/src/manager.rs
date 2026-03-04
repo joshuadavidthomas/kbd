@@ -36,6 +36,7 @@ use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd::layer::LayerName;
 use kbd::sequence::PendingSequenceInfo;
+use kbd::sequence::SequenceInput;
 use kbd::sequence::SequenceOptions;
 
 use crate::Error;
@@ -176,17 +177,19 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`] if the sequence is already bound,
+    /// Returns [`Error::Parse`] when sequence input conversion fails,
+    /// [`Error::AlreadyRegistered`] if the sequence is already bound,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn register_sequence<F>(
         &self,
-        sequence: impl Into<HotkeySequence>,
+        sequence: impl SequenceInput,
         callback: F,
     ) -> Result<BindingGuard, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
-        self.register_sequence_action(sequence.into(), Action::from(callback), None)
+        let sequence = sequence.into_sequence()?;
+        self.register_sequence_action(sequence, Action::from(callback), None)
     }
 
     /// Parse and register a multi-step sequence callback from a string.
@@ -206,7 +209,6 @@ impl HotkeyManager {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        let sequence: HotkeySequence = sequence.parse()?;
         self.register_sequence(sequence, callback)
     }
 
@@ -214,15 +216,17 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`] if the sequence is already bound,
+    /// Returns [`Error::Parse`] when sequence input conversion fails,
+    /// [`Error::AlreadyRegistered`] if the sequence is already bound,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn register_sequence_with_options(
         &self,
-        sequence: impl Into<HotkeySequence>,
+        sequence: impl SequenceInput,
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<BindingGuard, Error> {
-        self.register_sequence_action(sequence.into(), action.into(), Some(options))
+        let sequence = sequence.into_sequence()?;
+        self.register_sequence_action(sequence, action.into(), Some(options))
     }
 
     /// Parse and register a multi-step sequence with explicit options.
@@ -238,7 +242,6 @@ impl HotkeyManager {
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<BindingGuard, Error> {
-        let sequence: HotkeySequence = sequence.parse()?;
         self.register_sequence_with_options(sequence, action, options)
     }
 

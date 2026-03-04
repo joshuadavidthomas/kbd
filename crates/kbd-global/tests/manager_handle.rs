@@ -91,6 +91,42 @@ fn register_sequence_returns_guard() {
 }
 
 #[test]
+fn register_sequence_accepts_string_input() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let guard = manager
+        .register_sequence("Ctrl+K, Ctrl+C", || {})
+        .expect("sequence string registration should succeed");
+
+    drop(guard);
+}
+
+#[test]
+fn register_sequence_accepts_vec_hotkeys_input() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let guard = manager
+        .register_sequence(
+            vec![
+                Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            ],
+            || {},
+        )
+        .expect("sequence vec registration should succeed");
+
+    drop(guard);
+}
+
+#[test]
+fn register_sequence_reports_parse_error_for_string_input() {
+    let manager = HotkeyManager::new().expect("manager should initialize");
+
+    let result = manager.register_sequence("Ctrl+K, Ctrl+Nope", || {});
+    assert!(matches!(result, Err(Error::Parse(_))));
+}
+
+#[test]
 fn register_sequence_str_returns_guard() {
     let manager = HotkeyManager::new().expect("manager should initialize");
 

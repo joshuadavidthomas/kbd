@@ -86,5 +86,6 @@ pub mod prelude {
     pub use crate::layer::Layer;
     pub use crate::layer::LayerName;
     pub use crate::sequence::PendingSequenceInfo;
+    pub use crate::sequence::SequenceInput;
     pub use crate::sequence::SequenceOptions;
 }

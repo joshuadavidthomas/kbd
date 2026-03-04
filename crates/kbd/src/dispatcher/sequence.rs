@@ -425,6 +425,42 @@ mod tests {
     }
 
     #[test]
+    fn register_sequence_accepts_string_input() {
+        let mut dispatcher = Dispatcher::new();
+
+        let id = dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+
+        dispatcher.unregister(id);
+    }
+
+    #[test]
+    fn register_sequence_accepts_vec_hotkeys_input() {
+        let mut dispatcher = Dispatcher::new();
+
+        let id = dispatcher
+            .register_sequence(
+                vec![
+                    Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                ],
+                Action::Suppress,
+            )
+            .unwrap();
+
+        dispatcher.unregister(id);
+    }
+
+    #[test]
+    fn register_sequence_reports_parse_error_for_string_input() {
+        let mut dispatcher = Dispatcher::new();
+
+        let result = dispatcher.register_sequence("Ctrl+K, Ctrl+Nope", Action::Suppress);
+        assert!(matches!(result, Err(crate::error::Error::Parse(_))));
+    }
+
+    #[test]
     fn register_sequence_str_parses_and_registers() {
         let mut dispatcher = Dispatcher::new();
 

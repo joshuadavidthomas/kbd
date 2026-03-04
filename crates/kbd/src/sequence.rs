@@ -3,8 +3,61 @@
 use std::time::Duration;
 
 use crate::error::ParseHotkeyError;
+use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::key::Key;
+
+mod private {
+    pub trait Sealed {}
+}
+
+/// Input types accepted by sequence registration APIs.
+///
+/// This trait is intentionally sealed so we can add input forms over time
+/// without committing to an open trait-implementation surface.
+pub trait SequenceInput: private::Sealed {
+    /// Converts this input into a [`HotkeySequence`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] when conversion fails.
+    fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError>;
+}
+
+impl<T> private::Sealed for T where T: Into<HotkeySequence> {}
+
+impl<T> SequenceInput for T
+where
+    T: Into<HotkeySequence>,
+{
+    fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
+        Ok(self.into())
+    }
+}
+
+impl private::Sealed for &str {}
+
+impl SequenceInput for &str {
+    fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
+        self.parse()
+    }
+}
+
+impl private::Sealed for String {}
+
+impl SequenceInput for String {
+    fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
+        self.parse()
+    }
+}
+
+impl private::Sealed for Vec<Hotkey> {}
+
+impl SequenceInput for Vec<Hotkey> {
+    fn into_sequence(self) -> Result<HotkeySequence, ParseHotkeyError> {
+        HotkeySequence::new(self)
+    }
+}
 
 pub(crate) fn parse_sequence(input: &str) -> Result<HotkeySequence, ParseHotkeyError> {
     input.parse()
@@ -67,4 +120,88 @@ pub struct PendingSequenceInfo {
     pub steps_matched: usize,
     /// Number of steps still required to complete.
     pub steps_remaining: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hotkey::Modifier;
+
+    #[test]
+    fn typed_sequence_input_round_trips() {
+        let sequence = HotkeySequence::new(vec![Hotkey::new(Key::K), Hotkey::new(Key::C)])
+            .expect("valid sequence");
+        let parsed = <HotkeySequence as SequenceInput>::into_sequence(sequence.clone())
+            .expect("typed sequence input should not fail");
+        assert_eq!(parsed, sequence);
+    }
+
+    #[test]
+    fn into_hotkey_sequence_input_round_trips() {
+        struct Wrapper(HotkeySequence);
+
+        impl From<Wrapper> for HotkeySequence {
+            fn from(value: Wrapper) -> Self {
+                value.0
+            }
+        }
+
+        let sequence = HotkeySequence::new(vec![Hotkey::new(Key::K), Hotkey::new(Key::C)])
+            .expect("valid sequence");
+        let parsed = <Wrapper as SequenceInput>::into_sequence(Wrapper(sequence.clone()))
+            .expect("into-based sequence input should not fail");
+        assert_eq!(parsed, sequence);
+    }
+
+    #[test]
+    fn str_sequence_input_parses() {
+        let parsed = <&str as SequenceInput>::into_sequence("Ctrl+K, Ctrl+C")
+            .expect("valid sequence string should parse");
+        let expected = HotkeySequence::new(vec![
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+        ])
+        .expect("valid expected sequence");
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn str_sequence_input_reports_parse_error() {
+        let parsed = <&str as SequenceInput>::into_sequence("Ctrl+K, Ctrl+Nope");
+        assert!(matches!(parsed, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn string_sequence_input_parses() {
+        let parsed = <String as SequenceInput>::into_sequence("Ctrl+K, Ctrl+C".to_string())
+            .expect("valid sequence string should parse");
+        let expected = HotkeySequence::new(vec![
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+        ])
+        .expect("valid expected sequence");
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn vec_hotkey_sequence_input_builds_sequence() {
+        let parsed = <Vec<Hotkey> as SequenceInput>::into_sequence(vec![
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+        ])
+        .expect("valid vec hotkey input should build a sequence");
+
+        let expected = HotkeySequence::new(vec![
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+        ])
+        .expect("valid expected sequence");
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn vec_hotkey_sequence_input_rejects_empty_sequence() {
+        let parsed = <Vec<Hotkey> as SequenceInput>::into_sequence(Vec::new());
+        assert!(matches!(parsed, Err(ParseHotkeyError::Empty)));
+    }
 }

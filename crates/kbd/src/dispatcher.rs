@@ -33,6 +33,7 @@ use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
 use crate::sequence::PendingSequenceInfo;
+use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 
 /// Result of attempting to match a key event against registered bindings.
@@ -245,17 +246,20 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// Returns [`Error::Parse`](crate::error::Error::Parse) when sequence input
+    /// conversion fails, or
+    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
     pub fn register_sequence(
         &mut self,
-        sequence: impl Into<HotkeySequence>,
+        sequence: impl SequenceInput,
         action: impl Into<Action>,
     ) -> Result<BindingId, crate::error::Error> {
         let id = BindingId::new();
+        let sequence = sequence.into_sequence()?;
         self.register_sequence_binding_with_id(
             id,
-            sequence.into(),
+            sequence,
             action.into(),
             self.default_sequence_options,
         )?;
@@ -277,7 +281,6 @@ impl Dispatcher {
         sequence: &str,
         action: impl Into<Action>,
     ) -> Result<BindingId, crate::error::Error> {
-        let sequence = crate::sequence::parse_sequence(sequence)?;
         self.register_sequence(sequence, action)
     }
 
@@ -285,16 +288,19 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// Returns [`Error::Parse`](crate::error::Error::Parse) when sequence input
+    /// conversion fails, or
+    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
     pub fn register_sequence_with_options(
         &mut self,
-        sequence: impl Into<HotkeySequence>,
+        sequence: impl SequenceInput,
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<BindingId, crate::error::Error> {
         let id = BindingId::new();
-        self.register_sequence_binding_with_id(id, sequence.into(), action.into(), options)?;
+        let sequence = sequence.into_sequence()?;
+        self.register_sequence_binding_with_id(id, sequence, action.into(), options)?;
         Ok(id)
     }
 
@@ -312,7 +318,6 @@ impl Dispatcher {
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<BindingId, crate::error::Error> {
-        let sequence = crate::sequence::parse_sequence(sequence)?;
         self.register_sequence_with_options(sequence, action, options)
     }
 
