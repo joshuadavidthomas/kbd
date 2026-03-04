@@ -502,7 +502,7 @@ impl Dispatcher {
             .pop()
             .map(|entry| entry.name)
             .ok_or(crate::error::Error::EmptyLayerStack)?;
-        self.clear_sequences_for_layer(&name);
+        self.clear_sequences_for_layer_if_inactive(&name);
         Ok(name)
     }
 
@@ -523,7 +523,7 @@ impl Dispatcher {
             .rposition(|entry| entry.name == name)
         {
             let removed = self.layer_stack.remove(pos);
-            self.clear_sequences_for_layer(&removed.name);
+            self.clear_sequences_for_layer_if_inactive(&removed.name);
         } else {
             self.push_layer(name)?;
         }
@@ -643,7 +643,7 @@ impl Dispatcher {
             keep
         });
         for layer_name in timed_out_layers {
-            self.clear_sequences_for_layer(&layer_name);
+            self.clear_sequences_for_layer_if_inactive(&layer_name);
         }
 
         if self.active_sequences.is_empty() {
@@ -1028,6 +1028,18 @@ impl Dispatcher {
             .max_by_key(|pending| pending.steps_matched)
     }
 
+    fn clear_sequences_for_layer_if_inactive(&mut self, layer_name: &LayerName) {
+        if self
+            .layer_stack
+            .iter()
+            .any(|entry| &entry.name == layer_name)
+        {
+            return;
+        }
+
+        self.clear_sequences_for_layer(layer_name);
+    }
+
     fn clear_sequences_for_layer(&mut self, layer_name: &LayerName) {
         self.active_sequences.retain(|active| {
             !matches!(
@@ -1102,7 +1114,7 @@ impl Dispatcher {
         }
         if let Some(index) = pop_index {
             let removed = self.layer_stack.remove(index);
-            self.clear_sequences_for_layer(&removed.name);
+            self.clear_sequences_for_layer_if_inactive(&removed.name);
         }
     }
 }
@@ -1569,6 +1581,43 @@ mod tests {
         dispatcher.check_timeouts();
 
         assert!(dispatcher.pending_sequence().is_none());
+    }
+
+    #[test]
+    fn popping_one_of_duplicate_layers_keeps_pending_sequence_state() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(
+                Layer::new("nav")
+                    .bind_sequence(
+                        "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                        Action::Suppress,
+                    )
+                    .swallow(),
+            )
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        dispatcher.pop_layer().unwrap();
+
+        let pending = dispatcher
+            .pending_sequence()
+            .expect("sequence should remain pending");
+        assert_eq!(pending.steps_matched, 1);
+        assert_eq!(pending.steps_remaining, 1);
+
+        let second = dispatcher.process(
+            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(second, MatchResult::Matched { .. }));
     }
 
     #[test]
