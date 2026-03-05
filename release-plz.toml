@@ -7,42 +7,34 @@ publish_allow_dirty = false
 
 [[package]]
 name = "kbd"
-version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
 [[package]]
 name = "kbd-crossterm"
-version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
 [[package]]
 name = "kbd-egui"
-version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
 [[package]]
 name = "kbd-evdev"
-version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
 [[package]]
 name = "kbd-global"
-version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
 [[package]]
 name = "kbd-iced"
-version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
 [[package]]
 name = "kbd-tao"
-version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
 [[package]]
 name = "kbd-winit"
-version_group = "kbd"
 changelog_path = "CHANGELOG.md"
 
 # excluded from releases
