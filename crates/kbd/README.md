@@ -13,16 +13,18 @@ kbd = "0.1"
 ```rust
 use kbd::action::Action;
 use kbd::dispatcher::{Dispatcher, MatchResult};
-use kbd::key::{Hotkey, Key};
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key::Key;
 use kbd::key_state::KeyTransition;
 
 let mut dispatcher = Dispatcher::new();
 
-let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
-dispatcher.register(hotkey.clone(), Action::Suppress).unwrap();
+let hotkey: Hotkey = "Ctrl+Shift+A".parse()?;
+dispatcher.register(hotkey.clone(), Action::Suppress)?;
 
 let result = dispatcher.process(&hotkey, KeyTransition::Press);
 assert!(matches!(result, MatchResult::Matched { .. }));
+# Ok::<(), kbd::error::Error>(())
 ```
 
 Supports [layers](https://docs.rs/kbd/latest/kbd/layer/), [introspection](https://docs.rs/kbd/latest/kbd/introspection/), and optional `serde`. See the [API docs](https://docs.rs/kbd) for the full picture.

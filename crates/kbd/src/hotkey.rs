@@ -9,11 +9,14 @@
 //! ```
 //! use kbd::hotkey::{Hotkey, Modifier, HotkeySequence};
 //!
-//! let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
+//! # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
+//! let hotkey: Hotkey = "Ctrl+Shift+A".parse()?;
 //! assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Shift]);
 //!
-//! let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse().unwrap();
+//! let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse()?;
 //! assert_eq!(seq.steps().len(), 2);
+//! # Ok(())
+//! # }
 //! ```
 
 use std::fmt;
@@ -165,11 +168,14 @@ impl From<Modifier> for Key {
 /// use kbd::hotkey::{Hotkey, Modifier};
 /// use kbd::key::Key;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// // From a string
-/// let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
+/// let hotkey: Hotkey = "Ctrl+Shift+A".parse()?;
 ///
 /// // Programmatic
 /// let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl).modifier(Modifier::Shift);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Hotkey {
@@ -308,8 +314,11 @@ impl<'de> serde::Deserialize<'de> for Hotkey {
 /// ```
 /// use kbd::hotkey::HotkeySequence;
 ///
-/// let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse().unwrap();
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
+/// let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse()?;
 /// assert_eq!(seq.steps().len(), 2);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HotkeySequence {
@@ -402,18 +411,21 @@ mod private {
 /// use kbd::hotkey::{Hotkey, HotkeyInput, Modifier};
 /// use kbd::key::Key;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// // From a Hotkey (infallible)
 /// let h = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
-/// assert_eq!(h.into_hotkey().unwrap(), Hotkey::new(Key::A).modifier(Modifier::Ctrl));
+/// assert_eq!(h.into_hotkey()?, Hotkey::new(Key::A).modifier(Modifier::Ctrl));
 ///
 /// // From a Key (infallible)
-/// assert_eq!(Key::ESCAPE.into_hotkey().unwrap(), Hotkey::new(Key::ESCAPE));
+/// assert_eq!(Key::ESCAPE.into_hotkey()?, Hotkey::new(Key::ESCAPE));
 ///
 /// // From a string (parsed)
 /// assert_eq!(
-///     "Ctrl+A".into_hotkey().unwrap(),
+///     "Ctrl+A".into_hotkey()?,
 ///     Hotkey::new(Key::A).modifier(Modifier::Ctrl),
 /// );
+/// # Ok(())
+/// # }
 /// ```
 pub trait HotkeyInput: private::Sealed {
     /// Converts this input into a [`Hotkey`].

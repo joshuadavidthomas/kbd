@@ -76,19 +76,22 @@ impl std::fmt::Display for LayerName {
 /// use kbd::key::Key;
 /// use kbd::layer::{Layer, UnmatchedKeys};
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// // A navigation layer that only captures H/J/K/L.
 /// // Other keys (like Ctrl+S) still reach global bindings.
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Suppress).unwrap()
-///     .bind(Key::J, Action::Suppress).unwrap();
+///     .bind(Key::H, Action::Suppress)?
+///     .bind(Key::J, Action::Suppress)?;
 /// assert_eq!(nav.options().unmatched(), UnmatchedKeys::Fallthrough);
 ///
 /// // A modal layer that captures ALL keys — nothing falls through.
 /// // Useful for insert-mode or game-input modes.
 /// let modal = Layer::new("modal")
-///     .bind(Key::H, Action::Suppress).unwrap()
+///     .bind(Key::H, Action::Suppress)?
 ///     .swallow();
 /// assert_eq!(modal.options().unmatched(), UnmatchedKeys::Swallow);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -196,16 +199,19 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Suppress).unwrap()
-///     .bind(Key::J, Action::Suppress).unwrap()
-///     .bind(Key::K, Action::Suppress).unwrap()
-///     .bind(Key::L, Action::Suppress).unwrap()
+///     .bind(Key::H, Action::Suppress)?
+///     .bind(Key::J, Action::Suppress)?
+///     .bind(Key::K, Action::Suppress)?
+///     .bind(Key::L, Action::Suppress)?
 ///     .description("Vim navigation keys")
 ///     .swallow();
 ///
 /// assert_eq!(nav.name().as_str(), "nav");
 /// assert_eq!(nav.binding_count(), 4);
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Oneshot layer that auto-pops after one keypress:
@@ -215,10 +221,13 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// let leader = Layer::new("leader")
-///     .bind(Key::F, Action::Suppress).unwrap()
-///     .bind(Key::B, Action::Suppress).unwrap()
+///     .bind(Key::F, Action::Suppress)?
+///     .bind(Key::B, Action::Suppress)?
 ///     .oneshot(1);
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Layer with a timeout that auto-pops after inactivity:
@@ -229,10 +238,13 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// let timed = Layer::new("quick-nav")
-///     .bind(Key::N, Action::Suppress).unwrap()
-///     .bind(Key::P, Action::Suppress).unwrap()
+///     .bind(Key::N, Action::Suppress)?
+///     .bind(Key::P, Action::Suppress)?
 ///     .timeout(Duration::from_secs(2));
+/// # Ok(())
+/// # }
 /// ```
 pub struct Layer {
     name: LayerName,

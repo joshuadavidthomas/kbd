@@ -95,17 +95,20 @@ pub enum MatchResult<'a> {
 /// use kbd::key::Key;
 /// use kbd::key_state::KeyTransition;
 ///
+/// # fn main() -> Result<(), kbd::error::Error> {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.register(
 ///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 ///     Action::Suppress,
-/// ).unwrap();
+/// )?;
 ///
 /// let result = dispatcher.process(
 ///     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 ///     KeyTransition::Press,
 /// );
 /// assert!(matches!(result, MatchResult::Matched { .. }));
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Using layers for modal editing:
@@ -118,20 +121,21 @@ pub enum MatchResult<'a> {
 /// use kbd::key_state::KeyTransition;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::Error> {
 /// let mut dispatcher = Dispatcher::new();
 ///
 /// // Define a navigation layer
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Suppress).unwrap()
-///     .bind(Key::J, Action::Suppress).unwrap()
-///     .bind(Key::K, Action::Suppress).unwrap()
-///     .bind(Key::L, Action::Suppress).unwrap()
-///     .bind(Key::ESCAPE, Action::PopLayer).unwrap()
+///     .bind(Key::H, Action::Suppress)?
+///     .bind(Key::J, Action::Suppress)?
+///     .bind(Key::K, Action::Suppress)?
+///     .bind(Key::L, Action::Suppress)?
+///     .bind(Key::ESCAPE, Action::PopLayer)?
 ///     .swallow();
-/// dispatcher.define_layer(nav).unwrap();
+/// dispatcher.define_layer(nav)?;
 ///
 /// // Activate the layer
-/// dispatcher.push_layer("nav").unwrap();
+/// dispatcher.push_layer("nav")?;
 ///
 /// // H matches in the nav layer
 /// let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
@@ -143,6 +147,8 @@ pub enum MatchResult<'a> {
 /// // H no longer matches
 /// let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
 /// assert!(matches!(result, MatchResult::NoMatch));
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Default)]
 pub struct Dispatcher {
