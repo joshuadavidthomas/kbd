@@ -70,31 +70,6 @@ pub(super) enum SequenceStartCandidate {
     },
 }
 
-pub(super) enum SequencePrefixKind {
-    None,
-    SingleStep,
-    MultiStep,
-}
-
-pub(super) fn classify_sequence_prefix(
-    sequence: &HotkeySequence,
-    hotkey: &Hotkey,
-) -> SequencePrefixKind {
-    if !sequence
-        .steps()
-        .first()
-        .is_some_and(|first_step| first_step == hotkey)
-    {
-        return SequencePrefixKind::None;
-    }
-
-    if sequence.steps().len() == 1 {
-        SequencePrefixKind::SingleStep
-    } else {
-        SequencePrefixKind::MultiStep
-    }
-}
-
 impl Dispatcher {
     pub(super) fn match_active_sequences(&mut self, hotkey: &Hotkey) -> Option<InternalOutcome> {
         if self.active_sequences.is_empty() {
