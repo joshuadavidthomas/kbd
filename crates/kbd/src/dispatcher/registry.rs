@@ -168,38 +168,6 @@ impl Dispatcher {
 }
 
 #[cfg(test)]
-mod tdd {
-    use super::super::Dispatcher;
-    use crate::action::Action;
-    use crate::hotkey::Hotkey;
-    use crate::hotkey::Modifier;
-    use crate::key::Key;
-
-    #[test]
-    fn register_accepts_string_input() {
-        let mut dispatcher = Dispatcher::new();
-        let id = dispatcher.register("Ctrl+A", Action::Suppress).unwrap();
-        assert!(dispatcher.is_registered(&Hotkey::new(Key::A).modifier(Modifier::Ctrl)));
-        dispatcher.unregister(id);
-    }
-
-    #[test]
-    fn register_accepts_key_input() {
-        let mut dispatcher = Dispatcher::new();
-        let id = dispatcher.register(Key::ESCAPE, Action::Suppress).unwrap();
-        assert!(dispatcher.is_registered(&Hotkey::new(Key::ESCAPE)));
-        dispatcher.unregister(id);
-    }
-
-    #[test]
-    fn register_reports_parse_error_for_invalid_string() {
-        let mut dispatcher = Dispatcher::new();
-        let result = dispatcher.register("Ctrl+Nope", Action::Suppress);
-        assert!(matches!(result, Err(crate::error::Error::Parse(_))));
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::super::Dispatcher;
     use crate::action::Action;
@@ -337,5 +305,28 @@ mod tests {
             result,
             Err(crate::error::Error::AlreadyRegistered)
         ));
+    }
+
+    #[test]
+    fn register_accepts_string_input() {
+        let mut dispatcher = Dispatcher::new();
+        let id = dispatcher.register("Ctrl+A", Action::Suppress).unwrap();
+        assert!(dispatcher.is_registered(&Hotkey::new(Key::A).modifier(Modifier::Ctrl)));
+        dispatcher.unregister(id);
+    }
+
+    #[test]
+    fn register_accepts_key_input() {
+        let mut dispatcher = Dispatcher::new();
+        let id = dispatcher.register(Key::ESCAPE, Action::Suppress).unwrap();
+        assert!(dispatcher.is_registered(&Hotkey::new(Key::ESCAPE)));
+        dispatcher.unregister(id);
+    }
+
+    #[test]
+    fn register_reports_parse_error_for_invalid_string() {
+        let mut dispatcher = Dispatcher::new();
+        let result = dispatcher.register("Ctrl+Nope", Action::Suppress);
+        assert!(matches!(result, Err(crate::error::Error::Parse(_))));
     }
 }

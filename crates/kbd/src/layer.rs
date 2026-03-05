@@ -392,45 +392,6 @@ impl std::fmt::Debug for Layer {
 }
 
 #[cfg(test)]
-mod tdd {
-    use super::*;
-    use crate::action::Action;
-    use crate::key::Key;
-
-    #[test]
-    fn layer_bind_accepts_string_input() {
-        let layer = Layer::new("test")
-            .bind("Ctrl+A", Action::Suppress)
-            .unwrap();
-        assert_eq!(layer.binding_count(), 1);
-    }
-
-    #[test]
-    fn layer_bind_accepts_key_input() {
-        let layer = Layer::new("test")
-            .bind(Key::ESCAPE, Action::Suppress)
-            .unwrap();
-        assert_eq!(layer.binding_count(), 1);
-    }
-
-    #[test]
-    fn layer_bind_reports_parse_error_for_invalid_string() {
-        let result = Layer::new("test").bind("Ctrl+Nope", Action::Suppress);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn layer_bind_chain_with_results() {
-        let layer = Layer::new("test")
-            .bind("Ctrl+A", Action::Suppress)
-            .unwrap()
-            .bind("Ctrl+B", Action::Suppress)
-            .unwrap();
-        assert_eq!(layer.binding_count(), 2);
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use std::time::Duration;
 
@@ -608,5 +569,37 @@ mod tests {
         let (_, _, sequence_bindings, _) = layer.into_parts();
         assert_eq!(sequence_bindings.len(), 1);
         assert_eq!(sequence_bindings[0].options, options);
+    }
+
+    #[test]
+    fn layer_bind_accepts_string_input() {
+        let layer = Layer::new("test")
+            .bind("Ctrl+A", Action::Suppress)
+            .unwrap();
+        assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_accepts_key_input() {
+        let layer = Layer::new("test")
+            .bind(Key::ESCAPE, Action::Suppress)
+            .unwrap();
+        assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_reports_parse_error_for_invalid_string() {
+        let result = Layer::new("test").bind("Ctrl+Nope", Action::Suppress);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn layer_bind_chain_with_results() {
+        let layer = Layer::new("test")
+            .bind("Ctrl+A", Action::Suppress)
+            .unwrap()
+            .bind("Ctrl+B", Action::Suppress)
+            .unwrap();
+        assert_eq!(layer.binding_count(), 2);
     }
 }

@@ -449,56 +449,6 @@ impl HotkeyInput for &str {
 }
 
 #[cfg(test)]
-mod tdd {
-    use super::*;
-    use crate::key::Key;
-
-    // HotkeyInput trait exists and is importable
-    #[test]
-    fn hotkey_input_from_hotkey_is_infallible() {
-        let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
-        let result = hotkey.into_hotkey();
-        assert_eq!(result.unwrap(), Hotkey::new(Key::A).modifier(Modifier::Ctrl));
-    }
-
-    #[test]
-    fn hotkey_input_from_key_wraps_in_hotkey() {
-        let result = Key::A.into_hotkey();
-        assert_eq!(result.unwrap(), Hotkey::new(Key::A));
-    }
-
-    #[test]
-    fn hotkey_input_from_str_parses() {
-        let result = "Ctrl+A".into_hotkey();
-        assert_eq!(
-            result.unwrap(),
-            Hotkey::new(Key::A).modifier(Modifier::Ctrl)
-        );
-    }
-
-    #[test]
-    fn hotkey_input_from_string_parses() {
-        let result = String::from("Ctrl+A").into_hotkey();
-        assert_eq!(
-            result.unwrap(),
-            Hotkey::new(Key::A).modifier(Modifier::Ctrl)
-        );
-    }
-
-    #[test]
-    fn hotkey_input_from_str_reports_parse_error() {
-        let result = "Ctrl+Nope".into_hotkey();
-        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
-    }
-
-    #[test]
-    fn hotkey_input_from_string_reports_parse_error() {
-        let result = String::from("Ctrl+Nope").into_hotkey();
-        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::key::Key;
@@ -624,5 +574,51 @@ mod tests {
             let round_trip = hotkey.to_string().parse::<Hotkey>().unwrap();
             assert_eq!(round_trip, hotkey, "failed round-trip for {input}");
         }
+    }
+
+    #[test]
+    fn hotkey_input_from_hotkey_is_infallible() {
+        let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
+        let result = hotkey.into_hotkey();
+        assert_eq!(
+            result.unwrap(),
+            Hotkey::new(Key::A).modifier(Modifier::Ctrl)
+        );
+    }
+
+    #[test]
+    fn hotkey_input_from_key_wraps_in_hotkey() {
+        let result = Key::A.into_hotkey();
+        assert_eq!(result.unwrap(), Hotkey::new(Key::A));
+    }
+
+    #[test]
+    fn hotkey_input_from_str_parses() {
+        let result = "Ctrl+A".into_hotkey();
+        assert_eq!(
+            result.unwrap(),
+            Hotkey::new(Key::A).modifier(Modifier::Ctrl)
+        );
+    }
+
+    #[test]
+    fn hotkey_input_from_string_parses() {
+        let result = String::from("Ctrl+A").into_hotkey();
+        assert_eq!(
+            result.unwrap(),
+            Hotkey::new(Key::A).modifier(Modifier::Ctrl)
+        );
+    }
+
+    #[test]
+    fn hotkey_input_from_str_reports_parse_error() {
+        let result = "Ctrl+Nope".into_hotkey();
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn hotkey_input_from_string_reports_parse_error() {
+        let result = String::from("Ctrl+Nope").into_hotkey();
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
     }
 }
