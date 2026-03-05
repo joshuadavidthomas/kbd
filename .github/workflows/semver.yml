@@ -43,10 +43,11 @@ jobs:
         id: semver
         env:
           NO_COLOR: 1
+          BASE_REF: ${{ github.base_ref }}
         run: |
           if cargo semver-checks check-release \
             --workspace \
-            --baseline-rev "origin/${{ github.base_ref }}" \
+            --baseline-rev "origin/${BASE_REF}" \
             2>&1 | tee /tmp/semver-output.txt; then
             echo "breaking=false" >> "$GITHUB_OUTPUT"
           else
