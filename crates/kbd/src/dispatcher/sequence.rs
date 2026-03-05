@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::Dispatcher;
 use super::InternalOutcome;
-use super::LayerEffect;
+use super::layers::LayerEffect;
 use super::MatchResult;
 use super::MatchedBindingRef;
 use crate::binding::BindingId;

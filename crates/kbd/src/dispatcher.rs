@@ -8,14 +8,16 @@
 //! Returns a [`MatchResult`] — the matched
 //! binding's action (or "no match" for forwarding).
 
+mod layers;
 mod query;
 mod sequence;
 mod timeout;
 
 use std::collections::HashMap;
-use std::time::Duration;
 use std::time::Instant;
 
+use self::layers::LayerEffect;
+use self::layers::LayerStackEntry;
 use self::sequence::ActiveSequence;
 use self::sequence::PendingStandalone;
 use self::sequence::RegisteredSequenceBinding;
@@ -63,20 +65,7 @@ pub enum MatchResult<'a> {
     Ignored,
 }
 
-/// An entry in the layer stack, pairing the layer name with runtime state.
-struct LayerStackEntry {
-    name: LayerName,
-    /// Remaining keypress count for oneshot layers. `None` means not oneshot.
-    oneshot_remaining: Option<usize>,
-    /// Timeout configuration and last activity timestamp.
-    /// If set, the layer auto-pops when `Instant::now() - last_activity > timeout`.
-    timeout: Option<LayerTimeout>,
-}
 
-struct LayerTimeout {
-    duration: Duration,
-    last_activity: Instant,
-}
 
 /// A synchronous hotkey matching engine.
 ///
@@ -195,28 +184,7 @@ enum InternalOutcome {
     Ignored,
 }
 
-/// Layer stack mutation extracted from a matched action.
-#[derive(Clone)]
-enum LayerEffect {
-    None,
-    Push(LayerName),
-    Pop,
-    Toggle(LayerName),
-}
 
-impl LayerEffect {
-    fn from_action(action: &Action) -> Self {
-        match action {
-            Action::PushLayer(name) => Self::Push(name.clone()),
-            Action::PopLayer => Self::Pop,
-            Action::ToggleLayer(name) => Self::Toggle(name.clone()),
-            Action::Callback(_)
-            | Action::EmitHotkey(..)
-            | Action::EmitSequence(..)
-            | Action::Suppress => Self::None,
-        }
-    }
-}
 
 impl Dispatcher {
     /// Create a new empty dispatcher with no bindings or layers.
@@ -400,71 +368,6 @@ impl Dispatcher {
                 Ok(())
             }
         }
-    }
-
-    /// Push a named layer onto the stack, activating its bindings.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::LayerNotDefined`](crate::error::Error::LayerNotDefined)
-    /// if no layer with this name is defined.
-    pub fn push_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
-        let name = name.into();
-        let stored = self
-            .layers
-            .get(&name)
-            .ok_or(crate::error::Error::LayerNotDefined)?;
-        let oneshot_remaining = stored.options.oneshot();
-        let timeout = stored.options.timeout().map(|duration| LayerTimeout {
-            duration,
-            last_activity: Instant::now(),
-        });
-        self.layer_stack.push(LayerStackEntry {
-            name,
-            oneshot_remaining,
-            timeout,
-        });
-        Ok(())
-    }
-
-    /// Pop the topmost layer from the stack.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::EmptyLayerStack`](crate::error::Error::EmptyLayerStack)
-    /// if no layers are on the stack.
-    pub fn pop_layer(&mut self) -> Result<LayerName, crate::error::Error> {
-        let name = self
-            .layer_stack
-            .pop()
-            .map(|entry| entry.name)
-            .ok_or(crate::error::Error::EmptyLayerStack)?;
-        self.clear_sequences_for_layer_if_inactive(&name);
-        Ok(name)
-    }
-
-    /// Toggle a layer: push if not active, remove if active.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::LayerNotDefined`](crate::error::Error::LayerNotDefined)
-    /// if no layer with this name is defined.
-    pub fn toggle_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
-        let name = name.into();
-        if !self.layers.contains_key(&name) {
-            return Err(crate::error::Error::LayerNotDefined);
-        }
-        if let Some(pos) = self
-            .layer_stack
-            .iter()
-            .rposition(|entry| entry.name == name)
-        {
-            let removed = self.layer_stack.remove(pos);
-            self.clear_sequences_for_layer_if_inactive(&removed.name);
-        } else {
-            self.push_layer(name)?;
-        }
-        Ok(())
     }
 
     /// Process a key event and return the match result.
@@ -717,21 +620,6 @@ impl Dispatcher {
         }
     }
 
-    /// Apply a layer effect extracted from a matched action.
-    fn apply_layer_effect(&mut self, effect: &LayerEffect) {
-        match effect {
-            LayerEffect::None => {}
-            LayerEffect::Push(name) => {
-                let _ = self.push_layer(name.clone());
-            }
-            LayerEffect::Pop => {
-                let _ = self.pop_layer();
-            }
-            LayerEffect::Toggle(name) => {
-                let _ = self.toggle_layer(name.clone());
-            }
-        }
-    }
 }
 
 #[cfg(test)]
