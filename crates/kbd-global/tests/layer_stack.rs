@@ -11,7 +11,7 @@ use kbd_global::Error;
 fn push_layer_succeeds_for_defined_layer() {
     let manager = utils::test_manager();
 
-    let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
+    let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
     manager.define_layer(layer).unwrap();
 
     let result = manager.push_layer("nav");
@@ -30,7 +30,7 @@ fn push_undefined_layer_returns_error() {
 fn pop_layer_returns_popped_name() {
     let manager = utils::test_manager();
 
-    let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
+    let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
     manager.define_layer(layer).unwrap();
     manager.push_layer("nav").unwrap();
 
@@ -50,7 +50,7 @@ fn pop_empty_stack_returns_error() {
 fn toggle_layer_on_and_off() {
     let manager = utils::test_manager();
 
-    let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
+    let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
     manager.define_layer(layer).unwrap();
 
     // Toggle on
@@ -76,7 +76,7 @@ fn toggle_undefined_layer_returns_error() {
 fn push_same_layer_twice_is_allowed() {
     let manager = utils::test_manager();
 
-    let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
+    let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
     manager.define_layer(layer).unwrap();
 
     // Pushing the same layer twice should work (stacking)
@@ -92,8 +92,8 @@ fn push_same_layer_twice_is_allowed() {
 fn push_pop_multiple_layers_in_order() {
     let manager = utils::test_manager();
 
-    let nav = Layer::new("nav").bind(Key::H, Action::Suppress);
-    let edit = Layer::new("edit").bind(Key::I, Action::Suppress);
+    let nav = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
+    let edit = Layer::new("edit").bind(Key::I, Action::Suppress).unwrap();
     manager.define_layer(nav).unwrap();
     manager.define_layer(edit).unwrap();
 
@@ -109,7 +109,7 @@ fn push_pop_multiple_layers_in_order() {
 fn layer_name_accepts_string_and_str() {
     let manager = utils::test_manager();
 
-    let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
+    let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
     manager.define_layer(layer).unwrap();
 
     // &str

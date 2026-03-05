@@ -18,6 +18,7 @@ use crate::action::Action;
 use crate::binding::KeyPropagation;
 use crate::error::ParseHotkeyError;
 use crate::hotkey::Hotkey;
+use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
@@ -75,19 +76,22 @@ impl std::fmt::Display for LayerName {
 /// use kbd::key::Key;
 /// use kbd::layer::{Layer, UnmatchedKeys};
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// // A navigation layer that only captures H/J/K/L.
 /// // Other keys (like Ctrl+S) still reach global bindings.
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Suppress)
-///     .bind(Key::J, Action::Suppress);
+///     .bind(Key::H, Action::Suppress)?
+///     .bind(Key::J, Action::Suppress)?;
 /// assert_eq!(nav.options().unmatched(), UnmatchedKeys::Fallthrough);
 ///
 /// // A modal layer that captures ALL keys — nothing falls through.
 /// // Useful for insert-mode or game-input modes.
 /// let modal = Layer::new("modal")
-///     .bind(Key::H, Action::Suppress)
+///     .bind(Key::H, Action::Suppress)?
 ///     .swallow();
 /// assert_eq!(modal.options().unmatched(), UnmatchedKeys::Swallow);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -195,16 +199,19 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Suppress)
-///     .bind(Key::J, Action::Suppress)
-///     .bind(Key::K, Action::Suppress)
-///     .bind(Key::L, Action::Suppress)
+///     .bind(Key::H, Action::Suppress)?
+///     .bind(Key::J, Action::Suppress)?
+///     .bind(Key::K, Action::Suppress)?
+///     .bind(Key::L, Action::Suppress)?
 ///     .description("Vim navigation keys")
 ///     .swallow();
 ///
 /// assert_eq!(nav.name().as_str(), "nav");
 /// assert_eq!(nav.binding_count(), 4);
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Oneshot layer that auto-pops after one keypress:
@@ -214,10 +221,13 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// let leader = Layer::new("leader")
-///     .bind(Key::F, Action::Suppress)
-///     .bind(Key::B, Action::Suppress)
+///     .bind(Key::F, Action::Suppress)?
+///     .bind(Key::B, Action::Suppress)?
 ///     .oneshot(1);
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Layer with a timeout that auto-pops after inactivity:
@@ -228,10 +238,13 @@ impl std::fmt::Debug for StoredLayer {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// let timed = Layer::new("quick-nav")
-///     .bind(Key::N, Action::Suppress)
-///     .bind(Key::P, Action::Suppress)
+///     .bind(Key::N, Action::Suppress)?
+///     .bind(Key::P, Action::Suppress)?
 ///     .timeout(Duration::from_secs(2));
+/// # Ok(())
+/// # }
 /// ```
 pub struct Layer {
     name: LayerName,
@@ -253,14 +266,24 @@ impl Layer {
     }
 
     /// Add a binding to this layer.
-    #[must_use]
-    pub fn bind(mut self, hotkey: impl Into<Hotkey>, action: impl Into<Action>) -> Self {
+    ///
+    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
+    /// [`Key`](crate::key::Key), or a string (`&str` / `String`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] when string input conversion fails.
+    pub fn bind(
+        mut self,
+        hotkey: impl HotkeyInput,
+        action: impl Into<Action>,
+    ) -> Result<Self, ParseHotkeyError> {
         self.bindings.push(LayerBinding {
-            hotkey: hotkey.into(),
+            hotkey: hotkey.into_hotkey()?,
             action: action.into(),
             propagation: KeyPropagation::default(),
         });
-        self
+        Ok(self)
     }
 
     /// Add a multi-step sequence binding to this layer.
@@ -410,7 +433,7 @@ mod tests {
 
     #[test]
     fn layer_bind_adds_binding() {
-        let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
         assert_eq!(layer.binding_count(), 1);
     }
 
@@ -418,18 +441,24 @@ mod tests {
     fn layer_bind_multiple_bindings() {
         let layer = Layer::new("nav")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .bind(Key::J, Action::Suppress)
+            .unwrap()
             .bind(Key::K, Action::Suppress)
-            .bind(Key::L, Action::Suppress);
+            .unwrap()
+            .bind(Key::L, Action::Suppress)
+            .unwrap();
         assert_eq!(layer.binding_count(), 4);
     }
 
     #[test]
     fn layer_bind_preserves_hotkey() {
-        let layer = Layer::new("nav").bind(
-            Hotkey::new(Key::H).modifier(Modifier::Ctrl),
-            Action::Suppress,
-        );
+        let layer = Layer::new("nav")
+            .bind(
+                Hotkey::new(Key::H).modifier(Modifier::Ctrl),
+                Action::Suppress,
+            )
+            .unwrap();
         let (_, bindings, _, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].hotkey.key(), Key::H);
@@ -438,7 +467,9 @@ mod tests {
 
     #[test]
     fn layer_bind_accepts_closure() {
-        let layer = Layer::new("test").bind(Key::A, || println!("fired"));
+        let layer = Layer::new("test")
+            .bind(Key::A, || println!("fired"))
+            .unwrap();
         assert_eq!(layer.binding_count(), 1);
     }
 
@@ -465,7 +496,9 @@ mod tests {
     fn layer_builder_chains_all_options() {
         let layer = Layer::new("nav")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .bind(Key::J, Action::Suppress)
+            .unwrap()
             .description("Navigation keys")
             .swallow()
             .oneshot(1)
@@ -496,7 +529,10 @@ mod tests {
 
     #[test]
     fn layer_into_parts_decomposes() {
-        let layer = Layer::new("nav").bind(Key::H, Action::Suppress).swallow();
+        let layer = Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap()
+            .swallow();
 
         let (name, bindings, _, options) = layer.into_parts();
         assert_eq!(name.as_str(), "nav");
@@ -514,6 +550,7 @@ mod tests {
     fn layer_description_preserved_in_into_parts() {
         let layer = Layer::new("nav")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .description("Navigation keys");
 
         let (_, _, _, options) = layer.into_parts();
@@ -558,5 +595,35 @@ mod tests {
         let (_, _, sequence_bindings, _) = layer.into_parts();
         assert_eq!(sequence_bindings.len(), 1);
         assert_eq!(sequence_bindings[0].options, options);
+    }
+
+    #[test]
+    fn layer_bind_accepts_string_input() {
+        let layer = Layer::new("test").bind("Ctrl+A", Action::Suppress).unwrap();
+        assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_accepts_key_input() {
+        let layer = Layer::new("test")
+            .bind(Key::ESCAPE, Action::Suppress)
+            .unwrap();
+        assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_reports_parse_error_for_invalid_string() {
+        let result = Layer::new("test").bind("Ctrl+Nope", Action::Suppress);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn layer_bind_chain_with_results() {
+        let layer = Layer::new("test")
+            .bind("Ctrl+A", Action::Suppress)
+            .unwrap()
+            .bind("Ctrl+B", Action::Suppress)
+            .unwrap();
+        assert_eq!(layer.binding_count(), 2);
     }
 }

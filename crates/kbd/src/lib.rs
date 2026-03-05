@@ -15,13 +15,14 @@
 //! ```
 //! use kbd::prelude::*;
 //!
+//! # fn main() -> Result<(), kbd::error::Error> {
 //! let mut dispatcher = Dispatcher::new();
 //!
 //! // Register Ctrl+S as a global binding
 //! let id = dispatcher.register(
 //!     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 //!     Action::Suppress,
-//! ).unwrap();
+//! )?;
 //!
 //! // Simulate a key press
 //! let result = dispatcher.process(
@@ -29,6 +30,8 @@
 //!     KeyTransition::Press,
 //! );
 //! assert!(matches!(result, MatchResult::Matched { .. }));
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Feature Flags
@@ -60,17 +63,20 @@ pub mod sequence;
 /// ```
 /// use kbd::prelude::*;
 ///
+/// # fn main() -> Result<(), kbd::error::Error> {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.register(
 ///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 ///     Action::Suppress,
-/// ).unwrap();
+/// )?;
 ///
 /// let result = dispatcher.process(
 ///     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 ///     KeyTransition::Press,
 /// );
 /// assert!(matches!(result, MatchResult::Matched { .. }));
+/// # Ok(())
+/// # }
 /// ```
 pub mod prelude {
     pub use crate::action::Action;
@@ -79,6 +85,7 @@ pub mod prelude {
     pub use crate::dispatcher::Dispatcher;
     pub use crate::dispatcher::MatchResult;
     pub use crate::hotkey::Hotkey;
+    pub use crate::hotkey::HotkeyInput;
     pub use crate::hotkey::HotkeySequence;
     pub use crate::hotkey::Modifier;
     pub use crate::key::Key;

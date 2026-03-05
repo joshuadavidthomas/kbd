@@ -130,6 +130,7 @@ mod tests {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
             )
+            .unwrap()
             .oneshot(1);
         dispatcher.define_layer(layer).unwrap();
 

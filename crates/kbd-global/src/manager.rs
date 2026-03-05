@@ -27,6 +27,7 @@ use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::RegisteredBinding;
 use kbd::hotkey::Hotkey;
+use kbd::hotkey::HotkeyInput;
 use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
 use kbd::introspection::ActiveLayerInfo;
@@ -166,15 +167,20 @@ impl HotkeyManager {
 
     /// Register a simple hotkey callback.
     ///
+    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
+    /// [`Key`], or a string (`&str` / `String`).
+    ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`] if the hotkey is already bound,
+    /// Returns [`Error::Parse`] when string input conversion fails,
+    /// [`Error::AlreadyRegistered`] if the hotkey is already bound,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn register<F>(&self, hotkey: impl Into<Hotkey>, callback: F) -> Result<BindingGuard, Error>
+    pub fn register<F>(&self, hotkey: impl HotkeyInput, callback: F) -> Result<BindingGuard, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
-        self.register_action(hotkey.into(), Action::from(callback))
+        let hotkey = hotkey.into_hotkey()?;
+        self.register_action(hotkey, Action::from(callback))
     }
 
     /// Register a multi-step sequence callback.
@@ -215,22 +221,26 @@ impl HotkeyManager {
 
     /// Register a hotkey with an explicit action and binding options.
     ///
+    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
+    /// [`Key`], or a string (`&str` / `String`).
+    ///
     /// Use when you need metadata (description, overlay visibility) or
     /// behavioral options beyond what [`register()`](Self::register) provides.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`] if the hotkey is already bound,
+    /// Returns [`Error::Parse`] when string input conversion fails,
+    /// [`Error::AlreadyRegistered`] if the hotkey is already bound,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn register_with_options(
         &self,
-        hotkey: impl Into<Hotkey>,
+        hotkey: impl HotkeyInput,
         action: impl Into<Action>,
         options: BindingOptions,
     ) -> Result<BindingGuard, Error> {
         let id = BindingId::new();
-        let binding =
-            RegisteredBinding::new(id, hotkey.into(), action.into()).with_options(options);
+        let hotkey = hotkey.into_hotkey()?;
+        let binding = RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::Register {
@@ -246,11 +256,15 @@ impl HotkeyManager {
 
     /// Query whether a hotkey is currently registered.
     ///
+    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
+    /// [`Key`], or a string (`&str` / `String`).
+    ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn is_registered(&self, hotkey: impl Into<Hotkey>) -> Result<bool, Error> {
-        let hotkey = hotkey.into();
+    /// Returns [`Error::Parse`] when string input conversion fails,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn is_registered(&self, hotkey: impl HotkeyInput) -> Result<bool, Error> {
+        let hotkey = hotkey.into_hotkey()?;
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::IsRegistered {
@@ -443,14 +457,12 @@ impl HotkeyManager {
     /// # Errors
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn bindings_for_key(
-        &self,
-        hotkey: impl Into<Hotkey>,
-    ) -> Result<Option<BindingInfo>, Error> {
+    pub fn bindings_for_key(&self, hotkey: impl HotkeyInput) -> Result<Option<BindingInfo>, Error> {
+        let hotkey = hotkey.into_hotkey()?;
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::BindingsForKey {
-            hotkey: hotkey.into(),
+            hotkey,
             reply: reply_tx,
         })?;
 

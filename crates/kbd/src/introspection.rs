@@ -18,16 +18,19 @@
 //! use kbd::key::Key;
 //! use kbd::layer::Layer;
 //!
+//! # fn main() -> Result<(), kbd::error::Error> {
 //! let mut dispatcher = Dispatcher::new();
 //! dispatcher.register(
 //!     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
 //!     Action::Suppress,
-//! ).unwrap();
+//! )?;
 //!
 //! let bindings = dispatcher.list_bindings();
 //! assert_eq!(bindings.len(), 1);
 //! assert_eq!(bindings[0].location, BindingLocation::Global);
 //! assert_eq!(bindings[0].shadowed, ShadowedStatus::Active);
+//! # Ok(())
+//! # }
 //! ```
 
 use crate::binding::OverlayVisibility;
@@ -62,21 +65,24 @@ pub enum BindingLocation {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::Error> {
 /// let mut dispatcher = Dispatcher::new();
-/// dispatcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();
+/// dispatcher.register(Hotkey::new(Key::H), Action::Suppress)?;
 ///
 /// // Define a layer that also binds H
 /// dispatcher.define_layer(
-///     Layer::new("nav").bind(Key::H, Action::Suppress)
-/// ).unwrap();
-/// dispatcher.push_layer("nav").unwrap();
+///     Layer::new("nav").bind(Key::H, Action::Suppress)?
+/// )?;
+/// dispatcher.push_layer("nav")?;
 ///
 /// // The global H binding is now shadowed by the nav layer
 /// let bindings = dispatcher.list_bindings();
 /// let global_h = bindings.iter()
 ///     .find(|b| b.location == kbd::introspection::BindingLocation::Global)
-///     .unwrap();
+///     .expect("just registered a global binding");
 /// assert!(matches!(global_h.shadowed, ShadowedStatus::ShadowedBy(_)));
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -119,20 +125,23 @@ pub struct BindingInfo {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::Error> {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.define_layer(
 ///     Layer::new("nav")
-///         .bind(Key::H, Action::Suppress)
-///         .bind(Key::J, Action::Suppress)
+///         .bind(Key::H, Action::Suppress)?
+///         .bind(Key::J, Action::Suppress)?
 ///         .description("Navigation keys")
-/// ).unwrap();
-/// dispatcher.push_layer("nav").unwrap();
+/// )?;
+/// dispatcher.push_layer("nav")?;
 ///
 /// let layers = dispatcher.active_layers();
 /// assert_eq!(layers.len(), 1);
 /// assert_eq!(layers[0].name.as_str(), "nav");
 /// assert_eq!(layers[0].description.as_deref(), Some("Navigation keys"));
 /// assert_eq!(layers[0].binding_count, 2);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveLayerInfo {
@@ -157,16 +166,19 @@ pub struct ActiveLayerInfo {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
+/// # fn main() -> Result<(), kbd::error::Error> {
 /// let mut dispatcher = Dispatcher::new();
-/// dispatcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();
+/// dispatcher.register(Hotkey::new(Key::H), Action::Suppress)?;
 /// dispatcher.define_layer(
-///     Layer::new("nav").bind(Key::H, Action::Suppress)
-/// ).unwrap();
-/// dispatcher.push_layer("nav").unwrap();
+///     Layer::new("nav").bind(Key::H, Action::Suppress)?
+/// )?;
+/// dispatcher.push_layer("nav")?;
 ///
 /// let conflicts = dispatcher.conflicts();
 /// assert_eq!(conflicts.len(), 1);
 /// assert_eq!(conflicts[0].hotkey, Hotkey::new(Key::H));
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictInfo {

@@ -6,6 +6,7 @@ use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
+use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
@@ -13,17 +14,23 @@ use crate::sequence::SequenceOptions;
 impl Dispatcher {
     /// Register a binding. Returns the assigned [`BindingId`].
     ///
+    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
+    /// [`Key`](crate::key::Key), or a string (`&str` / `String`).
+    ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// Returns [`Error::Parse`](crate::error::Error::Parse) when string
+    /// input conversion fails, or
+    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
     /// if a binding for the same hotkey exists.
     pub fn register(
         &mut self,
-        hotkey: impl Into<Hotkey>,
+        hotkey: impl HotkeyInput,
         action: impl Into<Action>,
     ) -> Result<BindingId, crate::error::Error> {
         let id = BindingId::new();
-        let binding = RegisteredBinding::new(id, hotkey.into(), action.into());
+        let hotkey = hotkey.into_hotkey()?;
+        let binding = RegisteredBinding::new(id, hotkey, action.into());
         self.register_binding(binding)?;
         Ok(id)
     }
@@ -298,5 +305,28 @@ mod tests {
             result,
             Err(crate::error::Error::AlreadyRegistered)
         ));
+    }
+
+    #[test]
+    fn register_accepts_string_input() {
+        let mut dispatcher = Dispatcher::new();
+        let id = dispatcher.register("Ctrl+A", Action::Suppress).unwrap();
+        assert!(dispatcher.is_registered(&Hotkey::new(Key::A).modifier(Modifier::Ctrl)));
+        dispatcher.unregister(id);
+    }
+
+    #[test]
+    fn register_accepts_key_input() {
+        let mut dispatcher = Dispatcher::new();
+        let id = dispatcher.register(Key::ESCAPE, Action::Suppress).unwrap();
+        assert!(dispatcher.is_registered(&Hotkey::new(Key::ESCAPE)));
+        dispatcher.unregister(id);
+    }
+
+    #[test]
+    fn register_reports_parse_error_for_invalid_string() {
+        let mut dispatcher = Dispatcher::new();
+        let result = dispatcher.register("Ctrl+Nope", Action::Suppress);
+        assert!(matches!(result, Err(crate::error::Error::Parse(_))));
     }
 }

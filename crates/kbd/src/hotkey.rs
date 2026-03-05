@@ -9,11 +9,14 @@
 //! ```
 //! use kbd::hotkey::{Hotkey, Modifier, HotkeySequence};
 //!
-//! let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
+//! # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
+//! let hotkey: Hotkey = "Ctrl+Shift+A".parse()?;
 //! assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Shift]);
 //!
-//! let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse().unwrap();
+//! let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse()?;
 //! assert_eq!(seq.steps().len(), 2);
+//! # Ok(())
+//! # }
 //! ```
 
 use std::fmt;
@@ -165,11 +168,14 @@ impl From<Modifier> for Key {
 /// use kbd::hotkey::{Hotkey, Modifier};
 /// use kbd::key::Key;
 ///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 /// // From a string
-/// let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
+/// let hotkey: Hotkey = "Ctrl+Shift+A".parse()?;
 ///
 /// // Programmatic
 /// let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl).modifier(Modifier::Shift);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Hotkey {
@@ -308,8 +314,11 @@ impl<'de> serde::Deserialize<'de> for Hotkey {
 /// ```
 /// use kbd::hotkey::HotkeySequence;
 ///
-/// let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse().unwrap();
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
+/// let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse()?;
 /// assert_eq!(seq.steps().len(), 2);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HotkeySequence {
@@ -375,6 +384,79 @@ impl<'de> serde::Deserialize<'de> for HotkeySequence {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = <&str>::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+mod private {
+    pub trait Sealed {}
+    impl Sealed for crate::hotkey::Hotkey {}
+    impl Sealed for crate::key::Key {}
+    impl Sealed for String {}
+    impl Sealed for &str {}
+}
+
+/// Input types accepted by hotkey registration APIs.
+///
+/// This trait is intentionally sealed so we can add input forms over time
+/// without committing to an open trait-implementation surface.
+///
+/// Accepts:
+/// - [`Hotkey`] — passthrough (infallible)
+/// - [`Key`] — wraps in `Hotkey::new(key)` (infallible)
+/// - `&str` / `String` — parsed via [`Hotkey::from_str`]
+///
+/// # Examples
+///
+/// ```
+/// use kbd::hotkey::{Hotkey, HotkeyInput, Modifier};
+/// use kbd::key::Key;
+///
+/// # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
+/// // From a Hotkey (infallible)
+/// let h = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
+/// assert_eq!(h.into_hotkey()?, Hotkey::new(Key::A).modifier(Modifier::Ctrl));
+///
+/// // From a Key (infallible)
+/// assert_eq!(Key::ESCAPE.into_hotkey()?, Hotkey::new(Key::ESCAPE));
+///
+/// // From a string (parsed)
+/// assert_eq!(
+///     "Ctrl+A".into_hotkey()?,
+///     Hotkey::new(Key::A).modifier(Modifier::Ctrl),
+/// );
+/// # Ok(())
+/// # }
+/// ```
+pub trait HotkeyInput: private::Sealed {
+    /// Converts this input into a [`Hotkey`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] when conversion fails (string inputs).
+    fn into_hotkey(self) -> Result<Hotkey, ParseHotkeyError>;
+}
+
+impl HotkeyInput for Hotkey {
+    fn into_hotkey(self) -> Result<Hotkey, ParseHotkeyError> {
+        Ok(self)
+    }
+}
+
+impl HotkeyInput for Key {
+    fn into_hotkey(self) -> Result<Hotkey, ParseHotkeyError> {
+        Ok(Hotkey::from(self))
+    }
+}
+
+impl HotkeyInput for String {
+    fn into_hotkey(self) -> Result<Hotkey, ParseHotkeyError> {
+        self.parse()
+    }
+}
+
+impl HotkeyInput for &str {
+    fn into_hotkey(self) -> Result<Hotkey, ParseHotkeyError> {
+        self.parse()
     }
 }
 
@@ -504,5 +586,51 @@ mod tests {
             let round_trip = hotkey.to_string().parse::<Hotkey>().unwrap();
             assert_eq!(round_trip, hotkey, "failed round-trip for {input}");
         }
+    }
+
+    #[test]
+    fn hotkey_input_from_hotkey_is_infallible() {
+        let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
+        let result = hotkey.into_hotkey();
+        assert_eq!(
+            result.unwrap(),
+            Hotkey::new(Key::A).modifier(Modifier::Ctrl)
+        );
+    }
+
+    #[test]
+    fn hotkey_input_from_key_wraps_in_hotkey() {
+        let result = Key::A.into_hotkey();
+        assert_eq!(result.unwrap(), Hotkey::new(Key::A));
+    }
+
+    #[test]
+    fn hotkey_input_from_str_parses() {
+        let result = "Ctrl+A".into_hotkey();
+        assert_eq!(
+            result.unwrap(),
+            Hotkey::new(Key::A).modifier(Modifier::Ctrl)
+        );
+    }
+
+    #[test]
+    fn hotkey_input_from_string_parses() {
+        let result = String::from("Ctrl+A").into_hotkey();
+        assert_eq!(
+            result.unwrap(),
+            Hotkey::new(Key::A).modifier(Modifier::Ctrl)
+        );
+    }
+
+    #[test]
+    fn hotkey_input_from_str_reports_parse_error() {
+        let result = "Ctrl+Nope".into_hotkey();
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn hotkey_input_from_string_reports_parse_error() {
+        let result = String::from("Ctrl+Nope").into_hotkey();
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
     }
 }

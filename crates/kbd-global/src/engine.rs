@@ -1107,7 +1107,9 @@ mod tests {
         let mut engine = test_engine();
         let layer = kbd::layer::Layer::new("nav")
             .bind(Key::H, Action::Suppress)
-            .bind(Key::J, Action::Suppress);
+            .unwrap()
+            .bind(Key::J, Action::Suppress)
+            .unwrap();
 
         let result = engine.dispatcher.define_layer(layer);
         assert!(result.is_ok());
@@ -1131,8 +1133,11 @@ mod tests {
         let mut engine = test_engine();
         let layer = kbd::layer::Layer::new("nav")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .bind(Key::J, Action::Suppress)
-            .bind(Key::K, Action::Suppress);
+            .unwrap()
+            .bind(Key::K, Action::Suppress)
+            .unwrap();
 
         engine.dispatcher.define_layer(layer).unwrap();
 
@@ -1155,6 +1160,7 @@ mod tests {
         let mut engine = test_engine();
         let layer = kbd::layer::Layer::new("oneshot-nav")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .swallow()
             .oneshot(1)
             .timeout(std::time::Duration::from_secs(5));
@@ -1206,7 +1212,9 @@ mod tests {
     fn define_layer_via_runtime_command() {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
-        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         let (reply_tx, reply_rx) = mpsc::channel();
 
         runtime
@@ -1230,7 +1238,9 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define first layer — should succeed
-        let first_layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let first_layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1247,7 +1257,9 @@ mod tests {
         );
 
         // Define second layer with same name — should fail
-        let duplicate_layer = kbd::layer::Layer::new("nav").bind(Key::J, Action::Suppress);
+        let duplicate_layer = kbd::layer::Layer::new("nav")
+            .bind(Key::J, Action::Suppress)
+            .unwrap();
         let (dup_reply_tx, dup_reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1267,7 +1279,7 @@ mod tests {
     fn define_and_push_layer(engine: &mut Engine, name: &str, bindings: Vec<(Key, Action)>) {
         let mut layer = kbd::layer::Layer::new(name);
         for (key, action) in bindings {
-            layer = layer.bind(key, action);
+            layer = layer.bind(key, action).unwrap();
         }
         engine.dispatcher.define_layer(layer).unwrap();
         engine
@@ -1329,12 +1341,14 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let layer = kbd::layer::Layer::new("nav").bind(
-            Key::H,
-            Action::from(move || {
-                cc.fetch_add(1, Ordering::Relaxed);
-            }),
-        );
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
 
         engine
@@ -1470,6 +1484,7 @@ mod tests {
 
         let layer = kbd::layer::Layer::new("modal")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .swallow();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
@@ -1489,12 +1504,14 @@ mod tests {
 
         let layer_counter = Arc::new(AtomicUsize::new(0));
         let lc = Arc::clone(&layer_counter);
-        let layer = kbd::layer::Layer::new("nav").bind(
-            Key::H,
-            Action::from(move || {
-                lc.fetch_add(1, Ordering::Relaxed);
-            }),
-        );
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    lc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
 
         // Register a global binding that pushes the layer
@@ -1528,7 +1545,9 @@ mod tests {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
             )
-            .bind(Key::ESCAPE, Action::PopLayer);
+            .unwrap()
+            .bind(Key::ESCAPE, Action::PopLayer)
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
@@ -1555,12 +1574,14 @@ mod tests {
 
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
-        let layer = kbd::layer::Layer::new("nav").bind(
-            Key::H,
-            Action::from(move || {
-                cc.fetch_add(1, Ordering::Relaxed);
-            }),
-        );
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(
+                Key::H,
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
 
         // Register toggle binding
@@ -1644,6 +1665,7 @@ mod tests {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
             )
+            .unwrap()
             .oneshot(1);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
@@ -1674,6 +1696,7 @@ mod tests {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
             )
+            .unwrap()
             .oneshot(1);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
@@ -1703,6 +1726,7 @@ mod tests {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
             )
+            .unwrap()
             .oneshot(2);
         engine.dispatcher.define_layer(layer).unwrap();
         engine
@@ -1730,7 +1754,9 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define layer
-        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1782,7 +1808,9 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define and push layer
-        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -1850,6 +1878,7 @@ mod tests {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
             )
+            .unwrap()
             .timeout(Duration::from_millis(50));
         engine.dispatcher.define_layer(layer).unwrap();
         engine
@@ -1886,6 +1915,7 @@ mod tests {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
             )
+            .unwrap()
             .timeout(Duration::from_millis(100));
         engine.dispatcher.define_layer(layer).unwrap();
         engine
@@ -1922,7 +1952,9 @@ mod tests {
         let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
 
         // Define layer
-        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         let (reply_tx, reply_rx) = mpsc::channel();
         runtime
             .commands()
@@ -2021,6 +2053,7 @@ mod tests {
 
         let layer = kbd::layer::Layer::new("modal")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .swallow();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
@@ -2078,7 +2111,9 @@ mod tests {
 
         let layer = kbd::layer::Layer::new("nav")
             .bind(Key::H, Action::PopLayer)
-            .bind(Key::J, Action::Suppress);
+            .unwrap()
+            .bind(Key::J, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
@@ -2208,7 +2243,9 @@ mod tests {
 
         let layer = kbd::layer::Layer::new("nav")
             .bind(Key::H, Action::Suppress)
-            .bind(Key::J, Action::Suppress);
+            .unwrap()
+            .bind(Key::J, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
 
         let bindings = engine.dispatcher.list_bindings();
@@ -2223,7 +2260,9 @@ mod tests {
     fn list_bindings_inactive_layer_binding_marked_inactive() {
         let mut engine = test_engine();
 
-        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
 
         let bindings = engine.dispatcher.list_bindings();
@@ -2250,7 +2289,9 @@ mod tests {
             ))
             .unwrap();
 
-        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
@@ -2285,10 +2326,14 @@ mod tests {
     fn list_bindings_higher_layer_shadows_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = kbd::layer::Layer::new("layer1").bind(Key::H, Action::Suppress);
+        let layer1 = kbd::layer::Layer::new("layer1")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd::layer::Layer::new("layer2").bind(Key::H, Action::Suppress);
+        let layer2 = kbd::layer::Layer::new("layer2")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer2).unwrap();
 
         engine
@@ -2393,7 +2438,9 @@ mod tests {
             )
             .unwrap();
 
-        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
@@ -2423,12 +2470,15 @@ mod tests {
 
         let layer1 = kbd::layer::Layer::new("layer1")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .description("First layer");
         engine.dispatcher.define_layer(layer1).unwrap();
 
         let layer2 = kbd::layer::Layer::new("layer2")
             .bind(Key::J, Action::Suppress)
+            .unwrap()
             .bind(Key::K, Action::Suppress)
+            .unwrap()
             .description("Second layer");
         engine.dispatcher.define_layer(layer2).unwrap();
 
@@ -2483,7 +2533,9 @@ mod tests {
             ))
             .unwrap();
 
-        let layer = kbd::layer::Layer::new("nav").bind(Key::H, Action::Suppress);
+        let layer = kbd::layer::Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer).unwrap();
         engine
             .dispatcher
@@ -2509,10 +2561,14 @@ mod tests {
     fn conflicts_detects_layer_shadowing_lower_layer() {
         let mut engine = test_engine();
 
-        let layer1 = kbd::layer::Layer::new("layer1").bind(Key::H, Action::Suppress);
+        let layer1 = kbd::layer::Layer::new("layer1")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer1).unwrap();
 
-        let layer2 = kbd::layer::Layer::new("layer2").bind(Key::H, Action::Suppress);
+        let layer2 = kbd::layer::Layer::new("layer2")
+            .bind(Key::H, Action::Suppress)
+            .unwrap();
         engine.dispatcher.define_layer(layer2).unwrap();
 
         engine
@@ -2650,6 +2706,7 @@ mod tests {
 
         let layer = kbd::layer::Layer::new("modal")
             .bind(Key::H, Action::Suppress)
+            .unwrap()
             .swallow();
         engine.dispatcher.define_layer(layer).unwrap();
         engine

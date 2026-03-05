@@ -197,7 +197,9 @@ fn setup_dispatcher() -> (Dispatcher, BindingId) {
             Hotkey::new(Key::C).modifier(Modifier::Ctrl),
             Action::from(|| {}),
         )
+        .unwrap()
         .bind(Hotkey::new(Key::D), Action::from(|| {}))
+        .unwrap()
         .description("Vim normal mode");
     dispatcher
         .define_layer(vim_layer)

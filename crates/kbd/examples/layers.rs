@@ -133,18 +133,22 @@ fn setup_dispatcher() -> Dispatcher {
             Hotkey::new(Key::H),
             Action::from(|| println!("  → [nav] ← Left")),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::J),
             Action::from(|| println!("  → [nav] ↓ Down")),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::K),
             Action::from(|| println!("  → [nav] ↑ Up")),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::L),
             Action::from(|| println!("  → [nav] → Right")),
         )
+        .unwrap()
         .description("Navigation layer — hjkl as arrow keys");
     dispatcher.define_layer(nav).expect("define nav layer");
 
@@ -154,14 +158,17 @@ fn setup_dispatcher() -> Dispatcher {
             Hotkey::new(Key::F),
             Action::from(|| println!("  → [launcher] Open file manager")),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::B),
             Action::from(|| println!("  → [launcher] Open browser")),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::T),
             Action::from(|| println!("  → [launcher] Open terminal")),
         )
+        .unwrap()
         .oneshot(1)
         .description("App launcher — auto-pops after one key");
     dispatcher.define_layer(launcher).expect("define launcher");
@@ -172,11 +179,14 @@ fn setup_dispatcher() -> Dispatcher {
             Hotkey::new(Key::Y),
             Action::from(|| println!("  → [confirm] YES")),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::N),
             Action::from(|| println!("  → [confirm] NO")),
         )
+        .unwrap()
         .bind(Hotkey::new(Key::ESCAPE), Action::PopLayer)
+        .unwrap()
         .swallow()
         .description("Confirmation dialog — only y/n/Escape work");
     dispatcher.define_layer(confirm).expect("define confirm");
@@ -187,10 +197,12 @@ fn setup_dispatcher() -> Dispatcher {
             Hotkey::new(Key::DIGIT1),
             Action::from(|| println!("  → [quick] Workspace 1")),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::DIGIT2),
             Action::from(|| println!("  → [quick] Workspace 2")),
         )
+        .unwrap()
         .timeout(Duration::from_secs(3))
         .description("Quick workspace switcher — 3s timeout");
     dispatcher.define_layer(quick).expect("define quick");
