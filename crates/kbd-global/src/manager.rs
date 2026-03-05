@@ -241,17 +241,9 @@ impl HotkeyManager {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
         let binding = RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
-        let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.commands.send(Command::Register {
-            binding,
-            reply: reply_tx,
-        })?;
-
-        match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
-            Ok(()) => Ok(BindingGuard::new(id, self.commands.clone())),
-            Err(error) => Err(error),
-        }
+        self.request(|reply| Command::Register { binding, reply })??;
+        Ok(BindingGuard::new(id, self.commands.clone()))
     }
 
     /// Query whether a hotkey is currently registered.
@@ -265,14 +257,7 @@ impl HotkeyManager {
     /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn is_registered(&self, hotkey: impl HotkeyInput) -> Result<bool, Error> {
         let hotkey = hotkey.into_hotkey()?;
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::IsRegistered {
-            hotkey,
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        self.request(|reply| Command::IsRegistered { hotkey, reply })
     }
 
     /// Query whether a specific key is currently pressed on any device.
@@ -281,14 +266,7 @@ impl HotkeyManager {
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn is_key_pressed(&self, key: Key) -> Result<bool, Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::IsKeyPressed {
-            key,
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        self.request(|reply| Command::IsKeyPressed { key, reply })
     }
 
     /// Query the set of modifiers currently held, derived from key state.
@@ -300,12 +278,7 @@ impl HotkeyManager {
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn active_modifiers(&self) -> Result<Vec<Modifier>, Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands
-            .send(Command::ActiveModifiers { reply: reply_tx })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        self.request(|reply| Command::ActiveModifiers { reply })
     }
 
     /// Define a named layer.
@@ -319,14 +292,7 @@ impl HotkeyManager {
     /// name has already been defined, or [`Error::ManagerStopped`] if
     /// the engine has shut down.
     pub fn define_layer(&self, layer: Layer) -> Result<(), Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::DefineLayer {
-            layer,
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+        self.request(|reply| Command::DefineLayer { layer, reply })?
     }
 
     /// Stop the manager and join the engine thread.
@@ -341,6 +307,16 @@ impl HotkeyManager {
         self.shutdown_inner()
     }
 
+    /// Send a command that carries a reply channel and wait for the response.
+    ///
+    /// Encapsulates the channel-create → send → recv → map-error boilerplate
+    /// shared by every request/reply manager method.
+    fn request<T>(&self, build: impl FnOnce(mpsc::Sender<T>) -> Command) -> Result<T, Error> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.commands.send(build(reply_tx))?;
+        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+    }
+
     fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<BindingGuard, Error> {
         self.register_with_options(hotkey, action, BindingOptions::default())
     }
@@ -351,19 +327,13 @@ impl HotkeyManager {
         action: Action,
         options: SequenceOptions,
     ) -> Result<BindingGuard, Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::RegisterSequence {
+        let id = self.request(|reply| Command::RegisterSequence {
             sequence,
             action,
             options,
-            reply: reply_tx,
-        })?;
-
-        match reply_rx.recv().map_err(|_| Error::ManagerStopped)? {
-            Ok(id) => Ok(BindingGuard::new(id, self.commands.clone())),
-            Err(error) => Err(error),
-        }
+            reply,
+        })??;
+        Ok(BindingGuard::new(id, self.commands.clone()))
     }
 
     fn shutdown_inner(&self) -> Result<(), Error> {
@@ -385,14 +355,10 @@ impl HotkeyManager {
     /// Returns [`Error::LayerNotDefined`] if no layer with the given name exists,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn push_layer(&self, name: impl Into<LayerName>) -> Result<(), Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::PushLayer {
+        self.request(|reply| Command::PushLayer {
             name: name.into(),
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+            reply,
+        })?
     }
 
     /// Pop the topmost layer from the layer stack.
@@ -404,11 +370,7 @@ impl HotkeyManager {
     /// Returns [`Error::EmptyLayerStack`] if no layers are active,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn pop_layer(&self) -> Result<LayerName, Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::PopLayer { reply: reply_tx })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+        self.request(|reply| Command::PopLayer { reply })?
     }
 
     /// Toggle a named layer on or off.
@@ -421,14 +383,10 @@ impl HotkeyManager {
     /// Returns [`Error::LayerNotDefined`] if no layer with the given name exists,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
     pub fn toggle_layer(&self, name: impl Into<LayerName>) -> Result<(), Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::ToggleLayer {
+        self.request(|reply| Command::ToggleLayer {
             name: name.into(),
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)?
+            reply,
+        })?
     }
 
     /// List all registered bindings with current shadowed status.
@@ -441,12 +399,7 @@ impl HotkeyManager {
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn list_bindings(&self) -> Result<Vec<BindingInfo>, Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands
-            .send(Command::ListBindings { reply: reply_tx })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        self.request(|reply| Command::ListBindings { reply })
     }
 
     /// Query what would fire if the given hotkey were pressed now.
@@ -459,14 +412,7 @@ impl HotkeyManager {
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn bindings_for_key(&self, hotkey: impl HotkeyInput) -> Result<Option<BindingInfo>, Error> {
         let hotkey = hotkey.into_hotkey()?;
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::BindingsForKey {
-            hotkey,
-            reply: reply_tx,
-        })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        self.request(|reply| Command::BindingsForKey { hotkey, reply })
     }
 
     /// Query the current layer stack.
@@ -477,12 +423,7 @@ impl HotkeyManager {
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn active_layers(&self) -> Result<Vec<ActiveLayerInfo>, Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands
-            .send(Command::ActiveLayers { reply: reply_tx })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        self.request(|reply| Command::ActiveLayers { reply })
     }
 
     /// Return current in-progress sequence state, if any.
@@ -491,12 +432,7 @@ impl HotkeyManager {
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn pending_sequence(&self) -> Result<Option<PendingSequenceInfo>, Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands
-            .send(Command::PendingSequence { reply: reply_tx })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        self.request(|reply| Command::PendingSequence { reply })
     }
 
     // TODO: register_tap_hold() — dual-function key
@@ -510,11 +446,7 @@ impl HotkeyManager {
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn conflicts(&self) -> Result<Vec<ConflictInfo>, Error> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-
-        self.commands.send(Command::Conflicts { reply: reply_tx })?;
-
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        self.request(|reply| Command::Conflicts { reply })
     }
 }
 
