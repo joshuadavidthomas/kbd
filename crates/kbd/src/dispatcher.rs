@@ -10,6 +10,7 @@
 
 mod layers;
 mod query;
+mod registry;
 mod sequence;
 mod timeout;
 
@@ -36,8 +37,6 @@ use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
 use crate::sequence::PendingSequenceInfo;
-use crate::sequence::SequenceInput;
-use crate::sequence::SequenceOptions;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
@@ -189,158 +188,10 @@ impl Dispatcher {
         Self::default()
     }
 
-    /// Register a binding. Returns the assigned [`BindingId`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same hotkey exists.
-    pub fn register(
-        &mut self,
-        hotkey: impl Into<Hotkey>,
-        action: impl Into<Action>,
-    ) -> Result<BindingId, crate::error::Error> {
-        let id = BindingId::new();
-        let binding = RegisteredBinding::new(id, hotkey.into(), action.into());
-        self.register_binding(binding)?;
-        Ok(id)
-    }
-
-    /// Register a multi-step sequence binding with default sequence options.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`](crate::error::Error::Parse) when sequence input
-    /// conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same sequence already exists.
-    pub fn register_sequence(
-        &mut self,
-        sequence: impl SequenceInput,
-        action: impl Into<Action>,
-    ) -> Result<BindingId, crate::error::Error> {
-        self.register_sequence_with_options(sequence, action, SequenceOptions::default())
-    }
-
-    /// Register a sequence with explicit sequence options.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`](crate::error::Error::Parse) when sequence input
-    /// conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same sequence already exists.
-    pub fn register_sequence_with_options(
-        &mut self,
-        sequence: impl SequenceInput,
-        action: impl Into<Action>,
-        options: SequenceOptions,
-    ) -> Result<BindingId, crate::error::Error> {
-        let id = BindingId::new();
-        let sequence = sequence.into_sequence()?;
-        self.register_sequence_binding_with_id(id, sequence, action.into(), options)?;
-        Ok(id)
-    }
-
-    /// Register a sequence binding with a caller-provided binding ID.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same sequence already exists.
-    pub(crate) fn register_sequence_binding_with_id(
-        &mut self,
-        id: BindingId,
-        sequence: HotkeySequence,
-        action: Action,
-        options: SequenceOptions,
-    ) -> Result<(), crate::error::Error> {
-        let binding = RegisteredSequenceBinding::new(id, sequence, action, options);
-        self.register_sequence_binding(binding)
-    }
-
     /// Return current in-progress sequence state, if any.
     #[must_use]
     pub fn pending_sequence(&self) -> Option<PendingSequenceInfo> {
         self.pending_sequence_snapshot()
-    }
-
-    /// Register a [`RegisteredBinding`] with full options control.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same hotkey exists.
-    pub fn register_binding(
-        &mut self,
-        binding: RegisteredBinding,
-    ) -> Result<(), crate::error::Error> {
-        let id = binding.id();
-        let hotkey = binding.hotkey().clone();
-
-        if self.bindings_by_id.contains_key(&id)
-            || self.sequence_bindings_by_id.contains_key(&id)
-            || self.binding_ids_by_hotkey.contains_key(&hotkey)
-        {
-            return Err(crate::error::Error::AlreadyRegistered);
-        }
-
-        self.binding_ids_by_hotkey.insert(hotkey, id);
-        self.bindings_by_id.insert(id, binding);
-        Ok(())
-    }
-
-    fn register_sequence_binding(
-        &mut self,
-        binding: RegisteredSequenceBinding,
-    ) -> Result<(), crate::error::Error> {
-        let id = binding.id;
-        let sequence = binding.sequence.clone();
-
-        if self.sequence_bindings_by_id.contains_key(&id)
-            || self.bindings_by_id.contains_key(&id)
-            || self.sequence_ids_by_value.contains_key(&sequence)
-        {
-            return Err(crate::error::Error::AlreadyRegistered);
-        }
-
-        self.sequence_ids_by_value.insert(sequence, id);
-        self.sequence_bindings_by_id.insert(id, binding);
-        Ok(())
-    }
-
-    /// Unregister a binding by its [`BindingId`].
-    pub fn unregister(&mut self, id: BindingId) {
-        if let Some(binding) = self.bindings_by_id.remove(&id) {
-            self.binding_ids_by_hotkey.remove(binding.hotkey());
-        }
-
-        if let Some(binding) = self.sequence_bindings_by_id.remove(&id) {
-            self.sequence_ids_by_value.remove(&binding.sequence);
-        }
-
-        self.active_sequences
-            .retain(|active| !matches!(active.binding_ref, SequenceBindingRef::Global(global_id) if global_id == id));
-
-        if self.pending_standalone.as_ref().is_some_and(|pending| {
-            matches!(
-                pending.binding_ref,
-                MatchedBindingRef::Global(global_id) | MatchedBindingRef::SequenceGlobal(global_id)
-                    if global_id == id
-            )
-        }) {
-            self.pending_standalone = None;
-        }
-
-        if self.active_sequences.is_empty() {
-            self.pending_standalone = None;
-        }
-    }
-
-    /// Check whether a hotkey has a registered global binding.
-    #[must_use]
-    pub fn is_registered(&self, hotkey: &Hotkey) -> bool {
-        self.binding_ids_by_hotkey.contains_key(hotkey)
     }
 
     /// Define a named layer. The layer is not active until pushed.
@@ -626,30 +477,6 @@ mod tests {
     use super::*;
     use crate::key::Key;
     use crate::layer::Layer;
-
-    #[test]
-    fn register_returns_unique_id() {
-        let mut dispatcher = Dispatcher::new();
-        let id1 = dispatcher
-            .register(Hotkey::new(Key::A), Action::Suppress)
-            .unwrap();
-        let id2 = dispatcher
-            .register(Hotkey::new(Key::B), Action::Suppress)
-            .unwrap();
-        assert_ne!(id1, id2);
-    }
-
-    #[test]
-    fn is_registered_reflects_state() {
-        let mut dispatcher = Dispatcher::new();
-        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-        assert!(!dispatcher.is_registered(&hotkey));
-
-        dispatcher
-            .register(hotkey.clone(), Action::Suppress)
-            .unwrap();
-        assert!(dispatcher.is_registered(&hotkey));
-    }
 
     #[test]
     fn process_requires_exact_modifiers() {

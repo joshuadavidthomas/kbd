@@ -388,8 +388,6 @@ mod tests {
     use super::super::Dispatcher;
     use super::super::MatchResult;
     use crate::action::Action;
-    use crate::binding::BindingId;
-    use crate::binding::RegisteredBinding;
     use crate::hotkey::Hotkey;
     use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
@@ -407,57 +405,6 @@ mod tests {
         {
             callback();
         }
-    }
-
-    #[test]
-    fn register_sequence_accepts_typed_sequence() {
-        let mut dispatcher = Dispatcher::new();
-        let sequence = HotkeySequence::new(vec![
-            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
-            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-        ])
-        .unwrap();
-
-        let id = dispatcher
-            .register_sequence(sequence, Action::Suppress)
-            .unwrap();
-        dispatcher.unregister(id);
-    }
-
-    #[test]
-    fn register_sequence_accepts_string_input() {
-        let mut dispatcher = Dispatcher::new();
-
-        let id = dispatcher
-            .register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
-            .unwrap();
-
-        dispatcher.unregister(id);
-    }
-
-    #[test]
-    fn register_sequence_accepts_vec_hotkeys_input() {
-        let mut dispatcher = Dispatcher::new();
-
-        let id = dispatcher
-            .register_sequence(
-                vec![
-                    Hotkey::new(Key::K).modifier(Modifier::Ctrl),
-                    Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                ],
-                Action::Suppress,
-            )
-            .unwrap();
-
-        dispatcher.unregister(id);
-    }
-
-    #[test]
-    fn register_sequence_reports_parse_error_for_string_input() {
-        let mut dispatcher = Dispatcher::new();
-
-        let result = dispatcher.register_sequence("Ctrl+K, Ctrl+Nope", Action::Suppress);
-        assert!(matches!(result, Err(crate::error::Error::Parse(_))));
     }
 
     #[test]
@@ -848,58 +795,6 @@ mod tests {
         execute_callback(&h);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-    }
-
-    #[test]
-    fn registering_sequence_with_existing_hotkey_id_is_rejected() {
-        let mut dispatcher = Dispatcher::new();
-        let id = BindingId::new();
-
-        dispatcher
-            .register_binding(RegisteredBinding::new(
-                id,
-                Hotkey::new(Key::A),
-                Action::Suppress,
-            ))
-            .unwrap();
-
-        let result = dispatcher.register_sequence_binding_with_id(
-            id,
-            "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
-            Action::Suppress,
-            SequenceOptions::default(),
-        );
-
-        assert!(matches!(
-            result,
-            Err(crate::error::Error::AlreadyRegistered)
-        ));
-    }
-
-    #[test]
-    fn registering_hotkey_with_existing_sequence_id_is_rejected() {
-        let mut dispatcher = Dispatcher::new();
-        let id = BindingId::new();
-
-        dispatcher
-            .register_sequence_binding_with_id(
-                id,
-                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
-                Action::Suppress,
-                SequenceOptions::default(),
-            )
-            .unwrap();
-
-        let result = dispatcher.register_binding(RegisteredBinding::new(
-            id,
-            Hotkey::new(Key::A),
-            Action::Suppress,
-        ));
-
-        assert!(matches!(
-            result,
-            Err(crate::error::Error::AlreadyRegistered)
-        ));
     }
 
     #[test]
