@@ -1,3 +1,7 @@
+# TODO: after 1.0, switch to independent versioning per-crate
+# - remove version_group from each [[package]]
+# - switch to per-crate changelogs (remove changelog_path overrides)
+
 [workspace]
 changelog_update = true
 semver_check = true
