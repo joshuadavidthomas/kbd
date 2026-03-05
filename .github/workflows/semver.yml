@@ -42,7 +42,6 @@ jobs:
       - name: Run semver checks
         id: semver
         env:
-          NO_COLOR: 1
           BASE_REF: ${{ github.base_ref }}
         run: |
           if cargo semver-checks check-release \
