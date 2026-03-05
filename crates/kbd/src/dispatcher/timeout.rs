@@ -2,8 +2,40 @@ use std::time::Duration;
 use std::time::Instant;
 
 use super::Dispatcher;
+use super::MatchResult;
 
 impl Dispatcher {
+    /// Return the nearest layer or sequence timeout deadline, if any.
+    #[must_use]
+    pub fn next_timeout_deadline(&self) -> Option<Duration> {
+        let now = Instant::now();
+        let layer_deadline = self.layer_timeout_deadline(now);
+        let sequence_deadline = self.sequence_timeout_deadline(now);
+
+        match (layer_deadline, sequence_deadline) {
+            (Some(a), Some(b)) => Some(std::cmp::min(a, b)),
+            (Some(a), None) | (None, Some(a)) => Some(a),
+            (None, None) => None,
+        }
+    }
+
+    /// Check timeout-driven state transitions.
+    ///
+    /// This includes layer auto-pop timeouts and sequence step timeouts.
+    /// Use [`check_timeouts_with_results`](Self::check_timeouts_with_results)
+    /// when you need timeout-triggered match results (e.g. standalone fallback
+    /// actions for sequence prefixes).
+    pub fn check_timeouts(&mut self) {
+        let _ = self.check_timeouts_with_results();
+    }
+
+    /// Check timeout-driven state transitions and return any timeout matches.
+    pub fn check_timeouts_with_results(&mut self) -> Vec<MatchResult<'_>> {
+        let now = Instant::now();
+        self.expire_layer_timeouts(now);
+        self.check_sequence_timeouts(now)
+    }
+
     /// Calculate the nearest layer timeout deadline.
     ///
     /// Returns the smallest remaining duration across all layers that have
