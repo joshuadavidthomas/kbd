@@ -9,14 +9,28 @@ impl Dispatcher {
     #[must_use]
     pub fn next_timeout_deadline(&self) -> Option<Duration> {
         let now = Instant::now();
-        let layer_deadline = self.layer_timeout_deadline(now);
-        let sequence_deadline = self.sequence_timeout_deadline(now);
+        let mut min_remaining: Option<Duration> = None;
 
-        match (layer_deadline, sequence_deadline) {
-            (Some(a), Some(b)) => Some(std::cmp::min(a, b)),
-            (Some(a), None) | (None, Some(a)) => Some(a),
-            (None, None) => None,
+        for entry in &self.layer_stack {
+            if let Some(timeout) = &entry.timeout {
+                let elapsed = now.duration_since(timeout.last_activity);
+                let remaining = timeout.duration.saturating_sub(elapsed);
+                min_remaining = Some(match min_remaining {
+                    Some(current) => std::cmp::min(current, remaining),
+                    None => remaining,
+                });
+            }
         }
+
+        for active in &self.active_sequences {
+            let remaining = active.deadline.saturating_duration_since(now);
+            min_remaining = Some(match min_remaining {
+                Some(current) => std::cmp::min(current, remaining),
+                None => remaining,
+            });
+        }
+
+        min_remaining
     }
 
     /// Check timeout-driven state transitions.
@@ -32,36 +46,7 @@ impl Dispatcher {
     /// Check timeout-driven state transitions and return any timeout matches.
     pub fn check_timeouts_with_results(&mut self) -> Vec<MatchResult<'_>> {
         let now = Instant::now();
-        self.expire_layer_timeouts(now);
-        self.check_sequence_timeouts(now)
-    }
 
-    /// Calculate the nearest layer timeout deadline.
-    ///
-    /// Returns the smallest remaining duration across all layers that have
-    /// an inactivity timeout configured.
-    pub(super) fn layer_timeout_deadline(&self, now: Instant) -> Option<Duration> {
-        let mut min_remaining = None;
-
-        for entry in &self.layer_stack {
-            if let Some(timeout) = &entry.timeout {
-                let elapsed = now.duration_since(timeout.last_activity);
-                let remaining = timeout.duration.saturating_sub(elapsed);
-                min_remaining = Some(match min_remaining {
-                    Some(current) => std::cmp::min(current, remaining),
-                    None => remaining,
-                });
-            }
-        }
-
-        min_remaining
-    }
-
-    /// Remove layers whose inactivity timeout has expired.
-    ///
-    /// After removing expired layers, any active sequences associated with
-    /// those layers are cleaned up.
-    pub(super) fn expire_layer_timeouts(&mut self, now: Instant) {
         let mut timed_out_layers = Vec::new();
         self.layer_stack.retain(|entry| {
             let keep = if let Some(timeout) = &entry.timeout {
@@ -77,6 +62,8 @@ impl Dispatcher {
         for layer_name in timed_out_layers {
             self.clear_sequences_for_layer_if_inactive(&layer_name);
         }
+
+        self.check_sequence_timeouts(now)
     }
 
     /// Reset all layer inactivity timeouts to `now`.

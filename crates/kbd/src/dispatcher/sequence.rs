@@ -239,24 +239,6 @@ impl Dispatcher {
         })
     }
 
-    /// Calculate the nearest active-sequence deadline.
-    ///
-    /// Returns the smallest remaining duration across all in-progress
-    /// sequences.
-    pub(super) fn sequence_timeout_deadline(&self, now: Instant) -> Option<Duration> {
-        let mut min_remaining = None;
-
-        for active in &self.active_sequences {
-            let remaining = active.deadline.saturating_duration_since(now);
-            min_remaining = Some(match min_remaining {
-                Some(current) => std::cmp::min(current, remaining),
-                None => remaining,
-            });
-        }
-
-        min_remaining
-    }
-
     pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Vec<MatchResult<'_>> {
         if self.active_sequences.is_empty() {
             return Vec::new();
