@@ -54,10 +54,12 @@ jobs:
           fi
 
       - name: Generate comment
+        env:
+          BREAKING: ${{ steps.semver.outputs.breaking }}
         run: |
           sed -i 's/\x1b\[[0-9;]*m//g' /tmp/semver-output.txt
 
-          if [ "${{ steps.semver.outputs.breaking }}" = "true" ]; then
+          if [ "${BREAKING}" = "true" ]; then
             HEADER="⚠️ Breaking API changes detected"
           else
             HEADER="✅ No breaking API changes detected"
