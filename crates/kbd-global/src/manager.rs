@@ -175,11 +175,7 @@ impl HotkeyManager {
     /// Returns [`Error::Parse`] when string input conversion fails,
     /// [`Error::AlreadyRegistered`] if the hotkey is already bound,
     /// or [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn register<F>(
-        &self,
-        hotkey: impl HotkeyInput,
-        callback: F,
-    ) -> Result<BindingGuard, Error>
+    pub fn register<F>(&self, hotkey: impl HotkeyInput, callback: F) -> Result<BindingGuard, Error>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -244,8 +240,7 @@ impl HotkeyManager {
     ) -> Result<BindingGuard, Error> {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
-        let binding =
-            RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
+        let binding = RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
         let (reply_tx, reply_rx) = mpsc::channel();
 
         self.commands.send(Command::Register {
@@ -462,10 +457,7 @@ impl HotkeyManager {
     /// # Errors
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn bindings_for_key(
-        &self,
-        hotkey: impl HotkeyInput,
-    ) -> Result<Option<BindingInfo>, Error> {
+    pub fn bindings_for_key(&self, hotkey: impl HotkeyInput) -> Result<Option<BindingInfo>, Error> {
         let hotkey = hotkey.into_hotkey()?;
         let (reply_tx, reply_rx) = mpsc::channel();
 

@@ -300,7 +300,12 @@ mod tests {
             .register(Hotkey::new(Key::X), Action::Suppress)
             .unwrap();
         dispatcher
-            .define_layer(Layer::new("modal").bind(Key::H, Action::Suppress).unwrap().swallow())
+            .define_layer(
+                Layer::new("modal")
+                    .bind(Key::H, Action::Suppress)
+                    .unwrap()
+                    .swallow(),
+            )
             .unwrap();
         dispatcher.push_layer("modal").unwrap();
 

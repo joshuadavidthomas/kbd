@@ -558,12 +558,16 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         dispatcher
-            .define_layer(Layer::new("nav").bind(
-                Key::H,
-                Action::from(move || {
-                    cc.fetch_add(1, Ordering::Relaxed);
-                }),
-            ).unwrap())
+            .define_layer(
+                Layer::new("nav")
+                    .bind(
+                        Key::H,
+                        Action::from(move || {
+                            cc.fetch_add(1, Ordering::Relaxed);
+                        }),
+                    )
+                    .unwrap(),
+            )
             .unwrap();
         dispatcher
             .register(

@@ -428,19 +428,25 @@ mod tests {
     #[test]
     fn layer_bind_multiple_bindings() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Suppress).unwrap()
-            .bind(Key::J, Action::Suppress).unwrap()
-            .bind(Key::K, Action::Suppress).unwrap()
-            .bind(Key::L, Action::Suppress).unwrap();
+            .bind(Key::H, Action::Suppress)
+            .unwrap()
+            .bind(Key::J, Action::Suppress)
+            .unwrap()
+            .bind(Key::K, Action::Suppress)
+            .unwrap()
+            .bind(Key::L, Action::Suppress)
+            .unwrap();
         assert_eq!(layer.binding_count(), 4);
     }
 
     #[test]
     fn layer_bind_preserves_hotkey() {
-        let layer = Layer::new("nav").bind(
-            Hotkey::new(Key::H).modifier(Modifier::Ctrl),
-            Action::Suppress,
-        ).unwrap();
+        let layer = Layer::new("nav")
+            .bind(
+                Hotkey::new(Key::H).modifier(Modifier::Ctrl),
+                Action::Suppress,
+            )
+            .unwrap();
         let (_, bindings, _, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].hotkey.key(), Key::H);
@@ -449,7 +455,9 @@ mod tests {
 
     #[test]
     fn layer_bind_accepts_closure() {
-        let layer = Layer::new("test").bind(Key::A, || println!("fired")).unwrap();
+        let layer = Layer::new("test")
+            .bind(Key::A, || println!("fired"))
+            .unwrap();
         assert_eq!(layer.binding_count(), 1);
     }
 
@@ -475,8 +483,10 @@ mod tests {
     #[test]
     fn layer_builder_chains_all_options() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Suppress).unwrap()
-            .bind(Key::J, Action::Suppress).unwrap()
+            .bind(Key::H, Action::Suppress)
+            .unwrap()
+            .bind(Key::J, Action::Suppress)
+            .unwrap()
             .description("Navigation keys")
             .swallow()
             .oneshot(1)
@@ -507,7 +517,10 @@ mod tests {
 
     #[test]
     fn layer_into_parts_decomposes() {
-        let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap().swallow();
+        let layer = Layer::new("nav")
+            .bind(Key::H, Action::Suppress)
+            .unwrap()
+            .swallow();
 
         let (name, bindings, _, options) = layer.into_parts();
         assert_eq!(name.as_str(), "nav");
@@ -524,7 +537,8 @@ mod tests {
     #[test]
     fn layer_description_preserved_in_into_parts() {
         let layer = Layer::new("nav")
-            .bind(Key::H, Action::Suppress).unwrap()
+            .bind(Key::H, Action::Suppress)
+            .unwrap()
             .description("Navigation keys");
 
         let (_, _, _, options) = layer.into_parts();
@@ -573,9 +587,7 @@ mod tests {
 
     #[test]
     fn layer_bind_accepts_string_input() {
-        let layer = Layer::new("test")
-            .bind("Ctrl+A", Action::Suppress)
-            .unwrap();
+        let layer = Layer::new("test").bind("Ctrl+A", Action::Suppress).unwrap();
         assert_eq!(layer.binding_count(), 1);
     }
 

@@ -87,11 +87,16 @@ fn layer_lifecycle() {
     dispatcher
         .define_layer(
             Layer::new("vim-normal")
-                .bind(Key::H, Action::Suppress).unwrap()
-                .bind(Key::J, Action::Suppress).unwrap()
-                .bind(Key::K, Action::Suppress).unwrap()
-                .bind(Key::L, Action::Suppress).unwrap()
-                .bind(Key::ESCAPE, Action::PopLayer).unwrap()
+                .bind(Key::H, Action::Suppress)
+                .unwrap()
+                .bind(Key::J, Action::Suppress)
+                .unwrap()
+                .bind(Key::K, Action::Suppress)
+                .unwrap()
+                .bind(Key::L, Action::Suppress)
+                .unwrap()
+                .bind(Key::ESCAPE, Action::PopLayer)
+                .unwrap()
                 .description("Vim normal mode"),
         )
         .unwrap();
@@ -141,8 +146,10 @@ fn layer_shadows_global_and_falls_through() {
                     Action::from(move || {
                         lc.fetch_add(1, Ordering::Relaxed);
                     }),
-                ).unwrap()
-                .bind(Key::H, Action::Suppress).unwrap(),
+                )
+                .unwrap()
+                .bind(Key::H, Action::Suppress)
+                .unwrap(),
         )
         .unwrap();
     dispatcher.push_layer("nav").unwrap();
@@ -172,7 +179,12 @@ fn swallow_layer_blocks_globals() {
         .register(Hotkey::new(Key::X), Action::Suppress)
         .unwrap();
     dispatcher
-        .define_layer(Layer::new("modal").bind(Key::H, Action::Suppress).unwrap().swallow())
+        .define_layer(
+            Layer::new("modal")
+                .bind(Key::H, Action::Suppress)
+                .unwrap()
+                .swallow(),
+        )
         .unwrap();
     dispatcher.push_layer("modal").unwrap();
 
@@ -238,8 +250,10 @@ fn oneshot_auto_pops() {
     dispatcher
         .define_layer(
             Layer::new("oneshot")
-                .bind(Key::H, Action::Suppress).unwrap()
-                .bind(Key::J, Action::Suppress).unwrap()
+                .bind(Key::H, Action::Suppress)
+                .unwrap()
+                .bind(Key::J, Action::Suppress)
+                .unwrap()
                 .oneshot(2),
         )
         .unwrap();
@@ -263,7 +277,8 @@ fn timeout_auto_pops() {
     dispatcher
         .define_layer(
             Layer::new("timed")
-                .bind(Key::H, Action::Suppress).unwrap()
+                .bind(Key::H, Action::Suppress)
+                .unwrap()
                 .timeout(Duration::from_millis(50)),
         )
         .unwrap();
@@ -300,11 +315,13 @@ fn introspection_full_picture() {
     dispatcher
         .define_layer(
             Layer::new("nav")
-                .bind(Key::H, Action::Suppress).unwrap()
+                .bind(Key::H, Action::Suppress)
+                .unwrap()
                 .bind(
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
-                ).unwrap()
+                )
+                .unwrap()
                 .description("Navigation layer"),
         )
         .unwrap();
@@ -524,20 +541,28 @@ fn topmost_layer_wins() {
     let l2c = Arc::clone(&layer2_counter);
 
     dispatcher
-        .define_layer(Layer::new("bottom").bind(
-            Key::H,
-            Action::from(move || {
-                l1c.fetch_add(1, Ordering::Relaxed);
-            }),
-        ).unwrap())
+        .define_layer(
+            Layer::new("bottom")
+                .bind(
+                    Key::H,
+                    Action::from(move || {
+                        l1c.fetch_add(1, Ordering::Relaxed);
+                    }),
+                )
+                .unwrap(),
+        )
         .unwrap();
     dispatcher
-        .define_layer(Layer::new("top").bind(
-            Key::H,
-            Action::from(move || {
-                l2c.fetch_add(1, Ordering::Relaxed);
-            }),
-        ).unwrap())
+        .define_layer(
+            Layer::new("top")
+                .bind(
+                    Key::H,
+                    Action::from(move || {
+                        l2c.fetch_add(1, Ordering::Relaxed);
+                    }),
+                )
+                .unwrap(),
+        )
         .unwrap();
 
     dispatcher.push_layer("bottom").unwrap();

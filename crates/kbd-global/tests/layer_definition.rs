@@ -17,10 +17,14 @@ fn define_layer_via_manager() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress).unwrap()
-        .bind(Key::J, Action::Suppress).unwrap()
-        .bind(Key::K, Action::Suppress).unwrap()
-        .bind(Key::L, Action::Suppress).unwrap();
+        .bind(Key::H, Action::Suppress)
+        .unwrap()
+        .bind(Key::J, Action::Suppress)
+        .unwrap()
+        .bind(Key::K, Action::Suppress)
+        .unwrap()
+        .bind(Key::L, Action::Suppress)
+        .unwrap();
 
     let result = manager.define_layer(layer);
     assert!(result.is_ok());
@@ -63,7 +67,8 @@ fn define_layer_with_all_options() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("oneshot-nav")
-        .bind(Key::H, Action::Suppress).unwrap()
+        .bind(Key::H, Action::Suppress)
+        .unwrap()
         .swallow()
         .oneshot(1)
         .timeout(Duration::from_secs(5));
@@ -78,8 +83,10 @@ fn layer_builder_produces_correct_state() {
         .bind(
             Hotkey::new(Key::A).modifier(Modifier::Ctrl),
             Action::Suppress,
-        ).unwrap()
-        .bind(Key::B, || println!("fired")).unwrap()
+        )
+        .unwrap()
+        .bind(Key::B, || println!("fired"))
+        .unwrap()
         .swallow()
         .oneshot(2)
         .timeout(Duration::from_millis(500));
@@ -117,7 +124,8 @@ fn layer_description_sets_label() {
 #[test]
 fn layer_description_chains_with_other_options() {
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress).unwrap()
+        .bind(Key::H, Action::Suppress)
+        .unwrap()
         .description("Navigation keys")
         .swallow()
         .oneshot(1)
@@ -134,7 +142,8 @@ fn layer_description_preserved_through_define_layer() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress).unwrap()
+        .bind(Key::H, Action::Suppress)
+        .unwrap()
         .description("Navigation keys");
 
     // If define_layer succeeds, the metadata was accepted by the engine.

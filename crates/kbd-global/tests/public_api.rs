@@ -176,8 +176,10 @@ fn define_push_pop_layer_lifecycle() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress).unwrap()
-        .bind(Key::J, Action::Suppress).unwrap();
+        .bind(Key::H, Action::Suppress)
+        .unwrap()
+        .bind(Key::J, Action::Suppress)
+        .unwrap();
     manager.define_layer(layer).unwrap();
 
     manager.push_layer("nav").unwrap();
@@ -214,7 +216,8 @@ fn layer_description_visible_in_introspection() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress).unwrap()
+        .bind(Key::H, Action::Suppress)
+        .unwrap()
         .description("Vim-style navigation");
     manager.define_layer(layer).unwrap();
     manager.push_layer("nav").unwrap();
