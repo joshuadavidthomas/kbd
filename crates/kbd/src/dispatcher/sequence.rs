@@ -3,9 +3,9 @@ use std::time::Instant;
 
 use super::Dispatcher;
 use super::InternalOutcome;
-use super::layers::LayerEffect;
 use super::MatchResult;
 use super::MatchedBindingRef;
+use super::layers::LayerEffect;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
 use crate::hotkey::Hotkey;

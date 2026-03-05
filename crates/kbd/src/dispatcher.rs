@@ -65,8 +65,6 @@ pub enum MatchResult<'a> {
     Ignored,
 }
 
-
-
 /// A synchronous hotkey matching engine.
 ///
 /// `Dispatcher` is the embeddable engine. No threads, no channels, no evdev.
@@ -183,8 +181,6 @@ enum InternalOutcome {
     NoMatch,
     Ignored,
 }
-
-
 
 impl Dispatcher {
     /// Create a new empty dispatcher with no bindings or layers.
@@ -619,7 +615,6 @@ impl Dispatcher {
             }
         }
     }
-
 }
 
 #[cfg(test)]
