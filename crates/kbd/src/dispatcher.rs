@@ -122,11 +122,11 @@ pub enum MatchResult<'a> {
 ///
 /// // Define a navigation layer
 /// let nav = Layer::new("nav")
-///     .bind(Key::H, Action::Suppress)
-///     .bind(Key::J, Action::Suppress)
-///     .bind(Key::K, Action::Suppress)
-///     .bind(Key::L, Action::Suppress)
-///     .bind(Key::ESCAPE, Action::PopLayer)
+///     .bind(Key::H, Action::Suppress).unwrap()
+///     .bind(Key::J, Action::Suppress).unwrap()
+///     .bind(Key::K, Action::Suppress).unwrap()
+///     .bind(Key::L, Action::Suppress).unwrap()
+///     .bind(Key::ESCAPE, Action::PopLayer).unwrap()
 ///     .swallow();
 /// dispatcher.define_layer(nav).unwrap();
 ///
@@ -536,7 +536,7 @@ mod tests {
             })
             .unwrap();
         dispatcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress).unwrap())
             .unwrap();
         dispatcher.push_layer("nav").unwrap();
 
@@ -563,7 +563,7 @@ mod tests {
                 Action::from(move || {
                     cc.fetch_add(1, Ordering::Relaxed);
                 }),
-            ))
+            ).unwrap())
             .unwrap();
         dispatcher
             .register(

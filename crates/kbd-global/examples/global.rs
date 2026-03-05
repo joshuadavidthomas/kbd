@@ -114,25 +114,30 @@ fn run() -> Result<(), Error> {
                 let _ = tx5.send("[nav] H → Left".to_string());
             }),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::J),
             Action::from(move || {
                 let _ = tx6.send("[nav] J → Down".to_string());
             }),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::K),
             Action::from(move || {
                 let _ = tx7.send("[nav] K → Up".to_string());
             }),
         )
+        .unwrap()
         .bind(
             Hotkey::new(Key::L),
             Action::from(move || {
                 let _ = tx8.send("[nav] L → Right".to_string());
             }),
         )
+        .unwrap()
         .bind(Hotkey::new(Key::ESCAPE), Action::PopLayer)
+        .unwrap()
         .description("Navigation layer — hjkl as arrows, Escape to pop");
     manager.define_layer(nav)?;
 

@@ -176,8 +176,8 @@ fn define_push_pop_layer_lifecycle() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress)
-        .bind(Key::J, Action::Suppress);
+        .bind(Key::H, Action::Suppress).unwrap()
+        .bind(Key::J, Action::Suppress).unwrap();
     manager.define_layer(layer).unwrap();
 
     manager.push_layer("nav").unwrap();
@@ -197,7 +197,7 @@ fn define_push_pop_layer_lifecycle() {
 fn toggle_layer_on_off() {
     let manager = utils::test_manager();
 
-    let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
+    let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
     manager.define_layer(layer).unwrap();
 
     // Toggle on
@@ -214,7 +214,7 @@ fn layer_description_visible_in_introspection() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress)
+        .bind(Key::H, Action::Suppress).unwrap()
         .description("Vim-style navigation");
     manager.define_layer(layer).unwrap();
     manager.push_layer("nav").unwrap();
@@ -277,7 +277,7 @@ fn conflicts_detected_when_layer_shadows_global() {
 
     let _global = manager.register(Key::H, || {}).unwrap();
 
-    let layer = Layer::new("nav").bind(Key::H, Action::Suppress);
+    let layer = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
     manager.define_layer(layer).unwrap();
     manager.push_layer("nav").unwrap();
 

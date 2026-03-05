@@ -17,10 +17,10 @@ fn define_layer_via_manager() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress)
-        .bind(Key::J, Action::Suppress)
-        .bind(Key::K, Action::Suppress)
-        .bind(Key::L, Action::Suppress);
+        .bind(Key::H, Action::Suppress).unwrap()
+        .bind(Key::J, Action::Suppress).unwrap()
+        .bind(Key::K, Action::Suppress).unwrap()
+        .bind(Key::L, Action::Suppress).unwrap();
 
     let result = manager.define_layer(layer);
     assert!(result.is_ok());
@@ -30,10 +30,10 @@ fn define_layer_via_manager() {
 fn define_duplicate_layer_returns_error() {
     let manager = utils::test_manager();
 
-    let layer1 = Layer::new("nav").bind(Key::H, Action::Suppress);
+    let layer1 = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
     manager.define_layer(layer1).expect("first should succeed");
 
-    let layer2 = Layer::new("nav").bind(Key::J, Action::Suppress);
+    let layer2 = Layer::new("nav").bind(Key::J, Action::Suppress).unwrap();
     let result = manager.define_layer(layer2);
     assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
 }
@@ -42,8 +42,8 @@ fn define_duplicate_layer_returns_error() {
 fn define_layers_with_different_names_succeeds() {
     let manager = utils::test_manager();
 
-    let nav = Layer::new("nav").bind(Key::H, Action::Suppress);
-    let edit = Layer::new("edit").bind(Key::I, Action::Suppress);
+    let nav = Layer::new("nav").bind(Key::H, Action::Suppress).unwrap();
+    let edit = Layer::new("edit").bind(Key::I, Action::Suppress).unwrap();
 
     manager.define_layer(nav).expect("nav should succeed");
     manager.define_layer(edit).expect("edit should succeed");
@@ -63,7 +63,7 @@ fn define_layer_with_all_options() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("oneshot-nav")
-        .bind(Key::H, Action::Suppress)
+        .bind(Key::H, Action::Suppress).unwrap()
         .swallow()
         .oneshot(1)
         .timeout(Duration::from_secs(5));
@@ -78,8 +78,8 @@ fn layer_builder_produces_correct_state() {
         .bind(
             Hotkey::new(Key::A).modifier(Modifier::Ctrl),
             Action::Suppress,
-        )
-        .bind(Key::B, || println!("fired"))
+        ).unwrap()
+        .bind(Key::B, || println!("fired")).unwrap()
         .swallow()
         .oneshot(2)
         .timeout(Duration::from_millis(500));
@@ -117,7 +117,7 @@ fn layer_description_sets_label() {
 #[test]
 fn layer_description_chains_with_other_options() {
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress)
+        .bind(Key::H, Action::Suppress).unwrap()
         .description("Navigation keys")
         .swallow()
         .oneshot(1)
@@ -134,7 +134,7 @@ fn layer_description_preserved_through_define_layer() {
     let manager = utils::test_manager();
 
     let layer = Layer::new("nav")
-        .bind(Key::H, Action::Suppress)
+        .bind(Key::H, Action::Suppress).unwrap()
         .description("Navigation keys");
 
     // If define_layer succeeds, the metadata was accepted by the engine.

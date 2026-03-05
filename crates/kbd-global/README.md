@@ -70,7 +70,7 @@ use kbd_global::HotkeyManager;
 let manager = HotkeyManager::new()?;
 
 let layer = Layer::new("vim-normal")
-    .bind(Hotkey::new(Key::J), Action::from(|| println!("down")));
+    .bind(Hotkey::new(Key::J), Action::from(|| println!("down"))).unwrap();
 
 manager.define_layer(layer)?;
 manager.push_layer("vim-normal")?;

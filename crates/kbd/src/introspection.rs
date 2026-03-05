@@ -67,7 +67,7 @@ pub enum BindingLocation {
 ///
 /// // Define a layer that also binds H
 /// dispatcher.define_layer(
-///     Layer::new("nav").bind(Key::H, Action::Suppress)
+///     Layer::new("nav").bind(Key::H, Action::Suppress).unwrap()
 /// ).unwrap();
 /// dispatcher.push_layer("nav").unwrap();
 ///
@@ -122,8 +122,8 @@ pub struct BindingInfo {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.define_layer(
 ///     Layer::new("nav")
-///         .bind(Key::H, Action::Suppress)
-///         .bind(Key::J, Action::Suppress)
+///         .bind(Key::H, Action::Suppress).unwrap()
+///         .bind(Key::J, Action::Suppress).unwrap()
 ///         .description("Navigation keys")
 /// ).unwrap();
 /// dispatcher.push_layer("nav").unwrap();
@@ -160,7 +160,7 @@ pub struct ActiveLayerInfo {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.register(Hotkey::new(Key::H), Action::Suppress).unwrap();
 /// dispatcher.define_layer(
-///     Layer::new("nav").bind(Key::H, Action::Suppress)
+///     Layer::new("nav").bind(Key::H, Action::Suppress).unwrap()
 /// ).unwrap();
 /// dispatcher.push_layer("nav").unwrap();
 ///

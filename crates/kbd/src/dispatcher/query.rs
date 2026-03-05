@@ -230,7 +230,7 @@ mod tests {
     fn list_bindings_marks_inactive_layer_bindings() {
         let mut dispatcher = Dispatcher::new();
         dispatcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress).unwrap())
             .unwrap();
         // Layer defined but not pushed
 
@@ -300,7 +300,7 @@ mod tests {
             .register(Hotkey::new(Key::X), Action::Suppress)
             .unwrap();
         dispatcher
-            .define_layer(Layer::new("modal").bind(Key::H, Action::Suppress).swallow())
+            .define_layer(Layer::new("modal").bind(Key::H, Action::Suppress).unwrap().swallow())
             .unwrap();
         dispatcher.push_layer("modal").unwrap();
 
@@ -339,7 +339,7 @@ mod tests {
             .register(Hotkey::new(Key::H), Action::Suppress)
             .unwrap();
         dispatcher
-            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress))
+            .define_layer(Layer::new("nav").bind(Key::H, Action::Suppress).unwrap())
             .unwrap();
         // Layer defined but not pushed — no conflict
 

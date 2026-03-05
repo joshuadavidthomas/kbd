@@ -79,6 +79,7 @@ pub mod prelude {
     pub use crate::dispatcher::Dispatcher;
     pub use crate::dispatcher::MatchResult;
     pub use crate::hotkey::Hotkey;
+    pub use crate::hotkey::HotkeyInput;
     pub use crate::hotkey::HotkeySequence;
     pub use crate::hotkey::Modifier;
     pub use crate::key::Key;
