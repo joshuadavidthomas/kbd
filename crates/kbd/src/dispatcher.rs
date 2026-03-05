@@ -11,6 +11,7 @@
 mod layers;
 mod query;
 mod registry;
+mod resolve;
 mod sequence;
 mod timeout;
 
@@ -19,11 +20,11 @@ use std::time::Instant;
 
 use self::layers::LayerEffect;
 use self::layers::LayerStackEntry;
+use self::resolve::ScopeSequenceMatch;
 use self::sequence::ActiveSequence;
 use self::sequence::PendingStandalone;
 use self::sequence::RegisteredSequenceBinding;
 use self::sequence::SequenceBindingRef;
-use self::sequence::SequencePrefixKind;
 use self::sequence::SequenceStartCandidate;
 use crate::action::Action;
 use crate::binding::BindingId;
@@ -316,39 +317,51 @@ impl Dispatcher {
                 continue;
             };
 
-            let mut candidates = Vec::new();
-            for (index, sequence_binding) in stored.sequence_bindings.iter().enumerate() {
-                match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
-                    SequencePrefixKind::None => {}
-                    SequencePrefixKind::SingleStep => {
-                        candidates.push(SequenceStartCandidate::SingleStep {
-                            binding_ref: MatchedBindingRef::SequenceLayer {
-                                name: layer_name.clone(),
-                                index,
-                            },
-                            layer_effect: LayerEffect::from_action(&sequence_binding.action),
-                            propagation: sequence_binding.propagation,
-                        });
-                    }
-                    SequencePrefixKind::MultiStep => {
-                        candidates.push(SequenceStartCandidate::MultiStep {
-                            binding_ref: SequenceBindingRef::Layer {
-                                name: layer_name.clone(),
-                                index,
-                            },
-                            timeout: sequence_binding.options.timeout(),
-                        });
-                    }
-                }
-            }
+            let scope_match = resolve::classify_scope_sequences(
+                stored.sequence_bindings.iter().map(|b| &b.sequence),
+                hotkey,
+            );
             let swallow_unmatched = matches!(stored.options.unmatched(), UnmatchedKeys::Swallow);
 
-            let pending_standalone =
-                self.pending_standalone_from_match(self.match_layer_hotkey(&layer_name, hotkey));
-            if let Some(outcome) =
-                self.start_sequences(candidates, now, next_priority, pending_standalone)
-            {
-                return Some(outcome);
+            // Build candidates from scope classification. Indices refer to
+            // positions in stored.sequence_bindings.
+            let candidates: Vec<_> = match &scope_match {
+                ScopeSequenceMatch::SingleStep { index } => {
+                    let sb = &stored.sequence_bindings[*index];
+                    vec![SequenceStartCandidate::SingleStep {
+                        binding_ref: MatchedBindingRef::SequenceLayer {
+                            name: layer_name.clone(),
+                            index: *index,
+                        },
+                        layer_effect: LayerEffect::from_action(&sb.action),
+                        propagation: sb.propagation,
+                    }]
+                }
+                ScopeSequenceMatch::MultiStep { indices } => indices
+                    .iter()
+                    .map(|&idx| {
+                        let sb = &stored.sequence_bindings[idx];
+                        SequenceStartCandidate::MultiStep {
+                            binding_ref: SequenceBindingRef::Layer {
+                                name: layer_name.clone(),
+                                index: idx,
+                            },
+                            timeout: sb.options.timeout(),
+                        }
+                    })
+                    .collect(),
+                ScopeSequenceMatch::None => Vec::new(),
+            };
+            // `stored` is last used above; NLL releases the borrow.
+
+            if !candidates.is_empty() {
+                let pending_standalone = self
+                    .pending_standalone_from_match(self.match_layer_hotkey(&layer_name, hotkey));
+                if let Some(outcome) =
+                    self.start_sequences(candidates, now, next_priority, pending_standalone)
+                {
+                    return Some(outcome);
+                }
             }
 
             if let Some((binding_ref, propagation)) = self.match_layer_hotkey(&layer_name, hotkey) {
@@ -373,44 +386,42 @@ impl Dispatcher {
         now: Instant,
         mut next_priority: usize,
     ) -> InternalOutcome {
-        let mut global_sequences: Vec<_> = self
-            .sequence_bindings_by_id
-            .values()
-            .filter(|binding| {
-                !matches!(
-                    sequence::classify_sequence_prefix(&binding.sequence, hotkey),
-                    SequencePrefixKind::None
-                )
-            })
-            .collect();
-        global_sequences.sort_by_key(|binding| binding.id.as_u64());
-
-        let mut candidates = Vec::new();
-        for binding in global_sequences {
-            match sequence::classify_sequence_prefix(&binding.sequence, hotkey) {
-                SequencePrefixKind::None => {}
-                SequencePrefixKind::SingleStep => {
-                    candidates.push(SequenceStartCandidate::SingleStep {
+        let candidates: Vec<SequenceStartCandidate> = {
+            let global_seqs = self.sorted_global_sequences();
+            let scope_match =
+                resolve::classify_scope_sequences(global_seqs.iter().map(|b| &b.sequence), hotkey);
+            match scope_match {
+                ScopeSequenceMatch::SingleStep { index } => {
+                    let binding = global_seqs[index];
+                    vec![SequenceStartCandidate::SingleStep {
                         binding_ref: MatchedBindingRef::SequenceGlobal(binding.id),
                         layer_effect: LayerEffect::from_action(&binding.action),
                         propagation: binding.propagation,
-                    });
+                    }]
                 }
-                SequencePrefixKind::MultiStep => {
-                    candidates.push(SequenceStartCandidate::MultiStep {
-                        binding_ref: SequenceBindingRef::Global(binding.id),
-                        timeout: binding.options.timeout(),
-                    });
-                }
+                ScopeSequenceMatch::MultiStep { indices } => indices
+                    .iter()
+                    .map(|&idx| {
+                        let binding = global_seqs[idx];
+                        SequenceStartCandidate::MultiStep {
+                            binding_ref: SequenceBindingRef::Global(binding.id),
+                            timeout: binding.options.timeout(),
+                        }
+                    })
+                    .collect(),
+                ScopeSequenceMatch::None => Vec::new(),
             }
-        }
+        };
+        // global_seqs dropped; self is unborrowed.
 
-        let pending_standalone =
-            self.pending_standalone_from_match(self.match_global_hotkey(hotkey));
-        if let Some(outcome) =
-            self.start_sequences(candidates, now, &mut next_priority, pending_standalone)
-        {
-            return outcome;
+        if !candidates.is_empty() {
+            let pending_standalone =
+                self.pending_standalone_from_match(self.match_global_hotkey(hotkey));
+            if let Some(outcome) =
+                self.start_sequences(candidates, now, &mut next_priority, pending_standalone)
+            {
+                return outcome;
+            }
         }
 
         if let Some((binding_ref, propagation)) = self.match_global_hotkey(hotkey) {

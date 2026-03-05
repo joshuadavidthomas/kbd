@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use super::Dispatcher;
-use super::sequence;
-use super::sequence::RegisteredSequenceBinding;
-use super::sequence::SequencePrefixKind;
+use super::resolve;
+use super::resolve::ScopeSequenceMatch;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
@@ -12,14 +11,7 @@ use crate::introspection::BindingLocation;
 use crate::introspection::ConflictInfo;
 use crate::introspection::ShadowedStatus;
 use crate::layer::LayerName;
-use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
-
-enum SequenceQueryDecision {
-    None,
-    SingleStep(Hotkey),
-    MultiStep,
-}
 
 impl Dispatcher {
     /// Return a snapshot of all registered bindings with their status.
@@ -102,20 +94,25 @@ impl Dispatcher {
         // Sequence bindings are checked before immediate hotkeys.
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
-                match Self::probe_layer_sequence_prefix(stored, hotkey) {
-                    SequenceQueryDecision::None => {}
-                    SequenceQueryDecision::SingleStep(matched_hotkey) => {
+                let scope_match = resolve::classify_scope_sequences(
+                    stored.sequence_bindings.iter().map(|b| &b.sequence),
+                    hotkey,
+                );
+                match scope_match {
+                    ScopeSequenceMatch::SingleStep { index } => {
+                        let sb = &stored.sequence_bindings[index];
                         return Some(BindingInfo {
-                            hotkey: matched_hotkey,
+                            hotkey: sb.sequence.steps()[0].clone(),
                             description: None,
                             location: BindingLocation::Layer(entry.name.clone()),
                             shadowed: ShadowedStatus::Active,
                             overlay_visibility: crate::binding::OverlayVisibility::Visible,
                         });
                     }
-                    SequenceQueryDecision::MultiStep => {
+                    ScopeSequenceMatch::MultiStep { .. } => {
                         return None;
                     }
+                    ScopeSequenceMatch::None => {}
                 }
 
                 for binding in &stored.bindings {
@@ -139,32 +136,25 @@ impl Dispatcher {
         }
 
         // Global sequences are checked before global hotkeys, matching process().
-        let mut global_sequences: Vec<_> = self
-            .sequence_bindings_by_id
-            .values()
-            .filter(|binding| {
-                !matches!(
-                    sequence::classify_sequence_prefix(&binding.sequence, hotkey),
-                    SequencePrefixKind::None
-                )
-            })
-            .collect();
-        global_sequences.sort_by_key(|binding| binding.id.as_u64());
+        let global_seqs = self.sorted_global_sequences();
+        let scope_match =
+            resolve::classify_scope_sequences(global_seqs.iter().map(|b| &b.sequence), hotkey);
 
-        match Self::probe_global_sequence_prefix(&global_sequences, hotkey) {
-            SequenceQueryDecision::None => {}
-            SequenceQueryDecision::SingleStep(matched_hotkey) => {
+        match scope_match {
+            ScopeSequenceMatch::SingleStep { index } => {
+                let binding = global_seqs[index];
                 return Some(BindingInfo {
-                    hotkey: matched_hotkey,
+                    hotkey: binding.sequence.steps()[0].clone(),
                     description: None,
                     location: BindingLocation::Global,
                     shadowed: ShadowedStatus::Active,
                     overlay_visibility: crate::binding::OverlayVisibility::Visible,
                 });
             }
-            SequenceQueryDecision::MultiStep => {
+            ScopeSequenceMatch::MultiStep { .. } => {
                 return None;
             }
+            ScopeSequenceMatch::None => {}
         }
 
         // Fall through to global immediate bindings.
@@ -181,55 +171,6 @@ impl Dispatcher {
         }
 
         None
-    }
-
-    fn probe_layer_sequence_prefix(stored: &StoredLayer, hotkey: &Hotkey) -> SequenceQueryDecision {
-        let mut probe = SequenceQueryDecision::None;
-
-        for sequence_binding in &stored.sequence_bindings {
-            match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
-                SequencePrefixKind::None => {}
-                SequencePrefixKind::SingleStep => {
-                    probe = SequenceQueryDecision::SingleStep(
-                        sequence_binding.sequence.steps()[0].clone(),
-                    );
-                    break;
-                }
-                SequencePrefixKind::MultiStep => {
-                    if matches!(probe, SequenceQueryDecision::None) {
-                        probe = SequenceQueryDecision::MultiStep;
-                    }
-                }
-            }
-        }
-
-        probe
-    }
-
-    fn probe_global_sequence_prefix(
-        global_sequences: &[&RegisteredSequenceBinding],
-        hotkey: &Hotkey,
-    ) -> SequenceQueryDecision {
-        let mut probe = SequenceQueryDecision::None;
-
-        for sequence_binding in global_sequences {
-            match sequence::classify_sequence_prefix(&sequence_binding.sequence, hotkey) {
-                SequencePrefixKind::None => {}
-                SequencePrefixKind::SingleStep => {
-                    probe = SequenceQueryDecision::SingleStep(
-                        sequence_binding.sequence.steps()[0].clone(),
-                    );
-                    break;
-                }
-                SequencePrefixKind::MultiStep => {
-                    if matches!(probe, SequenceQueryDecision::None) {
-                        probe = SequenceQueryDecision::MultiStep;
-                    }
-                }
-            }
-        }
-
-        probe
     }
 
     /// Return the current layer stack (bottom to top).
