@@ -19,6 +19,11 @@ impl Dispatcher {
     ///
     /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
     /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence).
+    ///
+    /// Results are returned in a deterministic order: global bindings are
+    /// grouped by hotkey and then by precedence tier, followed by layer
+    /// bindings ordered by layer name while preserving each layer's binding
+    /// declaration order.
     #[must_use]
     pub fn list_bindings(&self) -> Vec<BindingInfo> {
         // Build a map of hotkey → claiming layer name for active layers.
@@ -34,35 +39,55 @@ impl Dispatcher {
 
         let mut results = Vec::new();
 
-        // Global bindings
-        for binding in self.bindings_by_id.values() {
-            let shadowed = if let Some(&layer_name) = claimed_by.get(binding.hotkey()) {
-                ShadowedStatus::ShadowedBy(layer_name.clone())
-            } else if self.active_global_binding_id(binding.hotkey()) == Some(binding.id()) {
-                ShadowedStatus::Active
-            } else {
-                ShadowedStatus::ShadowedByGlobal
+        let mut global_hotkeys: Vec<_> = self.binding_ids_by_hotkey.keys().collect();
+        global_hotkeys.sort_by_cached_key(std::string::ToString::to_string);
+
+        for hotkey in global_hotkeys {
+            let Some(ids_for_hotkey) = self.binding_ids_by_hotkey.get(hotkey) else {
+                continue;
             };
 
-            results.push(BindingInfo {
-                hotkey: binding.hotkey().clone(),
-                description: binding.options().description().map(Box::from),
-                source: binding.options().source().cloned(),
-                location: BindingLocation::Global,
-                shadowed,
-                overlay_visibility: binding.options().overlay_visibility(),
-            });
+            for id in ids_for_hotkey {
+                let Some(binding) = self.bindings_by_id.get(id) else {
+                    continue;
+                };
+
+                let shadowed = if let Some(&layer_name) = claimed_by.get(binding.hotkey()) {
+                    ShadowedStatus::ShadowedBy(layer_name.clone())
+                } else if self.active_global_binding_id(binding.hotkey()) == Some(binding.id()) {
+                    ShadowedStatus::Active
+                } else {
+                    ShadowedStatus::ShadowedByGlobal
+                };
+
+                results.push(BindingInfo {
+                    hotkey: binding.hotkey().clone(),
+                    description: binding.options().description().map(Box::from),
+                    source: binding.options().source().cloned(),
+                    location: BindingLocation::Global,
+                    shadowed,
+                    overlay_visibility: binding.options().overlay_visibility(),
+                });
+            }
         }
 
-        // Layer bindings (all defined layers, active or not)
-        for (layer_name, stored) in &self.layers {
-            let is_active = self.layer_stack.iter().any(|e| &e.name == layer_name);
+        let mut layer_names: Vec<_> = self.layers.keys().cloned().collect();
+        layer_names.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+
+        for layer_name in layer_names {
+            let Some(stored) = self.layers.get(&layer_name) else {
+                continue;
+            };
+            let is_active = self
+                .layer_stack
+                .iter()
+                .any(|entry| entry.name == layer_name);
 
             for binding in &stored.bindings {
                 let shadowed = if !is_active {
                     ShadowedStatus::Inactive
                 } else if let Some(&claiming_layer) = claimed_by.get(&binding.hotkey) {
-                    if claiming_layer == layer_name {
+                    if claiming_layer == &layer_name {
                         ShadowedStatus::Active
                     } else {
                         ShadowedStatus::ShadowedBy(claiming_layer.clone())
@@ -519,5 +544,113 @@ mod tests {
 
         dispatcher.unregister(default_id);
         assert!(dispatcher.bindings_for_key(&hotkey).is_none());
+    }
+
+    #[test]
+    fn list_bindings_orders_globals_by_hotkey_then_precedence() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .register_binding(
+                crate::binding::RegisteredBinding::new(
+                    crate::binding::BindingId::new(),
+                    Hotkey::new(Key::V),
+                    Action::Suppress,
+                )
+                .with_options(crate::binding::BindingOptions::default().with_source("user")),
+            )
+            .unwrap();
+        dispatcher
+            .register_binding(crate::binding::RegisteredBinding::new(
+                crate::binding::BindingId::new(),
+                Hotkey::new(Key::A),
+                Action::Suppress,
+            ))
+            .unwrap();
+        dispatcher
+            .register_binding(
+                crate::binding::RegisteredBinding::new(
+                    crate::binding::BindingId::new(),
+                    Hotkey::new(Key::V),
+                    Action::Suppress,
+                )
+                .with_options(crate::binding::BindingOptions::default().with_source("default")),
+            )
+            .unwrap();
+        dispatcher
+            .register_binding(
+                crate::binding::RegisteredBinding::new(
+                    crate::binding::BindingId::new(),
+                    Hotkey::new(Key::V),
+                    Action::Suppress,
+                )
+                .with_options(crate::binding::BindingOptions::default().with_source("plugin")),
+            )
+            .unwrap();
+
+        let summary: Vec<_> = dispatcher
+            .list_bindings()
+            .into_iter()
+            .map(|binding| {
+                (
+                    binding.hotkey.to_string(),
+                    binding.source.map(|source| source.to_string()),
+                )
+            })
+            .collect();
+
+        assert_eq!(
+            summary,
+            vec![
+                ("A".to_string(), None),
+                ("V".to_string(), Some("default".to_string())),
+                ("V".to_string(), Some("plugin".to_string())),
+                ("V".to_string(), Some("user".to_string())),
+            ]
+        );
+    }
+
+    #[test]
+    fn list_bindings_orders_layers_by_name_and_preserves_layer_declaration_order() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(
+                Layer::new("zeta")
+                    .bind(Key::Z, Action::Suppress)
+                    .unwrap()
+                    .bind(Key::Y, Action::Suppress)
+                    .unwrap(),
+            )
+            .unwrap();
+        dispatcher
+            .define_layer(
+                Layer::new("alpha")
+                    .bind(Key::B, Action::Suppress)
+                    .unwrap()
+                    .bind(Key::A, Action::Suppress)
+                    .unwrap(),
+            )
+            .unwrap();
+
+        let summary: Vec<_> = dispatcher
+            .list_bindings()
+            .into_iter()
+            .map(|binding| {
+                let BindingLocation::Layer(name) = binding.location else {
+                    panic!("expected only layer bindings in this test");
+                };
+                (name.to_string(), binding.hotkey.to_string())
+            })
+            .collect();
+
+        assert_eq!(
+            summary,
+            vec![
+                ("alpha".to_string(), "B".to_string()),
+                ("alpha".to_string(), "A".to_string()),
+                ("zeta".to_string(), "Z".to_string()),
+                ("zeta".to_string(), "Y".to_string()),
+            ]
+        );
     }
 }

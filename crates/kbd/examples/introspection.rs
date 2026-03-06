@@ -2,9 +2,9 @@
 //! `active_layers()`, `conflicts()`.
 //!
 //! Introspection lets you build help screens, hotkey overlays, and
-//! keybinding editors. Every binding carries metadata (description,
-//! provenance, overlay visibility) and the dispatcher can tell you what's
-//! active, what's shadowed, and what would fire for any given key.
+//! keybinding editors. Immediate global bindings can carry metadata
+//! (description, provenance, overlay visibility), and the dispatcher can tell
+//! you what's active, what's shadowed, and what would fire for any given key.
 //!
 //! ```sh
 //! cargo run -p kbd --example introspection
@@ -94,7 +94,9 @@ fn main() {
     }
     println!();
 
-    // Filter for overlay-visible bindings only
+    // Filter for overlay-visible bindings only.
+    // Layer bindings always report Visible because only global immediate bindings
+    // currently carry binding metadata.
     println!("7. Overlay-visible bindings only:");
     let visible: Vec<_> = dispatcher
         .list_bindings()
