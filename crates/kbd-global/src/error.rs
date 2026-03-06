@@ -53,6 +53,12 @@ pub enum Error {
     /// No active layers to pop from the stack.
     #[error("no active layer to pop")]
     EmptyLayerStack,
+    /// A modifier alias target must be a concrete modifier, not another alias.
+    #[error("modifier alias target must be a concrete modifier (Ctrl, Shift, Alt, Super)")]
+    InvalidAliasTarget,
+    /// Defining or reassigning a modifier alias would make bindings ambiguous.
+    #[error("modifier alias definition conflicts with an existing binding")]
+    AliasConflict,
 }
 
 impl From<kbd::error::Error> for Error {
@@ -63,6 +69,8 @@ impl From<kbd::error::Error> for Error {
             kbd::error::Error::LayerAlreadyDefined => Self::LayerAlreadyDefined,
             kbd::error::Error::LayerNotDefined => Self::LayerNotDefined,
             kbd::error::Error::EmptyLayerStack => Self::EmptyLayerStack,
+            kbd::error::Error::InvalidAliasTarget => Self::InvalidAliasTarget,
+            kbd::error::Error::AliasConflict => Self::AliasConflict,
             _ => Self::EngineError,
         }
     }

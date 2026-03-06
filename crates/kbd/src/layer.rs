@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn layer_bind_sequence_reports_parse_error_for_string_input() {
-        let result = Layer::new("nav").bind_sequence("Ctrl+K, Ctrl+Nope", Action::Suppress);
+        let result = Layer::new("nav").bind_sequence("Ctrl+K, Ctrl+@@@", Action::Suppress);
         assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
     }
 
@@ -613,7 +613,7 @@ mod tests {
 
     #[test]
     fn layer_bind_reports_parse_error_for_invalid_string() {
-        let result = Layer::new("test").bind("Ctrl+Nope", Action::Suppress);
+        let result = Layer::new("test").bind("Ctrl+@@@", Action::Suppress);
         assert!(result.is_err());
     }
 

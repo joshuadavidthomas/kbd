@@ -362,7 +362,7 @@ fn error_is_send_and_sync() {
 
 #[test]
 fn parse_error_converts_to_library_error() {
-    let parse_err = "Ctrl+NotAKey".parse::<Hotkey>().unwrap_err();
+    let parse_err = "Ctrl+@@@".parse::<Hotkey>().unwrap_err();
     let error: Error = parse_err.into();
     assert!(matches!(error, Error::Parse(_)));
 }

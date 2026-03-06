@@ -23,6 +23,7 @@ use kbd::error::ParseHotkeyError;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
+use kbd::hotkey::ModifierAlias;
 use kbd::introspection::BindingLocation;
 use kbd::introspection::ShadowedStatus;
 use kbd::key::Key;
@@ -437,17 +438,33 @@ fn error_variants_accessible() {
     ));
 }
 
-// Parse error types
+// Hotkey parsing behavior
 #[test]
-fn parse_hotkey_errors() {
+fn parse_hotkey_reports_empty_input_error() {
     let result = "".parse::<Hotkey>();
     assert!(matches!(result, Err(ParseHotkeyError::Empty)));
+}
 
+#[test]
+fn parse_hotkey_reports_empty_segment_error() {
     let result = "Ctrl+".parse::<Hotkey>();
     assert!(matches!(result, Err(ParseHotkeyError::EmptySegment)));
+}
 
-    let result = "Ctrl+NotAKey".parse::<Hotkey>();
+#[test]
+fn parse_hotkey_reports_unknown_non_alphabetic_token_error() {
+    let result = "Ctrl+@@@".parse::<Hotkey>();
     assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+}
+
+#[test]
+fn parse_hotkey_treats_unknown_alphabetic_token_as_alias_modifier() {
+    let parsed = "Leader+T".parse::<Hotkey>().unwrap();
+    assert_eq!(parsed.key(), Key::T);
+    assert_eq!(
+        parsed.modifiers(),
+        &[Modifier::Alias(ModifierAlias::new("Leader"))]
+    );
 }
 
 // HotkeySequence parsing and accessors

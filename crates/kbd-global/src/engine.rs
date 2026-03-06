@@ -238,6 +238,17 @@ impl Engine {
             Command::Conflicts { reply } => {
                 let _ = reply.send(self.dispatcher.conflicts());
             }
+            Command::DefineModifierAlias {
+                name,
+                target,
+                reply,
+            } => {
+                let result = self
+                    .dispatcher
+                    .define_modifier_alias(name, target)
+                    .map_err(Error::from);
+                let _ = reply.send(result);
+            }
 
             // Intercepted by drain_commands
             Command::Shutdown => {}
@@ -2737,5 +2748,81 @@ mod tests {
             result.is_none(),
             "modifier-only key should not match, consistent with real dispatcher"
         );
+    }
+
+    // Modifier alias tests
+
+    #[test]
+    fn define_modifier_alias_via_command() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        engine.handle_command(Command::DefineModifierAlias {
+            name: "Mod".into(),
+            target: Modifier::Super,
+            reply: reply_tx,
+        });
+        assert!(reply_rx.recv().unwrap().is_ok());
+
+        let hotkey: Hotkey = "Mod+T".parse().unwrap();
+        let id = BindingId::new();
+        let action = Action::from(move || {
+            cc.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::META_LEFT, 10);
+        press_key(&mut engine, Key::T, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn alias_reassignment_via_command_updates_matching() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        engine.handle_command(Command::DefineModifierAlias {
+            name: "Mod".into(),
+            target: Modifier::Super,
+            reply: reply_tx,
+        });
+        assert!(reply_rx.recv().unwrap().is_ok());
+
+        let hotkey: Hotkey = "Mod+T".parse().unwrap();
+        let id = BindingId::new();
+        let action = Action::from(move || {
+            cc.fetch_add(1, Ordering::Relaxed);
+        });
+        let binding = RegisteredBinding::new(id, hotkey, action);
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::META_LEFT, 10);
+        press_key(&mut engine, Key::T, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+        release_key(&mut engine, Key::T, 10);
+        release_key(&mut engine, Key::META_LEFT, 10);
+
+        let (reassign_tx, reassign_rx) = mpsc::channel();
+        engine.handle_command(Command::DefineModifierAlias {
+            name: "Mod".into(),
+            target: Modifier::Alt,
+            reply: reassign_tx,
+        });
+        assert!(reassign_rx.recv().unwrap().is_ok());
+
+        press_key(&mut engine, Key::ALT_LEFT, 10);
+        press_key(&mut engine, Key::T, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+        release_key(&mut engine, Key::T, 10);
+        release_key(&mut engine, Key::ALT_LEFT, 10);
+
+        press_key(&mut engine, Key::META_LEFT, 10);
+        press_key(&mut engine, Key::T, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2); // unchanged
     }
 }

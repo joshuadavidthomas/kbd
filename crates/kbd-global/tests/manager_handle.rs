@@ -123,7 +123,7 @@ fn register_sequence_accepts_vec_hotkeys_input() {
 fn register_sequence_reports_parse_error_for_string_input() {
     let manager = utils::test_manager();
 
-    let result = manager.register_sequence("Ctrl+K, Ctrl+Nope", || {});
+    let result = manager.register_sequence("Ctrl+K, Ctrl+@@@", || {});
     assert!(matches!(result, Err(Error::Parse(_))));
 }
 

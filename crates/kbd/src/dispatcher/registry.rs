@@ -1,5 +1,6 @@
 use super::Dispatcher;
 use super::MatchedBindingRef;
+use super::aliases::resolve_sequence_with_aliases;
 use super::sequence::RegisteredSequenceBinding;
 use super::sequence::SequenceBindingRef;
 use crate::action::Action;
@@ -85,7 +86,30 @@ impl Dispatcher {
         options: SequenceOptions,
     ) -> Result<(), crate::error::Error> {
         let binding = RegisteredSequenceBinding::new(id, sequence, action, options);
-        self.register_sequence_binding(binding)
+
+        if self.sequence_bindings_by_id.contains_key(&binding.id)
+            || self.bindings_by_id.contains_key(&binding.id)
+            || self.sequence_ids_by_value.contains_key(&binding.sequence)
+        {
+            return Err(crate::error::Error::AlreadyRegistered);
+        }
+
+        if let Some(resolved) =
+            resolve_sequence_with_aliases(&binding.sequence, &self.modifier_aliases)
+        {
+            // see if there's a conflict
+            if self.sequence_bindings_by_id.values().any(|existing| {
+                resolve_sequence_with_aliases(&existing.sequence, &self.modifier_aliases)
+                    .is_some_and(|candidate| candidate == resolved)
+            }) {
+                return Err(crate::error::Error::AlreadyRegistered);
+            }
+        }
+
+        self.sequence_ids_by_value
+            .insert(binding.sequence.clone(), binding.id);
+        self.sequence_bindings_by_id.insert(binding.id, binding);
+        Ok(())
     }
 
     /// Register a [`RegisteredBinding`] with full options control.
@@ -108,27 +132,29 @@ impl Dispatcher {
             return Err(crate::error::Error::AlreadyRegistered);
         }
 
-        self.binding_ids_by_hotkey.insert(hotkey, id);
-        self.bindings_by_id.insert(id, binding);
-        Ok(())
-    }
+        let has_aliases = super::aliases::has_alias_modifiers(&hotkey);
 
-    fn register_sequence_binding(
-        &mut self,
-        binding: RegisteredSequenceBinding,
-    ) -> Result<(), crate::error::Error> {
-        let id = binding.id;
-        let sequence = binding.sequence.clone();
-
-        if self.sequence_bindings_by_id.contains_key(&id)
-            || self.bindings_by_id.contains_key(&id)
-            || self.sequence_ids_by_value.contains_key(&sequence)
-        {
+        if !has_aliases && self.binding_ids_by_resolved_hotkey.contains_key(&hotkey) {
             return Err(crate::error::Error::AlreadyRegistered);
         }
 
-        self.sequence_ids_by_value.insert(sequence, id);
-        self.sequence_bindings_by_id.insert(id, binding);
+        // For aliased bindings, check the resolved form for conflicts and
+        // insert into the resolved lookup table. If the alias is undefined,
+        // the binding won't match until the alias is defined (at which point
+        // rebuild_binding_ids_by_resolved_hotkey will add it).
+        if has_aliases {
+            if let Some(resolved) = self.resolve_hotkey(&hotkey) {
+                if self.binding_ids_by_hotkey.contains_key(&resolved)
+                    || self.binding_ids_by_resolved_hotkey.contains_key(&resolved)
+                {
+                    return Err(crate::error::Error::AlreadyRegistered);
+                }
+                self.binding_ids_by_resolved_hotkey.insert(resolved, id);
+            }
+        }
+
+        self.binding_ids_by_hotkey.insert(hotkey, id);
+        self.bindings_by_id.insert(id, binding);
         Ok(())
     }
 
@@ -136,6 +162,8 @@ impl Dispatcher {
     pub fn unregister(&mut self, id: BindingId) {
         if let Some(binding) = self.bindings_by_id.remove(&id) {
             self.binding_ids_by_hotkey.remove(binding.hotkey());
+            // Also remove from alias-resolved lookup
+            self.binding_ids_by_resolved_hotkey.retain(|_, v| *v != id);
         }
 
         if let Some(binding) = self.sequence_bindings_by_id.remove(&id) {
@@ -161,6 +189,8 @@ impl Dispatcher {
     }
 
     /// Check whether a hotkey has a registered global binding.
+    ///
+    /// For aliased bindings, checks the original (unresolved) hotkey.
     #[must_use]
     pub fn is_registered(&self, hotkey: &Hotkey) -> bool {
         self.binding_ids_by_hotkey.contains_key(hotkey)
@@ -250,7 +280,7 @@ mod tests {
     fn register_sequence_reports_parse_error_for_string_input() {
         let mut dispatcher = Dispatcher::new();
 
-        let result = dispatcher.register_sequence("Ctrl+K, Ctrl+Nope", Action::Suppress);
+        let result = dispatcher.register_sequence("Ctrl+K, Ctrl+@@@", Action::Suppress);
 
         assert!(matches!(result, Err(crate::error::Error::Parse(_))));
     }
@@ -326,7 +356,93 @@ mod tests {
     #[test]
     fn register_reports_parse_error_for_invalid_string() {
         let mut dispatcher = Dispatcher::new();
-        let result = dispatcher.register("Ctrl+Nope", Action::Suppress);
+        let result = dispatcher.register("Ctrl+@@@", Action::Suppress);
         assert!(matches!(result, Err(crate::error::Error::Parse(_))));
+    }
+
+    #[test]
+    fn concrete_binding_conflicts_with_alias_resolved_form() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+
+        // Register aliased Mod+T (resolves to Super+T)
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+
+        // Registering concrete Super+T must be rejected — it conflicts
+        // with the alias-resolved form
+        let result = dispatcher.register(
+            Hotkey::new(Key::T).modifier(Modifier::Super),
+            Action::Suppress,
+        );
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn is_registered_finds_aliased_binding() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+
+        let aliased_hotkey = "Mod+T".parse::<Hotkey>().unwrap();
+        assert!(dispatcher.is_registered(&aliased_hotkey));
+    }
+
+    #[test]
+    fn is_registered_treats_alias_names_case_insensitively() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+
+        let aliased_hotkey = "mod+T".parse::<Hotkey>().unwrap();
+        assert!(dispatcher.is_registered(&aliased_hotkey));
+    }
+
+    #[test]
+    fn register_rejects_alias_names_that_differ_only_by_case() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+
+        let result = dispatcher.register("mod+T", Action::Suppress);
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn register_sequence_rejects_conflict_with_resolved_alias_sequence() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+        dispatcher
+            .register_sequence("Mod+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+
+        let result = dispatcher.register_sequence("Super+K, Ctrl+C", Action::Suppress);
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn register_sequence_rejects_alias_names_that_differ_only_by_case() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence("Mod+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+
+        let result = dispatcher.register_sequence("mod+K, Ctrl+C", Action::Suppress);
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
     }
 }

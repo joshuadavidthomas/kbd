@@ -8,6 +8,7 @@
 //! Returns a [`MatchResult`] — the matched
 //! binding's action (or "no match" for forwarding).
 
+mod aliases;
 mod layers;
 mod query;
 mod registry;
@@ -34,6 +35,7 @@ use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
+use crate::hotkey::ModifierAliases;
 use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
@@ -155,12 +157,15 @@ pub enum MatchResult<'a> {
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
+    /// Rebuilt when aliases are defined or reassigned.
+    binding_ids_by_resolved_hotkey: HashMap<Hotkey, BindingId>,
     sequence_bindings_by_id: HashMap<BindingId, RegisteredSequenceBinding>,
     sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
     layer_stack: Vec<LayerStackEntry>,
     active_sequences: Vec<ActiveSequence>,
     pending_standalone: Option<PendingStandalone>,
+    modifier_aliases: ModifierAliases,
 }
 
 /// Internal reference to a matched binding, used to re-find the action
@@ -324,7 +329,7 @@ impl Dispatcher {
                 continue;
             };
 
-            let layer_match = resolve::classify_layer(stored, hotkey);
+            let layer_match = resolve::classify_layer(stored, hotkey, &self.modifier_aliases);
             let swallow_unmatched = matches!(stored.options.unmatched(), UnmatchedKeys::Swallow);
 
             match layer_match {
@@ -417,6 +422,7 @@ impl Dispatcher {
             let prefix_match = resolve::classify_sequence_prefixes(
                 global_seqs.iter().map(|b| &b.sequence),
                 hotkey,
+                &self.modifier_aliases,
             );
             match prefix_match {
                 SequencePrefixMatch::SingleStep { index } => {
@@ -442,9 +448,10 @@ impl Dispatcher {
         };
         // global_seqs dropped; self is unborrowed.
 
+        let global_match = self.match_global_hotkey(hotkey);
+
         if !candidates.is_empty() {
-            let pending_standalone =
-                self.pending_standalone_from_match(self.match_global_hotkey(hotkey));
+            let pending_standalone = self.pending_standalone_from_match(global_match.clone());
             if let Some(outcome) =
                 self.start_sequences(candidates, now, &mut next_priority, pending_standalone)
             {
@@ -452,7 +459,7 @@ impl Dispatcher {
             }
         }
 
-        if let Some((binding_ref, propagation)) = self.match_global_hotkey(hotkey) {
+        if let Some((binding_ref, propagation)) = global_match {
             return InternalOutcome::Matched {
                 layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
                 binding_ref,
@@ -463,10 +470,17 @@ impl Dispatcher {
         InternalOutcome::NoMatch
     }
 
+    // TODO: this two-map lookup is duplicated in query.rs — extract a shared
+    // method for resolving a hotkey to a binding ID across both maps.
     fn match_global_hotkey(&self, hotkey: &Hotkey) -> Option<(MatchedBindingRef, KeyPropagation)> {
-        let id = *self.binding_ids_by_hotkey.get(hotkey)?;
-        let binding = self.bindings_by_id.get(&id)?;
-        Some((MatchedBindingRef::Global(id), binding.propagation()))
+        // Direct (non-aliased) bindings take priority over alias-resolved ones
+        // so that a concrete `Super+T` binding always wins over `Mod+T` resolved to `Super`.
+        let id = self
+            .binding_ids_by_hotkey
+            .get(hotkey)
+            .or_else(|| self.binding_ids_by_resolved_hotkey.get(hotkey))?;
+        let binding = self.bindings_by_id.get(id)?;
+        Some((MatchedBindingRef::Global(*id), binding.propagation()))
     }
 
     /// Resolve a binding reference back to its action.

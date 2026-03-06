@@ -45,4 +45,10 @@ pub enum Error {
     /// Tried to pop a layer but the stack is empty.
     #[error("no active layer to pop")]
     EmptyLayerStack,
+    /// A modifier alias target must be a concrete modifier, not another alias.
+    #[error("modifier alias target must be a concrete modifier (Ctrl, Shift, Alt, Super)")]
+    InvalidAliasTarget,
+    /// Defining or reassigning a modifier alias would make bindings ambiguous.
+    #[error("modifier alias definition conflicts with an existing binding")]
+    AliasConflict,
 }

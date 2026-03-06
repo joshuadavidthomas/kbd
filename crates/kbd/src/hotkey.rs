@@ -19,7 +19,11 @@
 //! # }
 //! ```
 
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::str::FromStr;
 
 use keyboard_types::Code;
@@ -27,11 +31,87 @@ use keyboard_types::Code;
 use crate::error::ParseHotkeyError;
 use crate::key::Key;
 
-/// A canonical modifier key (Ctrl, Shift, Alt, Super).
+/// A user-defined modifier alias name.
+///
+/// Aliases let users define abstract modifier names like `"Mod"` that
+/// resolve to concrete modifiers (`Ctrl`, `Shift`, `Alt`, `Super`) at
+/// match time. This enables portable bindings across different alias
+/// configurations — for example, a tiling WM can define `"Mod"` as
+/// `Super` and let users rebind it to `Alt` without changing any hotkey
+/// definitions.
+///
+/// Alias names are case-preserving. Resolution through the
+/// [`Dispatcher`](crate::dispatcher::Dispatcher) is case-insensitive
+/// (defining `"Mod"` and looking up `"mod"` reaches the same alias),
+/// and equality/hash/order follow that same case-insensitive behavior.
+#[derive(Debug, Clone, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ModifierAlias(String);
+
+impl ModifierAlias {
+    /// Create a new modifier alias from a name.
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    /// The alias name as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+// PartialEq, Hash, and Ord are manually implemented to be case-insensitive.
+// PartialOrd delegates to Ord and can't be derived alongside a manual Ord.
+
+impl PartialEq for ModifierAlias {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq_ignore_ascii_case(&other.0)
+    }
+}
+
+impl Hash for ModifierAlias {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for byte in self.0.bytes() {
+            state.write_u8(byte.to_ascii_lowercase());
+        }
+    }
+}
+
+impl Ord for ModifierAlias {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0
+            .bytes()
+            .map(|byte| byte.to_ascii_lowercase())
+            .cmp(other.0.bytes().map(|byte| byte.to_ascii_lowercase()))
+    }
+}
+
+impl PartialOrd for ModifierAlias {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl fmt::Display for ModifierAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Maps alias names to the concrete modifiers they resolve to.
+pub type ModifierAliases = HashMap<ModifierAlias, Modifier>;
+
+/// A canonical modifier key (Ctrl, Shift, Alt, Super) or a user-defined alias.
 ///
 /// Left and right physical variants are canonicalized — both `ControlLeft`
 /// and `ControlRight` map to `Modifier::Ctrl`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+///
+/// The `Alias` variant stores a user-defined modifier name that is
+/// resolved at match time by the [`Dispatcher`](crate::dispatcher::Dispatcher).
+/// This allows bindings to be portable across alias configurations.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Modifier {
     /// The Control modifier (left or right).
@@ -42,17 +122,23 @@ pub enum Modifier {
     Alt,
     /// The Super/Meta/Win modifier (left or right).
     Super,
+    /// A user-defined modifier alias, resolved at match time.
+    Alias(ModifierAlias),
 }
 
 impl Modifier {
     /// Human-readable name for this modifier.
+    ///
+    /// Returns the canonical name for concrete modifiers and the alias
+    /// name for [`Modifier::Alias`] variants.
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Ctrl => "Ctrl",
             Self::Shift => "Shift",
             Self::Alt => "Alt",
             Self::Super => "Super",
+            Self::Alias(alias) => alias.as_str(),
         }
     }
 
@@ -60,6 +146,9 @@ impl Modifier {
     ///
     /// Left/right variants canonicalize: both `ControlLeft` and `ControlRight`
     /// return `Some(Modifier::Ctrl)`.
+    ///
+    /// Never returns `Modifier::Alias` — aliases are a parsing/configuration
+    /// concept, not a physical key property.
     #[must_use]
     pub fn from_key(key: Key) -> Option<Self> {
         match Code::from(key) {
@@ -72,13 +161,17 @@ impl Modifier {
     }
 
     /// Return the left and right physical [`Key`] variants for this modifier.
+    ///
+    /// Returns `None` for [`Modifier::Alias`] — aliases don't correspond
+    /// to physical keys until resolved.
     #[must_use]
-    pub const fn keys(self) -> (Key, Key) {
+    pub fn keys(&self) -> Option<(Key, Key)> {
         match self {
-            Self::Ctrl => (Key::CONTROL_LEFT, Key::CONTROL_RIGHT),
-            Self::Shift => (Key::SHIFT_LEFT, Key::SHIFT_RIGHT),
-            Self::Alt => (Key::ALT_LEFT, Key::ALT_RIGHT),
-            Self::Super => (Key::META_LEFT, Key::META_RIGHT),
+            Self::Ctrl => Some((Key::CONTROL_LEFT, Key::CONTROL_RIGHT)),
+            Self::Shift => Some((Key::SHIFT_LEFT, Key::SHIFT_RIGHT)),
+            Self::Alt => Some((Key::ALT_LEFT, Key::ALT_RIGHT)),
+            Self::Super => Some((Key::META_LEFT, Key::META_RIGHT)),
+            Self::Alias(_) => None,
         }
     }
 
@@ -136,11 +229,25 @@ impl FromStr for Modifier {
             return Ok(modifier);
         }
 
-        token
-            .parse::<Key>()
-            .ok()
-            .and_then(Self::from_key)
-            .ok_or_else(|| ParseHotkeyError::UnknownToken(token.to_string()))
+        // Try parsing as a physical key that happens to be a modifier
+        if let Ok(key) = token.parse::<Key>() {
+            if let Some(modifier) = Self::from_key(key) {
+                return Ok(modifier);
+            }
+            // Valid key but not a modifier — not an alias either
+            return Err(ParseHotkeyError::UnknownToken(token.to_string()));
+        }
+
+        // Not a known key — treat alphabetic tokens as user-defined aliases
+        if token
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic())
+        {
+            return Ok(Self::Alias(ModifierAlias::new(token)));
+        }
+
+        Err(ParseHotkeyError::UnknownToken(token.to_string()))
     }
 }
 
@@ -152,9 +259,21 @@ impl TryFrom<Key> for Modifier {
     }
 }
 
-impl From<Modifier> for Key {
-    fn from(value: Modifier) -> Self {
-        value.keys().0
+impl TryFrom<Modifier> for Key {
+    type Error = ModifierAlias;
+
+    /// Convert a concrete modifier to its left-side physical key.
+    ///
+    /// Returns `Err(alias)` for [`Modifier::Alias`] — aliases don't
+    /// correspond to physical keys until resolved.
+    fn try_from(value: Modifier) -> Result<Self, Self::Error> {
+        match value {
+            Modifier::Ctrl => Ok(Key::CONTROL_LEFT),
+            Modifier::Shift => Ok(Key::SHIFT_LEFT),
+            Modifier::Alt => Ok(Key::ALT_LEFT),
+            Modifier::Super => Ok(Key::META_LEFT),
+            Modifier::Alias(alias) => Err(alias),
+        }
     }
 }
 
@@ -254,26 +373,38 @@ impl FromStr for Hotkey {
                 return Err(ParseHotkeyError::EmptySegment);
             }
 
-            let parsed_key = token
-                .parse::<Key>()
-                .map_err(|_| ParseHotkeyError::UnknownToken(token.to_string()))?;
+            // Try parsing as a known key first
+            if let Ok(parsed_key) = token.parse::<Key>() {
+                if let Some(modifier) = Modifier::from_key(parsed_key) {
+                    modifiers.push(modifier);
+                    last_modifier_key = Some(parsed_key);
+                    continue;
+                }
 
-            if let Some(modifier) = Modifier::from_key(parsed_key) {
-                modifiers.push(modifier);
-                last_modifier_key = Some(parsed_key);
+                if key.replace(parsed_key).is_some() {
+                    return Err(ParseHotkeyError::MultipleKeys);
+                }
                 continue;
             }
 
-            if key.replace(parsed_key).is_some() {
-                return Err(ParseHotkeyError::MultipleKeys);
-            }
+            // Not a recognized key — delegate to Modifier parsing, which
+            // handles concrete modifier names, user-defined aliases, and
+            // error reporting in one place.
+            modifiers.push(token.parse::<Modifier>()?);
         }
 
         let key = if let Some(key) = key {
             key
         } else {
             let key = last_modifier_key.ok_or(ParseHotkeyError::MissingKey)?;
-            modifiers.pop();
+            // Remove the modifier that corresponds to the trigger key.
+            // We can't blindly pop() because alias modifiers may have been
+            // pushed after the last physical modifier.
+            let trigger_modifier =
+                Modifier::from_key(key).expect("last_modifier_key is always a modifier key");
+            if let Some(pos) = modifiers.iter().rposition(|m| m == &trigger_modifier) {
+                modifiers.remove(pos);
+            }
             key
         };
 
@@ -473,6 +604,56 @@ mod tests {
     }
 
     #[test]
+    fn modifier_from_str_parses_concrete_names() {
+        assert_eq!("Ctrl".parse::<Modifier>().unwrap(), Modifier::Ctrl);
+        assert_eq!("shift".parse::<Modifier>().unwrap(), Modifier::Shift);
+        assert_eq!("Alt".parse::<Modifier>().unwrap(), Modifier::Alt);
+        assert_eq!("Super".parse::<Modifier>().unwrap(), Modifier::Super);
+        assert_eq!("Meta".parse::<Modifier>().unwrap(), Modifier::Super);
+        assert_eq!("Win".parse::<Modifier>().unwrap(), Modifier::Super);
+    }
+
+    #[test]
+    fn modifier_from_str_parses_alias() {
+        let modifier = "Mod".parse::<Modifier>().unwrap();
+        assert_eq!(modifier, Modifier::Alias(ModifierAlias::new("Mod")));
+    }
+
+    #[test]
+    fn modifier_alias_equality_is_case_insensitive() {
+        assert_eq!(ModifierAlias::new("Mod"), ModifierAlias::new("mod"));
+    }
+
+    #[test]
+    fn hotkey_dedups_alias_modifiers_case_insensitively() {
+        let hotkey = Hotkey::with_modifiers(
+            Key::T,
+            vec![
+                Modifier::Alias(ModifierAlias::new("Mod")),
+                Modifier::Alias(ModifierAlias::new("mod")),
+            ],
+        );
+        assert_eq!(hotkey.modifiers().len(), 1);
+        assert!(matches!(
+            &hotkey.modifiers()[0],
+            Modifier::Alias(alias) if alias.as_str().eq_ignore_ascii_case("mod")
+        ));
+    }
+
+    #[test]
+    fn modifier_from_str_rejects_non_modifier_key_name() {
+        // "Space" is a valid key but not a modifier — should not become an alias
+        let result = "Space".parse::<Modifier>();
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn modifier_from_str_rejects_non_alphabetic_token() {
+        let result = "@@@".parse::<Modifier>();
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
     fn hotkey_new_sorts_and_dedups_modifiers() {
         let hotkey =
             Hotkey::with_modifiers(Key::A, vec![Modifier::Alt, Modifier::Ctrl, Modifier::Alt]);
@@ -624,13 +805,33 @@ mod tests {
 
     #[test]
     fn hotkey_input_from_str_reports_parse_error() {
-        let result = "Ctrl+Nope".into_hotkey();
+        let result = "Ctrl+@@@".into_hotkey();
         assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
     }
 
     #[test]
     fn hotkey_input_from_string_reports_parse_error() {
-        let result = String::from("Ctrl+Nope").into_hotkey();
+        let result = String::from("Ctrl+@@@").into_hotkey();
         assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn modifier_only_hotkey_with_alias_is_order_independent() {
+        for input in ["Ctrl+Mod", "Mod+Ctrl"] {
+            let hotkey = input.parse::<Hotkey>().unwrap();
+            assert_eq!(hotkey.key(), Key::CONTROL_LEFT, "failed for {input}");
+            assert_eq!(
+                hotkey.modifiers(),
+                &[Modifier::Alias(ModifierAlias::new("Mod"))],
+                "failed for {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn alias_only_hotkey_returns_missing_key() {
+        // An alias alone has no physical key to use as trigger.
+        let result = "Mod".parse::<Hotkey>();
+        assert!(matches!(result, Err(ParseHotkeyError::MissingKey)));
     }
 }

@@ -105,15 +105,16 @@ impl KeyState {
     fn modifiers_from_pressed(is_pressed: impl Fn(Key) -> bool) -> Vec<Modifier> {
         let mut modifiers = Vec::new();
 
-        for &modifier in &[
+        for modifier in [
             Modifier::Ctrl,
             Modifier::Shift,
             Modifier::Alt,
             Modifier::Super,
         ] {
-            let (left, right) = modifier.keys();
-            if is_pressed(left) || is_pressed(right) {
-                modifiers.push(modifier);
+            if let Some((left, right)) = modifier.keys() {
+                if is_pressed(left) || is_pressed(right) {
+                    modifiers.push(modifier);
+                }
             }
         }
 
