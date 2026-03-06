@@ -13,11 +13,6 @@ use std::os::fd::RawFd;
 
 use crate::Error;
 
-pub(super) enum LoopControl {
-    Continue,
-    Shutdown,
-}
-
 pub(crate) struct WakeFd {
     fd: OwnedFd,
 }
