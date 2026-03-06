@@ -140,7 +140,7 @@ pub(super) fn classify_layer_scope(stored: &StoredLayer, hotkey: &Hotkey) -> Sco
         }
         ScopeSequenceMatch::None => match find_immediate_in_layer(stored, hotkey) {
             Some(index) => ScopeMatch::Immediate { index },
-            Option::None => ScopeMatch::None,
+            None => ScopeMatch::None,
         },
     }
 }
