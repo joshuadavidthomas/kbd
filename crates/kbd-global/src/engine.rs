@@ -39,6 +39,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 
+use async_channel::Sender;
+
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
 use kbd::dispatcher::Dispatcher;
@@ -48,8 +50,10 @@ use kbd::key::Key;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
 
-use crate::Error;
 use crate::engine::devices::DeviceKeyEvent;
+use crate::error::Error;
+use crate::events::HotkeyEvent;
+use crate::events::HotkeyEventStream;
 
 pub(crate) mod command;
 pub(crate) mod devices;
@@ -80,6 +84,7 @@ pub(crate) struct Engine {
     devices: devices::DeviceManager,
     key_state: KeyState,
     grab_state: GrabState,
+    event_subscribers: Vec<Sender<HotkeyEvent>>,
     command_rx: mpsc::Receiver<Command>,
     wake_fd: Arc<WakeFd>,
 }
@@ -101,6 +106,7 @@ impl Engine {
             devices: devices::DeviceManager::new(input_directory, device_grab_mode),
             key_state: KeyState::default(),
             grab_state,
+            event_subscribers: Vec::new(),
             command_rx,
             wake_fd,
         }
@@ -201,6 +207,11 @@ impl Engine {
             Command::PendingSequence { reply } => {
                 let _ = reply.send(self.dispatcher.pending_sequence());
             }
+            Command::EventStream { reply } => {
+                let (sender, receiver) = async_channel::unbounded();
+                self.event_subscribers.push(sender);
+                let _ = reply.send(HotkeyEventStream::new(receiver));
+            }
 
             // Layers
             Command::DefineLayer { layer, reply } => {
@@ -295,15 +306,13 @@ impl Engine {
         // callback execution and forwarding.
         let outcome = {
             let result = self.dispatcher.process(&candidate, event.transition);
-            match &result {
+            match result {
                 MatchResult::Matched {
                     action,
                     propagation,
                 } => {
                     execute_action(action);
-                    MatchOutcome::Matched {
-                        propagation: *propagation,
-                    }
+                    MatchOutcome::Matched { propagation }
                 }
                 MatchResult::Pending { .. } | MatchResult::Suppressed => MatchOutcome::Consumed,
                 MatchResult::NoMatch | MatchResult::Ignored => MatchOutcome::Unmatched,
@@ -314,6 +323,11 @@ impl Engine {
                 _ => MatchOutcome::Unmatched,
             }
         };
+
+        for step in self.dispatcher.drain_sequence_steps() {
+            let event = HotkeyEvent::from(step);
+            self.emit_event(&event);
+        }
 
         // Determine event disposition based on match outcome and grab state
         let disposition = match outcome {
@@ -349,6 +363,11 @@ impl Engine {
         }
 
         disposition
+    }
+
+    fn emit_event(&mut self, event: &HotkeyEvent) {
+        self.event_subscribers
+            .retain(|subscriber| subscriber.try_send(event.clone()).is_ok());
     }
 
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {
@@ -410,6 +429,10 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
                 execute_action(action);
             }
         }
+        for step in engine.dispatcher.drain_sequence_steps() {
+            let event = HotkeyEvent::from(step);
+            engine.emit_event(&event);
+        }
     }
 }
 
@@ -439,7 +462,8 @@ mod tests {
     use super::devices;
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
-    use crate::Error;
+    use crate::error::Error;
+    use crate::events::HotkeyEvent;
 
     #[test]
     fn engine_processes_register_and_unregister_commands() {
@@ -2736,6 +2760,88 @@ mod tests {
         assert!(
             result.is_none(),
             "modifier-only key should not match, consistent with real dispatcher"
+        );
+    }
+
+    #[test]
+    fn event_stream_emits_sequence_step_events_for_each_matched_step() {
+        let mut engine = test_engine();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        engine.handle_command(Command::EventStream { reply: reply_tx });
+        let stream = reply_rx.recv().expect("event stream reply");
+
+        let binding_id = engine
+            .dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+            .expect("sequence should register");
+
+        let _ = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 7,
+            key: Key::CONTROL_LEFT,
+            transition: KeyTransition::Press,
+        });
+        let _ = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 7,
+            key: Key::K,
+            transition: KeyTransition::Press,
+        });
+        assert_eq!(
+            stream.try_recv(),
+            Ok(HotkeyEvent::SequenceStep {
+                binding_id,
+                hotkey: Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                steps_matched: 1,
+                steps_remaining: 1,
+            })
+        );
+
+        let _ = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 7,
+            key: Key::C,
+            transition: KeyTransition::Press,
+        });
+        assert_eq!(
+            stream.try_recv(),
+            Ok(HotkeyEvent::SequenceStep {
+                binding_id,
+                hotkey: Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                steps_matched: 2,
+                steps_remaining: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn event_stream_emits_single_step_sequence_completion() {
+        let mut engine = test_engine();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        engine.handle_command(Command::EventStream { reply: reply_tx });
+        let stream = reply_rx.recv().expect("event stream reply");
+
+        let binding_id = engine
+            .dispatcher
+            .register_sequence("Ctrl+K", Action::Suppress)
+            .expect("sequence should register");
+
+        let _ = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 7,
+            key: Key::CONTROL_LEFT,
+            transition: KeyTransition::Press,
+        });
+        let _ = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 7,
+            key: Key::K,
+            transition: KeyTransition::Press,
+        });
+
+        assert_eq!(
+            stream.try_recv(),
+            Ok(HotkeyEvent::SequenceStep {
+                binding_id,
+                hotkey: Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                steps_matched: 1,
+                steps_remaining: 0,
+            })
         );
     }
 }

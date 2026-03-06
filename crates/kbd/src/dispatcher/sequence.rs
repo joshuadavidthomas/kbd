@@ -13,6 +13,7 @@ use crate::hotkey::HotkeySequence;
 use crate::layer::LayerName;
 use crate::sequence::PendingSequenceInfo;
 use crate::sequence::SequenceOptions;
+use crate::sequence::SequenceStepInfo;
 
 pub(super) struct RegisteredSequenceBinding {
     pub(super) id: BindingId,
@@ -92,6 +93,12 @@ impl Dispatcher {
             if self.sequence_step_matches(&active.binding_ref, active.next_step_index, hotkey) {
                 active.next_step_index += 1;
                 let total = self.sequence_step_count(&active.binding_ref);
+                self.record_sequence_step(
+                    &active.binding_ref,
+                    hotkey,
+                    active.next_step_index,
+                    total,
+                );
                 if active.next_step_index >= total {
                     completed.push((active.priority, active.binding_ref));
                 } else {
@@ -151,6 +158,7 @@ impl Dispatcher {
     pub(super) fn start_sequences(
         &mut self,
         candidates: Vec<SequenceStartCandidate>,
+        hotkey: &Hotkey,
         now: Instant,
         next_priority: &mut usize,
         pending_standalone: Option<PendingStandalone>,
@@ -167,6 +175,7 @@ impl Dispatcher {
                     layer_effect,
                     propagation,
                 } => {
+                    self.record_single_step_sequence(&binding_ref, hotkey);
                     self.active_sequences.clear();
                     self.pending_standalone = None;
                     return Some(InternalOutcome::Matched {
@@ -179,6 +188,8 @@ impl Dispatcher {
                     binding_ref,
                     timeout,
                 } => {
+                    let total = self.sequence_step_count(&binding_ref);
+                    self.record_sequence_step(&binding_ref, hotkey, 1, total);
                     started.push(ActiveSequence {
                         binding_ref,
                         next_step_index: 1,
@@ -316,6 +327,51 @@ impl Dispatcher {
             .max_by_key(|pending| pending.steps_matched)
     }
 
+    fn record_sequence_step(
+        &mut self,
+        binding_ref: &SequenceBindingRef,
+        hotkey: &Hotkey,
+        steps_matched: usize,
+        total_steps: usize,
+    ) {
+        self.sequence_steps.push(SequenceStepInfo {
+            binding_id: self.sequence_binding_id(binding_ref),
+            hotkey: hotkey.clone(),
+            steps_matched,
+            steps_remaining: total_steps.saturating_sub(steps_matched),
+        });
+    }
+
+    fn record_single_step_sequence(&mut self, binding_ref: &MatchedBindingRef, hotkey: &Hotkey) {
+        self.sequence_steps.push(SequenceStepInfo {
+            binding_id: self.sequence_binding_id_from_match(binding_ref),
+            hotkey: hotkey.clone(),
+            steps_matched: 1,
+            steps_remaining: 0,
+        });
+    }
+
+    fn sequence_binding_id(&self, binding_ref: &SequenceBindingRef) -> BindingId {
+        match binding_ref {
+            SequenceBindingRef::Global(id) => *id,
+            SequenceBindingRef::Layer { name, index } => {
+                self.layers[name].sequence_bindings[*index].id
+            }
+        }
+    }
+
+    fn sequence_binding_id_from_match(&self, binding_ref: &MatchedBindingRef) -> BindingId {
+        match binding_ref {
+            MatchedBindingRef::SequenceGlobal(id) => *id,
+            MatchedBindingRef::SequenceLayer { name, index } => {
+                self.layers[name].sequence_bindings[*index].id
+            }
+            MatchedBindingRef::Global(_) | MatchedBindingRef::Layer { .. } => {
+                unreachable!("single-step sequence tracking only records sequence bindings")
+            }
+        }
+    }
+
     pub(super) fn clear_sequences_for_layer_if_inactive(&mut self, layer_name: &LayerName) {
         if self
             .layer_stack
@@ -371,6 +427,7 @@ mod tests {
     use crate::layer::Layer;
     use crate::layer::LayerName;
     use crate::sequence::SequenceOptions;
+    use crate::sequence::SequenceStepInfo;
 
     fn execute_callback(result: &MatchResult<'_>) {
         if let MatchResult::Matched {
@@ -792,5 +849,66 @@ mod tests {
         let pending = dispatcher.pending_sequence().expect("pending sequence");
         assert_eq!(pending.steps_matched, 1);
         assert_eq!(pending.steps_remaining, 1);
+    }
+
+    #[test]
+    fn drain_sequence_steps_reports_each_matched_step() {
+        let mut dispatcher = Dispatcher::new();
+        let binding_id = dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+            .expect("sequence should register");
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+        assert_eq!(
+            dispatcher.drain_sequence_steps(),
+            vec![SequenceStepInfo {
+                binding_id,
+                hotkey: Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                steps_matched: 1,
+                steps_remaining: 1,
+            }]
+        );
+
+        let second = dispatcher.process(
+            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(second, MatchResult::Matched { .. }));
+        assert_eq!(
+            dispatcher.drain_sequence_steps(),
+            vec![SequenceStepInfo {
+                binding_id,
+                hotkey: Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                steps_matched: 2,
+                steps_remaining: 0,
+            }]
+        );
+    }
+
+    #[test]
+    fn drain_sequence_steps_reports_single_step_sequence_completion() {
+        let mut dispatcher = Dispatcher::new();
+        let binding_id = dispatcher
+            .register_sequence("Ctrl+K", Action::Suppress)
+            .expect("sequence should register");
+
+        let result = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(result, MatchResult::Matched { .. }));
+        assert_eq!(
+            dispatcher.drain_sequence_steps(),
+            vec![SequenceStepInfo {
+                binding_id,
+                hotkey: Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+                steps_matched: 1,
+                steps_remaining: 0,
+            }]
+        );
     }
 }

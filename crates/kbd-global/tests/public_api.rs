@@ -12,11 +12,12 @@
 mod utils;
 
 use kbd::prelude::*;
-use kbd_global::Backend;
-use kbd_global::BindingGuard;
-use kbd_global::Error;
-use kbd_global::HotkeyManager;
-use kbd_global::HotkeyManagerBuilder;
+use kbd_global::backend::Backend;
+use kbd_global::binding_guard::BindingGuard;
+use kbd_global::error::Error;
+use kbd_global::events::HotkeyEvent;
+use kbd_global::manager::HotkeyManager;
+use kbd_global::manager::HotkeyManagerBuilder;
 
 // Quick-start / smoke tests
 
@@ -167,6 +168,34 @@ fn active_modifiers_empty_at_start() {
     let manager = utils::test_manager();
     let mods = manager.active_modifiers().unwrap();
     assert!(mods.is_empty());
+}
+
+#[test]
+fn event_stream_closes_when_manager_shuts_down() {
+    let manager = utils::test_manager();
+    let stream = manager.event_stream().expect("event stream should initialize");
+
+    manager.shutdown().expect("shutdown should succeed");
+
+    assert!(stream.recv_blocking().is_err());
+}
+
+#[test]
+fn event_type_is_publicly_accessible() {
+    let event = HotkeyEvent::SequenceStep {
+        binding_id: kbd::binding::BindingId::new(),
+        hotkey: Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+        steps_matched: 1,
+        steps_remaining: 0,
+    };
+    assert!(matches!(
+        event,
+        HotkeyEvent::SequenceStep {
+            steps_matched: 1,
+            steps_remaining: 0,
+            ..
+        }
+    ));
 }
 
 // Layer lifecycle
