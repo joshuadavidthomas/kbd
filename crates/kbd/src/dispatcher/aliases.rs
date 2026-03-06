@@ -185,7 +185,7 @@ mod tests {
     use crate::layer::Layer;
 
     #[test]
-    fn define_modifier_alias_and_match() {
+    fn programmatic_aliased_hotkey_matches_after_alias_definition() {
         let mut dispatcher = Dispatcher::new();
         dispatcher
             .define_modifier_alias("Mod", Modifier::Super)
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn alias_resolution_during_matching_not_parsing() {
+    fn parsed_aliased_hotkey_resolves_during_matching() {
         let mut dispatcher = Dispatcher::new();
         dispatcher
             .define_modifier_alias("Mod", Modifier::Super)
@@ -237,22 +237,6 @@ mod tests {
 
         let result = dispatcher.process(
             &Hotkey::new(Key::T).modifier(Modifier::Super),
-            KeyTransition::Press,
-        );
-        assert!(matches!(result, MatchResult::Matched { .. }));
-    }
-
-    #[test]
-    fn alias_defined_on_dispatcher_directly() {
-        let mut dispatcher = Dispatcher::new();
-        dispatcher
-            .define_modifier_alias("Leader", Modifier::Alt)
-            .unwrap();
-
-        dispatcher.register("Leader+X", Action::Suppress).unwrap();
-
-        let result = dispatcher.process(
-            &Hotkey::new(Key::X).modifier(Modifier::Alt),
             KeyTransition::Press,
         );
         assert!(matches!(result, MatchResult::Matched { .. }));
@@ -327,27 +311,25 @@ mod tests {
     }
 
     #[test]
-    fn modifier_alias_display() {
+    fn modifier_alias_as_str_returns_name() {
         let alias = ModifierAlias::new("Mod");
         assert_eq!(alias.as_str(), "Mod");
     }
 
     #[test]
-    fn modifier_alias_preserves_case() {
+    fn modifier_alias_as_str_preserves_original_case() {
         let alias = ModifierAlias::new("MyMod");
         assert_eq!(alias.as_str(), "MyMod");
     }
 
     #[test]
-    fn hotkey_display_with_alias() {
+    fn hotkey_display_preserves_alias_name() {
         let hotkey = Hotkey::new(Key::T).modifier(Modifier::Alias(ModifierAlias::new("Mod")));
-        let display = hotkey.to_string();
-        assert!(display.contains("Mod"));
-        assert!(display.contains('T'));
+        assert_eq!(hotkey.to_string(), "Mod+T");
     }
 
     #[test]
-    fn concrete_modifier_bindings_still_work_with_aliases_defined() {
+    fn concrete_bindings_are_unaffected_by_alias_definitions() {
         let mut dispatcher = Dispatcher::new();
         dispatcher
             .define_modifier_alias("Mod", Modifier::Super)
@@ -404,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn alias_reassignment_updates_layer_matching() {
+    fn alias_reassignment_updates_active_layer_binding_matching() {
         let mut dispatcher = Dispatcher::new();
         dispatcher
             .define_modifier_alias("Mod", Modifier::Super)

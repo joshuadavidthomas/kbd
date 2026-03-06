@@ -811,26 +811,16 @@ mod tests {
     }
 
     #[test]
-    fn modifier_only_with_trailing_alias_preserves_alias() {
-        // "Ctrl+Mod" with no trigger key: Ctrl becomes the trigger,
-        // and the alias "Mod" must be preserved as a modifier.
-        let hotkey = "Ctrl+Mod".parse::<Hotkey>().unwrap();
-        assert_eq!(hotkey.key(), Key::CONTROL_LEFT);
-        assert_eq!(
-            hotkey.modifiers(),
-            &[Modifier::Alias(ModifierAlias::new("Mod"))]
-        );
-    }
-
-    #[test]
-    fn modifier_only_with_leading_alias_preserves_alias() {
-        // "Mod+Ctrl": Ctrl is the only physical modifier → becomes trigger.
-        let hotkey = "Mod+Ctrl".parse::<Hotkey>().unwrap();
-        assert_eq!(hotkey.key(), Key::CONTROL_LEFT);
-        assert_eq!(
-            hotkey.modifiers(),
-            &[Modifier::Alias(ModifierAlias::new("Mod"))]
-        );
+    fn modifier_only_hotkey_with_alias_is_order_independent() {
+        for input in ["Ctrl+Mod", "Mod+Ctrl"] {
+            let hotkey = input.parse::<Hotkey>().unwrap();
+            assert_eq!(hotkey.key(), Key::CONTROL_LEFT, "failed for {input}");
+            assert_eq!(
+                hotkey.modifiers(),
+                &[Modifier::Alias(ModifierAlias::new("Mod"))],
+                "failed for {input}"
+            );
+        }
     }
 
     #[test]
