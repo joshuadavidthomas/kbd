@@ -93,6 +93,8 @@ pub enum ShadowedStatus {
     ShadowedBy(LayerName),
     /// This binding's layer is not currently on the stack.
     Inactive,
+    /// This binding uses a modifier alias that is not currently defined.
+    UnresolvedAlias,
 }
 
 /// Snapshot of a single binding for introspection.

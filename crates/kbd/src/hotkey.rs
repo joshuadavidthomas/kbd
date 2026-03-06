@@ -19,7 +19,10 @@
 //! # }
 //! ```
 
+use std::cmp::Ordering;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::str::FromStr;
 
 use keyboard_types::Code;
@@ -39,8 +42,8 @@ use crate::key::Key;
 /// Alias names are case-preserving. Resolution through the
 /// [`Dispatcher`](crate::dispatcher::Dispatcher) is case-insensitive
 /// (defining `"Mod"` and looking up `"mod"` reaches the same alias),
-/// but the type's own `Eq`/`Hash` are case-sensitive.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// and equality/hash/order follow that same case-insensitive behavior.
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ModifierAlias(String);
 
@@ -55,6 +58,37 @@ impl ModifierAlias {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl PartialEq for ModifierAlias {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq_ignore_ascii_case(&other.0)
+    }
+}
+
+impl Eq for ModifierAlias {}
+
+impl Hash for ModifierAlias {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for byte in self.0.bytes() {
+            state.write_u8(byte.to_ascii_lowercase());
+        }
+    }
+}
+
+impl PartialOrd for ModifierAlias {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ModifierAlias {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0
+            .bytes()
+            .map(|byte| byte.to_ascii_lowercase())
+            .cmp(other.0.bytes().map(|byte| byte.to_ascii_lowercase()))
     }
 }
 
@@ -578,6 +612,27 @@ mod tests {
     fn modifier_from_str_parses_alias() {
         let modifier = "Mod".parse::<Modifier>().unwrap();
         assert_eq!(modifier, Modifier::Alias(ModifierAlias::new("Mod")));
+    }
+
+    #[test]
+    fn modifier_alias_equality_is_case_insensitive() {
+        assert_eq!(ModifierAlias::new("Mod"), ModifierAlias::new("mod"));
+    }
+
+    #[test]
+    fn hotkey_dedups_alias_modifiers_case_insensitively() {
+        let hotkey = Hotkey::with_modifiers(
+            Key::T,
+            vec![
+                Modifier::Alias(ModifierAlias::new("Mod")),
+                Modifier::Alias(ModifierAlias::new("mod")),
+            ],
+        );
+        assert_eq!(hotkey.modifiers().len(), 1);
+        assert!(matches!(
+            &hotkey.modifiers()[0],
+            Modifier::Alias(alias) if alias.as_str().eq_ignore_ascii_case("mod")
+        ));
     }
 
     #[test]

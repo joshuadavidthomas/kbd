@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use super::Dispatcher;
+use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
+use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
 
 impl Dispatcher {
@@ -22,6 +25,8 @@ impl Dispatcher {
     ///
     /// Returns [`Error::InvalidAliasTarget`](crate::error::Error::InvalidAliasTarget)
     /// if `target` is [`Modifier::Alias`] — alias chaining is not supported.
+    /// Returns [`Error::AliasConflict`](crate::error::Error::AliasConflict)
+    /// if the new alias mapping would make any global bindings ambiguous.
     pub fn define_modifier_alias(
         &mut self,
         name: impl Into<String>,
@@ -30,24 +35,14 @@ impl Dispatcher {
         if matches!(target, Modifier::Alias(_)) {
             return Err(crate::error::Error::InvalidAliasTarget);
         }
-        let name = name.into();
-        self.modifier_aliases
-            .insert(name.to_ascii_lowercase(), target);
-        self.rebuild_alias_resolved_ids();
-        Ok(())
-    }
 
-    /// Resolve a single modifier: if it's an alias, look it up; otherwise return as-is.
-    ///
-    /// Returns `None` if the alias is undefined (no mapping exists).
-    pub(crate) fn resolve_modifier(&self, modifier: &Modifier) -> Option<Modifier> {
-        match modifier {
-            Modifier::Alias(alias) => self
-                .modifier_aliases
-                .get(&alias.as_str().to_ascii_lowercase())
-                .cloned(),
-            concrete => Some(concrete.clone()),
-        }
+        let mut modifier_aliases = self.modifier_aliases.clone();
+        modifier_aliases.insert(name.into().to_ascii_lowercase(), target);
+        let alias_resolved_ids = self.rebuild_alias_resolved_ids(&modifier_aliases)?;
+
+        self.modifier_aliases = modifier_aliases;
+        self.alias_resolved_ids = alias_resolved_ids;
+        Ok(())
     }
 
     /// Resolve all modifiers in a hotkey, returning a new hotkey with
@@ -55,45 +50,106 @@ impl Dispatcher {
     ///
     /// Returns `None` if any alias is undefined.
     pub(crate) fn resolve_hotkey(&self, hotkey: &Hotkey) -> Option<Hotkey> {
-        if !hotkey
-            .modifiers()
-            .iter()
-            .any(|m| matches!(m, Modifier::Alias(_)))
-        {
-            return Some(hotkey.clone());
-        }
-
-        let mut resolved_modifiers = Vec::with_capacity(hotkey.modifiers().len());
-        for modifier in hotkey.modifiers() {
-            match self.resolve_modifier(modifier) {
-                Some(concrete) => resolved_modifiers.push(concrete),
-                None => return None,
-            }
-        }
-        Some(Hotkey::with_modifiers(hotkey.key(), resolved_modifiers))
+        resolve_hotkey_with_aliases(hotkey, &self.modifier_aliases)
     }
 
     /// Rebuild the alias-resolved lookup table for global bindings.
     ///
-    /// Called whenever an alias is defined or reassigned. Iterates all
-    /// global bindings that contain aliases and (re-)inserts their
-    /// resolved forms into the lookup table.
-    fn rebuild_alias_resolved_ids(&mut self) {
-        self.alias_resolved_ids.clear();
+    /// Called whenever an alias is defined or reassigned. Returns a new
+    /// alias-resolved lookup table if the alias configuration is conflict-free.
+    fn rebuild_alias_resolved_ids(
+        &self,
+        aliases: &HashMap<String, Modifier>,
+    ) -> Result<HashMap<Hotkey, BindingId>, crate::error::Error> {
+        let mut alias_resolved_ids = HashMap::new();
+        let mut effective_ids = HashMap::new();
 
-        let entries: Vec<_> = self
-            .bindings_by_id
-            .iter()
-            .filter(|(_, binding)| has_alias_modifiers(binding.hotkey()))
-            .map(|(_, binding)| (binding.id(), binding.hotkey().clone()))
-            .collect();
+        for binding in self.bindings_by_id.values() {
+            let Some(resolved) = resolve_hotkey_with_aliases(binding.hotkey(), aliases) else {
+                continue;
+            };
 
-        for (id, hotkey) in entries {
-            if let Some(resolved) = self.resolve_hotkey(&hotkey) {
-                self.alias_resolved_ids.insert(resolved, id);
+            match effective_ids.entry(resolved.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(binding.id());
+                }
+                Entry::Occupied(entry) if *entry.get() != binding.id() => {
+                    return Err(crate::error::Error::AliasConflict);
+                }
+                Entry::Occupied(_) => {}
+            }
+
+            if has_alias_modifiers(binding.hotkey()) {
+                alias_resolved_ids.insert(resolved, binding.id());
             }
         }
+
+        let mut effective_sequence_ids = HashMap::new();
+        for binding in self.sequence_bindings_by_id.values() {
+            let Some(resolved) = resolve_sequence_with_aliases(&binding.sequence, aliases) else {
+                continue;
+            };
+
+            match effective_sequence_ids.entry(resolved) {
+                Entry::Vacant(entry) => {
+                    entry.insert(binding.id);
+                }
+                Entry::Occupied(entry) if *entry.get() != binding.id => {
+                    return Err(crate::error::Error::AliasConflict);
+                }
+                Entry::Occupied(_) => {}
+            }
+        }
+
+        Ok(alias_resolved_ids)
     }
+}
+
+pub(crate) fn resolve_modifier_with_aliases(
+    modifier: &Modifier,
+    aliases: &HashMap<String, Modifier>,
+) -> Option<Modifier> {
+    match modifier {
+        Modifier::Alias(alias) => aliases.get(&alias.as_str().to_ascii_lowercase()).cloned(),
+        concrete => Some(concrete.clone()),
+    }
+}
+
+pub(crate) fn resolve_hotkey_with_aliases(
+    hotkey: &Hotkey,
+    aliases: &HashMap<String, Modifier>,
+) -> Option<Hotkey> {
+    if !has_alias_modifiers(hotkey) {
+        return Some(hotkey.clone());
+    }
+
+    let mut resolved_modifiers = Vec::with_capacity(hotkey.modifiers().len());
+    for modifier in hotkey.modifiers() {
+        match resolve_modifier_with_aliases(modifier, aliases) {
+            Some(concrete) => resolved_modifiers.push(concrete),
+            None => return None,
+        }
+    }
+    Some(Hotkey::with_modifiers(hotkey.key(), resolved_modifiers))
+}
+
+pub(crate) fn resolve_sequence_with_aliases(
+    sequence: &HotkeySequence,
+    aliases: &HashMap<String, Modifier>,
+) -> Option<HotkeySequence> {
+    if sequence
+        .steps()
+        .iter()
+        .all(|step| !has_alias_modifiers(step))
+    {
+        return Some(sequence.clone());
+    }
+
+    let mut resolved_steps = Vec::with_capacity(sequence.steps().len());
+    for step in sequence.steps() {
+        resolved_steps.push(resolve_hotkey_with_aliases(step, aliases)?);
+    }
+    Some(HotkeySequence::new(resolved_steps).expect("sequence bindings are never empty"))
 }
 
 /// Check whether a hotkey contains any modifier aliases.
@@ -113,34 +169,7 @@ pub(crate) fn hotkeys_match_with_aliases(
     event_hotkey: &Hotkey,
     aliases: &HashMap<String, Modifier>,
 ) -> bool {
-    if binding_hotkey.key() != event_hotkey.key() {
-        return false;
-    }
-
-    // If the binding has no aliases, use direct comparison
-    if !has_alias_modifiers(binding_hotkey) {
-        return binding_hotkey.modifiers() == event_hotkey.modifiers();
-    }
-
-    // Resolve aliases in the binding's modifiers
-    let mut resolved: Vec<Modifier> = Vec::with_capacity(binding_hotkey.modifiers().len());
-    for modifier in binding_hotkey.modifiers() {
-        match modifier {
-            Modifier::Alias(alias) => {
-                if let Some(concrete) = aliases.get(&alias.as_str().to_ascii_lowercase()) {
-                    resolved.push(concrete.clone());
-                } else {
-                    // Unknown alias — can't match
-                    return false;
-                }
-            }
-            concrete => resolved.push(concrete.clone()),
-        }
-    }
-    resolved.sort();
-    resolved.dedup();
-
-    resolved == event_hotkey.modifiers()
+    resolve_hotkey_with_aliases(binding_hotkey, aliases).as_ref() == Some(event_hotkey)
 }
 
 #[cfg(test)]
@@ -421,5 +450,128 @@ mod tests {
             result,
             Err(crate::error::Error::InvalidAliasTarget)
         ));
+    }
+
+    #[test]
+    fn define_modifier_alias_rejects_conflicting_global_bindings() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+        dispatcher
+            .register(
+                Hotkey::new(Key::T).modifier(Modifier::Super),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        let result = dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        assert!(matches!(result, Err(crate::error::Error::AliasConflict)));
+
+        let mod_binding: Hotkey = "Mod+T".parse().unwrap();
+        assert!(dispatcher.is_registered(&mod_binding));
+        assert!(dispatcher.is_registered(&Hotkey::new(Key::T).modifier(Modifier::Super)));
+    }
+
+    #[test]
+    fn failed_alias_reassignment_keeps_previous_mapping() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+        dispatcher
+            .register(
+                Hotkey::new(Key::T).modifier(Modifier::Alt),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        let result = dispatcher.define_modifier_alias("Mod", Modifier::Alt);
+        assert!(matches!(result, Err(crate::error::Error::AliasConflict)));
+
+        let result = dispatcher.process(
+            &Hotkey::new(Key::T).modifier(Modifier::Super),
+            KeyTransition::Press,
+        );
+        assert!(matches!(result, MatchResult::Matched { .. }));
+
+        let result = dispatcher.process(
+            &Hotkey::new(Key::T).modifier(Modifier::Alt),
+            KeyTransition::Press,
+        );
+        assert!(matches!(result, MatchResult::Matched { .. }));
+    }
+
+    #[test]
+    fn alias_reassignment_rejects_conflicting_sequences() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence("Mod+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+        dispatcher
+            .register_sequence("Super+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+
+        let result = dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        assert!(matches!(result, Err(crate::error::Error::AliasConflict)));
+    }
+
+    #[test]
+    fn alias_works_in_global_sequences() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+        dispatcher
+            .register_sequence("Mod+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+
+        let result = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Super),
+            KeyTransition::Press,
+        );
+        assert!(matches!(
+            result,
+            MatchResult::Pending {
+                steps_matched: 1,
+                steps_remaining: 1,
+            }
+        ));
+
+        let result = dispatcher.process(
+            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(result, MatchResult::Matched { .. }));
+    }
+
+    #[test]
+    fn alias_works_in_layer_sequences() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+        let layer = Layer::new("nav")
+            .bind_sequence("Mod+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+        dispatcher.define_layer(layer).unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let result = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Super),
+            KeyTransition::Press,
+        );
+        assert!(matches!(
+            result,
+            MatchResult::Pending {
+                steps_matched: 1,
+                steps_remaining: 1,
+            }
+        ));
+
+        let result = dispatcher.process(
+            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(result, MatchResult::Matched { .. }));
     }
 }

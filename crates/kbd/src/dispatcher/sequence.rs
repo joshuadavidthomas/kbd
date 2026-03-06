@@ -223,17 +223,16 @@ impl Dispatcher {
         self.active_sequences.retain(|active| active.deadline > now);
         let expired = before.saturating_sub(self.active_sequences.len());
 
-        if expired > 0 && self.active_sequences.is_empty() {
-            if let Some(standalone) = self.pending_standalone.take() {
-                self.apply_layer_effect(&standalone.layer_effect);
-                let action = self.resolve_binding(&standalone.binding_ref);
-                return vec![MatchResult::Matched {
-                    action,
-                    propagation: standalone.propagation,
-                }];
-            }
-
-            self.pending_standalone = None;
+        if expired > 0
+            && self.active_sequences.is_empty()
+            && let Some(standalone) = self.pending_standalone.take()
+        {
+            self.apply_layer_effect(&standalone.layer_effect);
+            let action = self.resolve_binding(&standalone.binding_ref);
+            return vec![MatchResult::Matched {
+                action,
+                propagation: standalone.propagation,
+            }];
         }
 
         Vec::new()
@@ -263,13 +262,17 @@ impl Dispatcher {
                 .sequence
                 .steps()
                 .get(step_index)
-                .is_some_and(|step| step == hotkey),
+                .is_some_and(|step| {
+                    super::aliases::hotkeys_match_with_aliases(step, hotkey, &self.modifier_aliases)
+                }),
             SequenceBindingRef::Layer { name, index } => self.layers[name].sequence_bindings
                 [*index]
                 .sequence
                 .steps()
                 .get(step_index)
-                .is_some_and(|step| step == hotkey),
+                .is_some_and(|step| {
+                    super::aliases::hotkeys_match_with_aliases(step, hotkey, &self.modifier_aliases)
+                }),
         }
     }
 

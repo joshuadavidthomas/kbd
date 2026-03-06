@@ -424,6 +424,7 @@ impl Dispatcher {
             let prefix_match = resolve::classify_sequence_prefixes(
                 global_seqs.iter().map(|b| &b.sequence),
                 hotkey,
+                &self.modifier_aliases,
             );
             match prefix_match {
                 SequencePrefixMatch::SingleStep { index } => {
@@ -449,9 +450,10 @@ impl Dispatcher {
         };
         // global_seqs dropped; self is unborrowed.
 
+        let global_match = self.match_global_hotkey(hotkey);
+
         if !candidates.is_empty() {
-            let pending_standalone =
-                self.pending_standalone_from_match(self.match_global_hotkey(hotkey));
+            let pending_standalone = self.pending_standalone_from_match(global_match.clone());
             if let Some(outcome) =
                 self.start_sequences(candidates, now, &mut next_priority, pending_standalone)
             {
@@ -459,7 +461,7 @@ impl Dispatcher {
             }
         }
 
-        if let Some((binding_ref, propagation)) = self.match_global_hotkey(hotkey) {
+        if let Some((binding_ref, propagation)) = global_match {
             return InternalOutcome::Matched {
                 layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
                 binding_ref,

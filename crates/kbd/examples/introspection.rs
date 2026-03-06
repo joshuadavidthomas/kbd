@@ -123,6 +123,7 @@ fn format_binding(b: &BindingInfo) -> String {
         ShadowedStatus::Active => "active".to_string(),
         ShadowedStatus::ShadowedBy(name) => format!("shadowed by {name}"),
         ShadowedStatus::Inactive => "inactive".to_string(),
+        ShadowedStatus::UnresolvedAlias => "unresolved alias".to_string(),
         _ => "unknown".to_string(),
     };
     let vis = match b.overlay_visibility {

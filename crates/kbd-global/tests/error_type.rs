@@ -37,6 +37,10 @@ fn error_display_messages_are_actionable() {
             Error::LayerAlreadyDefined,
             "a layer with this name is already defined",
         ),
+        (
+            Error::AliasConflict,
+            "modifier alias definition conflicts with an existing binding",
+        ),
     ];
 
     for (error, expected_message) in cases {

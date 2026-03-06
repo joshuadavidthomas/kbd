@@ -15,16 +15,24 @@ use crate::layer::LayerName;
 use crate::layer::UnmatchedKeys;
 
 impl Dispatcher {
-    /// Return a snapshot of all registered bindings with their status.
+    /// Return a snapshot of all registered immediate bindings with their status.
+    ///
+    /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
+    /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence).
     #[must_use]
     pub fn list_bindings(&self) -> Vec<BindingInfo> {
-        // Build a map of hotkey → claiming layer name for active layers.
-        // Walk top-down so the topmost layer claiming a hotkey "wins".
-        let mut claimed_by: HashMap<&Hotkey, &LayerName> = HashMap::new();
+        // Build a map of effective hotkey → claiming layer name for active
+        // layers. Walk top-down so the topmost layer claiming a hotkey wins.
+        let mut claimed_by: HashMap<Hotkey, LayerName> = HashMap::new();
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
                 for binding in &stored.bindings {
-                    claimed_by.entry(&binding.hotkey).or_insert(&entry.name);
+                    let Some(effective_hotkey) = self.resolve_hotkey(&binding.hotkey) else {
+                        continue;
+                    };
+                    claimed_by
+                        .entry(effective_hotkey)
+                        .or_insert_with(|| entry.name.clone());
                 }
             }
         }
@@ -33,10 +41,12 @@ impl Dispatcher {
 
         // Global bindings
         for binding in self.bindings_by_id.values() {
-            let shadowed = if let Some(&layer_name) = claimed_by.get(binding.hotkey()) {
-                ShadowedStatus::ShadowedBy(layer_name.clone())
-            } else {
-                ShadowedStatus::Active
+            let shadowed = match self.resolve_hotkey(binding.hotkey()) {
+                Some(effective_hotkey) => claimed_by
+                    .get(&effective_hotkey)
+                    .cloned()
+                    .map_or(ShadowedStatus::Active, ShadowedStatus::ShadowedBy),
+                None => ShadowedStatus::UnresolvedAlias,
             };
 
             results.push(BindingInfo {
@@ -55,14 +65,18 @@ impl Dispatcher {
             for binding in &stored.bindings {
                 let shadowed = if !is_active {
                     ShadowedStatus::Inactive
-                } else if let Some(&claiming_layer) = claimed_by.get(&binding.hotkey) {
-                    if claiming_layer == layer_name {
-                        ShadowedStatus::Active
+                } else if let Some(effective_hotkey) = self.resolve_hotkey(&binding.hotkey) {
+                    if let Some(claiming_layer) = claimed_by.get(&effective_hotkey) {
+                        if claiming_layer == layer_name {
+                            ShadowedStatus::Active
+                        } else {
+                            ShadowedStatus::ShadowedBy(claiming_layer.clone())
+                        }
                     } else {
-                        ShadowedStatus::ShadowedBy(claiming_layer.clone())
+                        ShadowedStatus::Active
                     }
                 } else {
-                    ShadowedStatus::Active
+                    ShadowedStatus::UnresolvedAlias
                 };
 
                 results.push(BindingInfo {
@@ -133,8 +147,11 @@ impl Dispatcher {
 
         // Global sequences are checked before global hotkeys, matching process().
         let global_seqs = self.sorted_global_sequences();
-        let prefix_match =
-            resolve::classify_sequence_prefixes(global_seqs.iter().map(|b| &b.sequence), hotkey);
+        let prefix_match = resolve::classify_sequence_prefixes(
+            global_seqs.iter().map(|b| &b.sequence),
+            hotkey,
+            &self.modifier_aliases,
+        );
 
         match prefix_match {
             SequencePrefixMatch::SingleStep { index } => {
@@ -197,15 +214,19 @@ impl Dispatcher {
         let mut conflicts = Vec::new();
 
         for shadowed in &all_bindings {
+            let Some(effective_hotkey) = self.resolve_hotkey(&shadowed.hotkey) else {
+                continue;
+            };
+
             if let ShadowedStatus::ShadowedBy(ref shadowing_layer) = shadowed.shadowed
-                && let Some(shadowing) = all_bindings.iter().find(|b| {
-                    b.hotkey == shadowed.hotkey
-                        && matches!(&b.location, BindingLocation::Layer(name) if name == shadowing_layer)
-                        && matches!(b.shadowed, ShadowedStatus::Active)
+                && let Some(shadowing) = all_bindings.iter().find(|binding| {
+                    matches!(&binding.location, BindingLocation::Layer(name) if name == shadowing_layer)
+                        && matches!(binding.shadowed, ShadowedStatus::Active)
+                        && self.resolve_hotkey(&binding.hotkey).as_ref() == Some(&effective_hotkey)
                 })
             {
                 conflicts.push(ConflictInfo {
-                    hotkey: shadowed.hotkey.clone(),
+                    hotkey: effective_hotkey.clone(),
                     shadowed_binding: shadowed.clone(),
                     shadowing_binding: shadowing.clone(),
                 });
@@ -367,5 +388,108 @@ mod tests {
         // Layer defined but not pushed — no conflict
 
         assert!(dispatcher.conflicts().is_empty());
+    }
+
+    #[test]
+    fn list_bindings_marks_alias_layer_binding_as_shadowing_concrete_global() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+        dispatcher
+            .register(
+                Hotkey::new(Key::T).modifier(Modifier::Super),
+                Action::Suppress,
+            )
+            .unwrap();
+        dispatcher
+            .define_layer(Layer::new("nav").bind("Mod+T", Action::Suppress).unwrap())
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        let global = bindings
+            .iter()
+            .find(|binding| binding.location == BindingLocation::Global)
+            .expect("global binding should exist");
+        let layer = bindings
+            .iter()
+            .find(|binding| binding.location == BindingLocation::Layer("nav".into()))
+            .expect("layer binding should exist");
+
+        assert!(matches!(global.shadowed, ShadowedStatus::ShadowedBy(_)));
+        assert_eq!(layer.shadowed, ShadowedStatus::Active);
+    }
+
+    #[test]
+    fn conflicts_report_alias_layer_binding_against_concrete_global() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+        dispatcher
+            .register(
+                Hotkey::new(Key::T).modifier(Modifier::Super),
+                Action::Suppress,
+            )
+            .unwrap();
+        dispatcher
+            .define_layer(Layer::new("nav").bind("Mod+T", Action::Suppress).unwrap())
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let conflicts = dispatcher.conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(
+            conflicts[0].hotkey,
+            Hotkey::new(Key::T).modifier(Modifier::Super)
+        );
+        assert_eq!(
+            conflicts[0].shadowing_binding.location,
+            BindingLocation::Layer("nav".into())
+        );
+    }
+
+    #[test]
+    fn bindings_for_key_finds_alias_resolved_layer_sequence() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
+        let layer = Layer::new("nav")
+            .bind_sequence("Mod+K", Action::Suppress)
+            .unwrap();
+        dispatcher.define_layer(layer).unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let result = dispatcher
+            .bindings_for_key(&Hotkey::new(Key::K).modifier(Modifier::Super))
+            .expect("single-step aliased sequence should match");
+
+        assert_eq!(result.location, BindingLocation::Layer("nav".into()));
+        assert_eq!(result.hotkey, "Mod+K".parse::<Hotkey>().unwrap());
+    }
+
+    #[test]
+    fn list_bindings_marks_global_binding_with_undefined_alias_as_unresolved() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].shadowed, ShadowedStatus::UnresolvedAlias);
+    }
+
+    #[test]
+    fn list_bindings_marks_active_layer_binding_with_undefined_alias_as_unresolved() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(Layer::new("nav").bind("Mod+T", Action::Suppress).unwrap())
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].shadowed, ShadowedStatus::UnresolvedAlias);
     }
 }

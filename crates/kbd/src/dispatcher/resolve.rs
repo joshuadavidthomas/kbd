@@ -18,12 +18,14 @@ enum SequencePrefixKind {
 }
 
 /// Classify whether a sequence's first step matches a given hotkey.
-fn classify_sequence_prefix(sequence: &HotkeySequence, hotkey: &Hotkey) -> SequencePrefixKind {
-    if !sequence
-        .steps()
-        .first()
-        .is_some_and(|first_step| first_step == hotkey)
-    {
+fn classify_sequence_prefix(
+    sequence: &HotkeySequence,
+    hotkey: &Hotkey,
+    aliases: &HashMap<String, Modifier>,
+) -> SequencePrefixKind {
+    if !sequence.steps().first().is_some_and(|first_step| {
+        super::aliases::hotkeys_match_with_aliases(first_step, hotkey, aliases)
+    }) {
         return SequencePrefixKind::None;
     }
 
@@ -91,12 +93,13 @@ pub(super) enum LayerMatch {
 pub(super) fn classify_sequence_prefixes<'a>(
     sequences: impl Iterator<Item = &'a HotkeySequence>,
     hotkey: &Hotkey,
+    aliases: &HashMap<String, Modifier>,
 ) -> SequencePrefixMatch {
     let mut single_step_index: Option<usize> = None;
     let mut multi_step_indices: Vec<usize> = Vec::new();
 
     for (index, sequence) in sequences.enumerate() {
-        match classify_sequence_prefix(sequence, hotkey) {
+        match classify_sequence_prefix(sequence, hotkey, aliases) {
             SequencePrefixKind::None => {}
             SequencePrefixKind::SingleStep => {
                 if single_step_index.is_none() {
@@ -135,8 +138,11 @@ pub(super) fn classify_layer(
     hotkey: &Hotkey,
     aliases: &HashMap<String, Modifier>,
 ) -> LayerMatch {
-    let seq_match =
-        classify_sequence_prefixes(stored.sequence_bindings.iter().map(|b| &b.sequence), hotkey);
+    let seq_match = classify_sequence_prefixes(
+        stored.sequence_bindings.iter().map(|b| &b.sequence),
+        hotkey,
+        aliases,
+    );
 
     match seq_match {
         SequencePrefixMatch::SingleStep { index } => LayerMatch::SingleStepSequence { index },
@@ -246,21 +252,21 @@ mod tests {
     #[test]
     fn prefixes_empty_sequences_returns_none() {
         let seqs: Vec<HotkeySequence> = vec![];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, SequencePrefixMatch::None);
     }
 
     #[test]
     fn prefixes_no_match_returns_none() {
         let seqs = [single_step(Key::B)];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, SequencePrefixMatch::None);
     }
 
     #[test]
     fn prefixes_single_step_match() {
         let seqs = [single_step(Key::A)];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, SequencePrefixMatch::SingleStep { index: 0 });
     }
 
@@ -268,14 +274,14 @@ mod tests {
     fn prefixes_single_step_returns_first_match_index() {
         // Non-matching sequence at index 0, matching at index 1
         let seqs = [single_step(Key::B), single_step(Key::A)];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, SequencePrefixMatch::SingleStep { index: 1 });
     }
 
     #[test]
     fn prefixes_multi_step_match() {
         let seqs = [two_step(Key::A, Key::B)];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, SequencePrefixMatch::MultiStep { indices: vec![0] });
     }
 
@@ -286,7 +292,7 @@ mod tests {
             two_step(Key::A, Key::C),
             two_step(Key::X, Key::Y), // non-matching
         ];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(
             result,
             SequencePrefixMatch::MultiStep {
@@ -302,7 +308,7 @@ mod tests {
             single_step(Key::A),                // single-step at index 1
             three_step(Key::A, Key::C, Key::D), // multi-step at index 2
         ];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, SequencePrefixMatch::SingleStep { index: 1 });
     }
 
@@ -312,7 +318,7 @@ mod tests {
             single_step(Key::A), // index 0
             single_step(Key::A), // index 1 (duplicate, ignored)
         ];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, SequencePrefixMatch::SingleStep { index: 0 });
     }
 
