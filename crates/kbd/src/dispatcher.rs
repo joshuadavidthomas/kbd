@@ -372,7 +372,7 @@ impl Dispatcher {
                                 index: idx,
                             },
                             layer_effect: LayerEffect::from_action(&lb.action),
-                            propagation: lb.propagation,
+                            propagation: lb.options.propagation(),
                         }
                     });
                     // `stored` is last used above; NLL releases the borrow.
@@ -385,7 +385,7 @@ impl Dispatcher {
                 LayerMatch::Immediate { index } => {
                     let stored = &self.layers[&layer_name];
                     let lb = &stored.bindings[index];
-                    let propagation = lb.propagation;
+                    let propagation = lb.options.propagation();
                     let layer_effect = LayerEffect::from_action(&lb.action);
                     return Some(InternalOutcome::Matched {
                         layer_effect,

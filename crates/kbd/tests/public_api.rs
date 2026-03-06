@@ -312,7 +312,14 @@ fn introspection_full_picture() {
     dispatcher
         .define_layer(
             Layer::new("nav")
-                .bind(Key::H, Action::Suppress)
+                .bind_with_options(
+                    Key::H,
+                    Action::Suppress,
+                    BindingOptions::default()
+                        .with_description("Move left")
+                        .with_source(BindingSource::new("plugin"))
+                        .with_overlay_visibility(OverlayVisibility::Hidden),
+                )
                 .unwrap()
                 .bind(
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -352,6 +359,14 @@ fn introspection_full_picture() {
         info.location,
         BindingLocation::Layer(LayerName::from("nav"))
     );
+
+    let layer_info = dispatcher.bindings_for_key(&Hotkey::new(Key::H)).unwrap();
+    assert_eq!(
+        layer_info.source.as_ref().map(BindingSource::as_str),
+        Some("plugin")
+    );
+    assert_eq!(layer_info.description.as_deref(), Some("Move left"));
+    assert_eq!(layer_info.overlay_visibility, OverlayVisibility::Hidden);
 
     // Global binding is shadowed
     let all = dispatcher.list_bindings();

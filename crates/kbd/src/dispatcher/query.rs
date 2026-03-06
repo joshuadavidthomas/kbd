@@ -186,11 +186,11 @@ impl Dispatcher {
 
                 results.push(BindingInfo {
                     hotkey: binding.hotkey.clone(),
-                    description: None,
-                    source: None,
+                    description: binding.options.description().map(Box::from),
+                    source: binding.options.source().cloned(),
                     location: BindingLocation::Layer(layer_name.clone()),
                     shadowed,
-                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                    overlay_visibility: binding.options.overlay_visibility(),
                 });
             }
         }
@@ -235,11 +235,11 @@ impl Dispatcher {
                         let lb = &stored.bindings[index];
                         return Some(BindingInfo {
                             hotkey: lb.hotkey.clone(),
-                            description: None,
-                            source: None,
+                            description: lb.options.description().map(Box::from),
+                            source: lb.options.source().cloned(),
                             location: BindingLocation::Layer(entry.name.clone()),
                             shadowed: ShadowedStatus::Active,
-                            overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                            overlay_visibility: lb.options.overlay_visibility(),
                         });
                     }
                     LayerMatch::None => {
@@ -360,6 +360,9 @@ impl Dispatcher {
 #[cfg(test)]
 mod tests {
     use crate::action::Action;
+    use crate::binding::BindingOptions;
+    use crate::binding::BindingSource;
+    use crate::binding::OverlayVisibility;
     use crate::dispatcher::Dispatcher;
     use crate::hotkey::Hotkey;
     use crate::hotkey::HotkeySequence;
@@ -394,6 +397,48 @@ mod tests {
 
         let result = dispatcher.bindings_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn layer_binding_metadata_round_trips_through_introspection() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(
+                Layer::new("nav")
+                    .bind_with_options(
+                        Key::H,
+                        Action::Suppress,
+                        BindingOptions::default()
+                            .with_description("Move left")
+                            .with_source(BindingSource::new("plugin"))
+                            .with_overlay_visibility(OverlayVisibility::Hidden),
+                    )
+                    .unwrap(),
+            )
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let listed = dispatcher
+            .list_bindings()
+            .into_iter()
+            .find(|binding| binding.location == BindingLocation::Layer("nav".into()))
+            .expect("layer binding should be listed");
+        assert_eq!(listed.description.as_deref(), Some("Move left"));
+        assert_eq!(
+            listed.source.as_ref().map(BindingSource::as_str),
+            Some("plugin")
+        );
+        assert_eq!(listed.overlay_visibility, OverlayVisibility::Hidden);
+
+        let resolved = dispatcher
+            .bindings_for_key(&Hotkey::new(Key::H))
+            .expect("layer binding should be queryable");
+        assert_eq!(resolved.description.as_deref(), Some("Move left"));
+        assert_eq!(
+            resolved.source.as_ref().map(BindingSource::as_str),
+            Some("plugin")
+        );
+        assert_eq!(resolved.overlay_visibility, OverlayVisibility::Hidden);
     }
 
     #[test]

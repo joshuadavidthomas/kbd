@@ -94,8 +94,6 @@ fn main() {
     println!();
 
     // Filter for overlay-visible bindings only.
-    // Layer bindings always report Visible because only global immediate bindings
-    // currently carry binding metadata.
     println!("7. Overlay-visible bindings only:");
     let visible: Vec<_> = dispatcher
         .list_bindings()
@@ -212,7 +210,14 @@ fn setup_dispatcher() -> (Dispatcher, BindingId) {
             Action::from(|| {}),
         )
         .unwrap()
-        .bind(Hotkey::new(Key::D), Action::from(|| {}))
+        .bind_with_options(
+            Hotkey::new(Key::D),
+            Action::from(|| {}),
+            BindingOptions::default()
+                .with_description("Delete current selection")
+                .with_source(BindingSource::new("plugin"))
+                .with_overlay_visibility(OverlayVisibility::Hidden),
+        )
         .unwrap()
         .description("Vim normal mode");
     dispatcher

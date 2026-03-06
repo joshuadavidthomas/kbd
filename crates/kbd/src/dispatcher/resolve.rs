@@ -174,6 +174,7 @@ impl Dispatcher {
 mod tests {
     use super::*;
     use crate::action::Action;
+    use crate::binding::BindingOptions;
     use crate::binding::KeyPropagation;
     use crate::hotkey::Hotkey;
     use crate::key::Key;
@@ -199,7 +200,7 @@ mod tests {
         LayerBinding {
             hotkey: Hotkey::new(key),
             action: Action::Suppress,
-            propagation: KeyPropagation::default(),
+            options: BindingOptions::default(),
         }
     }
 
