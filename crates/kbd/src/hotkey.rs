@@ -62,6 +62,9 @@ impl ModifierAlias {
     }
 }
 
+// PartialEq, Hash, and Ord are manually implemented to be case-insensitive.
+// PartialOrd delegates to Ord and can't be derived alongside a manual Ord.
+
 impl PartialEq for ModifierAlias {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq_ignore_ascii_case(&other.0)
@@ -76,18 +79,18 @@ impl Hash for ModifierAlias {
     }
 }
 
-impl PartialOrd for ModifierAlias {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 impl Ord for ModifierAlias {
     fn cmp(&self, other: &Self) -> Ordering {
         self.0
             .bytes()
             .map(|byte| byte.to_ascii_lowercase())
             .cmp(other.0.bytes().map(|byte| byte.to_ascii_lowercase()))
+    }
+}
+
+impl PartialOrd for ModifierAlias {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
