@@ -11,7 +11,7 @@
 //!
 //! ```rust,no_run
 //! use kbd::prelude::*;
-//! use kbd_global::manager::HotkeyManager;
+//! use kbd_global::prelude::*;
 //!
 //! let manager = HotkeyManager::new()?;
 //!
@@ -19,7 +19,7 @@
 //!     Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
 //!     || println!("fired"),
 //! )?;
-//! # Ok::<(), kbd_global::error::Error>(())
+//! # Ok::<(), Error>(())
 //! ```
 //!
 //! # Concepts
@@ -33,7 +33,7 @@
 //!
 //! # Architecture
 //!
-//! [`manager::HotkeyManager`] is the public API. Internally it sends commands to a
+//! [`HotkeyManager`] is the public API. Internally it sends commands to a
 //! dedicated engine thread over an `mpsc` channel, with an `eventfd` wake
 //! mechanism to interrupt `poll()`. All mutable state lives in the engine —
 //! no locks, no shared mutation.
@@ -49,12 +49,12 @@
 //!
 //! # Lifecycle
 //!
-//! 1. Create a manager with [`manager::HotkeyManager::new()`] or [`manager::HotkeyManager::builder()`]
-//! 2. Register hotkeys with [`manager::HotkeyManager::register()`] — returns a [`binding_guard::BindingGuard`]
+//! 1. Create a manager with [`HotkeyManager::new()`] or [`HotkeyManager::builder()`]
+//! 2. Register hotkeys with [`HotkeyManager::register()`] — returns a [`BindingGuard`]
 //! 3. Optionally define and push [`Layer`](kbd::layer::Layer)s for context-dependent bindings
 //! 4. The engine thread processes key events and fires callbacks
-//! 5. Drop the [`binding_guard::BindingGuard`] to unregister, or call [`binding_guard::BindingGuard::unregister()`]
-//! 6. Drop the manager (or call [`manager::HotkeyManager::shutdown()`]) to stop
+//! 5. Drop the [`BindingGuard`] to unregister, or call [`BindingGuard::unregister()`]
+//! 6. Drop the manager (or call [`HotkeyManager::shutdown()`]) to stop
 //!
 //! # Backend selection
 //!
@@ -69,13 +69,12 @@
 //! Use the builder for explicit backend selection:
 //!
 //! ```rust,no_run
-//! use kbd_global::backend::Backend;
-//! use kbd_global::manager::HotkeyManager;
+//! use kbd_global::prelude::*;
 //!
 //! let manager = HotkeyManager::builder()
 //!     .backend(Backend::Evdev)
 //!     .build()?;
-//! # Ok::<(), kbd_global::error::Error>(())
+//! # Ok::<(), Error>(())
 //! ```
 //!
 //! # Event stream
@@ -85,8 +84,7 @@
 //!
 //! ```rust,no_run
 //! use kbd::prelude::*;
-//! use kbd_global::events::HotkeyEvent;
-//! use kbd_global::manager::HotkeyManager;
+//! use kbd_global::prelude::*;
 //!
 //! let manager = HotkeyManager::new()?;
 //! let stream = manager.event_stream()?;
@@ -104,7 +102,7 @@
 //!         _ => {}
 //!     }
 //! }
-//! # Ok::<(), kbd_global::error::Error>(())
+//! # Ok::<(), Error>(())
 //! ```
 //!
 //! # Feature flags
@@ -124,3 +122,29 @@ mod engine;
 pub mod error;
 pub mod events;
 pub mod manager;
+
+/// Convenience re-exports for common types.
+///
+/// ```no_run
+/// use kbd::prelude::*;
+/// use kbd_global::prelude::*;
+///
+/// # fn main() -> Result<(), Error> {
+/// let manager = HotkeyManager::new()?;
+///
+/// let _guard = manager.register(
+///     Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
+///     || println!("fired"),
+/// )?;
+/// # Ok(())
+/// # }
+/// ```
+pub mod prelude {
+    pub use crate::backend::Backend;
+    pub use crate::binding_guard::BindingGuard;
+    pub use crate::error::Error;
+    pub use crate::events::HotkeyEvent;
+    pub use crate::events::HotkeyEventStream;
+    pub use crate::manager::HotkeyManager;
+    pub use crate::manager::HotkeyManagerBuilder;
+}
