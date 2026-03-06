@@ -6,6 +6,8 @@ use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
+use crate::hotkey::ModifierAlias;
+use crate::hotkey::ModifierAliases;
 
 impl Dispatcher {
     /// Define or reassign a modifier alias.
@@ -37,11 +39,12 @@ impl Dispatcher {
         }
 
         let mut modifier_aliases = self.modifier_aliases.clone();
-        modifier_aliases.insert(name.into().to_ascii_lowercase(), target);
-        let alias_resolved_ids = self.rebuild_alias_resolved_ids(&modifier_aliases)?;
+        modifier_aliases.insert(ModifierAlias::new(name), target);
+        let binding_ids_by_resolved_hotkey =
+            self.rebuild_binding_ids_by_resolved_hotkey(&modifier_aliases)?;
 
         self.modifier_aliases = modifier_aliases;
-        self.alias_resolved_ids = alias_resolved_ids;
+        self.binding_ids_by_resolved_hotkey = binding_ids_by_resolved_hotkey;
         Ok(())
     }
 
@@ -57,11 +60,11 @@ impl Dispatcher {
     ///
     /// Called whenever an alias is defined or reassigned. Returns a new
     /// alias-resolved lookup table if the alias configuration is conflict-free.
-    fn rebuild_alias_resolved_ids(
+    fn rebuild_binding_ids_by_resolved_hotkey(
         &self,
-        aliases: &HashMap<String, Modifier>,
+        aliases: &ModifierAliases,
     ) -> Result<HashMap<Hotkey, BindingId>, crate::error::Error> {
-        let mut alias_resolved_ids = HashMap::new();
+        let mut binding_ids_by_resolved_hotkey = HashMap::new();
         let mut effective_ids = HashMap::new();
 
         for binding in self.bindings_by_id.values() {
@@ -80,7 +83,7 @@ impl Dispatcher {
             }
 
             if has_alias_modifiers(binding.hotkey()) {
-                alias_resolved_ids.insert(resolved, binding.id());
+                binding_ids_by_resolved_hotkey.insert(resolved, binding.id());
             }
         }
 
@@ -101,23 +104,13 @@ impl Dispatcher {
             }
         }
 
-        Ok(alias_resolved_ids)
-    }
-}
-
-pub(crate) fn resolve_modifier_with_aliases(
-    modifier: &Modifier,
-    aliases: &HashMap<String, Modifier>,
-) -> Option<Modifier> {
-    match modifier {
-        Modifier::Alias(alias) => aliases.get(&alias.as_str().to_ascii_lowercase()).cloned(),
-        concrete => Some(concrete.clone()),
+        Ok(binding_ids_by_resolved_hotkey)
     }
 }
 
 pub(crate) fn resolve_hotkey_with_aliases(
     hotkey: &Hotkey,
-    aliases: &HashMap<String, Modifier>,
+    aliases: &ModifierAliases,
 ) -> Option<Hotkey> {
     if !has_alias_modifiers(hotkey) {
         return Some(hotkey.clone());
@@ -125,17 +118,18 @@ pub(crate) fn resolve_hotkey_with_aliases(
 
     let mut resolved_modifiers = Vec::with_capacity(hotkey.modifiers().len());
     for modifier in hotkey.modifiers() {
-        match resolve_modifier_with_aliases(modifier, aliases) {
-            Some(concrete) => resolved_modifiers.push(concrete),
-            None => return None,
-        }
+        let resolved = match modifier {
+            Modifier::Alias(alias) => aliases.get(alias).cloned()?,
+            concrete => concrete.clone(),
+        };
+        resolved_modifiers.push(resolved);
     }
     Some(Hotkey::with_modifiers(hotkey.key(), resolved_modifiers))
 }
 
 pub(crate) fn resolve_sequence_with_aliases(
     sequence: &HotkeySequence,
-    aliases: &HashMap<String, Modifier>,
+    aliases: &ModifierAliases,
 ) -> Option<HotkeySequence> {
     if sequence
         .steps()
@@ -167,7 +161,7 @@ pub(crate) fn has_alias_modifiers(hotkey: &Hotkey) -> bool {
 pub(crate) fn hotkeys_match_with_aliases(
     binding_hotkey: &Hotkey,
     event_hotkey: &Hotkey,
-    aliases: &HashMap<String, Modifier>,
+    aliases: &ModifierAliases,
 ) -> bool {
     resolve_hotkey_with_aliases(binding_hotkey, aliases).as_ref() == Some(event_hotkey)
 }

@@ -175,7 +175,7 @@ impl Dispatcher {
         let global_id = self
             .binding_ids_by_hotkey
             .get(hotkey)
-            .or_else(|| self.alias_resolved_ids.get(hotkey));
+            .or_else(|| self.binding_ids_by_resolved_hotkey.get(hotkey));
 
         if let Some(&id) = global_id
             && let Some(binding) = self.bindings_by_id.get(&id)

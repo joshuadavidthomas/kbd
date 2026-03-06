@@ -86,7 +86,30 @@ impl Dispatcher {
         options: SequenceOptions,
     ) -> Result<(), crate::error::Error> {
         let binding = RegisteredSequenceBinding::new(id, sequence, action, options);
-        self.register_sequence_binding(binding)
+
+        if self.sequence_bindings_by_id.contains_key(&binding.id)
+            || self.bindings_by_id.contains_key(&binding.id)
+            || self.sequence_ids_by_value.contains_key(&binding.sequence)
+        {
+            return Err(crate::error::Error::AlreadyRegistered);
+        }
+
+        if let Some(resolved) =
+            resolve_sequence_with_aliases(&binding.sequence, &self.modifier_aliases)
+        {
+            // see if there's a conflict
+            if self.sequence_bindings_by_id.values().any(|existing| {
+                resolve_sequence_with_aliases(&existing.sequence, &self.modifier_aliases)
+                    .is_some_and(|candidate| candidate == resolved)
+            }) {
+                return Err(crate::error::Error::AlreadyRegistered);
+            }
+        }
+
+        self.sequence_ids_by_value
+            .insert(binding.sequence.clone(), binding.id);
+        self.sequence_bindings_by_id.insert(binding.id, binding);
+        Ok(())
     }
 
     /// Register a [`RegisteredBinding`] with full options control.
@@ -101,7 +124,6 @@ impl Dispatcher {
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
-        let has_aliases = super::aliases::has_alias_modifiers(&hotkey);
 
         if self.bindings_by_id.contains_key(&id)
             || self.sequence_bindings_by_id.contains_key(&id)
@@ -110,56 +132,29 @@ impl Dispatcher {
             return Err(crate::error::Error::AlreadyRegistered);
         }
 
-        if !has_aliases && self.alias_resolved_ids.contains_key(&hotkey) {
+        let has_aliases = super::aliases::has_alias_modifiers(&hotkey);
+
+        if !has_aliases && self.binding_ids_by_resolved_hotkey.contains_key(&hotkey) {
             return Err(crate::error::Error::AlreadyRegistered);
         }
 
         // For aliased bindings, check the resolved form for conflicts and
         // insert into the resolved lookup table. If the alias is undefined,
         // the binding won't match until the alias is defined (at which point
-        // rebuild_alias_resolved_ids will add it).
+        // rebuild_binding_ids_by_resolved_hotkey will add it).
         if has_aliases {
             if let Some(resolved) = self.resolve_hotkey(&hotkey) {
                 if self.binding_ids_by_hotkey.contains_key(&resolved)
-                    || self.alias_resolved_ids.contains_key(&resolved)
+                    || self.binding_ids_by_resolved_hotkey.contains_key(&resolved)
                 {
                     return Err(crate::error::Error::AlreadyRegistered);
                 }
-                self.alias_resolved_ids.insert(resolved, id);
+                self.binding_ids_by_resolved_hotkey.insert(resolved, id);
             }
         }
+
         self.binding_ids_by_hotkey.insert(hotkey, id);
-
         self.bindings_by_id.insert(id, binding);
-        Ok(())
-    }
-
-    fn register_sequence_binding(
-        &mut self,
-        binding: RegisteredSequenceBinding,
-    ) -> Result<(), crate::error::Error> {
-        let id = binding.id;
-        let sequence = binding.sequence.clone();
-
-        if self.sequence_bindings_by_id.contains_key(&id)
-            || self.bindings_by_id.contains_key(&id)
-            || self.sequence_ids_by_value.contains_key(&sequence)
-        {
-            return Err(crate::error::Error::AlreadyRegistered);
-        }
-
-        if let Some(resolved) = resolve_sequence_with_aliases(&sequence, &self.modifier_aliases) {
-            let has_conflict = self.sequence_bindings_by_id.values().any(|existing| {
-                resolve_sequence_with_aliases(&existing.sequence, &self.modifier_aliases)
-                    .is_some_and(|candidate| candidate == resolved)
-            });
-            if has_conflict {
-                return Err(crate::error::Error::AlreadyRegistered);
-            }
-        }
-
-        self.sequence_ids_by_value.insert(sequence, id);
-        self.sequence_bindings_by_id.insert(id, binding);
         Ok(())
     }
 
@@ -168,7 +163,7 @@ impl Dispatcher {
         if let Some(binding) = self.bindings_by_id.remove(&id) {
             self.binding_ids_by_hotkey.remove(binding.hotkey());
             // Also remove from alias-resolved lookup
-            self.alias_resolved_ids.retain(|_, v| *v != id);
+            self.binding_ids_by_resolved_hotkey.retain(|_, v| *v != id);
         }
 
         if let Some(binding) = self.sequence_bindings_by_id.remove(&id) {

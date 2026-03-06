@@ -20,6 +20,7 @@
 //! ```
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -97,6 +98,9 @@ impl fmt::Display for ModifierAlias {
         f.write_str(&self.0)
     }
 }
+
+/// Maps alias names to the concrete modifiers they resolve to.
+pub type ModifierAliases = HashMap<ModifierAlias, Modifier>;
 
 /// A canonical modifier key (Ctrl, Shift, Alt, Super) or a user-defined alias.
 ///
