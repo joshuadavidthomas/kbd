@@ -73,7 +73,7 @@ impl Dispatcher {
         }
     }
 
-    /// Determine the shadowed status of a global binding.
+    /// Collect global immediate bindings with their shadowed status.
     ///
     /// Checks the layer stack first (layers always win), then falls back
     /// to global-scope precedence. Device-filtered bindings are treated
@@ -81,62 +81,12 @@ impl Dispatcher {
     /// operate on the aggregate hotkey) but not by non-device-filtered
     /// immediate bindings, since without device context we cannot
     /// determine whether the device-filtered binding would actually fire.
-    fn global_binding_shadowed_status(
+    ///
+    /// Results are grouped by hotkey and then by precedence tier.
+    fn collect_global_bindings(
         &self,
-        binding: &crate::binding::RegisteredBinding,
         global_sequences: &[&super::sequence::RegisteredSequenceBinding],
-    ) -> ShadowedStatus {
-        match self.active_layer_claim(binding.hotkey()) {
-            Some(HotkeyClaim::LayerImmediate { layer, .. }) => ShadowedStatus::ShadowedBy(layer),
-            Some(HotkeyClaim::LayerSequence { layer }) => {
-                ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(layer))
-            }
-            Some(HotkeyClaim::LayerSuppressed { layer }) => ShadowedStatus::SuppressedBy(layer),
-            Some(HotkeyClaim::GlobalImmediate { .. } | HotkeyClaim::GlobalSequence) => {
-                unreachable!("layer claim helper only returns layer claims")
-            }
-            None if binding.options().device().is_some() => {
-                // Device-filtered bindings can be shadowed by sequences but
-                // not by non-device-filtered immediate bindings (different scope).
-                match self.global_claim(binding.hotkey(), global_sequences) {
-                    Some(HotkeyClaim::GlobalSequence) => {
-                        ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
-                    }
-                    _ => ShadowedStatus::Active,
-                }
-            }
-            None => match self.global_claim(binding.hotkey(), global_sequences) {
-                Some(HotkeyClaim::GlobalImmediate { id }) if id == binding.id() => {
-                    ShadowedStatus::Active
-                }
-                Some(HotkeyClaim::GlobalImmediate { .. }) => ShadowedStatus::ShadowedByGlobal,
-                Some(HotkeyClaim::GlobalSequence) => {
-                    ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
-                }
-                Some(
-                    HotkeyClaim::LayerImmediate { .. }
-                    | HotkeyClaim::LayerSequence { .. }
-                    | HotkeyClaim::LayerSuppressed { .. },
-                ) => unreachable!("global claim helper only returns global claims"),
-                None => ShadowedStatus::Active,
-            },
-        }
-    }
-
-    /// Return a snapshot of all registered immediate bindings with their status.
-    ///
-    /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
-    /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence), but
-    /// sequence prefixes still affect whether an immediate binding is currently active
-    /// or shadowed.
-    ///
-    /// Results are returned in a deterministic order: global bindings are
-    /// grouped by hotkey and then by precedence tier, followed by layer
-    /// bindings ordered by layer name while preserving each layer's binding
-    /// declaration order.
-    #[must_use]
-    pub fn list_bindings(&self) -> Vec<BindingInfo> {
-        let global_sequences = self.sorted_global_sequences();
+    ) -> Vec<BindingInfo> {
         let mut results = Vec::new();
 
         let mut global_hotkeys: Vec<_> = self.binding_ids_by_hotkey.keys().collect();
@@ -152,7 +102,47 @@ impl Dispatcher {
                     continue;
                 };
 
-                let shadowed = self.global_binding_shadowed_status(binding, &global_sequences);
+                let shadowed = match self.active_layer_claim(binding.hotkey()) {
+                    Some(HotkeyClaim::LayerImmediate { layer, .. }) => {
+                        ShadowedStatus::ShadowedBy(layer)
+                    }
+                    Some(HotkeyClaim::LayerSequence { layer }) => {
+                        ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(layer))
+                    }
+                    Some(HotkeyClaim::LayerSuppressed { layer }) => {
+                        ShadowedStatus::SuppressedBy(layer)
+                    }
+                    Some(HotkeyClaim::GlobalImmediate { .. } | HotkeyClaim::GlobalSequence) => {
+                        unreachable!("layer claim helper only returns layer claims")
+                    }
+                    None if binding.options().device().is_some() => {
+                        // Device-filtered bindings can be shadowed by sequences but
+                        // not by non-device-filtered immediate bindings (different scope).
+                        match self.global_claim(binding.hotkey(), global_sequences) {
+                            Some(HotkeyClaim::GlobalSequence) => {
+                                ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
+                            }
+                            _ => ShadowedStatus::Active,
+                        }
+                    }
+                    None => match self.global_claim(binding.hotkey(), global_sequences) {
+                        Some(HotkeyClaim::GlobalImmediate { id }) if id == binding.id() => {
+                            ShadowedStatus::Active
+                        }
+                        Some(HotkeyClaim::GlobalImmediate { .. }) => {
+                            ShadowedStatus::ShadowedByGlobal
+                        }
+                        Some(HotkeyClaim::GlobalSequence) => {
+                            ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
+                        }
+                        Some(
+                            HotkeyClaim::LayerImmediate { .. }
+                            | HotkeyClaim::LayerSequence { .. }
+                            | HotkeyClaim::LayerSuppressed { .. },
+                        ) => unreachable!("global claim helper only returns global claims"),
+                        None => ShadowedStatus::Active,
+                    },
+                };
 
                 results.push(BindingInfo {
                     hotkey: binding.hotkey().clone(),
@@ -164,6 +154,16 @@ impl Dispatcher {
                 });
             }
         }
+
+        results
+    }
+
+    /// Collect layer immediate bindings with their shadowed status.
+    ///
+    /// Results are ordered by layer name, preserving each layer's
+    /// binding declaration order.
+    fn collect_layer_bindings(&self) -> Vec<BindingInfo> {
+        let mut results = Vec::new();
 
         let mut layer_names: Vec<_> = self.layers.keys().cloned().collect();
         layer_names.sort_by(|left, right| left.as_str().cmp(right.as_str()));
@@ -215,6 +215,25 @@ impl Dispatcher {
             }
         }
 
+        results
+    }
+
+    /// Return a snapshot of all registered immediate bindings with their status.
+    ///
+    /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
+    /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence), but
+    /// sequence prefixes still affect whether an immediate binding is currently active
+    /// or shadowed.
+    ///
+    /// Results are returned in a deterministic order: global bindings are
+    /// grouped by hotkey and then by precedence tier, followed by layer
+    /// bindings ordered by layer name while preserving each layer's binding
+    /// declaration order.
+    #[must_use]
+    pub fn list_bindings(&self) -> Vec<BindingInfo> {
+        let global_sequences = self.sorted_global_sequences();
+        let mut results = self.collect_global_bindings(&global_sequences);
+        results.extend(self.collect_layer_bindings());
         results
     }
 

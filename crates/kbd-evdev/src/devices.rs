@@ -22,6 +22,7 @@ use evdev::Device;
 use evdev::EventSummary;
 use evdev::InputEvent;
 use evdev::KeyCode;
+use kbd::binding::DeviceInfo;
 use kbd::key::Key;
 use kbd::key_state::KeyTransition;
 
@@ -68,7 +69,7 @@ pub(crate) enum DiscoveryOutcome {
 struct ManagedDevice {
     path: PathBuf,
     device: Device,
-    info: kbd::binding::DeviceInfo,
+    info: DeviceInfo,
 }
 
 /// A key event from a specific device.
@@ -321,7 +322,7 @@ impl DeviceManager {
     ///
     /// Returns `None` if the fd doesn't correspond to a managed device.
     #[must_use]
-    pub fn device_info(&self, fd: RawFd) -> Option<&kbd::binding::DeviceInfo> {
+    pub fn device_info(&self, fd: RawFd) -> Option<&DeviceInfo> {
         self.devices.get(&fd).map(|managed| &managed.info)
     }
 
@@ -427,7 +428,7 @@ impl ManagedDevice {
         }
 
         let input_id = device.input_id();
-        let info = kbd::binding::DeviceInfo::new(
+        let info = DeviceInfo::new(
             device.name().unwrap_or(""),
             input_id.vendor(),
             input_id.product(),

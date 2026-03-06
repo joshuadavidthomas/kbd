@@ -41,6 +41,7 @@ use std::sync::mpsc;
 
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
+use kbd::dispatcher::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
 use kbd::hotkey::Hotkey;
@@ -301,7 +302,7 @@ impl Engine {
         // callback execution and forwarding.
         let outcome = {
             let result = if let Some(info) = device_info {
-                let ctx = kbd::dispatcher::DeviceContext::new(event.device_fd, info)
+                let ctx = DeviceContext::new(event.device_fd, info)
                     .with_device_modifiers(device_modifiers);
                 self.dispatcher
                     .process_with_device(&candidate, event.transition, &ctx)
