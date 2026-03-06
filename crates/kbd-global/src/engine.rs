@@ -64,7 +64,6 @@ pub(crate) use self::runtime::EngineRuntime;
 pub(crate) use self::types::GrabState;
 pub(crate) use self::types::KeyEventDisposition;
 use self::types::MatchOutcome;
-use self::wake::LoopControl;
 use self::wake::WakeFd;
 
 pub(crate) struct Engine {
@@ -159,26 +158,30 @@ impl Engine {
         }
     }
 
-    fn drain_commands(&mut self) -> LoopControl {
+    /// Drain all pending commands, returning `true` if shutdown was requested.
+    fn drain_commands(&mut self) -> bool {
         loop {
             match self.command_rx.try_recv() {
-                Ok(command) => {
-                    if matches!(self.handle_command(command), LoopControl::Shutdown) {
-                        return LoopControl::Shutdown;
-                    }
-                }
-                Err(mpsc::TryRecvError::Empty) => return LoopControl::Continue,
-                Err(mpsc::TryRecvError::Disconnected) => return LoopControl::Shutdown,
+                Ok(Command::Shutdown) => return true,
+                Ok(command) => self.handle_command(command),
+                Err(mpsc::TryRecvError::Empty) => return false,
+                // Semantically distinct from Shutdown (channel broke vs explicit
+                // request) but the correct response is the same: stop the loop.
+                #[allow(clippy::match_same_arms)]
+                Err(mpsc::TryRecvError::Disconnected) => return true,
             }
         }
     }
 
-    fn handle_command(&mut self, command: Command) -> LoopControl {
+    fn handle_command(&mut self, command: Command) {
         match command {
+            // Registration
             Command::Register { binding, reply } => {
-                let result = self.dispatcher.register_binding(binding);
-                let _ = reply.send(result.map_err(Error::from));
-                LoopControl::Continue
+                let _ = reply.send(
+                    self.dispatcher
+                        .register_binding(binding)
+                        .map_err(Error::from),
+                );
             }
             Command::RegisterSequence {
                 sequence,
@@ -191,65 +194,53 @@ impl Engine {
                     .register_sequence_with_options(sequence, action, options)
                     .map_err(Error::from);
                 let _ = reply.send(result);
-                LoopControl::Continue
             }
+            Command::Unregister { id } => self.dispatcher.unregister(id),
+
+            // Sequences
             Command::PendingSequence { reply } => {
                 let _ = reply.send(self.dispatcher.pending_sequence());
-                LoopControl::Continue
             }
-            Command::Unregister { id } => {
-                self.dispatcher.unregister(id);
-                LoopControl::Continue
-            }
+
+            // Layers
             Command::DefineLayer { layer, reply } => {
-                let result = self.dispatcher.define_layer(layer);
-                let _ = reply.send(result.map_err(Error::from));
-                LoopControl::Continue
+                let _ = reply.send(self.dispatcher.define_layer(layer).map_err(Error::from));
             }
             Command::PushLayer { name, reply } => {
-                let result = self.dispatcher.push_layer(name);
-                let _ = reply.send(result.map_err(Error::from));
-                LoopControl::Continue
+                let _ = reply.send(self.dispatcher.push_layer(name).map_err(Error::from));
             }
             Command::PopLayer { reply } => {
-                let result = self.dispatcher.pop_layer();
-                let _ = reply.send(result.map_err(Error::from));
-                LoopControl::Continue
+                let _ = reply.send(self.dispatcher.pop_layer().map_err(Error::from));
             }
             Command::ToggleLayer { name, reply } => {
-                let result = self.dispatcher.toggle_layer(name);
-                let _ = reply.send(result.map_err(Error::from));
-                LoopControl::Continue
+                let _ = reply.send(self.dispatcher.toggle_layer(name).map_err(Error::from));
             }
+
+            // Queries
             Command::IsRegistered { hotkey, reply } => {
                 let _ = reply.send(self.dispatcher.is_registered(&hotkey));
-                LoopControl::Continue
             }
             Command::IsKeyPressed { key, reply } => {
                 let _ = reply.send(self.key_state.is_pressed(key));
-                LoopControl::Continue
             }
             Command::ActiveModifiers { reply } => {
                 let _ = reply.send(self.key_state.active_modifiers());
-                LoopControl::Continue
             }
             Command::ListBindings { reply } => {
                 let _ = reply.send(self.dispatcher.list_bindings());
-                LoopControl::Continue
             }
             Command::BindingsForKey { hotkey, reply } => {
                 let _ = reply.send(self.dispatcher.bindings_for_key(&hotkey));
-                LoopControl::Continue
             }
             Command::ActiveLayers { reply } => {
                 let _ = reply.send(self.dispatcher.active_layers());
-                LoopControl::Continue
             }
             Command::Conflicts { reply } => {
                 let _ = reply.send(self.dispatcher.conflicts());
-                LoopControl::Continue
             }
-            Command::Shutdown => LoopControl::Shutdown,
+
+            // Intercepted by drain_commands
+            Command::Shutdown => {}
         }
     }
 
@@ -318,6 +309,10 @@ impl Engine {
                 MatchResult::Pending { .. } => MatchOutcome::Pending,
                 MatchResult::Suppressed => MatchOutcome::Suppressed,
                 MatchResult::NoMatch => MatchOutcome::NoMatch,
+                // Explicit: MatchResult is #[non_exhaustive]; list known
+                // variants so new ones don't silently fall through.
+                #[allow(clippy::match_same_arms)]
+                MatchResult::Ignored => MatchOutcome::Ignored,
                 _ => MatchOutcome::Ignored,
             }
         };
@@ -396,9 +391,11 @@ fn execute_action(action: &Action) {
         Action::EmitSequence(_) => {
             todo!("Action::EmitSequence is not yet implemented in the kbd-global runtime")
         }
-        // Layer actions (PushLayer, PopLayer, ToggleLayer) are handled by
-        // Dispatcher::process(). Suppress is a no-op by design. Future
-        // variants from #[non_exhaustive] are also no-ops until implemented.
+        // Layer actions are handled by Dispatcher::process(); Suppress is a no-op by design.
+        // Explicit: Action is #[non_exhaustive]; list known variants so new
+        // ones don't silently fall through.
+        #[allow(clippy::match_same_arms)]
+        Action::PushLayer(_) | Action::PopLayer | Action::ToggleLayer(_) | Action::Suppress => {}
         _ => {}
     }
 }
@@ -407,7 +404,7 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
     loop {
         let poll_fds = engine.poll_sources()?;
 
-        if matches!(engine.drain_commands(), LoopControl::Shutdown) {
+        if engine.drain_commands() {
             return Ok(());
         }
 
@@ -1035,7 +1032,7 @@ mod tests {
             .parse::<kbd::hotkey::HotkeySequence>()
             .unwrap();
         let (register_reply_tx, register_reply_rx) = mpsc::channel();
-        let _ = engine.handle_command(Command::RegisterSequence {
+        let () = engine.handle_command(Command::RegisterSequence {
             sequence,
             action: Action::Suppress,
             options: kbd::sequence::SequenceOptions::default(),
@@ -1047,7 +1044,7 @@ mod tests {
         let _ = press_key(&mut engine, Key::K, 10);
 
         let (reply_tx, reply_rx) = mpsc::channel();
-        let _ = engine.handle_command(Command::PendingSequence { reply: reply_tx });
+        let () = engine.handle_command(Command::PendingSequence { reply: reply_tx });
         let pending = reply_rx.recv().expect("pending sequence reply");
 
         let pending = pending.expect("sequence should be pending");
@@ -1063,7 +1060,7 @@ mod tests {
             .parse::<kbd::hotkey::HotkeySequence>()
             .unwrap();
         let (register_reply_tx, register_reply_rx) = mpsc::channel();
-        let _ = engine.handle_command(Command::RegisterSequence {
+        let () = engine.handle_command(Command::RegisterSequence {
             sequence,
             action: Action::Suppress,
             options: kbd::sequence::SequenceOptions::default()
