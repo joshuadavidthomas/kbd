@@ -35,13 +35,13 @@ fn classify_sequence_prefix(sequence: &HotkeySequence, hotkey: &Hotkey) -> Seque
 ///
 /// Encodes the precedence rule: single-step sequences win over multi-step.
 /// Indices refer to positions in the input iterator passed to
-/// [`classify_scope_sequences`].
+/// [`classify_sequence_prefixes`].
 ///
 /// Used directly by the global-bindings path where immediate hotkey lookup
 /// is a separate `HashMap` operation. For layer scopes, prefer
-/// [`classify_layer_scope`] which combines sequence and immediate
-/// classification into [`ScopeMatch`].
-pub(super) enum ScopeSequenceMatch {
+/// [`classify_layer`] which combines sequence and immediate
+/// classification into [`LayerMatch`].
+pub(super) enum SequencePrefixMatch {
     /// No sequences in this scope matched the hotkey as a prefix.
     None,
     /// A single-step sequence matched immediately (highest priority).
@@ -61,7 +61,7 @@ pub(super) enum ScopeSequenceMatch {
 /// Indices for sequence variants refer to positions in
 /// [`StoredLayer::sequence_bindings`]. The `Immediate` index refers to
 /// a position in [`StoredLayer::bindings`].
-pub(super) enum ScopeMatch {
+pub(super) enum LayerMatch {
     /// A single-step sequence matched immediately.
     SingleStepSequence { index: usize },
     /// Multi-step sequences entered pending state.
@@ -83,10 +83,10 @@ pub(super) enum ScopeMatch {
 /// highest-priority match: `SingleStep` wins over `MultiStep`, which
 /// wins over `None`. For `MultiStep`, all matching indices are
 /// collected so the runtime can start them as active sequences.
-pub(super) fn classify_scope_sequences<'a>(
+pub(super) fn classify_sequence_prefixes<'a>(
     sequences: impl Iterator<Item = &'a HotkeySequence>,
     hotkey: &Hotkey,
-) -> ScopeSequenceMatch {
+) -> SequencePrefixMatch {
     let mut single_step_index: Option<usize> = None;
     let mut multi_step_indices: Vec<usize> = Vec::new();
 
@@ -105,13 +105,13 @@ pub(super) fn classify_scope_sequences<'a>(
     }
 
     if let Some(index) = single_step_index {
-        ScopeSequenceMatch::SingleStep { index }
+        SequencePrefixMatch::SingleStep { index }
     } else if !multi_step_indices.is_empty() {
-        ScopeSequenceMatch::MultiStep {
+        SequencePrefixMatch::MultiStep {
             indices: multi_step_indices,
         }
     } else {
-        ScopeSequenceMatch::None
+        SequencePrefixMatch::None
     }
 }
 
@@ -123,24 +123,24 @@ pub(super) fn classify_scope_sequences<'a>(
 ///
 /// Both the runtime and query paths call this function, ensuring
 /// consistent classification. When a new match type is added (e.g.,
-/// tap-hold), adding a variant to [`ScopeMatch`] forces both paths
+/// tap-hold), adding a variant to [`LayerMatch`] forces both paths
 /// to handle it.
-pub(super) fn classify_layer_scope(stored: &StoredLayer, hotkey: &Hotkey) -> ScopeMatch {
+pub(super) fn classify_layer(stored: &StoredLayer, hotkey: &Hotkey) -> LayerMatch {
     let seq_match =
-        classify_scope_sequences(stored.sequence_bindings.iter().map(|b| &b.sequence), hotkey);
+        classify_sequence_prefixes(stored.sequence_bindings.iter().map(|b| &b.sequence), hotkey);
 
     match seq_match {
-        ScopeSequenceMatch::SingleStep { index } => ScopeMatch::SingleStepSequence { index },
-        ScopeSequenceMatch::MultiStep { indices } => {
+        SequencePrefixMatch::SingleStep { index } => LayerMatch::SingleStepSequence { index },
+        SequencePrefixMatch::MultiStep { indices } => {
             let immediate_index = find_immediate_in_layer(stored, hotkey);
-            ScopeMatch::MultiStepSequences {
+            LayerMatch::MultiStepSequences {
                 indices,
                 immediate_index,
             }
         }
-        ScopeSequenceMatch::None => match find_immediate_in_layer(stored, hotkey) {
-            Some(index) => ScopeMatch::Immediate { index },
-            None => ScopeMatch::None,
+        SequencePrefixMatch::None => match find_immediate_in_layer(stored, hotkey) {
+            Some(index) => LayerMatch::Immediate { index },
+            None => LayerMatch::None,
         },
     }
 }
@@ -160,7 +160,7 @@ impl Dispatcher {
     ///
     /// Both the runtime and query paths need globally-registered sequences in a
     /// consistent order. This helper centralises the filter-free sort so callers
-    /// can pass the result straight to [`classify_scope_sequences`].
+    /// can pass the result straight to [`classify_sequence_prefixes`].
     pub(super) fn sorted_global_sequences(&self) -> Vec<&RegisteredSequenceBinding> {
         let mut seqs: Vec<_> = self.sequence_bindings_by_id.values().collect();
         seqs.sort_by_key(|b| b.id.as_u64());

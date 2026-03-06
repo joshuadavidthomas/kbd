@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use super::Dispatcher;
 use super::resolve;
-use super::resolve::ScopeMatch;
-use super::resolve::ScopeSequenceMatch;
+use super::resolve::LayerMatch;
+use super::resolve::SequencePrefixMatch;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
@@ -92,12 +92,12 @@ impl Dispatcher {
         }
 
         // Walk layer stack top-down, same as the dispatcher.
-        // classify_layer_scope checks sequences before immediate hotkeys.
+        // classify_layer checks sequences before immediate hotkeys.
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
-                let scope_match = resolve::classify_layer_scope(stored, hotkey);
-                match scope_match {
-                    ScopeMatch::SingleStepSequence { index } => {
+                let layer_match = resolve::classify_layer(stored, hotkey);
+                match layer_match {
+                    LayerMatch::SingleStepSequence { index } => {
                         let sb = &stored.sequence_bindings[index];
                         return Some(BindingInfo {
                             hotkey: sb.sequence.steps()[0].clone(),
@@ -107,10 +107,10 @@ impl Dispatcher {
                             overlay_visibility: crate::binding::OverlayVisibility::Visible,
                         });
                     }
-                    ScopeMatch::MultiStepSequences { .. } => {
+                    LayerMatch::MultiStepSequences { .. } => {
                         return None;
                     }
-                    ScopeMatch::Immediate { index } => {
+                    LayerMatch::Immediate { index } => {
                         let lb = &stored.bindings[index];
                         return Some(BindingInfo {
                             hotkey: lb.hotkey.clone(),
@@ -120,7 +120,7 @@ impl Dispatcher {
                             overlay_visibility: crate::binding::OverlayVisibility::Visible,
                         });
                     }
-                    ScopeMatch::None => {
+                    LayerMatch::None => {
                         // Swallow layers block all unmatched keys from reaching
                         // lower layers and globals — matches the real dispatcher.
                         if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
@@ -133,11 +133,11 @@ impl Dispatcher {
 
         // Global sequences are checked before global hotkeys, matching process().
         let global_seqs = self.sorted_global_sequences();
-        let scope_match =
-            resolve::classify_scope_sequences(global_seqs.iter().map(|b| &b.sequence), hotkey);
+        let prefix_match =
+            resolve::classify_sequence_prefixes(global_seqs.iter().map(|b| &b.sequence), hotkey);
 
-        match scope_match {
-            ScopeSequenceMatch::SingleStep { index } => {
+        match prefix_match {
+            SequencePrefixMatch::SingleStep { index } => {
                 let binding = global_seqs[index];
                 return Some(BindingInfo {
                     hotkey: binding.sequence.steps()[0].clone(),
@@ -147,10 +147,10 @@ impl Dispatcher {
                     overlay_visibility: crate::binding::OverlayVisibility::Visible,
                 });
             }
-            ScopeSequenceMatch::MultiStep { .. } => {
+            SequencePrefixMatch::MultiStep { .. } => {
                 return None;
             }
-            ScopeSequenceMatch::None => {}
+            SequencePrefixMatch::None => {}
         }
 
         // Fall through to global immediate bindings.

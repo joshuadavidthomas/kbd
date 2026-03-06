@@ -20,8 +20,8 @@ use std::time::Instant;
 
 use self::layers::LayerEffect;
 use self::layers::LayerStackEntry;
-use self::resolve::ScopeMatch;
-use self::resolve::ScopeSequenceMatch;
+use self::resolve::LayerMatch;
+use self::resolve::SequencePrefixMatch;
 use self::sequence::ActiveSequence;
 use self::sequence::PendingStandalone;
 use self::sequence::RegisteredSequenceBinding;
@@ -324,11 +324,11 @@ impl Dispatcher {
                 continue;
             };
 
-            let scope_match = resolve::classify_layer_scope(stored, hotkey);
+            let layer_match = resolve::classify_layer(stored, hotkey);
             let swallow_unmatched = matches!(stored.options.unmatched(), UnmatchedKeys::Swallow);
 
-            match scope_match {
-                ScopeMatch::SingleStepSequence { index } => {
+            match layer_match {
+                LayerMatch::SingleStepSequence { index } => {
                     let stored = &self.layers[&layer_name];
                     let sb = &stored.sequence_bindings[index];
                     let candidates = vec![SequenceStartCandidate::SingleStep {
@@ -345,7 +345,7 @@ impl Dispatcher {
                         return Some(outcome);
                     }
                 }
-                ScopeMatch::MultiStepSequences {
+                LayerMatch::MultiStepSequences {
                     indices,
                     immediate_index,
                 } => {
@@ -381,7 +381,7 @@ impl Dispatcher {
                         return Some(outcome);
                     }
                 }
-                ScopeMatch::Immediate { index } => {
+                LayerMatch::Immediate { index } => {
                     let stored = &self.layers[&layer_name];
                     let lb = &stored.bindings[index];
                     let propagation = lb.propagation;
@@ -395,7 +395,7 @@ impl Dispatcher {
                         propagation,
                     });
                 }
-                ScopeMatch::None => {
+                LayerMatch::None => {
                     if swallow_unmatched {
                         return Some(InternalOutcome::Suppressed);
                     }
@@ -414,10 +414,12 @@ impl Dispatcher {
     ) -> InternalOutcome {
         let candidates: Vec<SequenceStartCandidate> = {
             let global_seqs = self.sorted_global_sequences();
-            let scope_match =
-                resolve::classify_scope_sequences(global_seqs.iter().map(|b| &b.sequence), hotkey);
-            match scope_match {
-                ScopeSequenceMatch::SingleStep { index } => {
+            let prefix_match = resolve::classify_sequence_prefixes(
+                global_seqs.iter().map(|b| &b.sequence),
+                hotkey,
+            );
+            match prefix_match {
+                SequencePrefixMatch::SingleStep { index } => {
                     let binding = global_seqs[index];
                     vec![SequenceStartCandidate::SingleStep {
                         binding_ref: MatchedBindingRef::SequenceGlobal(binding.id),
@@ -425,7 +427,7 @@ impl Dispatcher {
                         propagation: binding.propagation,
                     }]
                 }
-                ScopeSequenceMatch::MultiStep { indices } => indices
+                SequencePrefixMatch::MultiStep { indices } => indices
                     .iter()
                     .map(|&idx| {
                         let binding = global_seqs[idx];
@@ -435,7 +437,7 @@ impl Dispatcher {
                         }
                     })
                     .collect(),
-                ScopeSequenceMatch::None => Vec::new(),
+                SequencePrefixMatch::None => Vec::new(),
             }
         };
         // global_seqs dropped; self is unborrowed.
