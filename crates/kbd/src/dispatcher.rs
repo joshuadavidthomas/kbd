@@ -73,6 +73,7 @@ use crate::layer::UnmatchedKeys;
 /// assert_eq!(ctx.info().name(), "StreamDeck XL");
 /// assert_eq!(ctx.device_modifiers(), Some(&[Modifier::Ctrl][..]));
 /// ```
+#[derive(Debug)]
 pub struct DeviceContext<'a> {
     device_id: i32,
     info: &'a DeviceInfo,
@@ -607,16 +608,18 @@ impl Dispatcher {
             }
         }
 
-        // Then try non-device-filtered bindings with aggregate modifiers.
-        // Only consider bindings that don't have a device filter.
-        let id = self.active_global_binding_id(hotkey)?;
-        let binding = self.bindings_by_id.get(&id)?;
-        if binding.options().device().is_some() {
-            // This binding has a device filter — it should only be matched
-            // via the device-filtered path above.
-            return None;
+        // Fall through to non-device-filtered bindings (aggregate modifiers).
+        // Walk from highest precedence to lowest, skipping device-filtered
+        // bindings — they were already checked above with modifier isolation.
+        let ids = self.binding_ids_by_hotkey.get(hotkey)?;
+        for id in ids.iter().rev() {
+            if let Some(binding) = self.bindings_by_id.get(id) {
+                if binding.options().device().is_none() {
+                    return Some((MatchedBindingRef::Global(*id), binding.propagation()));
+                }
+            }
         }
-        Some((MatchedBindingRef::Global(id), binding.propagation()))
+        None
     }
 
     /// Match device-filtered global bindings using per-device modifier isolation.
@@ -633,24 +636,16 @@ impl Dispatcher {
             hotkey.clone()
         };
 
-        // Check bindings registered for this device-specific hotkey AND
-        // bindings registered for the aggregate hotkey — both might have
-        // device filters. We need to scan all device-filtered bindings.
-        for binding in self.bindings_by_id.values() {
-            let Some(filter) = binding.options().device() else {
-                continue; // Not device-filtered
-            };
-
-            if !filter.matches(device.info()) {
-                continue; // Device doesn't match filter
-            }
-
-            // For device-filtered bindings, match against device-specific hotkey
-            if *binding.hotkey() == device_hotkey {
-                return Some((
-                    MatchedBindingRef::Global(binding.id()),
-                    binding.propagation(),
-                ));
+        // Look up bindings registered for the device-specific hotkey.
+        // Walk from highest precedence to lowest for deterministic ordering.
+        let ids = self.binding_ids_by_hotkey.get(&device_hotkey)?;
+        for id in ids.iter().rev() {
+            if let Some(binding) = self.bindings_by_id.get(id) {
+                if let Some(filter) = binding.options().device() {
+                    if filter.matches(device.info()) {
+                        return Some((MatchedBindingRef::Global(*id), binding.propagation()));
+                    }
+                }
             }
         }
 
@@ -885,5 +880,146 @@ mod tests {
             cb();
         }
         assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn device_and_global_bindings_coexist_for_same_hotkey() {
+        let mut dispatcher = Dispatcher::new();
+
+        // Register a device-filtered binding and a global binding for the same key
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        dispatcher
+            .register(Hotkey::new(Key::A), Action::Suppress)
+            .unwrap();
+    }
+
+    #[test]
+    fn global_binding_falls_through_when_device_filter_misses() {
+        let mut dispatcher = Dispatcher::new();
+        let global_counter = Arc::new(AtomicUsize::new(0));
+        let gc = Arc::clone(&global_counter);
+
+        let streamdeck = DeviceInfo::new("StreamDeck XL", 0x0fd9, 0x006c);
+        let keyboard = DeviceInfo::new("AT Translated Set 2 keyboard", 0x0001, 0x0001);
+
+        // Higher-tier device-filtered binding
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_device(DeviceFilter::name_contains("StreamDeck"))
+                    .with_source("user"),
+            )
+            .unwrap();
+
+        // Lower-tier global binding
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
+                BindingOptions::default().with_source("default"),
+            )
+            .unwrap();
+
+        // From the StreamDeck: device-filtered binding should match
+        let ctx_sd = DeviceContext::new(10, &streamdeck).with_device_modifiers(vec![]);
+        let result =
+            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx_sd);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+
+        // From the keyboard: device filter doesn't match, should fall through to global
+        let ctx_kb = DeviceContext::new(11, &keyboard).with_device_modifiers(vec![]);
+        let result =
+            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx_kb);
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
+            cb();
+        }
+        assert_eq!(global_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn multiple_device_filters_same_hotkey_same_tier() {
+        let mut dispatcher = Dispatcher::new();
+
+        // Two device-filtered bindings for the same hotkey, different filters
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_device(DeviceFilter::usb(0x1234, 0x5678)),
+            )
+            .unwrap();
+
+        // Same device filter for same hotkey should still be rejected
+        let result = dispatcher.register_with_options(
+            Hotkey::new(Key::A),
+            Action::Suppress,
+            BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck")),
+        );
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn process_without_device_context_skips_device_filtered_bindings() {
+        let mut dispatcher = Dispatcher::new();
+        let global_counter = Arc::new(AtomicUsize::new(0));
+        let gc = Arc::clone(&global_counter);
+
+        // Device-filtered binding
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        // Global binding
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::from(move || {
+                    gc.fetch_add(1, Ordering::Relaxed);
+                }),
+                BindingOptions::default(),
+            )
+            .unwrap();
+
+        // Using process() without device context should skip device-filtered
+        // and match the global binding
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
+            cb();
+        }
+        assert_eq!(global_counter.load(Ordering::Relaxed), 1);
     }
 }
