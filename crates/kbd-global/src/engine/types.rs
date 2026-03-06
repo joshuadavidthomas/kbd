@@ -42,9 +42,6 @@ pub(crate) enum KeyEventDisposition {
 /// - A binding matched and produced an action (with a propagation setting).
 /// - The event was consumed without producing a callback (mid-sequence or swallowed).
 /// - Nothing matched and the event should be forwarded (in grab mode) or ignored.
-///
-/// When tap-hold adds a new `MatchResult` state, it gets added here intentionally
-/// rather than falling through a wildcard.
 pub(super) enum MatchOutcome {
     /// A binding matched. The action has already been executed; only the
     /// propagation setting remains for forwarding decisions.
