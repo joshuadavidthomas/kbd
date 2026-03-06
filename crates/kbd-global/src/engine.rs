@@ -27,7 +27,7 @@
 //!
 //! - [`devices`] — device discovery, hotplug, capability detection
 //! - [`forwarder`] — uinput virtual device for event forwarding/emission
-//! - [`types`] — shared engine types (grab state, dispositions)
+//! - [`types`] — shared engine types (grab state, dispositions, match outcomes)
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
 //!
@@ -62,7 +62,7 @@ pub(crate) use self::command::Command;
 pub(crate) use self::command::CommandSender;
 pub(crate) use self::runtime::EngineRuntime;
 pub(crate) use self::types::GrabState;
-pub(crate) use self::types::KeyEventDisposition;
+pub(crate) use self::types::KeyEventOutcome;
 use self::types::MatchOutcome;
 use self::wake::WakeFd;
 
@@ -76,7 +76,7 @@ pub(crate) struct Engine {
     /// was popped in between (oneshot, `PopLayer` action, etc.).
     ///
     /// Mirrors the approach used by keyd's `cache_entry` system.
-    press_cache: HashMap<Key, KeyEventDisposition>,
+    press_cache: HashMap<Key, KeyEventOutcome>,
     devices: devices::DeviceManager,
     key_state: KeyState,
     grab_state: GrabState,
@@ -256,7 +256,7 @@ impl Engine {
         }
     }
 
-    fn process_key_event(&mut self, event: DeviceKeyEvent) -> KeyEventDisposition {
+    fn process_key_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
         self.key_state
             .apply_device_event(event.device_fd, event.key, event.transition);
 
@@ -275,11 +275,10 @@ impl Engine {
             };
             if let Some(cached) = cached {
                 match cached {
-                    KeyEventDisposition::MatchedForwarded
-                    | KeyEventDisposition::UnmatchedForwarded => {
+                    KeyEventOutcome::MatchedForwarded | KeyEventOutcome::UnmatchedForwarded => {
                         self.forward_event(event.key, event.transition);
                     }
-                    KeyEventDisposition::MatchedConsumed | KeyEventDisposition::Ignored => {}
+                    KeyEventOutcome::MatchedConsumed | KeyEventOutcome::Ignored => {}
                 }
                 return cached;
             }
@@ -306,14 +305,13 @@ impl Engine {
                         propagation: *propagation,
                     }
                 }
-                MatchResult::Pending { .. } => MatchOutcome::Pending,
-                MatchResult::Suppressed => MatchOutcome::Suppressed,
-                MatchResult::NoMatch => MatchOutcome::NoMatch,
-                // Explicit: MatchResult is #[non_exhaustive]; list known
-                // variants so new ones don't silently fall through.
+                MatchResult::Pending { .. } | MatchResult::Suppressed => MatchOutcome::Consumed,
+                MatchResult::NoMatch | MatchResult::Ignored => MatchOutcome::Unmatched,
+                // MatchResult is #[non_exhaustive]; new variants should be
+                // evaluated and mapped intentionally, but we must have a
+                // fallback arm.
                 #[allow(clippy::match_same_arms)]
-                MatchResult::Ignored => MatchOutcome::Ignored,
-                _ => MatchOutcome::Ignored,
+                _ => MatchOutcome::Unmatched,
             }
         };
 
@@ -324,22 +322,20 @@ impl Engine {
                     if matches!(self.grab_state, GrabState::Enabled { .. }) =>
                 {
                     self.forward_event(event.key, event.transition);
-                    KeyEventDisposition::MatchedForwarded
+                    KeyEventOutcome::MatchedForwarded
                 }
-                KeyPropagation::Continue | KeyPropagation::Stop => {
-                    KeyEventDisposition::MatchedConsumed
-                }
-                _ => KeyEventDisposition::MatchedConsumed,
+                KeyPropagation::Continue | KeyPropagation::Stop => KeyEventOutcome::MatchedConsumed,
+                // KeyPropagation is #[non_exhaustive]
+                #[allow(clippy::match_same_arms)]
+                _ => KeyEventOutcome::MatchedConsumed,
             },
-            MatchOutcome::Pending | MatchOutcome::Suppressed => {
-                KeyEventDisposition::MatchedConsumed
-            }
-            MatchOutcome::NoMatch | MatchOutcome::Ignored => {
+            MatchOutcome::Consumed => KeyEventOutcome::MatchedConsumed,
+            MatchOutcome::Unmatched => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
                     self.forward_event(event.key, event.transition);
-                    KeyEventDisposition::UnmatchedForwarded
+                    KeyEventOutcome::UnmatchedForwarded
                 } else {
-                    KeyEventDisposition::Ignored
+                    KeyEventOutcome::Ignored
                 }
             }
         };
@@ -439,7 +435,7 @@ mod tests {
     use super::Engine;
     use super::EngineRuntime;
     use super::GrabState;
-    use super::KeyEventDisposition;
+    use super::KeyEventOutcome;
     use super::devices;
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
@@ -606,7 +602,7 @@ mod tests {
         (state, events)
     }
 
-    fn press_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventDisposition {
+    fn press_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventOutcome {
         engine.process_key_event(DeviceKeyEvent {
             device_fd,
             key,
@@ -614,7 +610,7 @@ mod tests {
         })
     }
 
-    fn release_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventDisposition {
+    fn release_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventOutcome {
         engine.process_key_event(DeviceKeyEvent {
             device_fd,
             key,
@@ -829,7 +825,7 @@ mod tests {
 
         // Press A with no modifiers — no binding matches, should be forwarded
         let disposition = press_key(&mut engine, Key::A, 10);
-        assert_eq!(disposition, KeyEventDisposition::UnmatchedForwarded);
+        assert_eq!(disposition, KeyEventOutcome::UnmatchedForwarded);
 
         // Verify the forwarder received the event
         let events = forwarded.lock().unwrap();
@@ -858,7 +854,7 @@ mod tests {
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
         let disposition = press_key(&mut engine, Key::C, 10);
 
-        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(disposition, KeyEventOutcome::MatchedConsumed);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
 
         // Forwarder should NOT have the C press (modifier press is forwarded though)
@@ -887,7 +883,7 @@ mod tests {
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
         let disposition = press_key(&mut engine, Key::C, 10);
 
-        assert_eq!(disposition, KeyEventDisposition::MatchedForwarded);
+        assert_eq!(disposition, KeyEventOutcome::MatchedForwarded);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
 
         // Forwarder should have the C press event
@@ -906,7 +902,7 @@ mod tests {
 
         // Press A with no bindings — should be ignored, not forwarded
         let disposition = press_key(&mut engine, Key::A, 10);
-        assert_eq!(disposition, KeyEventDisposition::Ignored);
+        assert_eq!(disposition, KeyEventOutcome::Ignored);
     }
 
     #[test]
@@ -931,7 +927,7 @@ mod tests {
         // through the normal kernel path. The engine reports MatchedConsumed
         // because it matched and executed the action; no virtual-device
         // forwarding occurred.
-        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(disposition, KeyEventOutcome::MatchedConsumed);
         assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 
@@ -944,8 +940,8 @@ mod tests {
         let press_disposition = press_key(&mut engine, Key::A, 10);
         let release_disposition = release_key(&mut engine, Key::A, 10);
 
-        assert_eq!(press_disposition, KeyEventDisposition::UnmatchedForwarded);
-        assert_eq!(release_disposition, KeyEventDisposition::UnmatchedForwarded);
+        assert_eq!(press_disposition, KeyEventOutcome::UnmatchedForwarded);
+        assert_eq!(release_disposition, KeyEventOutcome::UnmatchedForwarded);
 
         let events = forwarded.lock().unwrap();
         assert_eq!(events.len(), 2);
@@ -1491,7 +1487,7 @@ mod tests {
 
         // X not in swallow layer — consumed, global should NOT fire
         let disposition = press_key(&mut engine, Key::X, 10);
-        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(disposition, KeyEventOutcome::MatchedConsumed);
         assert_eq!(global_counter.load(Ordering::Relaxed), 0);
     }
 
@@ -2000,7 +1996,7 @@ mod tests {
         press_key(&mut engine, Key::C, 10);
 
         let disposition = release_key(&mut engine, Key::C, 10);
-        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(disposition, KeyEventOutcome::MatchedConsumed);
 
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
@@ -2029,10 +2025,10 @@ mod tests {
 
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
         let press_disp = press_key(&mut engine, Key::C, 10);
-        assert_eq!(press_disp, KeyEventDisposition::MatchedForwarded);
+        assert_eq!(press_disp, KeyEventOutcome::MatchedForwarded);
 
         let release_disp = release_key(&mut engine, Key::C, 10);
-        assert_eq!(release_disp, KeyEventDisposition::MatchedForwarded);
+        assert_eq!(release_disp, KeyEventOutcome::MatchedForwarded);
 
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
@@ -2059,10 +2055,10 @@ mod tests {
             .unwrap();
 
         let press_disp = press_key(&mut engine, Key::X, 10);
-        assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(press_disp, KeyEventOutcome::MatchedConsumed);
 
         let release_disp = release_key(&mut engine, Key::X, 10);
-        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(release_disp, KeyEventOutcome::MatchedConsumed);
 
         let events = forwarded.lock().unwrap();
         let x_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::X).collect();
@@ -2094,10 +2090,10 @@ mod tests {
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
         press_key(&mut engine, Key::C, 10);
         let release_disp = release_key(&mut engine, Key::C, 10);
-        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(release_disp, KeyEventOutcome::MatchedConsumed);
 
         let second_press_disp = press_key(&mut engine, Key::C, 10);
-        assert_eq!(second_press_disp, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(second_press_disp, KeyEventOutcome::MatchedConsumed);
         assert_eq!(counter.load(Ordering::Relaxed), 2);
     }
 
@@ -2118,14 +2114,14 @@ mod tests {
             .unwrap();
 
         let press_disp = press_key(&mut engine, Key::H, 10);
-        assert_eq!(press_disp, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(press_disp, KeyEventOutcome::MatchedConsumed);
         assert!(
             engine.dispatcher.active_layers().is_empty(),
             "layer should have been popped"
         );
 
         let release_disp = release_key(&mut engine, Key::H, 10);
-        assert_eq!(release_disp, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(release_disp, KeyEventOutcome::MatchedConsumed);
 
         let events = forwarded.lock().unwrap();
         let h_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::H).collect();
@@ -2157,10 +2153,10 @@ mod tests {
             key: Key::C,
             transition: KeyTransition::Repeat,
         });
-        assert_eq!(disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(disposition, KeyEventOutcome::MatchedConsumed);
 
         let release_disposition = release_key(&mut engine, Key::C, 10);
-        assert_eq!(release_disposition, KeyEventDisposition::MatchedConsumed);
+        assert_eq!(release_disposition, KeyEventOutcome::MatchedConsumed);
 
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
@@ -2195,7 +2191,7 @@ mod tests {
             key: Key::C,
             transition: KeyTransition::Repeat,
         });
-        assert_eq!(disposition, KeyEventDisposition::MatchedForwarded);
+        assert_eq!(disposition, KeyEventOutcome::MatchedForwarded);
 
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
