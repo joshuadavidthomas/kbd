@@ -325,6 +325,8 @@ impl Engine {
                     KeyEventOutcome::MatchedForwarded
                 }
                 KeyPropagation::Continue | KeyPropagation::Stop => KeyEventOutcome::MatchedConsumed,
+                // KeyPropagation is #[non_exhaustive]
+                #[allow(clippy::match_same_arms)]
                 _ => KeyEventOutcome::MatchedConsumed,
             },
             MatchOutcome::Consumed => KeyEventOutcome::MatchedConsumed,
