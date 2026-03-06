@@ -1,0 +1,1440 @@
+# kbd: Implementation Plan
+
+> **Note:** This document was written during implementation. Some names
+> have since changed (e.g., `Matcher` → `Dispatcher`, `Handle` →
+> `BindingGuard`, `Passthrough` → `KeyPropagation`, `EmitKey` →
+> `EmitHotkey`, `kbd-core` → `kbd`). See `docs/api-review-v0.1.0.md`
+> for the full list of renames.
+
+Ground-up rebuild based on [DESIGN.md](DESIGN.md). The project is
+`kbd`; all crates use the `kbd-` prefix: `kbd-core`, `kbd-global`,
+`kbd-crossterm`, etc.
+
+Prior implementation archived in `archive/v0/` and tagged `v0-archive` in git.
+Reference implementation (keyd) in `reference/keyd/`.
+
+## How to use this plan
+
+**Read [DESIGN.md](DESIGN.md) first.** It defines the domain model,
+architecture, and design decisions. This plan is the task breakdown.
+
+**Read [ATTRIBUTION.md](ATTRIBUTION.md) before referencing other
+projects.** Some are MIT-compatible (keyd, global-hotkey,
+livesplit-hotkey) — code can be adapted with attribution. Others are
+GPL (Niri, COSMIC, Zed editor) — inspiration only, clean-room
+implementation required.
+
+**Phases are sequential.** Each phase produces a working, testable library.
+The output of one phase is the input for the next. Do not skip ahead.
+
+**Each phase is self-contained for a fresh agent.** An agent picking up
+Phase N needs: this file, DESIGN.md, the scaffolded `src/` files (with
+their doc comments and TODO items), and optionally `archive/v0/` for
+reference on how specific problems were solved before.
+
+**When you finish a checklist item**, change its `- [ ]` to `- [x]`.
+
+---
+
+## Phase 1: Core types and the tracer bullet
+
+**Goal**: `manager.register(Key::C, &[Modifier::Ctrl], || println!("fired"))`
+works end-to-end. A key is physically pressed, a callback fires.
+
+This phase builds the minimum vertical slice through the entire architecture:
+types → manager → engine → evdev → callback. Everything else is layered on
+in later phases.
+
+### 1.1 Key types (`src/key.rs`)
+
+Implement `Key`, `Modifier`, `Hotkey`, `HotkeySequence`.
+
+- [x] `Key` enum with full key set (letters, numbers, F-keys, arrows, navigation, punctuation, numpad, modifiers).
+- [x] `Modifier` enum (Ctrl, Shift, Alt, Super) with left/right canonicalization.
+- [x] Shared logic between `Key` and `Modifier` — no duplicated `as_str()`, `Display`, or conversion implementations.
+- [x] `From<evdev::KeyCode>` and `Into<evdev::KeyCode>` on `Key` (standard traits, not ad-hoc methods).
+- [x] `Modifier` derivable from `Key` — `Modifier::Ctrl` maps to `Key::LeftCtrl`/`Key::RightCtrl`.
+- [x] `Hotkey` struct (trigger `Key` + `Vec<Modifier>` or small set type). `FromStr` parses `"Ctrl+Shift+A"`, `Display` round-trips.
+- [x] `HotkeySequence` struct (`Vec<Hotkey>`). `FromStr` parses `"Ctrl+K, Ctrl+C"`, `Display` round-trips.
+- [x] Case-insensitive parsing with aliases (Super/Meta/Win, Ctrl/Control, Return/Enter).
+- [x] Tests: parsing, display, round-trip, evdev conversion, modifier canonicalization.
+
+Reference: `archive/v0/src/key.rs`, `archive/v0/src/hotkey.rs`
+
+### 1.2 Action and binding types (`src/action.rs`, `src/binding.rs`)
+
+- [x] `Action` enum with `Callback(Box<dyn Fn() + Send + Sync>)` variant. Other variants (`EmitKey`, `PushLayer`, etc.) defined but not yet functional — they exist in the type so the API is forward-compatible. `EmitHotkey`/`EmitSequence` call `todo!()` in `kbd-global`'s engine and have doc comments noting they're unimplemented (PR #103).
+- [x] `impl<F: Fn() + Send + Sync + 'static> From<F> for Action` — closures auto-convert.
+- [x] `BindingId` newtype (u64 or similar) for unique identification.
+- [x] `BindingOptions` struct with `passthrough` field (as enum, not bool). Other option fields can be added in later phases.
+- [x] `DeviceFilter` enum (name pattern, USB vendor/product) — type defined, filtering implemented in Phase 4.
+- [x] Tests: Action from closure, BindingId uniqueness.
+
+### 1.3 Error type (`src/error.rs`)
+
+- [x] `Error` enum using `thiserror`.
+- [x] Variants: `Parse`, `AlreadyRegistered`, `BackendInit`, `BackendUnavailable`, `PermissionDenied`, `DeviceError`, `UnsupportedFeature`, `ManagerStopped`, `EngineError`.
+- [x] Absorb `ParseHotkeyError` — either as `Error::Parse` variant or as a separate type convertible via `From`.
+- [x] Tests: error display messages are useful.
+
+### 1.4 Engine skeleton (`src/engine/`)
+
+The message-passing architecture.
+
+- [x] `Command` enum: `Register`, `Unregister`, `Shutdown`. (Layer commands added in Phase 3.)
+- [x] Reply mechanism: `Register` carries a oneshot sender for `Result<(), Error>`.
+- [x] `Engine` struct that owns: bindings (`Vec` or `HashMap`), devices, key state.
+- [x] `engine::run()` — event loop: `poll()` on device fds + wake fd, drain commands, process events.
+- [x] Wake mechanism: eventfd (or pipe) so command sends wake the poll.
+- [x] Shutdown: `Command::Shutdown` breaks the event loop, thread exits.
+- [x] Tests: engine starts, accepts commands, shuts down cleanly.
+
+Reference: `archive/v0/src/listener.rs` (event loop structure),
+`archive/v0/src/listener/io.rs` (poll mechanics)
+
+### 1.5 Device reading (`src/engine/devices.rs`)
+
+- [x] Discover keyboard devices in `/dev/input/`.
+- [x] Read key events from evdev devices (press, release, repeat).
+- [x] Convert raw `KeyCode` to `Key`.
+- [x] Device hotplug via inotify (add/remove devices at runtime).
+- [x] Clean up key state on device disconnect.
+- [x] Ignore non-keyboard devices.
+- [x] Tests: device discovery, hotplug event parsing.
+
+Reference: `archive/v0/src/listener/io.rs`, `archive/v0/src/listener/hotplug.rs`
+
+### 1.6 Manager and handle (`src/manager.rs`, `src/handle.rs`)
+
+- [x] `HotkeyManager::new()` — spawn engine thread, return manager.
+- [x] `HotkeyManager::builder()` — builder for explicit backend/grab configuration.
+- [x] `manager.register(key, modifiers, callback)` — sends `Command::Register`, waits for reply, returns `Handle`.
+- [x] `Handle` holds `BindingId` + command sender. `Drop` sends `Command::Unregister`.
+- [x] Conflict detection: registering a duplicate hotkey returns `Error::AlreadyRegistered`.
+- [x] `manager.is_registered(key, modifiers)` — query via command/reply.
+- [x] Tests: register, unregister via drop, conflict detection, shutdown.
+
+### 1.7 Basic hotkey matching (`src/engine/matcher.rs`)
+
+- [x] Given a key event + current modifier state, find the matching binding.
+- [x] Modifier state derived from key state (what modifier keys are currently pressed).
+- [x] Match fires callback via `Action::Callback`.
+- [x] Unmatched events ignored (no grab mode yet).
+- [x] Tests: single hotkey match, modifier combinations, no match.
+
+### 1.8 Integration and public API (`src/lib.rs`)
+
+- [x] Public re-exports are correct and minimal.
+- [x] The example from DESIGN.md compiles and works: `manager.register(Key::C, &[Modifier::Ctrl, Modifier::Shift], || ...)`.
+- [x] `cargo test` passes, `cargo clippy` clean, `cargo doc` builds.
+
+### Phase 1 gate
+
+| Section | Items |
+|---------|-------|
+| 1.1 Key types | 9/9 |
+| 1.2 Action and binding | 6/6 |
+| 1.3 Error type | 4/4 |
+| 1.4 Engine skeleton | 7/7 |
+| 1.5 Device reading | 7/7 |
+| 1.6 Manager and handle | 7/7 |
+| 1.7 Basic matching | 5/5 |
+| 1.8 Integration | 3/3 |
+
+---
+
+## Phase 2: Grab mode, key state, and event forwarding
+
+**Goal**: Grab mode works. Matched hotkeys are consumed, unmatched events
+are forwarded through uinput. Key state is queryable.
+
+### 2.1 Grab mode (`src/engine/devices.rs`, `src/engine/forwarder.rs`)
+
+- [x] `EVIOCGRAB` on devices when grab mode is enabled.
+- [x] Virtual uinput device creation for event forwarding.
+- [x] Unmatched key events forwarded through virtual device.
+- [x] Matched events consumed (not forwarded) by default.
+- [x] Passthrough option: matched events forwarded AND action executed.
+- [x] Self-detection: ignore our own virtual device in device discovery.
+- [x] Portal backend returns clear `UnsupportedFeature` error for grab.
+- [x] Tests: event consumption, forwarding, passthrough, self-detection.
+
+Reference: `archive/v0/src/listener/forwarding.rs`,
+`archive/v0/src/listener/io.rs` (EVIOCGRAB, self-detection)
+
+### 2.2 Key state queries
+
+- [x] `manager.is_key_pressed(key)` — queries engine via command/reply.
+- [x] `manager.active_modifiers()` — returns set of held modifiers, derived from key state.
+- [x] Per-device key state tracking (for device-specific bindings in Phase 4).
+- [x] Modifier state cleaned up on device disconnect.
+- [x] Tests: key state during press/release, modifier derivation, disconnect cleanup.
+
+### Phase 2 gate
+
+| Section | Items |
+|---------|-------|
+| 2.1 Grab mode | 8/8 |
+| 2.2 Key state queries | 5/5 |
+
+---
+
+## Phase 3: Layers
+
+**Goal**: Named groups of bindings that stack. `Layer::new("nav").bind(...)`
+works. Push/pop/toggle from callbacks and manager.
+
+### 3.1 Layer definition and registration (`src/layer.rs`)
+
+- [x] `Layer` builder: `Layer::new("name").bind(key, mods, action).swallow().build()`.
+- [x] `LayerOptions`: oneshot (auto-pop after N keys), swallow (suppress unmatched), timeout (auto-pop after duration).
+- [x] `manager.define_layer(layer)` — sends layer definition to engine.
+- [x] Engine stores layers by name.
+- [x] Tests: layer construction, option configuration.
+
+### 3.2 Layer stack operations
+
+- [x] `manager.push_layer("name")` / `manager.pop_layer()`.
+- [x] `Action::PushLayer` / `Action::PopLayer` / `Action::ToggleLayer` — layer control from within callbacks/bindings.
+- [x] Engine maintains layer stack. Matching walks stack top-down then global.
+- [x] Oneshot: layer auto-pops after N keypresses.
+- [x] Swallow: unmatched keys in the active layer are consumed, not passed to lower layers.
+- [x] Timeout: layer auto-pops after inactivity period.
+- [x] Tests: push/pop, stack priority, oneshot, swallow, timeout, same key in different layers.
+
+### 3.3 Press cache (`src/engine/`)
+
+- [x] On key press, cache the action that was executed for that key.
+- [x] On key release, use cached action (not current matching result).
+- [x] Cache entries cleared after release processing.
+- [x] Correct release behavior across layer transitions (press in layer A, release after layer A is popped).
+- [x] Tests: layer pop during keypress, cache cleanup.
+
+Reference: `reference/keyd/src/keyboard.c` (cache_entry system)
+
+### 3.4 Binding metadata
+
+Every project that builds shortcut UIs — Zed's keymap editor, Niri's
+hotkey overlay — needs metadata on bindings. Without it, consumers
+rebuild the same "description + visibility" plumbing on their own.
+
+- [x] `description: Option<String>` on `BindingOptions` — human-readable label ("Copy to clipboard").
+- [x] `OverlayVisibility` enum (`Visible` / `Hidden`) on `BindingOptions` — lets consumers build hotkey overlays where some bindings are excluded (Niri's `hotkey-overlay-title=null` pattern).
+- [x] `description: Option<String>` on `LayerOptions` — layer-level label for overlay grouping.
+- [x] Tests: metadata round-trips through register/introspect.
+
+### 3.5 Introspection API
+
+The #1 thing apps need beyond "register and fire." Zed builds a full
+keymap editor with conflict tooltips. Niri has a `show-hotkey-overlay`
+action. Without introspection, every consumer rebuilds this from scratch.
+
+Layers make introspection interesting — "what's active, what's shadowed"
+only matters once a layer stack exists.
+
+- [x] `manager.list_bindings()` → returns active bindings with key, description, layer, and shadowed status.
+- [x] `manager.bindings_for_key(key, mods)` → what would fire if this key were pressed now (considering layer stack).
+- [x] `manager.active_layers()` → current layer stack with names and options.
+- [x] `manager.conflicts()` → bindings shadowed by higher-priority layers.
+- [x] All queries via command/reply through existing message-passing channel.
+- [x] Tests: introspect after register, introspect with layers, shadowed binding detection.
+
+### Phase 3 gate
+
+| Section | Items |
+|---------|-------|
+| 3.1 Layer definition | 5/5 |
+| 3.2 Layer stack | 7/7 |
+| 3.3 Press cache | 5/5 |
+| 3.4 Binding metadata | 4/4 |
+| 3.5 Introspection | 6/6 |
+
+---
+
+## Phase 3.5: Workspace split and core extraction
+
+**Goal**: Split kbd into a multi-crate workspace. Each crate
+boundary is a dependency boundary — consumers pull in only what they
+need.
+
+Every project we studied — Zed, COSMIC, Niri, every tiling WM — builds
+the same inner engine: key types, modifier tracking, layer/context
+stack, binding matching, sequence resolution. The only difference
+between global and in-app is where events come from and what "context"
+means. This phase recognizes that kbd already has that engine and
+makes it independently usable.
+
+This happens before Phase 4 because Phase 4 adds many features
+(sequences, tap-hold, portal, serde, XKB). Each one lands in a
+specific crate with clear ownership. The portal backend (4.5) and XKB
+support (4.9) each become their own crate rather than feature flags
+pulling heavy deps into a monolith.
+
+### Crate layout
+
+```
+kbd/                              workspace root
+├── crates/
+│   ├── kbd-core/                 Pure types + matcher + layers
+│   ├── kbd-crossterm/            crossterm key event conversions
+│   ├── kbd-egui/                 egui key type conversions
+│   ├── kbd-evdev/                evdev backend
+│   ├── kbd-iced/                 iced key type conversions
+│   ├── kbd-portal/               XDG GlobalShortcuts portal backend
+│   ├── kbd-winit/                winit key type conversions
+│   ├── kbd-xkb/                  Keyboard layout awareness
+│   ├── kbd-derive/               #[derive(Bindings)] proc macro
+│   └── kbd-global/               Runtime — HotkeyManager, ties it all together
+│
+│  Built on demand:
+│   ├── kbd-termion/              termion key event conversions
+│   ├── kbd-makepad/              Makepad key type conversions
+│   └── kbd-gtk/                  GTK native key event conversions
+```
+
+### What goes where
+
+**`kbd-core`** — platform-agnostic, the thing everyone can use.
+
+- `Key` (newtype over `keyboard_types::Code`, private inner),
+  `Modifier`, `Hotkey`, `HotkeySequence` (types + parsing)
+- `Action`, `Binding`, `BindingOptions`, `BindingId`
+- `Layer`, `LayerOptions`, `LayerName`
+- `Matcher`, `MatchResult`, `KeyState` (the synchronous engine)
+- Core error types (parse, conflict, layer)
+- External deps: `thiserror`, `keyboard-types`
+- Optional feature flag: `serde` (derives)
+- No evdev dependency — evdev conversions live in `kbd-evdev` via
+  extension traits
+- Dioxus users get trivial key conversion via `Key::from(code)` (uses
+  `keyboard_types::Code` natively, no bridge crate needed). winit and
+  iced define their own key enums from the same W3C spec — close
+  variant names but different Rust types, so they need conversion
+  crates (`kbd-winit`, `kbd-iced`).
+
+**`kbd-crossterm`** — TUI bridge.
+
+- Conversion traits between `crossterm::event::KeyCode` /
+  `KeyModifiers` / `KeyEvent` and `kbd-core` types (`Key`, `Modifier`,
+  `Hotkey`)
+- `CrosstermEventExt::to_hotkey()` for direct `KeyEvent → Hotkey`
+  conversion
+- Deps: `crossterm`, `kbd-core`
+
+**`kbd-egui`** — egui bridge.
+
+- Conversion traits between `egui::Key` / `Modifiers` and `kbd-core`
+  types
+- Deps: `egui`, `kbd-core`
+
+**`kbd-winit`** — winit bridge.
+
+- Conversion traits between `winit::keyboard::KeyCode` /
+  `ModifiersState` and `kbd-core` types
+- Near-trivial — winit defines its own W3C-derived `KeyCode` enum
+  with the same variant names as `keyboard_types::Code`, so the
+  mapping is mechanical
+- Deps: `winit`, `kbd-core`
+
+**`kbd-tao`** — tao bridge.
+
+- Conversion traits between `tao::keyboard::KeyCode` /
+  `ModifiersState` and `kbd-core` types
+- tao is Tauri's winit fork with its own `KeyCode` enum — same W3C
+  variant names, mechanical 1:1 mapping
+- Note: Tauri apps handle in-app keybindings in JS (the frontend is
+  a webview). `kbd-tao` serves apps that use tao directly as a
+  windowing library, not Tauri apps. Tauri's kbd use case is
+  `kbd-global` for Linux global hotkeys.
+- Deps: `tao`, `kbd-core`
+
+**`kbd-iced`** — iced bridge.
+
+- Conversion traits between `iced::keyboard::Key` / `Modifiers` and
+  `kbd-core` types
+- iced defines its own W3C-derived key types
+- Deps: `iced_core`, `kbd-core`
+
+**`kbd-egui`** — egui bridge.
+
+- Conversion traits between `egui::Key` / `Modifiers` and `kbd-core`
+  types
+- egui's smaller key enum, not 1:1 with W3C
+- Deps: `egui`, `kbd-core`
+
+**Built on demand** — created when a downstream project needs them:
+
+- **`kbd-termion`** — termion's `Key` enum bakes modifiers into
+  variants (`Ctrl(char)`, `Alt(char)`). Deps: `termion`, `kbd-core`.
+- **`kbd-makepad`** — Makepad has custom `KeyCode` with its own
+  platform bindings (no winit). Deps: `makepad-platform`, `kbd-core`.
+- **`kbd-gtk`** — Bridge for GTK native key events. Deps: `gtk4`,
+  `kbd-core`.
+
+**`kbd-evdev`** — Linux input device layer.
+
+- Device discovery, hotplug (inotify), `EVIOCGRAB`
+- `Forwarder` (uinput virtual device)
+- Extension traits for evdev↔core conversions (`KeyCodeExt`, etc.)
+- Device filtering, self-detection
+- Deps: `evdev`, `kbd-core`
+
+**`kbd-portal`** — Wayland-friendly, no root needed.
+
+- XDG GlobalShortcuts portal implementation (DBus via `ashpd`)
+- Session management, shortcut binding/activation signals
+- Deps: `ashpd`, `kbd-core`
+- Pulls in async — isolated here so it doesn't infect the rest
+
+**`kbd-xkb`** — keyboard layout awareness.
+
+- xkbcommon integration: keycode → keysym resolution
+- `KeyReference` enum (`ByCode` / `BySymbol`)
+- Layout change detection
+- Deps: `xkbcommon`, `kbd-core`
+
+**`kbd-derive`** — proc macro (Phase 4+ timeframe, crate created now).
+
+- `#[derive(Bindings)]`, `#[hotkey(...)]`, `#[flatten]`
+- Compile-time hotkey string validation
+- Deps: `syn`, `quote`, `proc-macro2`, `kbd-core`
+- Starts as an empty crate with a doc comment explaining intent
+
+**`kbd-global`** — the runtime, what most global-hotkey users depend on.
+
+- `HotkeyManager`, `Handle` — threaded engine + message passing
+- `ConsumePreference`, backend selection logic
+- Re-exports everything from `kbd-core`
+- Lock/inhibitor awareness, context hooks
+- Deps: `kbd-core`, optional `kbd-evdev`, `kbd-portal`, `kbd-xkb`,
+  `kbd-derive`
+
+### Why this split
+
+Each boundary is a **dependency boundary**:
+
+| Crate | Key external dep | Why separate |
+|-------|-----------------|--------------|
+| `kbd-core` | `keyboard-types` | Platform-agnostic, minimal deps |
+| `kbd-crossterm` | `crossterm` | TUI apps, logical key model |
+| `kbd-winit` | `winit` | winit apps, re-exports `keyboard_types::Code` |
+| `kbd-tao` | `tao` | Tauri apps, winit fork with own `KeyCode` |
+| `kbd-iced` | `iced_core` | iced apps, own W3C-derived key types |
+| `kbd-egui` | `egui` | egui apps, custom key types |
+| `kbd-evdev` | `evdev` | Linux C library, needs `/dev/input` access |
+| `kbd-portal` | `ashpd` (async DBus) | Pulls in async runtime, different paradigm |
+| `kbd-xkb` | `xkbcommon` | Optional C library, not everyone needs layouts |
+| `kbd-derive` | `syn`/`quote` | Proc macros must be separate crates (Rust req) |
+| `kbd-global` | all of the above | Glue + the threaded manager |
+| `kbd-termion` | `termion` | On demand: legacy TUI, mods baked into keys |
+| `kbd-makepad` | `makepad-platform` | On demand: custom platform bindings |
+| `kbd-gtk` | `gtk4` | On demand: GTK native key events |
+
+Things that stay as feature flags, not crates:
+
+- **Serde** — just derives on `kbd-core` types, not a dep boundary
+- **Async event streams** — thin wrappers in `kbd-global`, feature-gated
+  on `tokio` / `async-std`
+
+**Dioxus** and **floem** use `keyboard_types::Code` directly — no
+conversion crate needed. **winit** re-exports it but wraps it in its
+own types. **tao**, **iced**, and **egui** each define their own key
+types, so they need bridge crates. The W3C-based ones (tao, iced)
+are mechanical 1:1 mappings; egui is smaller and not 1:1.
+
+**GPUI** has its own comprehensive keybinding system (action dispatch,
+context-aware keymap, multi-keystroke sequences) — a bridge crate
+would compete with the framework's core design, not complement it.
+**Tauri** handles in-app keybindings in JavaScript (the frontend is a
+webview); its kbd use case is `kbd-global` for Linux global hotkeys.
+
+### Consumer matrix
+
+| Consumer | Depends on |
+|----------|-----------|
+| TUI app (ratatui / crossterm) | `kbd-core` + `kbd-crossterm` |
+| TUI app (termion) | `kbd-core` + `kbd-termion` |
+| winit app | `kbd-core` + `kbd-winit` |
+| tao app | `kbd-core` + `kbd-tao` |
+| Tauri app (global hotkeys) | `kbd-global` (replaces Tauri's X11-only global-shortcut plugin) |
+| iced app | `kbd-core` + `kbd-iced` |
+| egui app | `kbd-core` + `kbd-egui` |
+| Dioxus app | `kbd-core` (uses `keyboard_types::Code` directly) |
+| Floem app | `kbd-core` (uses `keyboard_types::Code` via `ui_events`) |
+| Makepad app | `kbd-core` + `kbd-makepad` |
+| GTK app (gtk-rs) | `kbd-core` + `kbd-gtk` |
+| Compositor (Niri-like) | `kbd-core` + `kbd-evdev` (direct, no manager) |
+| App + layout awareness | `kbd-core` + `kbd-xkb` |
+| Flatpak sandboxed app | `kbd-global` with `kbd-portal` |
+| Declarative bindings | `kbd-global` + `kbd-derive` |
+
+### 3.6 Workspace scaffolding
+
+- [x] Create `crates/` directory with all six crate dirs and `Cargo.toml` for each.
+- [x] Root `Cargo.toml` becomes workspace manifest with `members = ["crates/*"]`.
+- [x] `kbd-core/Cargo.toml`: `thiserror`, `keyboard-types` (required,
+      added in §3.11), optional `serde` feature.
+- [x] `kbd-evdev/Cargo.toml`: `evdev`, `kbd-core`.
+- [x] `kbd-portal/Cargo.toml`: `ashpd`, `kbd-core`. Starts as stub with `unimplemented!()` entry points and a doc comment.
+- [x] `kbd-xkb/Cargo.toml`: placeholder, no deps yet. Doc comment explains Phase 4.9.
+- [x] `kbd-derive/Cargo.toml`: placeholder `proc-macro` crate. Doc comment explains future intent.
+- [x] `kbd-global/Cargo.toml`: depends on `kbd-core`, optional deps on `kbd-evdev`, `kbd-portal`, `kbd-xkb`, `kbd-derive`.
+- [x] All crates compile. `cargo build --workspace` succeeds.
+
+### 3.7 Move types into `kbd-core`
+
+- [x] Move `key.rs`, `action.rs`, `binding.rs`, `layer.rs` into `kbd-core/src/`.
+- [x] Move `engine/matcher.rs`, `engine/key_state.rs` into `kbd-core/src/` (these are pure logic).
+- [x] Move core error variants into `kbd-core/src/error.rs`.
+- [x] `evdev::KeyCode` conversions temporarily in `kbd-core` behind `evdev` feature flag. Will move to `kbd-evdev` as an extension trait in §3.8/§3.10.
+- [x] `kbd-core` builds and tests pass independently: `cargo test -p kbd-core`.
+
+### 3.8 Move evdev code into `kbd-evdev`
+
+- [x] Move `engine/devices.rs` into `kbd-evdev/src/`.
+- [x] Move `engine/forwarder.rs` into `kbd-evdev/src/`.
+- [x] Move evdev↔Key conversions from `kbd-core` into `kbd-evdev` as an extension trait (e.g., `KeyCodeExt` on `evdev::KeyCode` and/or `EvdevKeyExt` on `Key`). Remove the `evdev` feature flag from `kbd-core` — core stays truly zero-dep.
+- [x] `kbd-evdev` exposes a backend trait or struct that `kbd-global` consumes.
+- [x] `kbd-evdev` builds and tests pass: `cargo test -p kbd-evdev`.
+
+### 3.9 Public synchronous `Matcher` in `kbd-core`
+
+The `Matcher` is the embeddable engine. No threads, no channels, no
+evdev. Consumers drive it from their own event loop — winit, GPUI,
+Smithay, a game loop, whatever.
+
+```rust
+use kbd_core::{Matcher, Key, Modifier, Hotkey, Layer, Action};
+
+let mut matcher = Matcher::new();
+matcher.register(Hotkey::parse("Ctrl+S")?, Action::from(|| save()));
+
+// In your event loop — you bring the events:
+let hotkey = Hotkey::new(key, mods);
+match matcher.process(hotkey, transition) {
+    MatchResult::Matched { action, .. } => action.execute(),
+    MatchResult::Pending { .. } => show_sequence_indicator(),
+    MatchResult::NoMatch => pass_to_focused_widget(),
+    MatchResult::Swallowed => {}
+}
+```
+
+- [x] `Matcher` as a public synchronous type: `matcher.process(hotkey, transition) → MatchResult`.
+- [x] `MatchResult::Pending` variant for mid-sequence state — consumers need this for UI feedback ("waiting for next key…").
+- [x] `Matcher` exposes layer operations directly: `push_layer()`, `pop_layer()`, `toggle_layer()`, `define_layer()`.
+- [x] `Matcher` exposes introspection: `list_bindings()`, `bindings_for_key()`, `active_layers()`, `conflicts()`.
+- [x] `HotkeyManager` in `kbd-global` wraps `Matcher` internally — the message-passing architecture stays, it just drives a `Matcher` on the engine thread.
+- [x] Tests: `Matcher` used standalone without any `HotkeyManager` or engine thread.
+
+### 3.10 Rewire `kbd-global` runtime
+
+- [x] `kbd-global` re-exports all `kbd-core` public types — existing public API unchanged.
+- [x] Remove stub re-export files (`key.rs`, `action.rs`, `binding.rs`, `layer.rs`, `engine/key_state.rs`) — collapse into direct `pub use kbd_core::` re-exports in `lib.rs` and direct `use kbd_core::` imports internally.
+- [x] Remove `evdev` feature flag and `evdev` dependency from `kbd-core`. All evdev conversions live in `kbd-evdev` behind extension traits (§3.8). `kbd-core` has no platform deps (`thiserror` + `keyboard-types` only, both platform-agnostic).
+- [x] `HotkeyManager` uses `kbd-evdev` for device management. `kbd-evdev` is a hard dependency — evdev is fundamental to this Linux library. Consumers who want pure types without platform code use `kbd-core` directly.
+- [x] `HotkeyManager` uses `kbd-portal` for portal backend (behind `portal` feature).
+- [x] Existing integration tests pass against the `kbd-global` crate: `cargo test -p kbd-global`.
+- [x] `cargo test --workspace` passes.
+
+### 3.11 Adopt `keyboard-types` as the core key type
+
+Replace the hand-maintained `Key` enum with a newtype over
+`keyboard_types::Code`, the W3C standard for physical key positions.
+This eliminates the parallel enum, the winit conversion module, and
+the ongoing maintenance of adding key variants in three places. See
+DESIGN.md "The key type and `keyboard-types`" for full rationale.
+
+The newtype approach — `struct Key(keyboard_types::Code)` with a
+private inner field and associated constants — lets us keep
+`FromStr`/`Display` with our aliases while making `Key` a proper
+domain boundary. `Code` is not re-exported; consumers use `Key`
+constants (`Key::A`, `Key::ENTER`) and never touch `keyboard_types`
+directly. Backend crates like `kbd-evdev` use `Key` constants for
+their conversion tables. `From<Code>` / `From<Key>` impls exist
+for internal use within `kbd-core`.
+
+- [x] Add `keyboard-types` as a required dep of `kbd-core`.
+- [x] Replace `Key` enum with `struct Key(keyboard_types::Code)`
+      (private inner field — `Key` is a domain boundary).
+- [x] Define associated constants for all `Code` variants (`Key::A`,
+      `Key::ENTER`, `Key::AUDIO_VOLUME_UP`, etc.).
+- [x] Implement `From<Code> for Key` and `From<Key> for Code`.
+- [x] Update `as_str()` to use associated-constant matching with
+      `_ =>` fallback to `Code`'s `Display`.
+- [x] Update `parse_key_token()` — same aliases, returns constants.
+- [x] Update `FromStr` and `Display` impls on the newtype.
+- [x] Update `Modifier::from_key()` and `Modifier::keys()` for the
+      new type.
+- [x] Update `kbd-evdev` conversion traits to use newtype.
+- [x] Update `kbd-global` re-exports (removed `Code` re-export —
+      `keyboard_types` is an internal dependency).
+- [x] All tests updated and passing. `cargo test --workspace`.
+
+### 3.12 Framework integration crates
+
+Create conversion crates for frameworks that don't use
+`keyboard_types::Code` natively. Dioxus and floem use it directly
+(floem via `ui_events`) — every other framework defines its own key
+types.
+
+The conversion trait pattern established by `kbd-crossterm` makes
+adding new bridge crates straightforward: extension traits with
+`to_key()` / `to_hotkey()` methods, exhaustive variant matching,
+`Option` returns for unmappable keys.
+
+`kbd-crossterm` (done):
+
+- [x] Create `crates/kbd-crossterm/` with `Cargo.toml` (deps:
+      `crossterm`, `kbd-core`).
+- [x] `CrosstermKeyExt` trait: `crossterm::event::KeyCode → Key`.
+- [x] `CrosstermEventExt` trait: `crossterm::event::KeyEvent → Hotkey`
+      (converts key + modifiers in one step).
+- [x] Handle crossterm's logical key model: `Char('a')` → `Key::A`,
+      modifier keys extracted from `KeyModifiers` bitflags.
+- [x] Tests: round-trip for common keys, modifier extraction,
+      full `KeyEvent → Hotkey` conversion.
+- [x] `cargo build --workspace` succeeds with `kbd-crossterm`.
+
+`kbd-winit` — winit bridge:
+
+- [x] Create `crates/kbd-winit/` with `Cargo.toml` (deps: `winit`,
+      `kbd-core`).
+- [x] `WinitKeyExt` trait: `winit::keyboard::KeyCode → Key`. winit
+      defines its own W3C-derived `KeyCode` enum — same variant names
+      as `keyboard_types::Code`, so the mapping is mechanical.
+- [x] `WinitEventExt` trait: `winit::event::KeyEvent → Hotkey`
+      (key + modifiers in one step).
+- [x] Tests and `cargo build --workspace`.
+
+`kbd-tao` — tao bridge (Tauri's winit fork):
+
+- [x] Create `crates/kbd-tao/` with `Cargo.toml` (deps: `tao`,
+      `kbd-core`).
+- [x] `TaoKeyExt` trait: `tao::keyboard::KeyCode → Key`. Own W3C
+      enum, same variant names — mechanical 1:1 mapping.
+- [x] `TaoEventExt` trait: `tao::event::KeyEvent → Hotkey`.
+- [x] Tests and `cargo build --workspace`.
+
+`kbd-iced` — iced bridge:
+
+- [x] Create `crates/kbd-iced/` with `Cargo.toml` (deps: `iced_core`,
+      `kbd-core`).
+- [x] `IcedKeyExt` trait: `iced::keyboard::Key → Option<Key>`. iced
+      defines its own W3C-derived key types.
+- [x] `IcedEventExt` trait: `iced::keyboard::Event → Option<Hotkey>`.
+- [x] Tests and `cargo build --workspace`.
+
+Expand `Key` constants — expose all `keyboard_types::Code` variants:
+
+- [x] Add remaining ~91 `Key` constants to `kbd-core` for variants
+      already in `keyboard_types::Code` but not yet exposed: browser
+      keys (`BrowserBack`, `BrowserForward`, …), extended media
+      (`MediaPlay`, `MediaPause`, `MediaFastForward`, …), system keys
+      (`Sleep`, `WakeUp`, `Eject`, `BrightnessDown/Up`, `Fn`, …),
+      app-launch keys, clipboard keys (`Copy`, `Cut`, `Paste`, …),
+      F25–F35, international keys (`IntlBackslash`, `IntlRo`,
+      `IntlYen`), CJK input keys, extended numpad, and legacy/niche
+      keys (`Hyper`, `Again`, `Props`, …).
+- [x] Add parse aliases in `parse_key_token` for the new constants.
+- [x] Update all bridge crates (`kbd-crossterm`, `kbd-winit`, `kbd-tao`,
+      `kbd-iced`, `kbd-evdev`, `kbd-xkb`) to map newly-available keys.
+- [x] Tests: round-trip `Display`/`FromStr` for new keys, bridge
+      mapping tests, `cargo test --workspace`.
+
+`kbd-egui` — egui bridge:
+
+- [x] Create `crates/kbd-egui/` with `Cargo.toml` (deps: `egui`,
+      `kbd-core`).
+- [x] `EguiKeyExt` trait: `egui::Key → Option<Key>`. egui's smaller
+      key enum, not 1:1 with W3C.
+- [x] `EguiModifiersExt` trait: `egui::Modifiers → Vec<Modifier>`.
+- [x] `EguiEventExt` trait: full event conversion.
+- [x] Tests and `cargo build --workspace`.
+
+Build on demand (niche) - defer until issue or request from users, do not build right now:
+
+- [deferred] `kbd-termion`: termion's `Key` enum bakes modifiers into
+      variants (`Ctrl(char)`, `Alt(char)`, `ShiftLeft`). Needs
+      decomposition into `Key` + `Modifier`.
+- [deferred] `kbd-makepad`: Makepad has custom `KeyCode` with its own
+      platform bindings (no winit). Conversion straightforward but
+      niche.
+- [deferred] `kbd-gtk`: GTK native key events (`gdk4::Key`, `ModifierType`).
+      Different paradigm from W3C — GDK keysyms, not physical codes.
+
+### Phase 3.5 gate
+
+| Section | Items |
+|---------|-------|
+| 3.6 Workspace scaffolding | 9/9 |
+| 3.7 Move types to kbd-core | 5/5 |
+| 3.8 Move evdev to kbd-evdev | 5/5 |
+| 3.9 Public Matcher | 6/6 |
+| 3.10 Rewire kbd-global runtime | 7/7 |
+| 3.11 Adopt keyboard-types | 11/11 |
+| 3.12 Framework integration crates | 19/23 (build now) + 3 on-demand |
+| 3.13 Examples | 11/11 |
+
+### 3.13 Examples
+
+Runnable examples in `examples/` that exercise each crate's public API.
+These are sanity checks — proof that the pieces connect. They also
+serve as living documentation for downstream consumers.
+
+Reference: `archive/v0/examples/` has 14 examples from the old
+architecture (`simple.rs`, `modes.rs`, `sequences.rs`, `grab.rs`,
+`config_file.rs`, etc.). Use these for inspiration on what to
+demonstrate, but rewrite against the new API.
+
+- [x] `examples/matcher.rs`: Standalone `Matcher` usage — register
+      bindings, process key events, print match results. No platform
+      deps, no async. Shows kbd-core works on its own.
+      (`crates/kbd/examples/dispatcher.rs`)
+- [x] `examples/layers.rs`: Layer stack walkthrough — define layers,
+      push/pop/toggle, show how bindings shadow and fall through.
+      (`crates/kbd/examples/layers.rs`)
+- [x] `examples/introspection.rs`: Query matcher state —
+      `list_bindings()`, `bindings_for_key()`, `active_layers()`,
+      `conflicts()`. Print a formatted summary of what's registered,
+      what's shadowed, what would fire for a given key.
+      (`crates/kbd/examples/introspection.rs`)
+- [x] `examples/crossterm.rs`: Minimal TUI loop using `kbd-crossterm`
+      + `kbd-core`. Reads real terminal key events, converts via
+      extension traits, feeds to `Matcher`, prints match results.
+      (`crates/kbd-crossterm/examples/crossterm.rs`)
+- [x] `examples/winit.rs`: Minimal winit window that converts key
+      events via `kbd-winit`, feeds to `Matcher`, prints matches.
+      (`crates/kbd-winit/examples/winit.rs`)
+- [x] `examples/tao.rs`: Same as winit but using tao (Tauri's fork).
+      (`crates/kbd-tao/examples/tao.rs`)
+- [x] `examples/iced.rs`: Minimal iced app with keyboard event
+      handling via `kbd-iced`.
+      (`crates/kbd-iced/examples/iced.rs`)
+- [x] `examples/egui.rs`: Minimal eframe/egui app with keyboard
+      event handling via `kbd-egui`.
+      (`crates/kbd-egui/examples/egui.rs`)
+- [x] `examples/evdev.rs`: Read evdev key events, convert to kbd-core
+      types, feed to `Matcher`. Requires a keyboard device (prints
+      usage if no permission).
+      (`crates/kbd-evdev/examples/evdev.rs`)
+- [x] `examples/global.rs`: Full `HotkeyManager` lifecycle — register
+      a few hotkeys, run the engine, print when they fire. Shows the
+      threaded runtime.
+      (`crates/kbd-global/examples/global.rs`)
+- [x] `examples/string_parsing.rs`: Parse hotkeys from strings,
+      display them back. Round-trip `"Ctrl+Shift+S"` through
+      `Hotkey::from_str` / `Display`.
+      (`crates/kbd/examples/string_parsing.rs`)
+
+---
+
+## Phase 4: Power features and polish
+
+**Goal**: All power features from v0 are reimplemented on the new
+architecture. Library is feature-complete relative to v0.
+
+**Sections are ordered.** Do them in sequence — later sections may
+build on earlier ones. Do not skip ahead or pull in work from later
+sections.
+
+### 4.1 Key sequences (`kbd-core` matcher)
+
+- [x] Multi-step hotkey sequences with configurable timeout.
+- [x] Sequence completes → callback fires.
+- [x] Timeout → reset (fire standalone binding if one exists).
+- [x] Wrong key → reset.
+- [x] Abort key (configurable, default Escape).
+- [x] Overlapping prefixes handled (standalone fires on timeout if no next step).
+- [x] Multiple active sequences tracked independently.
+- [x] Pending state exposed: `MatchResult::Pending { steps_matched, steps_remaining }` so consumers can show progress mid-sequence (Zed returns this for "Ctrl+K → waiting…" UI).
+- [x] `manager.pending_sequence()` → current in-progress sequence info (if any), for UI display.
+- [x] Tests: complete, timeout, wrong key, abort, overlapping prefixes, concurrent, pending state queries.
+
+Reference: `archive/v0/src/listener/sequence.rs`
+
+### 4.2 Serde support
+
+- [x] `Serialize`/`Deserialize` on `Key`, `Modifier`, `Hotkey`, `HotkeySequence`, `LayerName`, `KeyTransition`, `UnmatchedKeys`, `KeyPropagation`, `OverlayVisibility`, `BindingOptions`, `LayerOptions`, `BindingId`. Done in PR #102 (pre-publish).
+- [x] Behind `serde` feature flag.
+- [x] No `ActionMap`/`HotkeyConfig` — users compose types into their own configs.
+- [x] Tests: round-trip serialization (20 tests in `crates/kbd/tests/serde.rs`).
+
+`Action` serde (data variants only) is deferred to Phase 5 — it
+depends on the action vocabulary stabilizing (key emission, event
+stream). See DESIGN.md for the `Action`/`Callback`/serializability
+rationale.
+
+### 4.3 Modifier aliases
+
+Every tiling WM has a "Mod key" concept — Niri's `COMPOSITOR` modifier,
+i3/sway's `$mod`, Hyprland's `SUPER`. Users swap between Super, Alt,
+etc. Without aliases, consumers hand-roll string replacement before
+parsing hotkeys.
+
+- [x] `manager.define_modifier_alias("Mod", Modifier::Super)` — abstract modifier that resolves at runtime.
+- [x] `Hotkey::parse("Mod+T")` accepts aliases. Alias resolution happens in the matcher, not in parsing — bindings are portable across alias configurations.
+- [x] Aliases configurable on `Matcher` directly (for `kbd-core` consumers) and via command/reply on `HotkeyManager`.
+- [x] Alias reassignment: changing "Mod" from Super to Alt updates resolution for all existing bindings using that alias.
+- [x] Tests: alias definition, resolution during matching, reassignment, unknown alias errors.
+
+### 4.4 Binding provenance
+
+Zed tracks whether a binding came from "base keymap", "vim extension",
+or "user keymap" for conflict resolution and display. Without
+provenance, consumers rebuild source tracking on their own — especially
+when loading defaults + user overrides from config files.
+
+- [ ] `BindingSource` newtype (wraps a string label: `"default"`, `"user"`, `"plugin"`, or custom).
+- [ ] `BindingOptions::source(BindingSource::new("user"))`.
+- [ ] Introspection API (§3.5) returns source info per binding.
+- [ ] Optional source-aware precedence: user-sourced bindings override default-sourced for the same hotkey, without requiring explicit unregister + re-register.
+- [ ] Tests: source tagging, source in introspection results, source-aware conflict resolution.
+
+### 4.5 Device-specific bindings
+
+- [ ] `BindingOptions::device(DeviceFilter::Name("..."))` restricts binding to specific devices.
+- [ ] Device filter matching in the engine's matcher (per-binding check).
+- [ ] Per-device modifier isolation (modifier on device A doesn't satisfy binding on device B).
+- [ ] Global bindings use aggregate modifier state.
+- [ ] Tests: device match, device miss, modifier isolation, global aggregate.
+
+Reference: `archive/v0/src/listener/dispatch.rs` (device-specific dispatch)
+
+### 4.6 Debounce, rate limiting, and repeat policy
+
+- [ ] Per-binding debounce (suppress triggers within time window).
+- [ ] Per-binding rate limit (cap invocations per interval).
+- [ ] `BindingOptions::repeat_policy(RepeatPolicy)` — `Allow`, `Suppress`, `Custom { rate, delay }`.
+- [ ] Engine filters evdev repeat events per-binding based on policy. Distinct from debounce: repeat is the OS auto-repeating a held key, debounce suppresses rapid re-presses.
+- [ ] Tests: debounce suppression, rate limiting, repeat suppression, custom repeat rate, interaction between debounce and repeat.
+
+### 4.7 Tap-hold (`kbd-core` matcher + `kbd-global` engine)
+
+Tap-hold timing and matching logic. This section covers tap vs hold
+resolution only — making the tap produce a visible key event (synthetic
+emission via the forwarder) requires the key emission infrastructure
+built in Phase 5.
+
+- [ ] Tap resolves on release before threshold.
+- [ ] Hold resolves on threshold expiry.
+- [ ] Hold resolves on interrupting keypress (keyd model).
+- [ ] Tap-hold requires grab mode; clear error without it.
+- [ ] Tests: tap, hold by duration, hold by interrupt, missing-grab error.
+
+Reference: `archive/v0/src/tap_hold.rs`
+
+### 4.8 Portal backend and consume preference (`kbd-portal`)
+
+- [ ] XDG GlobalShortcuts portal implementation in `kbd-portal` crate.
+- [ ] Auto-detection in `kbd-global`: try portal, fall back to evdev.
+- [ ] Explicit backend selection via `HotkeyManager::builder()`.
+- [ ] Clear errors when portal unavailable or `kbd-portal` not compiled.
+- [ ] `ConsumePreference` enum in `kbd-core`: `NoPreference`, `PreferConsume`, `PreferNoConsume`, `MustConsume`, `MustNotConsume` (proven model from livesplit-hotkey — real users have different permission levels and sandbox constraints).
+- [ ] Builder-level: `HotkeyManager::builder().consume_preference(ConsumePreference::PreferConsume)`.
+- [ ] Preference guides backend selection: `MustConsume` → needs grab or portal, fails on plain evdev. `MustNotConsume` → plain evdev only. `PreferConsume` → tries grab/portal first, falls back to observe.
+- [ ] Tests: backend selection, fallback, feature-gated errors, preference-guided selection, failure on impossible preference.
+
+Reference: `archive/v0/src/backend.rs` (portal implementation)
+
+### 4.9 Keyboard layout awareness (`kbd-xkb`)
+
+The global hotkey runtime works at the evdev keycode level, which is position-based. On a
+Dvorak layout, `Key::S` is still physical position S (which types "O").
+COSMIC and Niri both solved this with xkbcommon because real users
+switch layouts. This is the difference between "works for QWERTY
+Americans" and "works for everyone."
+
+- [ ] `KeyReference` enum in `kbd-core`: `ByCode(Key)` (position-based, current behavior) | `BySymbol(Keysym)` (character-based, layout-aware). Core type, no xkb dep.
+- [ ] xkbcommon integration in `kbd-xkb`: resolve keycodes → keysyms based on active XKB layout.
+- [ ] Hotkey parsing disambiguation: `"Ctrl+a"` (character) vs `"Ctrl+KeyA"` (position), or equivalent scheme.
+- [ ] Layout change detection in `kbd-xkb`: subscribe to xkb layout change events, re-resolve symbol-based bindings.
+- [ ] `kbd-global` runtime integrates `kbd-xkb` when the `xkb` feature is enabled.
+- [ ] `kbd-core` `Matcher` handles `KeyReference` natively — symbol resolution provided by `kbd-xkb`, but matching logic is in core.
+- [ ] Tests: QWERTY vs Dvorak binding resolution, layout switch mid-session, mixed code/symbol bindings.
+
+### 4.10 Async event stream
+
+The event stream is the callback-free path for `kbd-global`. Instead of
+the engine executing closures inline on its thread, it sends "binding X
+matched" events to the user, who handles them in their own event loop.
+
+This is intentionally last in Phase 4. It introduces a new paradigm
+(push-based events vs pull-based queries) and is the bridge to Phase 5,
+where event emission and `Action` serializability build on it.
+
+- [ ] `HotkeyEvent` enum: `Pressed`, `Released`, `LayerChanged`, `SequenceStep`.
+- [ ] `HotkeyEventStream` for async consumers (feature-gated: `tokio`, `async-std`).
+- [ ] Engine emits events for all match outcomes including sequence step progress.
+- [ ] Bounded backpressure strategy (drop lagging subscribers vs drop events).
+- [ ] `kbd-global` prelude with convenience re-exports.
+- [ ] Stream completes on manager shutdown.
+- [ ] Tests: event delivery, shutdown completion, backpressure behavior.
+
+### Phase 4 gate
+
+| Section | Items |
+|---------|-------|
+| 4.1 Sequences | 10/10 |
+| 4.2 Serde | 4/4 |
+| 4.3 Modifier aliases | 5/5 |
+| 4.4 Provenance | 0/5 |
+| 4.5 Device filtering | 0/5 |
+| 4.6 Debounce/rate/repeat | 0/5 |
+| 4.7 Tap-hold | 0/5 |
+| 4.8 Portal/consume pref | 0/8 |
+| 4.9 XKB layout | 0/7 |
+| 4.10 Async events | 0/7 |
+
+---
+
+## Phase 5: Key remapping and event transformation
+
+**Goal**: The library can emit different keys than what was pressed.
+`Action::EmitKey` works. This is the phase that makes the library a
+transformation engine, not just a detection library.
+
+**Sections are ordered.** §5.1 key emission is the foundation — everything
+else in this phase builds on it.
+
+### 5.1 Key emission
+
+> **Current state:** `Action::EmitHotkey` and `Action::EmitSequence` variants
+> exist in the enum and are documented as unimplemented. They call `todo!()`
+> in `kbd-global`'s engine (PR #103). This phase replaces the `todo!()`s
+> with working implementations.
+
+- [ ] `Action::EmitKey(Key, Vec<Modifier>)` emits a key event through the uinput forwarder.
+- [ ] `Action::EmitSequence` emits a series of key events with configurable inter-key delay.
+- [ ] `Action::Command(String)` executes a shell command asynchronously.
+- [ ] Tap-hold tap emission: tap action produces a visible key event through the forwarder (timing/matching logic in §4.7).
+- [ ] Emission requires grab mode; clear error without it.
+- [ ] Tests: emit key visible to virtual device, emit sequence timing, command execution, tap-hold tap produces visible key.
+
+### 5.2 Key remapping
+
+- [ ] `manager.remap(from_key, from_mods, to_key, to_mods)` — convenience for common case.
+- [ ] Remap uses press cache for correct releases (press emits remapped key, release emits remapped release).
+- [ ] Remaps coexist with callback bindings.
+- [ ] Tests: simple remap, modifier-changing remap, release correctness, coexistence.
+
+### 5.3 Oneshot layers
+
+- [ ] Oneshot layer applies transformation to *any* next keypress, not just registered bindings.
+- [ ] Default action for unbound keys in a layer (e.g., apply Shift modifier).
+- [ ] Configurable depth (deactivate after N keypresses).
+- [ ] Modifier-only keys don't consume the oneshot.
+- [ ] Tests: basic oneshot, sticky modifier, depth, modifier passthrough.
+
+### 5.4 Overload variants
+
+Builds on tap-hold matching from §4.7.
+
+- [ ] `OverloadStrategy::Basic` (current behavior — hold on threshold or interrupt).
+- [ ] `OverloadStrategy::Timeout` (ignore interrupts, resolve purely on duration).
+- [ ] `OverloadStrategy::TimeoutTap` (tap only within window, else hold).
+- [ ] `OverloadStrategy::IdleTimeout` (use idle time before keypress for disambiguation).
+- [ ] Tests: each strategy, fast-typing scenarios.
+
+### 5.5 Lock and inhibitor awareness
+
+Niri has `allow-when-locked` and `allow-inhibiting` per binding. These
+are real Wayland concepts — compositors can inhibit keyboard shortcuts
+(e.g., during screen sharing), and some bindings (media keys,
+push-to-talk) should work regardless of lock state.
+
+- [ ] `BindingOptions::allow_when_locked()` — binding fires even when screen is locked.
+- [ ] `BindingOptions::allow_when_inhibited()` — binding fires even when compositor inhibits shortcuts.
+- [ ] Engine queries lock/inhibitor state from compositor (Wayland-specific, portal-mediated where available).
+- [ ] Graceful degradation: on backends that can't detect lock/inhibitor state, all bindings fire (current behavior preserved).
+- [ ] Tests: lock-aware filtering, inhibitor-aware filtering, graceful fallback on unaware backends.
+
+### 5.6 External context hooks
+
+Global hotkey consumers sometimes want to condition on external state —
+focused application, active workspace, user-defined modes. The layer
+stack is the right primitive; this section makes the pattern explicit
+rather than leaving consumers to reinvent it.
+
+- [ ] `ContextEvent` type consumers can send to the engine: `ContextEvent::FocusChanged { app_id: String }`, `ContextEvent::Custom(String)`.
+- [ ] `manager.send_context(event)` — inject external context change into the engine.
+- [ ] Layer definitions can declare `activate_on` context predicates — simple string matching (e.g., `activate_on: "app_id == firefox"`), not a full expression language.
+- [ ] Automatic layer push/pop when context predicates match/unmatch.
+- [ ] Pattern documentation: "subscribe to your compositor's focus-change signal, send `ContextEvent::FocusChanged` — kbd-global handles the layer transitions."
+- [ ] Tests: external event triggers layer push, predicate matching, auto-pop on context change.
+
+### 5.7 Action serde
+
+Deferred from §4.2 — requires the action vocabulary to be stable.
+
+- [ ] `Action::Named(String)` variant for event-stream consumers (bindings as pure data, user code maps names to behavior).
+- [ ] `Serialize`/`Deserialize` on data variants of `Action` (`EmitHotkey`, `EmitSequence`, `Named`, `PushLayer`, `PopLayer`, `ToggleLayer`). `Callback` excluded.
+- [ ] Tests: round-trip serialization of data-variant actions.
+
+### Phase 5 gate
+
+| Section | Items |
+|---------|-------|
+| 5.1 Key emission | 0/6 |
+| 5.2 Key remapping | 0/4 |
+| 5.3 Oneshot layers | 0/5 |
+| 5.4 Overload variants | 0/5 |
+| 5.5 Lock/inhibitor | 0/5 |
+| 5.6 Context hooks | 0/6 |
+| 5.7 Action serde | 0/3 |
+
+---
+
+## Phase 6: Stretch goals (build if demand exists)
+
+Not required for the library to be compelling. Build when a downstream
+project or user request demonstrates real need.
+
+### 6.1 Chord support
+
+- [ ] Simultaneous non-modifier keys recognized as a chord within a time window.
+- [ ] Timeout flushes buffered keys as normal keypresses.
+- [ ] Prefix disambiguation (j+k doesn't block j+k+l).
+- [ ] Per-layer chord definitions.
+- [ ] Requires grab mode.
+- [ ] Tests: successful chord, timeout, disambiguation, per-layer, missing-grab.
+
+Reference: `reference/keyd/src/keyboard.c` (chord state machine)
+
+### 6.2 Non-key event support
+
+- [ ] Mouse button events trigger bindings.
+- [ ] Scroll wheel events trigger bindings or are remappable.
+- [ ] Actions can emit mouse/scroll events via separate virtual pointer device.
+- [ ] Tests: mouse button binding, scroll remap, dual virtual device.
+
+### 6.3 Full layer keymaps
+
+- [ ] Layer defines complete keymap (remap for every key position).
+- [ ] Keymaps compose via layer stack.
+- [ ] Integrates with press cache for correct releases.
+- [ ] Tests: keymap layer, composition, layout switching.
+
+---
+
+## Phase 7: Cross-platform backends (not committed)
+
+`kbd-core` is already platform-agnostic. This phase adds non-Linux
+backends to the `kbd-global` runtime for global hotkey support on other
+platforms.
+
+### 7.1 macOS backend (`kbd-macos`)
+
+macOS needs two APIs working together. Carbon `RegisterEventHotKey`
+handles regular key combos but can't suppress events. `CGEventTap`
+handles media/system keys and can suppress (return NULL from the tap
+callback), but requires Accessibility / Input Monitoring permissions.
+This is the same split `global-hotkey` uses — Carbon for normal
+hotkeys, CGEventTap for media keys.
+
+- [ ] Create `crates/kbd-macos/` with `Cargo.toml` (deps: `objc2`, `objc2-app-kit`, `kbd`).
+- [ ] Carbon `RegisterEventHotKey` for regular hotkey registration.
+- [ ] `CGEventTapCreate` at `Session` location for media/system key interception.
+- [ ] Event suppression in grab mode: return NULL from the tap callback for matched keys.
+- [ ] CFRunLoop integration for event delivery on the engine thread.
+- [ ] Permission detection: check Accessibility / Input Monitoring access, return clear `PermissionDenied` error with guidance.
+- [ ] Key code mapping: macOS virtual keycodes → `kbd::Key` constants.
+- [ ] Modifier mapping: Carbon/CGEvent modifier flags → `kbd::Modifier`.
+- [ ] Integration with `kbd-global` backend selection (auto-detect platform).
+- [ ] Tests: hotkey registration, media key interception, event suppression, permission error.
+
+### 7.2 Windows backend (`kbd-windows`)
+
+Windows also has two tiers. `RegisterHotKey` sends `WM_HOTKEY`
+messages for registered combos but can't suppress or see all keys.
+`SetWindowsHookEx(WH_KEYBOARD_LL)` is the low-level hook that sees
+all keyboard input and can suppress events (return `LRESULT(1)`)
+— the Windows equivalent of evdev grab + uinput. The low-level hook
+is what's needed for grab mode, remapping, and tap-hold.
+
+- [ ] Create `crates/kbd-windows/` with `Cargo.toml` (deps: `windows-sys`, `kbd`).
+- [ ] `RegisterHotKey` / `WM_HOTKEY` path for simple non-grab hotkey registration.
+- [ ] `SetWindowsHookEx(WH_KEYBOARD_LL)` for low-level keyboard interception.
+- [ ] Event suppression in grab mode: return `LRESULT(1)` from hook callback for matched keys, `CallNextHookEx` for unmatched.
+- [ ] Hidden window + message pump for `WM_HOTKEY` delivery.
+- [ ] Key code mapping: Windows virtual key codes (`VK_*`) → `kbd::Key` constants.
+- [ ] Modifier mapping: `GetKeyState` / hook flags → `kbd::Modifier`.
+- [ ] Synthetic key emission via `SendInput` for `Action::EmitHotkey` / remapping (Windows equivalent of uinput).
+- [ ] Integration with `kbd-global` backend selection (auto-detect platform).
+- [ ] Tests: hotkey registration, low-level hook interception, event suppression, synthetic emission.
+
+### Phase 7 gate
+
+| Section | Items |
+|---------|-------|
+| 7.1 macOS backend | 0/10 |
+| 7.2 Windows backend | 0/10 |
+
+---
+
+## Future idea: derive macro for declarative bindings
+
+Not planned for any phase. Captured here so the idea isn't lost.
+
+The builder API (`Hotkey::new(Key::C).modifier(Modifier::Ctrl)`,
+`Layer::new("nav").bind(...)`) follows standard Rust builder conventions.
+A complementary derive macro could offer a declarative alternative for
+bindings, similar to how clap offers both `Command::new()` and
+`#[derive(Parser)]`.
+
+### The core pattern
+
+The struct IS the state — each field is a `Handle`, and dropping the
+struct unregisters everything. Follows the clap model where
+`#[derive(Parser)]` generates a `FromArgMatches` impl that populates
+struct fields from parsed input.
+
+```rust
+#[derive(Bindings)]
+struct MyApp {
+    #[hotkey("ctrl+c", action = on_copy)]
+    copy: Handle,
+
+    #[hotkey("ctrl+shift+v", action = on_paste)]
+    paste: Handle,
+}
+
+fn on_copy() { println!("copied"); }
+fn on_paste() { println!("pasted"); }
+
+let app = MyApp::register(&manager)?;
+// app.copy and app.paste are live Handle values
+// drop(app) → both handles dropped → both bindings unregistered
+```
+
+Action callbacks referenced by function path (like serde's
+`serialize_with`).
+
+The generated `register()` method uses `?` on each registration.
+If a later registration fails, earlier handles drop and unregister —
+partial registration rollback via RAII, for free.
+
+### Composition via flatten
+
+The strongest argument for the derive. Mirrors clap's
+`#[command(flatten)]`:
+
+```rust
+#[derive(Bindings)]
+struct EditorBindings {
+    #[hotkey("ctrl+c", action = on_copy)]
+    copy: Handle,
+
+    #[hotkey("ctrl+v", action = on_paste)]
+    paste: Handle,
+}
+
+#[derive(Bindings)]
+struct NavigationBindings {
+    #[hotkey("ctrl+g", action = on_goto)]
+    goto: Handle,
+}
+
+#[derive(Bindings)]
+struct MyApp {
+    #[flatten]
+    editor: EditorBindings,
+
+    #[flatten]
+    navigation: NavigationBindings,
+
+    #[hotkey("ctrl+q", action = on_quit)]
+    quit: Handle,
+}
+```
+
+Each group is independently definable, testable, composable. The
+generated `register` calls `register` recursively on nested types.
+
+### Stateful callbacks
+
+Fields without an `action` attribute become parameters on the
+generated `register` method:
+
+```rust
+#[derive(Bindings)]
+struct MyApp {
+    #[hotkey("ctrl+c", action = on_copy)]
+    copy: Handle,
+
+    #[hotkey("ctrl+v")]  // no action — becomes a parameter
+    paste: Handle,
+}
+
+// Generated:
+// fn register(
+//     manager: &HotkeyManager,
+//     paste: impl Fn() + Send + Sync + 'static,
+// ) -> Result<Self, Error>
+
+let clipboard = Arc::clone(&shared_clipboard);
+let app = MyApp::register(&manager, move || {
+    paste_from(&clipboard.lock().unwrap());
+})?;
+```
+
+This gets unwieldy with many dynamic callbacks. At that point, use the
+builder. Same split as clap: derive for the common declarative case,
+builder for the dynamic/stateful case.
+
+### Scope
+
+The derive covers **bindings only**. Layers stay builder-only — they're
+already declarative and clean, produce no handles, and don't benefit
+from the struct-as-state pattern. Not everything needs two ways to
+do it.
+
+### Compile-time string validation
+
+One thing the derive can do that the builder can't: validate hotkey
+strings at compile time. `#[hotkey("ctrl+z")]` fails the build if `"z"`
+isn't a valid key name. The builder already gets compile-time safety
+through the `Key` enum, but string-based configuration is common in
+keybinding-heavy apps and catching typos at build time is valuable.
+
+### When to build
+
+After Phase 4, when the full action vocabulary exists (sequences,
+tap-hold, emit). The derive should generate against a settled builder
+API. Adds a `kbd-derive` proc-macro crate dependency (syn, quote,
+proc-macro2).
+
+---
+
+## Phase 8: Python bindings (`kbd-py`)
+
+**Goal**: A Python package (published as a wheel via maturin) that
+exposes kbd to Python. Both the pure-logic `Dispatcher` and the
+`HotkeyManager` runtime are usable from Python.
+
+This grew directly from seeing projects like
+[openflow](https://github.com/FarhanAliRaza/openflow) build the same
+evdev grab + uinput proxy + hotkey matching from scratch in Python.
+kbd-py gives Python users that functionality — plus layers,
+introspection, and eventually sequences/tap-hold — backed by a
+tested Rust engine.
+
+### 8.1 Crate scaffolding
+
+- [ ] Create `crates/kbd-py/` with `Cargo.toml` (`cdylib` crate type, deps: `pyo3`, `kbd`, `kbd-global`).
+- [ ] `pyproject.toml` with maturin build backend.
+- [ ] Basic `#[pymodule]` entry point that compiles and imports.
+
+### 8.2 Core bindings (`Dispatcher`)
+
+The pure-logic engine — no threads, no I/O. Python brings its own
+key events (from pynput, evdev, GUI framework, whatever) and feeds
+them in.
+
+- [ ] `Dispatcher` Python class wrapping `kbd::Dispatcher`.
+- [ ] `Key`, `Modifier`, `Hotkey` exposed as Python types with `__str__`, `__repr__`, `__eq__`, `__hash__`.
+- [ ] `Hotkey.parse("Ctrl+Shift+A")` class method (delegates to `FromStr`).
+- [ ] `dispatcher.register(hotkey, action_name)` — uses string action names (not callbacks) for the core binding path.
+- [ ] `dispatcher.process(hotkey, transition)` returns a `MatchResult` (Python enum/dataclass).
+- [ ] Layer operations: `define_layer()`, `push_layer()`, `pop_layer()`, `toggle_layer()`.
+- [ ] Introspection: `list_bindings()`, `active_layers()`, `conflicts()`.
+- [ ] Tests: round-trip key parsing, register + process + match, layers.
+
+### 8.3 Runtime bindings (`HotkeyManager`)
+
+The threaded Linux runtime. Main challenge is callbacks across the
+Rust thread → Python GIL boundary.
+
+- [ ] `HotkeyManager` Python class wrapping `kbd_global::HotkeyManager`.
+- [ ] `manager.register(hotkey, callback)` — stores `Py<PyAny>` callable, acquires GIL with `Python::with_gil()` when the engine thread fires it.
+- [ ] `BindingGuard` exposed with context manager support (`__enter__`/`__exit__`) for scoped unregistration.
+- [ ] `manager.register(hotkey, callback, grab=True)` — grab mode via builder.
+- [ ] Layer operations forwarded to the underlying manager.
+- [ ] Introspection queries forwarded.
+- [ ] GIL release for long-running Rust work (device polling, engine ops).
+- [ ] Panic isolation: Rust panics in callbacks convert to Python exceptions, never crash the interpreter.
+- [ ] Tests: register + fire callback, grab mode, layer push/pop, cleanup on drop.
+
+### 8.4 Packaging and distribution
+
+- [ ] `maturin develop` builds and installs locally.
+- [ ] `maturin build --release` produces wheels.
+- [ ] CI builds wheels for manylinux (x86_64, aarch64).
+- [ ] README with Python usage examples.
+- [ ] Published to PyPI as `kbd`.
+
+### Phase 8 gate
+
+| Section | Items |
+|---------|-------|
+| 8.1 Crate scaffolding | 0/3 |
+| 8.2 Core bindings | 0/8 |
+| 8.3 Runtime bindings | 0/9 |
+| 8.4 Packaging | 0/5 |
+
+---
+
+## Phase 9: C ABI (`kbd-ffi`)
+
+**Goal**: A C-compatible shared library (`libkbd.so` / `libkbd.a`) with
+a stable ABI, generated headers via cbindgen, and documentation. Makes
+kbd usable from any language with a C FFI — Go, Ruby, Lua, Zig, etc.
+
+The C ABI is the universal escape hatch. It also opens the door to
+compositor integration (Awesome WM configs are Lua, Hyprland plugins
+are C++) without building dedicated bindings for each language.
+
+### 9.1 Crate scaffolding
+
+- [ ] Create `crates/kbd-ffi/` with `Cargo.toml` (`cdylib` + `staticlib` crate types, deps: `kbd`, `kbd-global`).
+- [ ] `cbindgen.toml` configuration for header generation.
+- [ ] `cbindgen` generates `kbd.h` with no manual edits required.
+- [ ] Basic smoke test: compile a C program against the generated header and link.
+
+### 9.2 Core API (opaque handle pattern)
+
+Expose the `Dispatcher` as an opaque pointer with constructor /
+destructor / methods. No Rust types leak across the boundary.
+
+- [ ] `kbd_dispatcher_new()` → `*mut KbdDispatcher`.
+- [ ] `kbd_dispatcher_free(*mut KbdDispatcher)`.
+- [ ] `kbd_key_parse(name: *const c_char)` → `KbdKey` (C-friendly repr).
+- [ ] `kbd_hotkey_parse(spec: *const c_char)` → `KbdHotkey`.
+- [ ] `kbd_dispatcher_register(dispatcher, hotkey, action_name: *const c_char)` → `KbdResult`.
+- [ ] `kbd_dispatcher_process(dispatcher, hotkey, transition)` → `KbdMatchResult`.
+- [ ] Layer operations: `kbd_dispatcher_define_layer()`, `kbd_dispatcher_push_layer()`, `kbd_dispatcher_pop_layer()`.
+- [ ] Error handling: `kbd_last_error()` returns a string description; all functions return status codes.
+- [ ] All functions wrapped in `catch_unwind` — panics never cross the boundary.
+- [ ] Tests: C program exercises full lifecycle (create, register, process, match, free).
+
+### 9.3 Runtime API (`HotkeyManager`)
+
+- [ ] `kbd_manager_new()` → `*mut KbdManager`.
+- [ ] `kbd_manager_free(*mut KbdManager)`.
+- [ ] `kbd_manager_register(manager, hotkey, callback: extern "C" fn(*mut c_void), userdata: *mut c_void)` → `KbdBindingId`.
+- [ ] `kbd_manager_unregister(manager, binding_id)`.
+- [ ] `kbd_manager_register_grab(manager, hotkey, callback, userdata)` — grab mode variant.
+- [ ] Layer and introspection operations forwarded.
+- [ ] Callback invocation is panic-isolated and thread-safe.
+- [ ] Tests: C program registers a hotkey, verifies callback fires.
+
+### 9.4 Packaging and distribution
+
+- [ ] `kbd.h` generated and committed (or generated in CI).
+- [ ] `pkg-config` / `cmake` find-module for downstream consumers.
+- [ ] README with C usage examples and linking instructions.
+- [ ] Example programs in `examples/ffi/` (C and optionally Zig).
+
+### Phase 9 gate
+
+| Section | Items |
+|---------|-------|
+| 9.1 Crate scaffolding | 0/4 |
+| 9.2 Core API | 0/10 |
+| 9.3 Runtime API | 0/8 |
+| 9.4 Packaging | 0/4 |
+
+---
+
+## Phase 10: WebAssembly (`kbd-wasm`) — stretch goal
+
+**Stretch goal.** The JS/TS ecosystem already has decent shortcut
+engines with layers and sequences (KeyboardJS, keybindy,
+stack-shortcuts, context-aware-shortcuts). None have explicit conflict
+detection, and kbd's layer semantics are richer (oneshot, swallow,
+timeout), but the gap is much narrower than for Python or C. Build
+if demand materializes or if "same engine everywhere" consistency
+becomes a selling point.
+
+**Goal**: The pure-logic `Dispatcher` compiled to WASM and published as
+an npm package. Web apps get shortcut matching with layers, sequences,
+and introspection — backed by the same engine as the native library.
+
+Only the `kbd` core is exposed — no `kbd-global` (no evdev in a
+browser). The web app brings its own `KeyboardEvent`s, converts them
+to kbd types via a thin JS wrapper, and gets match results back.
+
+### 10.1 Crate scaffolding
+
+- [ ] Create `crates/kbd-wasm/` with `Cargo.toml` (`cdylib` crate type, deps: `wasm-bindgen`, `kbd`).
+- [ ] `wasm-pack build` produces a working `.wasm` + JS/TS bindings.
+- [ ] Basic smoke test: import in Node.js, call a function.
+
+### 10.2 Core API
+
+- [ ] `Dispatcher` class exposed via `#[wasm_bindgen]`.
+- [ ] `Key`, `Modifier`, `Hotkey` as wasm-bindgen types with string conversions.
+- [ ] `Hotkey.parse("Ctrl+Shift+A")` — string parsing from JS.
+- [ ] `dispatcher.register(hotkey, actionName)` — string action names.
+- [ ] `dispatcher.process(hotkey, transition)` → `MatchResult` (JS object).
+- [ ] Layer operations: `defineLayer()`, `pushLayer()`, `popLayer()`, `toggleLayer()`.
+- [ ] Introspection: `listBindings()`, `activeLayers()`, `conflicts()`.
+- [ ] Tests: wasm-pack test suite (Node.js + optionally browser).
+
+### 10.3 Browser integration helpers
+
+Thin JS/TS wrapper that converts `KeyboardEvent` to kbd types so
+consumers don't do it manually.
+
+- [ ] `hotkeyFromKeyboardEvent(event: KeyboardEvent)` → `Hotkey` — maps `event.code` (W3C physical key) + modifier booleans to a kbd `Hotkey`.
+- [ ] TypeScript type definitions (generated by wasm-bindgen or hand-written `.d.ts`).
+- [ ] Example: standalone HTML page with shortcut matching.
+
+### 10.4 Packaging and distribution
+
+- [ ] `wasm-pack build --target bundler` for webpack/vite consumers.
+- [ ] `wasm-pack build --target web` for native ES module consumers.
+- [ ] Published to npm as `kbd-wasm` (or `@kbd/wasm`).
+- [ ] README with JS/TS usage examples.
+
+### Phase 10 gate
+
+| Section | Items |
+|---------|-------|
+| 10.1 Crate scaffolding | 0/3 |
+| 10.2 Core API | 0/8 |
+| 10.3 Browser helpers | 0/3 |
+| 10.4 Packaging | 0/4 |
+
+---
+
+## Implementation order summary
+
+| Phase | Delivers | Items |
+|-------|----------|-------|
+| **1** | Core types + basic hotkeys (the tracer bullet) | 48 |
+| **2** | Grab mode + key state | 13 |
+| **3** | Layers + metadata + introspection | 27 |
+| **3.5** | Workspace split, keyboard-types adoption, framework bridges, examples | 80 |
+| **4** | Sequences, serde, aliases, provenance, device filtering, debounce, tap-hold, portal, XKB, async events | 61 |
+| **5** | Key emission, remapping, oneshot, overload, lock/inhibitor, context hooks, Action serde | 34 |
+| **6** | Stretch: chords, mouse, full keymaps | 14 |
+| **7** | Cross-platform (macOS + Windows) | 20 |
+| **8** | Python bindings (kbd-py) | 25 |
+| **9** | C ABI (kbd-ffi) | 26 |
+| **10** | WebAssembly (kbd-wasm) — stretch goal | 18 |
+
+Phase 1 makes it work. Phase 2 makes it intercept. Phase 3 makes it
+modal and introspectable. Phase 3.5 splits the workspace — `kbd-core`
+adopts `keyboard-types` and becomes a platform-agnostic shortcut engine
+usable from any Rust event loop. Bridge crates (`kbd-crossterm`,
+`kbd-winit`, `kbd-tao`, `kbd-iced`, `kbd-egui`) connect each
+framework's key types to `kbd-core`. Backends (`kbd-evdev`,
+`kbd-portal`) get their own crates. Phase 4 makes it feature-complete
+and layout-aware. Phase 5 makes it a transformation engine that's
+context-aware. Phases 8–9 expose kbd to other ecosystems: Python
+via PyO3 and any C-FFI language via a stable ABI. Phase 10 (WASM)
+is a stretch goal — the JS ecosystem has existing options, so build
+only if demand materializes.
+
+---
+
+## Quality gates (all phases)
+
+1. **All tests pass.** No skipped, no ignored.
+2. **`cargo clippy` clean** with pedantic lints.
+3. **`cargo doc` builds** with no warnings.
+4. **No `// SMELL:` comments** — if something smells, fix it or file an issue.
+5. **No `Arc<Mutex<>>`** in the engine — it owns its state exclusively.
+6. **No bool fields** in public or internal types — use enums.
+7. **No duplicated logic** between `Key` and `Modifier`.
+8. **Callbacks panic-isolated** — a panicking callback never kills the engine.
