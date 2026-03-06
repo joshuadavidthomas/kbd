@@ -15,7 +15,6 @@ use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::BindingSource;
 use kbd::binding::OverlayVisibility;
-use kbd::binding::RegisteredBinding;
 use kbd::dispatcher::Dispatcher;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
@@ -168,53 +167,40 @@ fn setup_dispatcher() -> (Dispatcher, BindingId) {
     let mut dispatcher = Dispatcher::new();
 
     // Register global bindings with metadata
-    let copy_id = BindingId::new();
-    dispatcher
-        .register_binding(
-            RegisteredBinding::new(
-                copy_id,
-                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::from(|| {}),
-            )
-            .with_options(
-                BindingOptions::default()
-                    .with_description("Copy to clipboard")
-                    .with_source(BindingSource::new("user")),
-            ),
+    let copy_id = dispatcher
+        .register_with_options(
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            Action::from(|| {}),
+            BindingOptions::default()
+                .with_description("Copy to clipboard")
+                .with_source(BindingSource::new("user")),
         )
         .expect("register Ctrl+C");
 
     dispatcher
-        .register_binding(
-            RegisteredBinding::new(
-                BindingId::new(),
-                Hotkey::new(Key::V).modifier(Modifier::Ctrl),
-                Action::from(|| {}),
-            )
-            .with_options(BindingOptions::default().with_description("Paste from clipboard")),
+        .register_with_options(
+            Hotkey::new(Key::V).modifier(Modifier::Ctrl),
+            Action::from(|| {}),
+            BindingOptions::default().with_description("Paste from clipboard"),
         )
         .expect("register Ctrl+V");
 
     dispatcher
-        .register_binding(
-            RegisteredBinding::new(
-                BindingId::new(),
-                Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-                Action::from(|| {}),
-            )
-            .with_options(BindingOptions::default().with_description("Save file")),
+        .register_with_options(
+            Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+            Action::from(|| {}),
+            BindingOptions::default().with_description("Save file"),
         )
         .expect("register Ctrl+S");
 
     // A hidden binding — won't appear in overlay views
     dispatcher
-        .register_binding(
-            RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::F12), Action::from(|| {}))
-                .with_options(
-                    BindingOptions::default()
-                        .with_description("Debug panel (internal)")
-                        .with_overlay_visibility(OverlayVisibility::Hidden),
-                ),
+        .register_with_options(
+            Hotkey::new(Key::F12),
+            Action::from(|| {}),
+            BindingOptions::default()
+                .with_description("Debug panel (internal)")
+                .with_overlay_visibility(OverlayVisibility::Hidden),
         )
         .expect("register F12");
 

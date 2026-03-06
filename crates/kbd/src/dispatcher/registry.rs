@@ -4,6 +4,7 @@ use super::sequence::RegisteredSequenceBinding;
 use super::sequence::SequenceBindingRef;
 use crate::action::Action;
 use crate::binding::BindingId;
+use crate::binding::BindingOptions;
 use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
@@ -29,9 +30,31 @@ impl Dispatcher {
         hotkey: impl HotkeyInput,
         action: impl Into<Action>,
     ) -> Result<BindingId, crate::error::Error> {
+        self.register_with_options(hotkey, action, BindingOptions::default())
+    }
+
+    /// Register a binding with explicit [`BindingOptions`]. Returns the assigned [`BindingId`].
+    ///
+    /// Use this when you want binding metadata like descriptions, provenance,
+    /// or overlay visibility without constructing a low-level
+    /// [`RegisteredBinding`] yourself.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`](crate::error::Error::Parse) when string
+    /// input conversion fails, or
+    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// if a binding for the same hotkey already exists in the same precedence
+    /// tier.
+    pub fn register_with_options(
+        &mut self,
+        hotkey: impl HotkeyInput,
+        action: impl Into<Action>,
+        options: BindingOptions,
+    ) -> Result<BindingId, crate::error::Error> {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
-        let binding = RegisteredBinding::new(id, hotkey, action.into());
+        let binding = RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
         self.register_binding(binding)?;
         Ok(id)
     }
@@ -350,6 +373,53 @@ mod tests {
         let id = dispatcher.register(Key::ESCAPE, Action::Suppress).unwrap();
         assert!(dispatcher.is_registered(&Hotkey::new(Key::ESCAPE)));
         dispatcher.unregister(id);
+    }
+
+    #[test]
+    fn register_with_options_returns_id_and_stores_metadata() {
+        let mut dispatcher = Dispatcher::new();
+        let id = dispatcher
+            .register_with_options(
+                Hotkey::new(Key::C),
+                Action::Suppress,
+                crate::binding::BindingOptions::default()
+                    .with_description("Copy")
+                    .with_source("user"),
+            )
+            .unwrap();
+
+        let binding = dispatcher
+            .bindings_for_key(&Hotkey::new(Key::C))
+            .expect("binding should be queryable after registration");
+        assert_eq!(binding.description.as_deref(), Some("Copy"));
+        assert_eq!(
+            binding
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str),
+            Some("user")
+        );
+
+        dispatcher.unregister(id);
+        assert!(!dispatcher.is_registered(&Hotkey::new(Key::C)));
+    }
+
+    #[test]
+    fn register_with_options_rejects_same_standard_tier_hotkey() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                crate::binding::BindingOptions::default().with_source("plugin"),
+            )
+            .unwrap();
+
+        let result = dispatcher.register(Hotkey::new(Key::A), Action::Suppress);
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
     }
 
     #[test]

@@ -75,7 +75,8 @@ pub enum MatchResult<'a> {
 /// # Lifecycle
 ///
 /// 1. Create with [`Dispatcher::new`]
-/// 2. Register global bindings with [`register`](Dispatcher::register) or
+/// 2. Register global bindings with [`register`](Dispatcher::register),
+///    [`register_with_options`](Dispatcher::register_with_options), or
 ///    [`register_binding`](Dispatcher::register_binding)
 /// 3. Define layers with [`define_layer`](Dispatcher::define_layer), activate
 ///    with [`push_layer`](Dispatcher::push_layer)
