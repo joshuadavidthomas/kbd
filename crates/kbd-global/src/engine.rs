@@ -243,8 +243,11 @@ impl Engine {
                 target,
                 reply,
             } => {
-                self.dispatcher.define_modifier_alias(name, target);
-                let _ = reply.send(Ok(()));
+                let result = self
+                    .dispatcher
+                    .define_modifier_alias(name, target)
+                    .map_err(Error::from);
+                let _ = reply.send(result);
             }
 
             // Intercepted by drain_commands

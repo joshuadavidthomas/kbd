@@ -354,7 +354,9 @@ mod tests {
     #[test]
     fn concrete_binding_conflicts_with_alias_resolved_form() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
 
         // Register aliased Mod+T (resolves to Super+T)
         dispatcher.register("Mod+T", Action::Suppress).unwrap();
@@ -374,7 +376,9 @@ mod tests {
     #[test]
     fn is_registered_finds_aliased_binding() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
         dispatcher.register("Mod+T", Action::Suppress).unwrap();
 
         let aliased_hotkey = "Mod+T".parse::<Hotkey>().unwrap();

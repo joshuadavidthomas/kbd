@@ -330,7 +330,9 @@ mod tests {
     #[test]
     fn bindings_for_key_finds_alias_resolved_global_binding() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
         dispatcher.register("Mod+T", Action::Suppress).unwrap();
 
         // Query with the resolved concrete hotkey (Super+T)

@@ -18,16 +18,23 @@ impl Dispatcher {
     /// Reassigning an existing alias updates resolution for all bindings
     /// that use it — no re-registration needed.
     ///
-    /// The `target` must be a concrete modifier (`Ctrl`, `Shift`, `Alt`, `Super`).
-    /// Passing `Modifier::Alias` as the target is not supported and will be ignored.
-    pub fn define_modifier_alias(&mut self, name: impl Into<String>, target: Modifier) {
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidAliasTarget`](crate::error::Error::InvalidAliasTarget)
+    /// if `target` is [`Modifier::Alias`] — alias chaining is not supported.
+    pub fn define_modifier_alias(
+        &mut self,
+        name: impl Into<String>,
+        target: Modifier,
+    ) -> Result<(), crate::error::Error> {
         if matches!(target, Modifier::Alias(_)) {
-            return;
+            return Err(crate::error::Error::InvalidAliasTarget);
         }
         let name = name.into();
         self.modifier_aliases
             .insert(name.to_ascii_lowercase(), target);
         self.rebuild_alias_resolved_ids();
+        Ok(())
     }
 
     /// Resolve a single modifier: if it's an alias, look it up; otherwise return as-is.
@@ -151,7 +158,9 @@ mod tests {
     #[test]
     fn define_modifier_alias_and_match() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
         dispatcher
             .register(
                 Hotkey::new(Key::T).modifier(Modifier::Alias(ModifierAlias::new("Mod"))),
@@ -191,7 +200,9 @@ mod tests {
     #[test]
     fn alias_resolution_during_matching_not_parsing() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
 
         dispatcher.register("Mod+T", Action::Suppress).unwrap();
 
@@ -205,7 +216,9 @@ mod tests {
     #[test]
     fn alias_defined_on_dispatcher_directly() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Leader", Modifier::Alt);
+        dispatcher
+            .define_modifier_alias("Leader", Modifier::Alt)
+            .unwrap();
 
         dispatcher.register("Leader+X", Action::Suppress).unwrap();
 
@@ -219,7 +232,9 @@ mod tests {
     #[test]
     fn alias_reassignment_updates_matching() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
         dispatcher.register("Mod+T", Action::Suppress).unwrap();
 
         let result = dispatcher.process(
@@ -228,7 +243,9 @@ mod tests {
         );
         assert!(matches!(result, MatchResult::Matched { .. }));
 
-        dispatcher.define_modifier_alias("Mod", Modifier::Alt);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Alt)
+            .unwrap();
 
         let result = dispatcher.process(
             &Hotkey::new(Key::T).modifier(Modifier::Super),
@@ -264,7 +281,9 @@ mod tests {
     #[test]
     fn alias_works_in_layer_bindings() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
 
         let hotkey: Hotkey = "Mod+H".parse().unwrap();
         let layer = Layer::new("nav").bind(hotkey, Action::Suppress).unwrap();
@@ -301,7 +320,9 @@ mod tests {
     #[test]
     fn concrete_modifier_bindings_still_work_with_aliases_defined() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
 
         dispatcher
             .register(
@@ -320,7 +341,9 @@ mod tests {
     #[test]
     fn alias_combined_with_concrete_modifiers() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
 
         dispatcher.register("Ctrl+Mod+A", Action::Suppress).unwrap();
 
@@ -336,7 +359,9 @@ mod tests {
     #[test]
     fn introspection_shows_alias_bindings() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
         dispatcher.register("Mod+T", Action::Suppress).unwrap();
 
         let bindings = dispatcher.list_bindings();
@@ -352,7 +377,9 @@ mod tests {
     #[test]
     fn alias_reassignment_updates_layer_matching() {
         let mut dispatcher = Dispatcher::new();
-        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Super)
+            .unwrap();
 
         let hotkey: Hotkey = "Mod+S".parse().unwrap();
         let layer = Layer::new("edit").bind(hotkey, Action::Suppress).unwrap();
@@ -365,7 +392,9 @@ mod tests {
         );
         assert!(matches!(result, MatchResult::Matched { .. }));
 
-        dispatcher.define_modifier_alias("Mod", Modifier::Alt);
+        dispatcher
+            .define_modifier_alias("Mod", Modifier::Alt)
+            .unwrap();
 
         let result = dispatcher.process(
             &Hotkey::new(Key::S).modifier(Modifier::Super),
@@ -381,5 +410,16 @@ mod tests {
             KeyTransition::Press,
         );
         assert!(matches!(result, MatchResult::Matched { .. }));
+    }
+
+    #[test]
+    fn define_modifier_alias_rejects_alias_target() {
+        let mut dispatcher = Dispatcher::new();
+        let result =
+            dispatcher.define_modifier_alias("Mod", Modifier::Alias(ModifierAlias::new("Other")));
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::InvalidAliasTarget)
+        ));
     }
 }

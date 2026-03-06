@@ -229,8 +229,11 @@ impl TryFrom<Modifier> for Key {
     /// correspond to physical keys until resolved.
     fn try_from(value: Modifier) -> Result<Self, Self::Error> {
         match value {
+            Modifier::Ctrl => Ok(Key::CONTROL_LEFT),
+            Modifier::Shift => Ok(Key::SHIFT_LEFT),
+            Modifier::Alt => Ok(Key::ALT_LEFT),
+            Modifier::Super => Ok(Key::META_LEFT),
             Modifier::Alias(alias) => Err(alias),
-            concrete => Ok(concrete.keys().expect("concrete modifier has keys").0),
         }
     }
 }
