@@ -40,10 +40,11 @@ use kbd::sequence::PendingSequenceInfo;
 use kbd::sequence::SequenceInput;
 use kbd::sequence::SequenceOptions;
 
-use crate::Error;
+use crate::error::Error;
 use crate::backend::Backend;
 use crate::binding_guard::BindingGuard;
 use crate::engine::Command;
+use crate::events::HotkeyEventStream;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
@@ -433,6 +434,18 @@ impl HotkeyManager {
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
     pub fn pending_sequence(&self) -> Result<Option<PendingSequenceInfo>, Error> {
         self.request(|reply| Command::PendingSequence { reply })
+    }
+
+    /// Subscribe to hotkey events emitted by the engine.
+    ///
+    /// The returned stream receives sequence-step progress events immediately.
+    /// Additional event kinds may be added over time.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn event_stream(&self) -> Result<HotkeyEventStream, Error> {
+        self.request(|reply| Command::EventStream { reply })
     }
 
     // TODO: register_tap_hold() — dual-function key

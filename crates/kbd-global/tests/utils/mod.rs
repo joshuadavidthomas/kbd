@@ -2,8 +2,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use kbd_global::HotkeyManager;
-use kbd_global::HotkeyManagerBuilder;
+use kbd_global::manager::HotkeyManager;
+use kbd_global::manager::HotkeyManagerBuilder;
 
 pub fn test_builder() -> HotkeyManagerBuilder {
     initialize_test_input_directory_override();

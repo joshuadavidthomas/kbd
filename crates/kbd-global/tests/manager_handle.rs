@@ -4,7 +4,7 @@ mod utils;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd_global::Error;
+use kbd_global::error::Error;
 
 #[test]
 fn register_and_drop_handle_unregisters_hotkey() {

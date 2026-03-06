@@ -11,7 +11,7 @@
 //!
 //! ```rust,no_run
 //! use kbd::prelude::*;
-//! use kbd_global::HotkeyManager;
+//! use kbd_global::manager::HotkeyManager;
 //!
 //! let manager = HotkeyManager::new()?;
 //!
@@ -19,7 +19,7 @@
 //!     Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
 //!     || println!("fired"),
 //! )?;
-//! # Ok::<(), kbd_global::Error>(())
+//! # Ok::<(), kbd_global::error::Error>(())
 //! ```
 //!
 //! # Concepts
@@ -33,7 +33,7 @@
 //!
 //! # Architecture
 //!
-//! [`HotkeyManager`] is the public API. Internally it sends commands to a
+//! [`manager::HotkeyManager`] is the public API. Internally it sends commands to a
 //! dedicated engine thread over an `mpsc` channel, with an `eventfd` wake
 //! mechanism to interrupt `poll()`. All mutable state lives in the engine —
 //! no locks, no shared mutation.
@@ -49,16 +49,16 @@
 //!
 //! # Lifecycle
 //!
-//! 1. Create a manager with [`HotkeyManager::new()`] or [`HotkeyManager::builder()`]
-//! 2. Register hotkeys with [`HotkeyManager::register()`] — returns a [`BindingGuard`]
+//! 1. Create a manager with [`manager::HotkeyManager::new()`] or [`manager::HotkeyManager::builder()`]
+//! 2. Register hotkeys with [`manager::HotkeyManager::register()`] — returns a [`binding_guard::BindingGuard`]
 //! 3. Optionally define and push [`Layer`](kbd::layer::Layer)s for context-dependent bindings
 //! 4. The engine thread processes key events and fires callbacks
-//! 5. Drop the [`BindingGuard`] to unregister, or call [`BindingGuard::unregister()`]
-//! 6. Drop the manager (or call [`HotkeyManager::shutdown()`]) to stop
+//! 5. Drop the [`binding_guard::BindingGuard`] to unregister, or call [`binding_guard::BindingGuard::unregister()`]
+//! 6. Drop the manager (or call [`manager::HotkeyManager::shutdown()`]) to stop
 //!
 //! # Backend selection
 //!
-//! Currently only [`Backend::Evdev`] is available — it reads `/dev/input/event*`
+//! Currently only [`backend::Backend::Evdev`] is available — it reads `/dev/input/event*`
 //! directly and works on Wayland, X11, and TTY. Your user must be in the
 //! `input` group:
 //!
@@ -69,12 +69,13 @@
 //! Use the builder for explicit backend selection:
 //!
 //! ```rust,no_run
-//! use kbd_global::{Backend, HotkeyManager};
+//! use kbd_global::backend::Backend;
+//! use kbd_global::manager::HotkeyManager;
 //!
 //! let manager = HotkeyManager::builder()
 //!     .backend(Backend::Evdev)
 //!     .build()?;
-//! # Ok::<(), kbd_global::Error>(())
+//! # Ok::<(), kbd_global::error::Error>(())
 //! ```
 //!
 //! # Feature flags
@@ -88,19 +89,9 @@
 //!
 //! - [`kbd`] — core dispatch engine, key types, and layer logic
 
-mod backend;
-mod binding_guard;
+pub mod backend;
+pub mod binding_guard;
 mod engine;
-mod error;
-mod manager;
-
-/// Which input backend to use.
-pub use crate::backend::Backend;
-/// RAII guard that keeps a binding alive until dropped.
-pub use crate::binding_guard::BindingGuard;
-/// Error type for all kbd-global operations.
-pub use crate::error::Error;
-/// The main entry point — manages the engine thread and hotkey registration.
-pub use crate::manager::HotkeyManager;
-/// Builder for configuring backend and runtime options before starting.
-pub use crate::manager::HotkeyManagerBuilder;
+pub mod error;
+pub mod events;
+pub mod manager;

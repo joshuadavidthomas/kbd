@@ -34,7 +34,7 @@ pub enum Error {
     DeviceError,
     /// The requested feature is not supported by the selected backend.
     ///
-    /// Returned when calling [`HotkeyManagerBuilder::grab()`](crate::HotkeyManagerBuilder::grab)
+    /// Returned when calling [`manager::HotkeyManagerBuilder::grab()`](crate::manager::HotkeyManagerBuilder::grab)
     /// without the `grab` feature enabled.
     #[error("requested feature is unsupported by the selected backend")]
     UnsupportedFeature,

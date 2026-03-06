@@ -1,6 +1,6 @@
 //! Command protocol for manager→engine communication.
 //!
-//! Every [`HotkeyManager`](crate::HotkeyManager) method translates to a
+//! Every [`manager::HotkeyManager`](crate::manager::HotkeyManager) method translates to a
 //! [`Command`] sent through the channel. Commands that need a response
 //! include a one-shot reply sender.
 
@@ -22,7 +22,8 @@ use kbd::sequence::PendingSequenceInfo;
 use kbd::sequence::SequenceOptions;
 
 use super::wake::WakeFd;
-use crate::Error;
+use crate::error::Error;
+use crate::events::HotkeyEventStream;
 
 pub(crate) enum Command {
     Register {
@@ -37,6 +38,9 @@ pub(crate) enum Command {
     },
     PendingSequence {
         reply: mpsc::Sender<Option<PendingSequenceInfo>>,
+    },
+    EventStream {
+        reply: mpsc::Sender<HotkeyEventStream>,
     },
     Unregister {
         id: BindingId,

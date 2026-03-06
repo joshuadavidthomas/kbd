@@ -17,7 +17,7 @@ kbd-global = "0.1"
 
 ```rust,no_run
 use kbd::prelude::*;
-use kbd_global::HotkeyManager;
+use kbd_global::manager::HotkeyManager;
 
 let manager = HotkeyManager::new()?;
 
@@ -27,10 +27,10 @@ let _guard = manager.register(
 )?;
 
 std::thread::park();
-# Ok::<(), kbd_global::Error>(())
+# Ok::<(), kbd_global::error::Error>(())
 ```
 
-Key types, actions, and layers come from [`kbd`](https://crates.io/crates/kbd). `kbd-global` provides the runtime ([`HotkeyManager`], [`BindingGuard`], [`Backend`]).
+Key types, actions, and layers come from [`kbd`](https://crates.io/crates/kbd). `kbd-global` provides the runtime through its public modules (`manager`, `binding_guard`, `backend`).
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ Log out and back in for the group change to take effect.
 
 ## Architecture
 
-`HotkeyManager` is the public API. Internally it sends commands to a
+`kbd_global::manager::HotkeyManager` is the public API. Internally it sends commands to a
 dedicated engine thread over an `mpsc` channel, with an `eventfd` wake
 mechanism to interrupt `poll()`. All mutable state lives in the engine —
 no locks, no shared mutation.
@@ -65,7 +65,7 @@ it onto the stack, and its bindings take priority over global ones:
 
 ```rust,no_run
 use kbd::prelude::*;
-use kbd_global::HotkeyManager;
+use kbd_global::manager::HotkeyManager;
 
 let manager = HotkeyManager::new()?;
 
@@ -75,7 +75,7 @@ let layer = Layer::new("vim-normal")
 manager.define_layer(layer)?;
 manager.push_layer("vim-normal")?;
 // Key::J now fires "down" instead of any global binding
-# Ok::<(), kbd_global::Error>(())
+# Ok::<(), kbd_global::error::Error>(())
 ```
 
 ## Feature flags

@@ -11,7 +11,7 @@ use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
 use std::os::fd::RawFd;
 
-use crate::Error;
+use crate::error::Error;
 
 pub(crate) struct WakeFd {
     fd: OwnedFd,

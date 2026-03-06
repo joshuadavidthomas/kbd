@@ -5,7 +5,7 @@ use kbd::action::Action;
 use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd::layer::LayerName;
-use kbd_global::Error;
+use kbd_global::error::Error;
 
 #[test]
 fn push_layer_succeeds_for_defined_layer() {

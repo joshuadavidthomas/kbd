@@ -16,6 +16,7 @@ grab = []
 serde = ["dep:serde", "kbd/serde"]
 
 [dependencies]
+async-channel = { workspace = true }
 kbd = { workspace = true }
 kbd-evdev = { workspace = true }
 libc = { workspace = true }

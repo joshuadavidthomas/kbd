@@ -2,7 +2,7 @@
 use std::error::Error as StdError;
 
 use kbd::hotkey::Hotkey;
-use kbd_global::Error;
+use kbd_global::error::Error;
 
 #[test]
 fn error_display_messages_are_actionable() {
