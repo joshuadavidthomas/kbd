@@ -589,10 +589,22 @@ impl Dispatcher {
         InternalOutcome::NoMatch
     }
 
+    /// Return the highest-precedence non-device-filtered binding ID for a hotkey.
+    ///
+    /// Used exclusively by the introspection/query path (not the runtime
+    /// matching path). Device-filtered bindings are skipped because without
+    /// a [`DeviceContext`] we cannot determine whether they would fire.
     fn active_global_binding_id(&self, hotkey: &Hotkey) -> Option<BindingId> {
-        self.binding_ids_by_hotkey
-            .get(hotkey)
-            .and_then(|ids| ids.last().copied())
+        self.binding_ids_by_hotkey.get(hotkey).and_then(|ids| {
+            ids.iter()
+                .rev()
+                .find(|id| {
+                    self.bindings_by_id
+                        .get(id)
+                        .is_some_and(|b| b.options().device().is_none())
+                })
+                .copied()
+        })
     }
 
     fn match_global_hotkey(

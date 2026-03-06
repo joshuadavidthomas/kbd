@@ -73,6 +73,56 @@ impl Dispatcher {
         }
     }
 
+    /// Determine the shadowed status of a global binding.
+    ///
+    /// Checks the layer stack first (layers always win), then falls back
+    /// to global-scope precedence. Device-filtered bindings are treated
+    /// as a separate scope: they can be shadowed by sequences (which
+    /// operate on the aggregate hotkey) but not by non-device-filtered
+    /// immediate bindings, since without device context we cannot
+    /// determine whether the device-filtered binding would actually fire.
+    fn global_binding_shadowed_status(
+        &self,
+        binding: &crate::binding::RegisteredBinding,
+        global_sequences: &[&super::sequence::RegisteredSequenceBinding],
+    ) -> ShadowedStatus {
+        match self.active_layer_claim(binding.hotkey()) {
+            Some(HotkeyClaim::LayerImmediate { layer, .. }) => ShadowedStatus::ShadowedBy(layer),
+            Some(HotkeyClaim::LayerSequence { layer }) => {
+                ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(layer))
+            }
+            Some(HotkeyClaim::LayerSuppressed { layer }) => ShadowedStatus::SuppressedBy(layer),
+            Some(HotkeyClaim::GlobalImmediate { .. } | HotkeyClaim::GlobalSequence) => {
+                unreachable!("layer claim helper only returns layer claims")
+            }
+            None if binding.options().device().is_some() => {
+                // Device-filtered bindings can be shadowed by sequences but
+                // not by non-device-filtered immediate bindings (different scope).
+                match self.global_claim(binding.hotkey(), global_sequences) {
+                    Some(HotkeyClaim::GlobalSequence) => {
+                        ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
+                    }
+                    _ => ShadowedStatus::Active,
+                }
+            }
+            None => match self.global_claim(binding.hotkey(), global_sequences) {
+                Some(HotkeyClaim::GlobalImmediate { id }) if id == binding.id() => {
+                    ShadowedStatus::Active
+                }
+                Some(HotkeyClaim::GlobalImmediate { .. }) => ShadowedStatus::ShadowedByGlobal,
+                Some(HotkeyClaim::GlobalSequence) => {
+                    ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
+                }
+                Some(
+                    HotkeyClaim::LayerImmediate { .. }
+                    | HotkeyClaim::LayerSequence { .. }
+                    | HotkeyClaim::LayerSuppressed { .. },
+                ) => unreachable!("global claim helper only returns global claims"),
+                None => ShadowedStatus::Active,
+            },
+        }
+    }
+
     /// Return a snapshot of all registered immediate bindings with their status.
     ///
     /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
@@ -102,37 +152,7 @@ impl Dispatcher {
                     continue;
                 };
 
-                let shadowed = match self.active_layer_claim(binding.hotkey()) {
-                    Some(HotkeyClaim::LayerImmediate { layer, .. }) => {
-                        ShadowedStatus::ShadowedBy(layer)
-                    }
-                    Some(HotkeyClaim::LayerSequence { layer }) => {
-                        ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(layer))
-                    }
-                    Some(HotkeyClaim::LayerSuppressed { layer }) => {
-                        ShadowedStatus::SuppressedBy(layer)
-                    }
-                    Some(HotkeyClaim::GlobalImmediate { .. } | HotkeyClaim::GlobalSequence) => {
-                        unreachable!("layer claim helper only returns layer claims")
-                    }
-                    None => match self.global_claim(binding.hotkey(), &global_sequences) {
-                        Some(HotkeyClaim::GlobalImmediate { id }) if id == binding.id() => {
-                            ShadowedStatus::Active
-                        }
-                        Some(HotkeyClaim::GlobalImmediate { .. }) => {
-                            ShadowedStatus::ShadowedByGlobal
-                        }
-                        Some(HotkeyClaim::GlobalSequence) => {
-                            ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
-                        }
-                        Some(
-                            HotkeyClaim::LayerImmediate { .. }
-                            | HotkeyClaim::LayerSequence { .. }
-                            | HotkeyClaim::LayerSuppressed { .. },
-                        ) => unreachable!("global claim helper only returns global claims"),
-                        None => ShadowedStatus::Active,
-                    },
-                };
+                let shadowed = self.global_binding_shadowed_status(binding, &global_sequences);
 
                 results.push(BindingInfo {
                     hotkey: binding.hotkey().clone(),
@@ -959,5 +979,102 @@ mod tests {
                 ("zeta".to_string(), "Y".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn bindings_for_key_skips_device_filtered_bindings() {
+        let mut dispatcher = Dispatcher::new();
+
+        // Device-filtered binding at "user" tier (highest precedence)
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck"))
+                    .with_source("user"),
+            )
+            .unwrap();
+
+        // Non-device-filtered binding at "default" tier
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_source("default"),
+            )
+            .unwrap();
+
+        // Without device context, should return the non-device-filtered binding
+        let result = dispatcher
+            .bindings_for_key(&Hotkey::new(Key::A))
+            .expect("non-device-filtered binding should be queryable");
+        assert_eq!(
+            result
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str),
+            Some("default")
+        );
+    }
+
+    #[test]
+    fn list_bindings_device_filtered_and_global_are_both_active() {
+        let mut dispatcher = Dispatcher::new();
+
+        // Device-filtered binding at "user" tier
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck"))
+                    .with_source("user"),
+            )
+            .unwrap();
+
+        // Non-device-filtered binding at "default" tier
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_source("default"),
+            )
+            .unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 2);
+
+        // Both should be Active — they exist in separate device scopes
+        for binding in &bindings {
+            assert_eq!(
+                binding.shadowed,
+                ShadowedStatus::Active,
+                "binding with source {:?} should be Active, got {:?}",
+                binding.source.as_ref().map(BindingSource::as_str),
+                binding.shadowed,
+            );
+        }
+
+        // No conflicts between different device scopes
+        assert!(dispatcher.conflicts().is_empty());
+    }
+
+    #[test]
+    fn bindings_for_key_returns_none_when_only_device_filtered_bindings_exist() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        // No non-device-filtered binding → should return None
+        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::A));
+        assert!(result.is_none());
     }
 }
