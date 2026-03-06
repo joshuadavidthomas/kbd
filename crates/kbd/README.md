@@ -27,7 +27,7 @@ assert!(matches!(result, MatchResult::Matched { .. }));
 # Ok::<(), kbd::error::Error>(())
 ```
 
-Supports [layers](https://docs.rs/kbd/latest/kbd/layer/), [introspection](https://docs.rs/kbd/latest/kbd/introspection/), and optional `serde`. See the [API docs](https://docs.rs/kbd) for the full picture.
+Supports [layers](https://docs.rs/kbd/latest/kbd/layer/), [introspection](https://docs.rs/kbd/latest/kbd/introspection/), sequence-progress reporting via [`Dispatcher::drain_sequence_steps`](https://docs.rs/kbd/latest/kbd/dispatcher/struct.Dispatcher.html#method.drain_sequence_steps), and optional `serde`. See the [API docs](https://docs.rs/kbd) for the full picture.
 
 ## License
 

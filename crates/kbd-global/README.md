@@ -78,6 +78,33 @@ manager.push_layer("vim-normal")?;
 # Ok::<(), kbd_global::error::Error>(())
 ```
 
+## Event stream
+
+For callback-free consumers, subscribe to `manager.event_stream()` and react to `events::HotkeyEvent` values in your own loop:
+
+```rust,no_run
+use kbd_global::events::HotkeyEvent;
+use kbd_global::manager::HotkeyManager;
+
+let manager = HotkeyManager::new()?;
+let stream = manager.event_stream()?;
+let _guard = manager.register_sequence("Ctrl+K, Ctrl+C", || {})?;
+
+while let Ok(event) = stream.recv_blocking() {
+    match event {
+        HotkeyEvent::SequenceStep {
+            steps_matched,
+            steps_remaining,
+            ..
+        } => {
+            println!("sequence progress: {steps_matched} matched, {steps_remaining} remaining");
+        }
+        _ => {}
+    }
+}
+# Ok::<(), kbd_global::error::Error>(())
+```
+
 ## Feature flags
 
 | Feature | Effect |

@@ -34,6 +34,42 @@
 //! # }
 //! ```
 //!
+//! # Sequence progress
+//!
+//! Multi-step sequences can report progress between keystrokes. After each
+//! [`Dispatcher::process`] call, drain any recorded sequence steps with
+//! [`Dispatcher::drain_sequence_steps`]:
+//!
+//! ```
+//! use kbd::action::Action;
+//! use kbd::dispatcher::{Dispatcher, MatchResult};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
+//! use kbd::key_state::KeyTransition;
+//! use kbd::sequence::SequenceStepInfo;
+//!
+//! # fn main() -> Result<(), kbd::error::Error> {
+//! let mut dispatcher = Dispatcher::new();
+//! let binding_id = dispatcher.register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)?;
+//!
+//! let pending = dispatcher.process(
+//!     &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+//!     KeyTransition::Press,
+//! );
+//! assert!(matches!(pending, MatchResult::Pending { .. }));
+//! assert_eq!(
+//!     dispatcher.drain_sequence_steps(),
+//!     vec![SequenceStepInfo {
+//!         binding_id,
+//!         hotkey: Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+//!         steps_matched: 1,
+//!         steps_remaining: 1,
+//!     }]
+//! );
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # Feature Flags
 //!
 //! | Flag | Default | Effect |
