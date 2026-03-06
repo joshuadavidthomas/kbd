@@ -15,7 +15,10 @@ use crate::layer::LayerName;
 use crate::layer::UnmatchedKeys;
 
 impl Dispatcher {
-    /// Return a snapshot of all registered bindings with their status.
+    /// Return a snapshot of all registered immediate bindings with their status.
+    ///
+    /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
+    /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence).
     #[must_use]
     pub fn list_bindings(&self) -> Vec<BindingInfo> {
         // Build a map of hotkey → claiming layer name for active layers.
