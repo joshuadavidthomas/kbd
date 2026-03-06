@@ -11,11 +11,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use crate::action::Action;
-// Re-export device types for backward compatibility.
-#[doc(inline)]
-pub use crate::device::DeviceFilter;
-#[doc(inline)]
-pub use crate::device::DeviceInfo;
+use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
 
 /// Unique identifier for a registered binding.

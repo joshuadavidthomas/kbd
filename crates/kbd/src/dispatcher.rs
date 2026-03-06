@@ -31,9 +31,7 @@ use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
-// Re-export for backward compatibility.
-#[doc(inline)]
-pub use crate::device::DeviceContext;
+use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
