@@ -40,7 +40,6 @@ use std::sync::Arc;
 use std::sync::mpsc;
 
 use async_channel::Sender;
-
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
 use kbd::dispatcher::Dispatcher;
@@ -209,9 +208,9 @@ impl Engine {
                 let _ = reply.send(self.dispatcher.pending_sequence());
             }
             Command::EventStream { reply } => {
-                self.event_subscribers.retain(|subscriber| !subscriber.is_closed());
-                let (sender, receiver) =
-                    async_channel::bounded(EVENT_STREAM_BUFFER_CAPACITY);
+                self.event_subscribers
+                    .retain(|subscriber| !subscriber.is_closed());
+                let (sender, receiver) = async_channel::bounded(EVENT_STREAM_BUFFER_CAPACITY);
                 self.event_subscribers.push(sender);
                 let _ = reply.send(HotkeyEventStream::new(receiver));
             }
@@ -369,14 +368,15 @@ impl Engine {
     }
 
     fn emit_event(&mut self, event: &HotkeyEvent) {
-        self.event_subscribers.retain(|subscriber| match subscriber.try_send(event.clone()) {
-            Ok(()) => true,
-            Err(async_channel::TrySendError::Closed(_)) => false,
-            Err(async_channel::TrySendError::Full(_)) => {
-                tracing::warn!(?event, "dropping lagging hotkey event subscriber");
-                false
-            }
-        });
+        self.event_subscribers
+            .retain(|subscriber| match subscriber.try_send(event.clone()) {
+                Ok(()) => true,
+                Err(async_channel::TrySendError::Closed(_)) => false,
+                Err(async_channel::TrySendError::Full(_)) => {
+                    tracing::warn!(?event, "dropping lagging hotkey event subscriber");
+                    false
+                }
+            });
     }
 
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {

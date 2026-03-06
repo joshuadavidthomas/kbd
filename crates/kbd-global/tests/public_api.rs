@@ -173,7 +173,9 @@ fn active_modifiers_empty_at_start() {
 #[test]
 fn event_stream_closes_when_manager_shuts_down() {
     let manager = utils::test_manager();
-    let stream = manager.event_stream().expect("event stream should initialize");
+    let stream = manager
+        .event_stream()
+        .expect("event stream should initialize");
 
     manager.shutdown().expect("shutdown should succeed");
 

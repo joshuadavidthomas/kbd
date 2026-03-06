@@ -40,14 +40,14 @@ use kbd::sequence::PendingSequenceInfo;
 use kbd::sequence::SequenceInput;
 use kbd::sequence::SequenceOptions;
 
-use crate::error::Error;
 use crate::backend::Backend;
 use crate::binding_guard::BindingGuard;
 use crate::engine::Command;
-use crate::events::HotkeyEventStream;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
+use crate::error::Error;
+use crate::events::HotkeyEventStream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackendSelection {
