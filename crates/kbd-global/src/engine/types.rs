@@ -31,7 +31,7 @@ pub(crate) enum KeyEventDisposition {
     MatchedForwarded,
     /// Event did not match any binding and was forwarded (grab mode).
     UnmatchedForwarded,
-    /// Event was not processed (grab mode disabled, or modifier/repeat).
+    /// Event did not match any binding and was not forwarded (non-grab mode).
     Ignored,
 }
 

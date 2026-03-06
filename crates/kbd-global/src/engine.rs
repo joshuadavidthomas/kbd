@@ -27,7 +27,7 @@
 //!
 //! - [`devices`] — device discovery, hotplug, capability detection
 //! - [`forwarder`] — uinput virtual device for event forwarding/emission
-//! - [`types`] — shared engine types (grab state, dispositions)
+//! - [`types`] — shared engine types (grab state, dispositions, match outcomes)
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
 //!
