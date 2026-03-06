@@ -29,7 +29,7 @@ impl Dispatcher {
                 continue;
             };
 
-            match resolve::classify_layer(stored, hotkey) {
+            match resolve::classify_layer(stored, hotkey, None) {
                 LayerMatch::SingleStepSequence { .. } | LayerMatch::MultiStepSequences { .. } => {
                     return Some(HotkeyClaim::LayerSequence {
                         layer: entry.name.clone(),
@@ -215,7 +215,7 @@ impl Dispatcher {
         // classify_layer checks sequences before immediate hotkeys.
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
-                let layer_match = resolve::classify_layer(stored, hotkey);
+                let layer_match = resolve::classify_layer(stored, hotkey, None);
                 match layer_match {
                     LayerMatch::SingleStepSequence { index } => {
                         let sb = &stored.sequence_bindings[index];

@@ -29,6 +29,7 @@ use self::sequence::SequenceBindingRef;
 use self::sequence::SequenceStartCandidate;
 use crate::action::Action;
 use crate::binding::BindingId;
+use crate::binding::DeviceInfo;
 use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
@@ -38,6 +39,90 @@ use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
+
+/// Device context for a key event.
+///
+/// Carries device identity and per-device modifier state so the
+/// dispatcher can enforce device-specific bindings and modifier
+/// isolation. Created by the engine or by consumers of `kbd-core`
+/// that have device-level information.
+///
+/// # Modifier isolation
+///
+/// When [`device_modifiers`](DeviceContext::device_modifiers) is set,
+/// bindings with a [`DeviceFilter`](crate::binding::DeviceFilter) use
+/// only those modifiers for matching — not the aggregate modifier state
+/// encoded in the `Hotkey` passed to
+/// [`process_with_device`](Dispatcher::process_with_device).
+///
+/// Global bindings (no device filter) always use the aggregate modifier
+/// state from the `Hotkey` argument.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::binding::DeviceInfo;
+/// use kbd::dispatcher::DeviceContext;
+/// use kbd::hotkey::Modifier;
+///
+/// let info = DeviceInfo::new("StreamDeck XL", 0x0fd9, 0x006c);
+/// let ctx = DeviceContext::new(10, &info)
+///     .with_device_modifiers(vec![Modifier::Ctrl]);
+///
+/// assert_eq!(ctx.device_id(), 10);
+/// assert_eq!(ctx.info().name(), "StreamDeck XL");
+/// assert_eq!(ctx.device_modifiers(), Some(&[Modifier::Ctrl][..]));
+/// ```
+pub struct DeviceContext<'a> {
+    device_id: i32,
+    info: &'a DeviceInfo,
+    device_modifiers: Option<Vec<Modifier>>,
+}
+
+impl<'a> DeviceContext<'a> {
+    /// Create a device context with device ID and info.
+    ///
+    /// Without calling [`with_device_modifiers`](Self::with_device_modifiers),
+    /// device-filtered bindings will use the aggregate modifiers from the
+    /// `Hotkey` argument — the same behavior as global bindings.
+    #[must_use]
+    pub fn new(device_id: i32, info: &'a DeviceInfo) -> Self {
+        Self {
+            device_id,
+            info,
+            device_modifiers: None,
+        }
+    }
+
+    /// Set per-device modifier state for modifier isolation.
+    ///
+    /// When set, bindings with a [`DeviceFilter`](crate::binding::DeviceFilter)
+    /// will match against these modifiers instead of the aggregate modifiers
+    /// from the `Hotkey` argument.
+    #[must_use]
+    pub fn with_device_modifiers(mut self, modifiers: Vec<Modifier>) -> Self {
+        self.device_modifiers = Some(modifiers);
+        self
+    }
+
+    /// The platform-specific device identifier (e.g., file descriptor).
+    #[must_use]
+    pub const fn device_id(&self) -> i32 {
+        self.device_id
+    }
+
+    /// Device metadata (name, vendor, product).
+    #[must_use]
+    pub const fn info(&self) -> &DeviceInfo {
+        self.info
+    }
+
+    /// Per-device modifier state, if set.
+    #[must_use]
+    pub fn device_modifiers(&self) -> Option<&[Modifier]> {
+        self.device_modifiers.as_deref()
+    }
+}
 use crate::sequence::PendingSequenceInfo;
 
 /// Result of attempting to match a key event against registered bindings.
@@ -237,7 +322,39 @@ impl Dispatcher {
     /// return `MatchResult::Ignored`. Modifier-only presses also return
     /// `MatchResult::Ignored`.
     pub fn process(&mut self, hotkey: &Hotkey, transition: KeyTransition) -> MatchResult<'_> {
-        let outcome = self.match_extract(hotkey, transition);
+        self.process_internal(hotkey, transition, None)
+    }
+
+    /// Process a key event with device context.
+    ///
+    /// Like [`process`](Self::process), but also carries device identity
+    /// and per-device modifier state. This enables:
+    ///
+    /// - **Device-specific bindings**: bindings with a
+    ///   [`DeviceFilter`](crate::binding::DeviceFilter) only match events
+    ///   from matching devices.
+    /// - **Per-device modifier isolation**: device-filtered bindings use
+    ///   the modifiers from [`DeviceContext::device_modifiers`] instead of
+    ///   the aggregate modifiers in the `hotkey` argument.
+    ///
+    /// Global bindings (no device filter) are unaffected — they match
+    /// against the aggregate hotkey as usual.
+    pub fn process_with_device(
+        &mut self,
+        hotkey: &Hotkey,
+        transition: KeyTransition,
+        device: &DeviceContext<'_>,
+    ) -> MatchResult<'_> {
+        self.process_internal(hotkey, transition, Some(device))
+    }
+
+    fn process_internal(
+        &mut self,
+        hotkey: &Hotkey,
+        transition: KeyTransition,
+        device: Option<&DeviceContext<'_>>,
+    ) -> MatchResult<'_> {
+        let outcome = self.match_extract(hotkey, transition, device);
 
         if let InternalOutcome::Matched {
             ref layer_effect, ..
@@ -284,7 +401,12 @@ impl Dispatcher {
         }
     }
 
-    fn match_extract(&mut self, hotkey: &Hotkey, transition: KeyTransition) -> InternalOutcome {
+    fn match_extract(
+        &mut self,
+        hotkey: &Hotkey,
+        transition: KeyTransition,
+        device: Option<&DeviceContext<'_>>,
+    ) -> InternalOutcome {
         if !matches!(transition, KeyTransition::Press) {
             return InternalOutcome::Ignored;
         }
@@ -300,11 +422,11 @@ impl Dispatcher {
         let now = Instant::now();
         let mut next_priority = 0usize;
 
-        if let Some(outcome) = self.match_layers(hotkey, now, &mut next_priority) {
+        if let Some(outcome) = self.match_layers(hotkey, now, &mut next_priority, device) {
             return outcome;
         }
 
-        self.match_globals(hotkey, now, next_priority)
+        self.match_globals(hotkey, now, next_priority, device)
     }
 
     fn match_layers(
@@ -312,6 +434,7 @@ impl Dispatcher {
         hotkey: &Hotkey,
         now: Instant,
         next_priority: &mut usize,
+        device: Option<&DeviceContext<'_>>,
     ) -> Option<InternalOutcome> {
         let layer_names: Vec<_> = self
             .layer_stack
@@ -325,7 +448,7 @@ impl Dispatcher {
                 continue;
             };
 
-            let layer_match = resolve::classify_layer(stored, hotkey);
+            let layer_match = resolve::classify_layer(stored, hotkey, device);
             let swallow_unmatched = matches!(stored.options.unmatched(), UnmatchedKeys::Swallow);
 
             match layer_match {
@@ -412,6 +535,7 @@ impl Dispatcher {
         hotkey: &Hotkey,
         now: Instant,
         mut next_priority: usize,
+        device: Option<&DeviceContext<'_>>,
     ) -> InternalOutcome {
         let candidates: Vec<SequenceStartCandidate> = {
             let global_seqs = self.sorted_global_sequences();
@@ -445,7 +569,7 @@ impl Dispatcher {
 
         if !candidates.is_empty() {
             let pending_standalone =
-                self.pending_standalone_from_match(self.match_global_hotkey(hotkey));
+                self.pending_standalone_from_match(self.match_global_hotkey(hotkey, device));
             if let Some(outcome) =
                 self.start_sequences(candidates, now, &mut next_priority, pending_standalone)
             {
@@ -453,7 +577,7 @@ impl Dispatcher {
             }
         }
 
-        if let Some((binding_ref, propagation)) = self.match_global_hotkey(hotkey) {
+        if let Some((binding_ref, propagation)) = self.match_global_hotkey(hotkey, device) {
             return InternalOutcome::Matched {
                 layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
                 binding_ref,
@@ -470,10 +594,67 @@ impl Dispatcher {
             .and_then(|ids| ids.last().copied())
     }
 
-    fn match_global_hotkey(&self, hotkey: &Hotkey) -> Option<(MatchedBindingRef, KeyPropagation)> {
+    fn match_global_hotkey(
+        &self,
+        hotkey: &Hotkey,
+        device: Option<&DeviceContext<'_>>,
+    ) -> Option<(MatchedBindingRef, KeyPropagation)> {
+        // First, try device-filtered bindings if we have device context.
+        // These use per-device modifier isolation.
+        if let Some(ctx) = device {
+            if let Some(result) = self.match_device_filtered_global(hotkey, ctx) {
+                return Some(result);
+            }
+        }
+
+        // Then try non-device-filtered bindings with aggregate modifiers.
+        // Only consider bindings that don't have a device filter.
         let id = self.active_global_binding_id(hotkey)?;
         let binding = self.bindings_by_id.get(&id)?;
+        if binding.options().device().is_some() {
+            // This binding has a device filter — it should only be matched
+            // via the device-filtered path above.
+            return None;
+        }
         Some((MatchedBindingRef::Global(id), binding.propagation()))
+    }
+
+    /// Match device-filtered global bindings using per-device modifier isolation.
+    fn match_device_filtered_global(
+        &self,
+        hotkey: &Hotkey,
+        device: &DeviceContext<'_>,
+    ) -> Option<(MatchedBindingRef, KeyPropagation)> {
+        // Build the device-specific candidate hotkey for modifier isolation.
+        let device_hotkey = if let Some(device_mods) = device.device_modifiers() {
+            Hotkey::with_modifiers(hotkey.key(), device_mods.to_vec())
+        } else {
+            // No device modifiers specified — use aggregate modifiers
+            hotkey.clone()
+        };
+
+        // Check bindings registered for this device-specific hotkey AND
+        // bindings registered for the aggregate hotkey — both might have
+        // device filters. We need to scan all device-filtered bindings.
+        for binding in self.bindings_by_id.values() {
+            let Some(filter) = binding.options().device() else {
+                continue; // Not device-filtered
+            };
+
+            if !filter.matches(device.info()) {
+                continue; // Device doesn't match filter
+            }
+
+            // For device-filtered bindings, match against device-specific hotkey
+            if *binding.hotkey() == device_hotkey {
+                return Some((
+                    MatchedBindingRef::Global(binding.id()),
+                    binding.propagation(),
+                ));
+            }
+        }
+
+        None
     }
 
     /// Resolve a binding reference back to its action.
@@ -496,8 +677,113 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     use super::*;
+    use crate::binding::BindingOptions;
+    use crate::binding::DeviceFilter;
+    use crate::binding::DeviceInfo;
     use crate::key::Key;
     use crate::layer::Layer;
+
+    #[test]
+    fn device_binding_matches_on_correct_device() {
+        let mut dispatcher = Dispatcher::new();
+        let device_a = DeviceInfo::new("StreamDeck XL", 0x0fd9, 0x006c);
+        let device_b = DeviceInfo::new("AT Translated Set 2 keyboard", 0x0001, 0x0001);
+
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        let ctx_a = DeviceContext::new(10, &device_a);
+        let result =
+            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx_a);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+
+        let ctx_b = DeviceContext::new(11, &device_b);
+        let result =
+            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx_b);
+        assert!(matches!(result, MatchResult::NoMatch));
+    }
+
+    #[test]
+    fn device_binding_misses_on_wrong_device() {
+        let mut dispatcher = Dispatcher::new();
+        let wrong_device = DeviceInfo::new("Regular Keyboard", 0x0001, 0x0001);
+
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_device(DeviceFilter::usb(0x0fd9, 0x006c)),
+            )
+            .unwrap();
+
+        let ctx = DeviceContext::new(10, &wrong_device);
+        let result =
+            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx);
+        assert!(matches!(result, MatchResult::NoMatch));
+    }
+
+    #[test]
+    fn per_device_modifier_isolation() {
+        let mut dispatcher = Dispatcher::new();
+        let device_b = DeviceInfo::new("StreamDeck", 0x0fd9, 0x006c);
+
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A).modifier(Modifier::Ctrl),
+                Action::Suppress,
+                BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        let ctx_b = DeviceContext::new(11, &device_b).with_device_modifiers(vec![]);
+
+        let candidate = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
+        let result = dispatcher.process_with_device(&candidate, KeyTransition::Press, &ctx_b);
+        assert!(matches!(result, MatchResult::NoMatch));
+    }
+
+    #[test]
+    fn global_binding_uses_aggregate_modifiers() {
+        let mut dispatcher = Dispatcher::new();
+        let device_b = DeviceInfo::new("Regular Keyboard", 0x0001, 0x0001);
+
+        dispatcher
+            .register(
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        let ctx = DeviceContext::new(11, &device_b);
+        let candidate = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
+        let result = dispatcher.process_with_device(&candidate, KeyTransition::Press, &ctx);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+    }
+
+    #[test]
+    fn device_filtered_binding_uses_device_modifiers_only() {
+        let mut dispatcher = Dispatcher::new();
+        let streamdeck = DeviceInfo::new("StreamDeck", 0x0fd9, 0x006c);
+
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A).modifier(Modifier::Ctrl),
+                Action::Suppress,
+                BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        let ctx = DeviceContext::new(10, &streamdeck).with_device_modifiers(vec![Modifier::Ctrl]);
+
+        let candidate = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
+        let result = dispatcher.process_with_device(&candidate, KeyTransition::Press, &ctx);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+    }
 
     #[test]
     fn process_requires_exact_modifiers() {

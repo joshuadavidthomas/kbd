@@ -68,6 +68,7 @@ pub(crate) enum DiscoveryOutcome {
 struct ManagedDevice {
     path: PathBuf,
     device: Device,
+    info: kbd::binding::DeviceInfo,
 }
 
 /// A key event from a specific device.
@@ -316,6 +317,14 @@ impl DeviceManager {
         &self.poll_fds
     }
 
+    /// Get device info for a device identified by file descriptor.
+    ///
+    /// Returns `None` if the fd doesn't correspond to a managed device.
+    #[must_use]
+    pub fn device_info(&self, fd: RawFd) -> Option<&kbd::binding::DeviceInfo> {
+        self.devices.get(&fd).map(|managed| &managed.info)
+    }
+
     /// Process all ready file descriptors from a completed poll.
     ///
     /// Returns key events and a list of device fds that were disconnected,
@@ -417,6 +426,13 @@ impl ManagedDevice {
             return Ok(None);
         }
 
+        let input_id = device.input_id();
+        let info = kbd::binding::DeviceInfo::new(
+            device.name().unwrap_or(""),
+            input_id.vendor(),
+            input_id.product(),
+        );
+
         if matches!(grab_mode, DeviceGrabMode::Exclusive) {
             device.grab()?;
         }
@@ -426,6 +442,7 @@ impl ManagedDevice {
         Ok(Some(Self {
             path: path.to_path_buf(),
             device,
+            info,
         }))
     }
 }

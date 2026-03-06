@@ -82,8 +82,11 @@ pub mod prelude {
     pub use crate::action::Action;
     pub use crate::binding::BindingOptions;
     pub use crate::binding::BindingSource;
+    pub use crate::binding::DeviceFilter;
+    pub use crate::binding::DeviceInfo;
     pub use crate::binding::KeyPropagation;
     pub use crate::binding::OverlayVisibility;
+    pub use crate::dispatcher::DeviceContext;
     pub use crate::dispatcher::Dispatcher;
     pub use crate::dispatcher::MatchResult;
     pub use crate::hotkey::Hotkey;
