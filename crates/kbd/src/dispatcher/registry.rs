@@ -110,7 +110,10 @@ impl Dispatcher {
             return Err(crate::error::Error::AlreadyRegistered);
         }
 
-        // For aliased bindings, also check the resolved form for conflicts
+        // For aliased bindings, check the resolved form for conflicts and
+        // insert into the resolved lookup table. If the alias is undefined,
+        // the binding won't match until the alias is defined (at which point
+        // rebuild_alias_resolved_ids will add it).
         if has_aliases {
             if let Some(resolved) = self.resolve_hotkey(&hotkey) {
                 if self.binding_ids_by_hotkey.contains_key(&resolved)
@@ -118,15 +121,6 @@ impl Dispatcher {
                 {
                     return Err(crate::error::Error::AlreadyRegistered);
                 }
-            }
-        }
-
-        // Aliased bindings additionally go into the resolved lookup table
-        // for matching (physical events always produce concrete modifiers).
-        // If the alias is undefined, the binding won't match until the alias
-        // is defined (at which point rebuild_alias_resolved_ids will add it).
-        if has_aliases {
-            if let Some(resolved) = self.resolve_hotkey(binding.hotkey()) {
                 self.alias_resolved_ids.insert(resolved, id);
             }
         }

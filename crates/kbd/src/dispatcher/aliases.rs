@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::Dispatcher;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
@@ -102,7 +104,7 @@ pub(crate) fn has_alias_modifiers(hotkey: &Hotkey) -> bool {
 pub(crate) fn hotkeys_match_with_aliases(
     binding_hotkey: &Hotkey,
     event_hotkey: &Hotkey,
-    aliases: &std::collections::HashMap<String, Modifier>,
+    aliases: &HashMap<String, Modifier>,
 ) -> bool {
     if binding_hotkey.key() != event_hotkey.key() {
         return false;

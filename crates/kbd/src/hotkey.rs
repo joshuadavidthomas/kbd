@@ -190,11 +190,25 @@ impl FromStr for Modifier {
             return Ok(modifier);
         }
 
-        token
-            .parse::<Key>()
-            .ok()
-            .and_then(Self::from_key)
-            .ok_or_else(|| ParseHotkeyError::UnknownToken(token.to_string()))
+        // Try parsing as a physical key that happens to be a modifier
+        if let Ok(key) = token.parse::<Key>() {
+            if let Some(modifier) = Self::from_key(key) {
+                return Ok(modifier);
+            }
+            // Valid key but not a modifier — not an alias either
+            return Err(ParseHotkeyError::UnknownToken(token.to_string()));
+        }
+
+        // Not a known key — treat alphabetic tokens as user-defined aliases
+        if token
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic())
+        {
+            return Ok(Self::Alias(ModifierAlias::new(token)));
+        }
+
+        Err(ParseHotkeyError::UnknownToken(token.to_string()))
     }
 }
 
@@ -568,6 +582,35 @@ mod tests {
         let hotkey = "ctrl+Win+return".parse::<Hotkey>().unwrap();
         assert_eq!(hotkey.key(), Key::ENTER);
         assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Super]);
+    }
+
+    #[test]
+    fn modifier_from_str_parses_concrete_names() {
+        assert_eq!("Ctrl".parse::<Modifier>().unwrap(), Modifier::Ctrl);
+        assert_eq!("shift".parse::<Modifier>().unwrap(), Modifier::Shift);
+        assert_eq!("Alt".parse::<Modifier>().unwrap(), Modifier::Alt);
+        assert_eq!("Super".parse::<Modifier>().unwrap(), Modifier::Super);
+        assert_eq!("Meta".parse::<Modifier>().unwrap(), Modifier::Super);
+        assert_eq!("Win".parse::<Modifier>().unwrap(), Modifier::Super);
+    }
+
+    #[test]
+    fn modifier_from_str_parses_alias() {
+        let modifier = "Mod".parse::<Modifier>().unwrap();
+        assert_eq!(modifier, Modifier::Alias(ModifierAlias::new("Mod")));
+    }
+
+    #[test]
+    fn modifier_from_str_rejects_non_modifier_key_name() {
+        // "Space" is a valid key but not a modifier — should not become an alias
+        let result = "Space".parse::<Modifier>();
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn modifier_from_str_rejects_non_alphabetic_token() {
+        let result = "@@@".parse::<Modifier>();
+        assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
     }
 
     #[test]
