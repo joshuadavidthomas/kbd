@@ -102,6 +102,52 @@ fn main() {
         .collect();
     print_bindings(&visible);
 
+    // Source-aware precedence — user bindings override defaults,
+    // and unregistering a user binding promotes the default back.
+    dispatcher.pop_layer().expect("pop vim-normal");
+
+    println!();
+    println!("8. Source-aware precedence (Ctrl+S):");
+    let save_hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
+
+    // Right now Ctrl+S is a "default" source binding
+    println!("  Before user override:");
+    print_binding_for_key(&dispatcher, &save_hotkey);
+
+    // Register a user override for the same hotkey
+    let user_save_id = dispatcher
+        .register_with_options(
+            save_hotkey.clone(),
+            Action::from(|| {}),
+            BindingOptions::default()
+                .with_description("Save file (auto-format first)")
+                .with_source(BindingSource::new("user")),
+        )
+        .expect("register user Ctrl+S");
+
+    // The user binding wins — the default is shadowed
+    println!("  After user override:");
+    print_binding_for_key(&dispatcher, &save_hotkey);
+
+    // Show the conflict
+    let save_conflicts: Vec<_> = dispatcher
+        .conflicts()
+        .into_iter()
+        .filter(|c| c.hotkey == save_hotkey)
+        .collect();
+    for conflict in &save_conflicts {
+        println!(
+            "  Conflict: {} shadows {}",
+            format_location(&conflict.shadowing_binding),
+            format_location(&conflict.shadowed_binding),
+        );
+    }
+
+    // Unregister the user binding — the default is promoted back
+    dispatcher.unregister(user_save_id);
+    println!("  After removing user override:");
+    print_binding_for_key(&dispatcher, &save_hotkey);
+
     // Clean up — demonstrate that unregister works
     dispatcher.unregister(copy_id);
     println!();
@@ -109,6 +155,13 @@ fn main() {
         "After unregistering global Ctrl+C: {} total bindings",
         dispatcher.list_bindings().len()
     );
+}
+
+fn print_binding_for_key(dispatcher: &Dispatcher, hotkey: &Hotkey) {
+    match dispatcher.bindings_for_key(hotkey) {
+        Some(info) => println!("    {}", format_binding(&info)),
+        None => println!("    (nothing)"),
+    }
 }
 
 fn print_bindings(bindings: &[BindingInfo]) {
@@ -188,7 +241,9 @@ fn setup_dispatcher() -> (Dispatcher, BindingId) {
         .register_with_options(
             Hotkey::new(Key::S).modifier(Modifier::Ctrl),
             Action::from(|| {}),
-            BindingOptions::default().with_description("Save file"),
+            BindingOptions::default()
+                .with_description("Save file")
+                .with_source(BindingSource::new("default")),
         )
         .expect("register Ctrl+S");
 
