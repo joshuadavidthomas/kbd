@@ -306,14 +306,13 @@ impl Engine {
                         propagation: *propagation,
                     }
                 }
-                MatchResult::Pending { .. } => MatchOutcome::Pending,
-                MatchResult::Suppressed => MatchOutcome::Suppressed,
-                MatchResult::NoMatch => MatchOutcome::NoMatch,
-                // Explicit: MatchResult is #[non_exhaustive]; list known
-                // variants so new ones don't silently fall through.
+                MatchResult::Pending { .. } | MatchResult::Suppressed => MatchOutcome::Consumed,
+                MatchResult::NoMatch | MatchResult::Ignored => MatchOutcome::Unmatched,
+                // MatchResult is #[non_exhaustive]; new variants should be
+                // evaluated and mapped intentionally, but we must have a
+                // fallback arm.
                 #[allow(clippy::match_same_arms)]
-                MatchResult::Ignored => MatchOutcome::Ignored,
-                _ => MatchOutcome::Ignored,
+                _ => MatchOutcome::Unmatched,
             }
         };
 
@@ -331,10 +330,8 @@ impl Engine {
                 }
                 _ => KeyEventDisposition::MatchedConsumed,
             },
-            MatchOutcome::Pending | MatchOutcome::Suppressed => {
-                KeyEventDisposition::MatchedConsumed
-            }
-            MatchOutcome::NoMatch | MatchOutcome::Ignored => {
+            MatchOutcome::Consumed => KeyEventDisposition::MatchedConsumed,
+            MatchOutcome::Unmatched => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
                     self.forward_event(event.key, event.transition);
                     KeyEventDisposition::UnmatchedForwarded

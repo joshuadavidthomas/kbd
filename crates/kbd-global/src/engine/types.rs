@@ -37,12 +37,22 @@ pub(crate) enum KeyEventDisposition {
 
 /// Intermediate result from matching, used for forwarding decisions.
 ///
-/// Layer effects are handled by the `Dispatcher` — the engine only needs
-/// the match/no-match outcome and propagation setting.
+/// The `Dispatcher` returns a rich `MatchResult` with five variants, but the
+/// engine only cares about three distinctions:
+/// - A binding matched and produced an action (with a propagation setting).
+/// - The event was consumed without producing a callback (mid-sequence or swallowed).
+/// - Nothing matched and the event should be forwarded (in grab mode) or ignored.
+///
+/// When tap-hold adds a new `MatchResult` state, it gets added here intentionally
+/// rather than falling through a wildcard.
 pub(super) enum MatchOutcome {
+    /// A binding matched. The action has already been executed; only the
+    /// propagation setting remains for forwarding decisions.
     Matched { propagation: KeyPropagation },
-    Pending,
-    Suppressed,
-    NoMatch,
-    Ignored,
+    /// The event was consumed without firing a callback — either a sequence
+    /// is in progress (`Pending`) or a swallow layer suppressed it (`Suppressed`).
+    Consumed,
+    /// Nothing matched. Forward through the virtual device in grab mode,
+    /// or ignore in non-grab mode.
+    Unmatched,
 }
