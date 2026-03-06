@@ -209,6 +209,7 @@ impl Engine {
                 let _ = reply.send(self.dispatcher.pending_sequence());
             }
             Command::EventStream { reply } => {
+                self.event_subscribers.retain(|subscriber| !subscriber.is_closed());
                 let (sender, receiver) =
                     async_channel::bounded(EVENT_STREAM_BUFFER_CAPACITY);
                 self.event_subscribers.push(sender);
@@ -368,8 +369,13 @@ impl Engine {
     }
 
     fn emit_event(&mut self, event: &HotkeyEvent) {
-        self.event_subscribers.retain(|subscriber| {
-            subscriber.try_send(event.clone()).is_ok()
+        self.event_subscribers.retain(|subscriber| match subscriber.try_send(event.clone()) {
+            Ok(()) => true,
+            Err(async_channel::TrySendError::Closed(_)) => false,
+            Err(async_channel::TrySendError::Full(_)) => {
+                tracing::warn!(?event, "dropping lagging hotkey event subscriber");
+                false
+            }
         });
     }
 
@@ -2847,6 +2853,28 @@ mod tests {
                 steps_remaining: 0,
             })
         );
+    }
+
+    #[test]
+    fn dropped_event_streams_are_pruned_before_registering_new_subscribers() {
+        let mut engine = test_engine();
+        let (first_reply_tx, first_reply_rx) = mpsc::channel();
+        engine.handle_command(Command::EventStream {
+            reply: first_reply_tx,
+        });
+        let first_stream = first_reply_rx.recv().expect("first event stream reply");
+        assert_eq!(engine.event_subscribers.len(), 1);
+
+        drop(first_stream);
+
+        let (second_reply_tx, second_reply_rx) = mpsc::channel();
+        engine.handle_command(Command::EventStream {
+            reply: second_reply_tx,
+        });
+        let second_stream = second_reply_rx.recv().expect("second event stream reply");
+
+        assert_eq!(engine.event_subscribers.len(), 1);
+        drop(second_stream);
     }
 
     #[test]
