@@ -3,6 +3,8 @@
 use async_channel::Receiver;
 use kbd::sequence::SequenceStepInfo;
 
+pub(crate) const EVENT_STREAM_BUFFER_CAPACITY: usize = 64;
+
 /// Events emitted by [`manager::HotkeyManager`](crate::manager::HotkeyManager)'s event stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -32,6 +34,10 @@ impl From<SequenceStepInfo> for HotkeyEvent {
 }
 
 /// Async-capable receiver for [`HotkeyEvent`] values.
+///
+/// Streams use a bounded internal buffer. If a receiver stops draining events
+/// and its buffer fills, the engine drops that subscriber so hotkey handling
+/// never accumulates unbounded memory.
 #[derive(Debug)]
 pub struct HotkeyEventStream {
     receiver: Receiver<HotkeyEvent>,

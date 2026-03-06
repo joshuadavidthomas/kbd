@@ -439,7 +439,9 @@ impl HotkeyManager {
     /// Subscribe to hotkey events emitted by the engine.
     ///
     /// The returned stream receives sequence-step progress events immediately.
-    /// Additional event kinds may be added over time.
+    /// Additional event kinds may be added over time. The stream must be
+    /// drained promptly; lagging subscribers are closed once their internal
+    /// event buffer fills so the engine never builds unbounded backpressure.
     ///
     /// # Errors
     ///

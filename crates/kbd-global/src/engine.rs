@@ -52,6 +52,7 @@ use kbd::key_state::KeyTransition;
 
 use crate::engine::devices::DeviceKeyEvent;
 use crate::error::Error;
+use crate::events::EVENT_STREAM_BUFFER_CAPACITY;
 use crate::events::HotkeyEvent;
 use crate::events::HotkeyEventStream;
 
@@ -208,7 +209,8 @@ impl Engine {
                 let _ = reply.send(self.dispatcher.pending_sequence());
             }
             Command::EventStream { reply } => {
-                let (sender, receiver) = async_channel::unbounded();
+                let (sender, receiver) =
+                    async_channel::bounded(EVENT_STREAM_BUFFER_CAPACITY);
                 self.event_subscribers.push(sender);
                 let _ = reply.send(HotkeyEventStream::new(receiver));
             }
@@ -366,8 +368,9 @@ impl Engine {
     }
 
     fn emit_event(&mut self, event: &HotkeyEvent) {
-        self.event_subscribers
-            .retain(|subscriber| subscriber.try_send(event.clone()).is_ok());
+        self.event_subscribers.retain(|subscriber| {
+            subscriber.try_send(event.clone()).is_ok()
+        });
     }
 
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {
@@ -463,6 +466,7 @@ mod tests {
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
     use crate::error::Error;
+    use crate::events::EVENT_STREAM_BUFFER_CAPACITY;
     use crate::events::HotkeyEvent;
 
     #[test]
@@ -2843,5 +2847,43 @@ mod tests {
                 steps_remaining: 0,
             })
         );
+    }
+
+    #[test]
+    fn lagging_event_stream_is_closed_when_buffer_fills() {
+        let mut engine = test_engine();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        engine.handle_command(Command::EventStream { reply: reply_tx });
+        let stream = reply_rx.recv().expect("event stream reply");
+
+        engine
+            .dispatcher
+            .register_sequence("Ctrl+K", Action::Suppress)
+            .expect("sequence should register");
+
+        let _ = engine.process_key_event(DeviceKeyEvent {
+            device_fd: 7,
+            key: Key::CONTROL_LEFT,
+            transition: KeyTransition::Press,
+        });
+
+        for _ in 0..=EVENT_STREAM_BUFFER_CAPACITY {
+            let _ = engine.process_key_event(DeviceKeyEvent {
+                device_fd: 7,
+                key: Key::K,
+                transition: KeyTransition::Press,
+            });
+        }
+
+        for _ in 0..EVENT_STREAM_BUFFER_CAPACITY {
+            assert!(matches!(
+                stream.try_recv(),
+                Ok(HotkeyEvent::SequenceStep { .. })
+            ));
+        }
+        assert!(matches!(
+            stream.try_recv(),
+            Err(async_channel::TryRecvError::Closed)
+        ));
     }
 }
