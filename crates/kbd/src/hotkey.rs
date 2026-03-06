@@ -44,7 +44,7 @@ use crate::key::Key;
 /// [`Dispatcher`](crate::dispatcher::Dispatcher) is case-insensitive
 /// (defining `"Mod"` and looking up `"mod"` reaches the same alias),
 /// and equality/hash/order follow that same case-insensitive behavior.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ModifierAlias(String);
 
@@ -67,8 +67,6 @@ impl PartialEq for ModifierAlias {
         self.0.eq_ignore_ascii_case(&other.0)
     }
 }
-
-impl Eq for ModifierAlias {}
 
 impl Hash for ModifierAlias {
     fn hash<H: Hasher>(&self, state: &mut H) {
