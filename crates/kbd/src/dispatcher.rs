@@ -75,7 +75,8 @@ pub enum MatchResult<'a> {
 /// # Lifecycle
 ///
 /// 1. Create with [`Dispatcher::new`]
-/// 2. Register global bindings with [`register`](Dispatcher::register) or
+/// 2. Register global bindings with [`register`](Dispatcher::register),
+///    [`register_with_options`](Dispatcher::register_with_options), or
 ///    [`register_binding`](Dispatcher::register_binding)
 /// 3. Define layers with [`define_layer`](Dispatcher::define_layer), activate
 ///    with [`push_layer`](Dispatcher::push_layer)
@@ -154,7 +155,7 @@ pub enum MatchResult<'a> {
 #[derive(Default)]
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
-    binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
+    binding_ids_by_hotkey: HashMap<Hotkey, Vec<BindingId>>,
     sequence_bindings_by_id: HashMap<BindingId, RegisteredSequenceBinding>,
     sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
@@ -371,7 +372,7 @@ impl Dispatcher {
                                 index: idx,
                             },
                             layer_effect: LayerEffect::from_action(&lb.action),
-                            propagation: lb.propagation,
+                            propagation: lb.options.propagation(),
                         }
                     });
                     // `stored` is last used above; NLL releases the borrow.
@@ -384,7 +385,7 @@ impl Dispatcher {
                 LayerMatch::Immediate { index } => {
                     let stored = &self.layers[&layer_name];
                     let lb = &stored.bindings[index];
-                    let propagation = lb.propagation;
+                    let propagation = lb.options.propagation();
                     let layer_effect = LayerEffect::from_action(&lb.action);
                     return Some(InternalOutcome::Matched {
                         layer_effect,
@@ -463,8 +464,14 @@ impl Dispatcher {
         InternalOutcome::NoMatch
     }
 
+    fn active_global_binding_id(&self, hotkey: &Hotkey) -> Option<BindingId> {
+        self.binding_ids_by_hotkey
+            .get(hotkey)
+            .and_then(|ids| ids.last().copied())
+    }
+
     fn match_global_hotkey(&self, hotkey: &Hotkey) -> Option<(MatchedBindingRef, KeyPropagation)> {
-        let id = *self.binding_ids_by_hotkey.get(hotkey)?;
+        let id = self.active_global_binding_id(hotkey)?;
         let binding = self.bindings_by_id.get(&id)?;
         Some((MatchedBindingRef::Global(id), binding.propagation()))
     }

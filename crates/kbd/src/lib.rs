@@ -80,6 +80,8 @@ pub mod sequence;
 /// ```
 pub mod prelude {
     pub use crate::action::Action;
+    pub use crate::binding::BindingOptions;
+    pub use crate::binding::BindingSource;
     pub use crate::binding::KeyPropagation;
     pub use crate::binding::OverlayVisibility;
     pub use crate::dispatcher::Dispatcher;

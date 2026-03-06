@@ -40,6 +40,70 @@ impl Default for BindingId {
     }
 }
 
+/// Provenance label for a binding.
+///
+/// Tracks where a binding came from — for example `"default"`, `"user"`,
+/// `"plugin"`, or an application-specific label.
+///
+/// The dispatcher recognizes two labels for precedence when multiple global
+/// bindings share the same hotkey: `"default"` is lower-priority and `"user"`
+/// is higher-priority. Matching is case-insensitive. Other labels — and
+/// bindings with no source at all — use the normal priority tier, so there can
+/// be at most one binding per hotkey in each tier.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct BindingSource(Box<str>);
+
+impl BindingSource {
+    /// Create a new source label.
+    #[must_use]
+    pub fn new(value: impl Into<Box<str>>) -> Self {
+        Self(value.into())
+    }
+
+    /// Return the source label as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub(crate) fn precedence_tier(&self) -> BindingSourceTier {
+        if self.as_str().eq_ignore_ascii_case("default") {
+            BindingSourceTier::Default
+        } else if self.as_str().eq_ignore_ascii_case("user") {
+            BindingSourceTier::User
+        } else {
+            BindingSourceTier::Standard
+        }
+    }
+}
+
+impl From<&str> for BindingSource {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for BindingSource {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl std::fmt::Display for BindingSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum BindingSourceTier {
+    Default,
+    Standard,
+    User,
+}
+
 /// How a matched binding handles the original key event.
 ///
 /// # Examples
@@ -104,20 +168,22 @@ pub enum OverlayVisibility {
 
 /// Per-binding behavioral options.
 ///
-/// Configure a binding's key propagation behavior, description, and overlay
-/// visibility. Built via method chaining:
+/// Configure a binding's key propagation behavior, description, source, and
+/// overlay visibility. Built via method chaining:
 ///
 /// # Examples
 ///
 /// ```
-/// use kbd::binding::{BindingOptions, KeyPropagation, OverlayVisibility};
+/// use kbd::binding::{BindingOptions, BindingSource, KeyPropagation, OverlayVisibility};
 ///
 /// let opts = BindingOptions::default()
 ///     .with_description("Copy to clipboard")
+///     .with_source(BindingSource::new("user"))
 ///     .with_propagation(KeyPropagation::Stop)
 ///     .with_overlay_visibility(OverlayVisibility::Visible);
 ///
 /// assert_eq!(opts.description(), Some("Copy to clipboard"));
+/// assert_eq!(opts.source().map(BindingSource::as_str), Some("user"));
 /// assert_eq!(opts.propagation(), KeyPropagation::Stop);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -126,6 +192,8 @@ pub struct BindingOptions {
     propagation: KeyPropagation,
     /// Human-readable label for this binding ("Copy to clipboard").
     description: Option<Box<str>>,
+    /// Provenance label for this binding ("default", "user", "plugin", ...).
+    source: Option<BindingSource>,
     /// Whether this binding appears in hotkey overlays and help screens.
     overlay_visibility: OverlayVisibility,
 }
@@ -155,6 +223,30 @@ impl BindingOptions {
     pub fn with_description(mut self, description: impl Into<Box<str>>) -> Self {
         self.description = Some(description.into());
         self
+    }
+
+    /// Provenance label for this binding, if set.
+    #[must_use]
+    pub fn source(&self) -> Option<&BindingSource> {
+        self.source.as_ref()
+    }
+
+    /// Set a provenance label for this binding.
+    ///
+    /// Global bindings tagged as `"default"` can be overridden by bindings for
+    /// the same hotkey tagged as `"user"` without manually unregistering the
+    /// default binding first. Matching is case-insensitive, and labels other
+    /// than `"default"`/`"user"` stay in the standard precedence tier.
+    #[must_use]
+    pub fn with_source(mut self, source: impl Into<BindingSource>) -> Self {
+        self.source = Some(source.into());
+        self
+    }
+
+    pub(crate) fn precedence_tier(&self) -> BindingSourceTier {
+        self.source
+            .as_ref()
+            .map_or(BindingSourceTier::Standard, BindingSource::precedence_tier)
     }
 
     /// Whether this binding appears in hotkey overlays.
@@ -273,6 +365,7 @@ mod tests {
         let opts = BindingOptions::default();
         assert_eq!(opts.propagation(), KeyPropagation::Stop);
         assert_eq!(opts.description(), None);
+        assert_eq!(opts.source(), None);
         assert_eq!(opts.overlay_visibility(), OverlayVisibility::Visible);
     }
 
@@ -281,11 +374,38 @@ mod tests {
         let opts = BindingOptions::default()
             .with_propagation(KeyPropagation::Continue)
             .with_description("Save file")
+            .with_source("user")
             .with_overlay_visibility(OverlayVisibility::Hidden);
 
         assert_eq!(opts.propagation(), KeyPropagation::Continue);
         assert_eq!(opts.description(), Some("Save file"));
+        assert_eq!(opts.source().map(BindingSource::as_str), Some("user"));
         assert_eq!(opts.overlay_visibility(), OverlayVisibility::Hidden);
+    }
+
+    #[test]
+    fn binding_options_can_track_binding_source() {
+        let source = BindingSource::new("user");
+        let options = BindingOptions::default().with_source(source.clone());
+
+        assert_eq!(source.as_str(), "user");
+        assert_eq!(options.source(), Some(&source));
+    }
+
+    #[test]
+    fn binding_source_reserved_labels_are_case_insensitive() {
+        assert_eq!(
+            BindingSource::new("DEFAULT").precedence_tier(),
+            BindingSourceTier::Default
+        );
+        assert_eq!(
+            BindingSource::new("UsEr").precedence_tier(),
+            BindingSourceTier::User
+        );
+        assert_eq!(
+            BindingSource::new("plugin").precedence_tier(),
+            BindingSourceTier::Standard
+        );
     }
 
     #[test]

@@ -13,6 +13,7 @@ use std::time::Duration;
 use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
+use kbd::binding::BindingSource;
 use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
 use kbd::binding::RegisteredBinding;
@@ -298,24 +299,27 @@ fn introspection_full_picture() {
     let mut dispatcher = Dispatcher::new();
 
     dispatcher
-        .register_binding(
-            RegisteredBinding::new(
-                BindingId::new(),
-                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-                Action::Suppress,
-            )
-            .with_options(
-                BindingOptions::default()
-                    .with_description("Copy")
-                    .with_overlay_visibility(OverlayVisibility::Hidden),
-            ),
+        .register_with_options(
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            Action::Suppress,
+            BindingOptions::default()
+                .with_description("Copy")
+                .with_source(BindingSource::new("user"))
+                .with_overlay_visibility(OverlayVisibility::Hidden),
         )
         .unwrap();
 
     dispatcher
         .define_layer(
             Layer::new("nav")
-                .bind(Key::H, Action::Suppress)
+                .bind_with_options(
+                    Key::H,
+                    Action::Suppress,
+                    BindingOptions::default()
+                        .with_description("Move left")
+                        .with_source(BindingSource::new("plugin"))
+                        .with_overlay_visibility(OverlayVisibility::Hidden),
+                )
                 .unwrap()
                 .bind(
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -356,6 +360,14 @@ fn introspection_full_picture() {
         BindingLocation::Layer(LayerName::from("nav"))
     );
 
+    let layer_info = dispatcher.bindings_for_key(&Hotkey::new(Key::H)).unwrap();
+    assert_eq!(
+        layer_info.source.as_ref().map(BindingSource::as_str),
+        Some("plugin")
+    );
+    assert_eq!(layer_info.description.as_deref(), Some("Move left"));
+    assert_eq!(layer_info.overlay_visibility, OverlayVisibility::Hidden);
+
     // Global binding is shadowed
     let all = dispatcher.list_bindings();
     let global_copy = all
@@ -366,6 +378,10 @@ fn introspection_full_picture() {
         global_copy.shadowed,
         ShadowedStatus::ShadowedBy(_)
     ));
+    assert_eq!(
+        global_copy.source.as_ref().map(BindingSource::as_str),
+        Some("user")
+    );
     assert_eq!(global_copy.overlay_visibility, OverlayVisibility::Hidden);
 }
 
@@ -625,5 +641,22 @@ fn register_binding_duplicate_returns_error() {
         hotkey,
         Action::Suppress,
     ));
+    assert!(matches!(result, Err(Error::AlreadyRegistered)));
+}
+
+#[test]
+fn register_with_options_standard_tier_sources_still_conflict() {
+    let mut dispatcher = Dispatcher::new();
+    let hotkey = Hotkey::new(Key::A);
+
+    dispatcher
+        .register_with_options(
+            hotkey.clone(),
+            Action::Suppress,
+            BindingOptions::default().with_source("plugin"),
+        )
+        .unwrap();
+
+    let result = dispatcher.register(hotkey, Action::Suppress);
     assert!(matches!(result, Err(Error::AlreadyRegistered)));
 }

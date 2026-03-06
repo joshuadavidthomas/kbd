@@ -33,6 +33,7 @@
 //! # }
 //! ```
 
+use crate::binding::BindingSource;
 use crate::binding::OverlayVisibility;
 use crate::hotkey::Hotkey;
 use crate::layer::LayerName;
@@ -51,9 +52,11 @@ pub enum BindingLocation {
 
 /// Whether a binding is currently reachable or shadowed.
 ///
-/// When a layer is active and contains a binding for the same hotkey as a
-/// global or lower-layer binding, the higher-priority binding "shadows"
-/// the lower one.
+/// When something else would prevent this binding from firing, the lower-priority
+/// immediate binding is considered shadowed or suppressed. This includes
+/// higher-priority layer bindings, higher-precedence global bindings, sequence
+/// prefixes that enter a pending state before the immediate binding can fire,
+/// and swallow layers that block unmatched keys from reaching lower scopes.
 ///
 /// # Examples
 ///
@@ -89,8 +92,15 @@ pub enum BindingLocation {
 pub enum ShadowedStatus {
     /// This binding would fire if its hotkey were pressed now.
     Active,
-    /// A higher-priority layer has a binding with the same hotkey.
+    /// A layer binding in the given layer has precedence over this binding.
     ShadowedBy(LayerName),
+    /// An active swallow layer in the given layer blocks unmatched keys before
+    /// they can reach this binding.
+    SuppressedBy(LayerName),
+    /// A higher-precedence global immediate binding has the same hotkey.
+    ShadowedByGlobal,
+    /// A sequence binding in the given location intercepts this hotkey first.
+    ShadowedBySequence(BindingLocation),
     /// This binding's layer is not currently on the stack.
     Inactive,
 }
@@ -105,6 +115,8 @@ pub struct BindingInfo {
     pub hotkey: Hotkey,
     /// Human-readable label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
     pub description: Option<Box<str>>,
+    /// Provenance label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
+    pub source: Option<BindingSource>,
     /// Where this binding lives (global or a specific layer).
     pub location: BindingLocation,
     /// Whether this binding is currently reachable or shadowed.

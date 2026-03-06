@@ -15,6 +15,7 @@
 use std::time::Duration;
 
 use crate::action::Action;
+use crate::binding::BindingOptions;
 use crate::binding::KeyPropagation;
 use crate::error::ParseHotkeyError;
 use crate::hotkey::Hotkey;
@@ -156,7 +157,7 @@ impl LayerOptions {
 pub(crate) struct LayerBinding {
     pub(crate) hotkey: Hotkey,
     pub(crate) action: Action,
-    pub(crate) propagation: KeyPropagation,
+    pub(crate) options: BindingOptions,
 }
 
 /// A single sequence binding within a layer.
@@ -274,14 +275,31 @@ impl Layer {
     ///
     /// Returns [`ParseHotkeyError`] when string input conversion fails.
     pub fn bind(
+        self,
+        hotkey: impl HotkeyInput,
+        action: impl Into<Action>,
+    ) -> Result<Self, ParseHotkeyError> {
+        self.bind_with_options(hotkey, action, BindingOptions::default())
+    }
+
+    /// Add a binding to this layer with explicit [`BindingOptions`].
+    ///
+    /// Use this when you want per-binding metadata like descriptions,
+    /// provenance, propagation, or overlay visibility on layer bindings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseHotkeyError`] when string input conversion fails.
+    pub fn bind_with_options(
         mut self,
         hotkey: impl HotkeyInput,
         action: impl Into<Action>,
+        options: BindingOptions,
     ) -> Result<Self, ParseHotkeyError> {
         self.bindings.push(LayerBinding {
             hotkey: hotkey.into_hotkey()?,
             action: action.into(),
-            propagation: KeyPropagation::default(),
+            options,
         });
         Ok(self)
     }
@@ -409,6 +427,9 @@ mod tests {
 
     use super::*;
     use crate::action::Action;
+    use crate::binding::BindingOptions;
+    use crate::binding::BindingSource;
+    use crate::binding::OverlayVisibility;
     use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
     use crate::key::Key;
@@ -471,6 +492,32 @@ mod tests {
             .bind(Key::A, || println!("fired"))
             .unwrap();
         assert_eq!(layer.binding_count(), 1);
+    }
+
+    #[test]
+    fn layer_bind_with_options_preserves_metadata() {
+        let layer = Layer::new("nav")
+            .bind_with_options(
+                Key::H,
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_description("Move left")
+                    .with_source(BindingSource::new("user"))
+                    .with_overlay_visibility(OverlayVisibility::Hidden),
+            )
+            .unwrap();
+
+        let (_, bindings, _, _) = layer.into_parts();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].options.description(), Some("Move left"));
+        assert_eq!(
+            bindings[0].options.source().map(BindingSource::as_str),
+            Some("user")
+        );
+        assert_eq!(
+            bindings[0].options.overlay_visibility(),
+            OverlayVisibility::Hidden
+        );
     }
 
     #[test]
