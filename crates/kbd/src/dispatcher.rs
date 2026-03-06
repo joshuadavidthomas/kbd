@@ -29,9 +29,9 @@ use self::sequence::SequenceBindingRef;
 use self::sequence::SequenceStartCandidate;
 use crate::action::Action;
 use crate::binding::BindingId;
-use crate::binding::DeviceInfo;
 use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
+use crate::device::DeviceInfo;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
@@ -50,7 +50,7 @@ use crate::layer::UnmatchedKeys;
 /// # Modifier isolation
 ///
 /// When [`device_modifiers`](DeviceContext::device_modifiers) is set,
-/// bindings with a [`DeviceFilter`](crate::binding::DeviceFilter) use
+/// bindings with a [`DeviceFilter`](crate::device::DeviceFilter) use
 /// only those modifiers for matching — not the aggregate modifier state
 /// encoded in the `Hotkey` passed to
 /// [`process_with_device`](Dispatcher::process_with_device).
@@ -61,7 +61,7 @@ use crate::layer::UnmatchedKeys;
 /// # Examples
 ///
 /// ```
-/// use kbd::binding::DeviceInfo;
+/// use kbd::device::DeviceInfo;
 /// use kbd::dispatcher::DeviceContext;
 /// use kbd::hotkey::Modifier;
 ///
@@ -97,7 +97,7 @@ impl<'a> DeviceContext<'a> {
 
     /// Set per-device modifier state for modifier isolation.
     ///
-    /// When set, bindings with a [`DeviceFilter`](crate::binding::DeviceFilter)
+    /// When set, bindings with a [`DeviceFilter`](crate::device::DeviceFilter)
     /// will match against these modifiers instead of the aggregate modifiers
     /// from the `Hotkey` argument.
     #[must_use]
@@ -332,7 +332,7 @@ impl Dispatcher {
     /// and per-device modifier state. This enables:
     ///
     /// - **Device-specific bindings**: bindings with a
-    ///   [`DeviceFilter`](crate::binding::DeviceFilter) only match events
+    ///   [`DeviceFilter`](crate::device::DeviceFilter) only match events
     ///   from matching devices.
     /// - **Per-device modifier isolation**: device-filtered bindings use
     ///   the modifiers from [`DeviceContext::device_modifiers`] instead of
@@ -688,8 +688,8 @@ mod tests {
 
     use super::*;
     use crate::binding::BindingOptions;
-    use crate::binding::DeviceFilter;
-    use crate::binding::DeviceInfo;
+    use crate::device::DeviceFilter;
+    use crate::device::DeviceInfo;
     use crate::key::Key;
     use crate::layer::Layer;
 

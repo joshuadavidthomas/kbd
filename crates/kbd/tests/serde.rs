@@ -9,10 +9,10 @@
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::BindingSource;
-use kbd::binding::DeviceFilter;
-use kbd::binding::DeviceInfo;
 use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
+use kbd::device::DeviceFilter;
+use kbd::device::DeviceInfo;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;

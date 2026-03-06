@@ -22,7 +22,7 @@ use evdev::Device;
 use evdev::EventSummary;
 use evdev::InputEvent;
 use evdev::KeyCode;
-use kbd::binding::DeviceInfo;
+use kbd::device::DeviceInfo;
 use kbd::key::Key;
 use kbd::key_state::KeyTransition;
 

@@ -444,7 +444,7 @@ mod tests {
                 Hotkey::new(Key::A),
                 Action::Suppress,
                 crate::binding::BindingOptions::default()
-                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck")),
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
             )
             .unwrap();
 
@@ -462,7 +462,7 @@ mod tests {
                 Hotkey::new(Key::A),
                 Action::Suppress,
                 crate::binding::BindingOptions::default()
-                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck")),
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
             )
             .unwrap();
 
@@ -471,7 +471,7 @@ mod tests {
             Hotkey::new(Key::A),
             Action::Suppress,
             crate::binding::BindingOptions::default()
-                .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck")),
+                .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
         );
         assert!(matches!(
             result,
@@ -488,7 +488,7 @@ mod tests {
                 Hotkey::new(Key::A),
                 Action::Suppress,
                 crate::binding::BindingOptions::default()
-                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck")),
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
             )
             .unwrap();
 
@@ -497,7 +497,7 @@ mod tests {
             Hotkey::new(Key::A),
             Action::Suppress,
             crate::binding::BindingOptions::default()
-                .with_device(crate::binding::DeviceFilter::usb(0x1234, 0x5678)),
+                .with_device(crate::device::DeviceFilter::usb(0x1234, 0x5678)),
         );
         assert!(result.is_ok());
     }

@@ -1010,7 +1010,7 @@ mod tests {
                 Hotkey::new(Key::A),
                 Action::Suppress,
                 BindingOptions::default()
-                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck"))
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck"))
                     .with_source("user"),
             )
             .unwrap();
@@ -1047,7 +1047,7 @@ mod tests {
                 Hotkey::new(Key::A),
                 Action::Suppress,
                 BindingOptions::default()
-                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck"))
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck"))
                     .with_source("user"),
             )
             .unwrap();
@@ -1088,7 +1088,7 @@ mod tests {
                 Hotkey::new(Key::A),
                 Action::Suppress,
                 BindingOptions::default()
-                    .with_device(crate::binding::DeviceFilter::name_contains("StreamDeck")),
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
             )
             .unwrap();
 
