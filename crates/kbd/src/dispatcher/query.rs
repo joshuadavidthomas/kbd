@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use super::Dispatcher;
 use super::resolve;
+use super::resolve::ScopeMatch;
 use super::resolve::ScopeSequenceMatch;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
@@ -91,15 +92,12 @@ impl Dispatcher {
         }
 
         // Walk layer stack top-down, same as the dispatcher.
-        // Sequence bindings are checked before immediate hotkeys.
+        // classify_layer_scope checks sequences before immediate hotkeys.
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
-                let scope_match = resolve::classify_scope_sequences(
-                    stored.sequence_bindings.iter().map(|b| &b.sequence),
-                    hotkey,
-                );
+                let scope_match = resolve::classify_layer_scope(stored, hotkey);
                 match scope_match {
-                    ScopeSequenceMatch::SingleStep { index } => {
+                    ScopeMatch::SingleStepSequence { index } => {
                         let sb = &stored.sequence_bindings[index];
                         return Some(BindingInfo {
                             hotkey: sb.sequence.steps()[0].clone(),
@@ -109,28 +107,26 @@ impl Dispatcher {
                             overlay_visibility: crate::binding::OverlayVisibility::Visible,
                         });
                     }
-                    ScopeSequenceMatch::MultiStep { .. } => {
+                    ScopeMatch::MultiStepSequences { .. } => {
                         return None;
                     }
-                    ScopeSequenceMatch::None => {}
-                }
-
-                for binding in &stored.bindings {
-                    if binding.hotkey == *hotkey {
+                    ScopeMatch::Immediate { index } => {
+                        let lb = &stored.bindings[index];
                         return Some(BindingInfo {
-                            hotkey: binding.hotkey.clone(),
+                            hotkey: lb.hotkey.clone(),
                             description: None,
                             location: BindingLocation::Layer(entry.name.clone()),
                             shadowed: ShadowedStatus::Active,
                             overlay_visibility: crate::binding::OverlayVisibility::Visible,
                         });
                     }
-                }
-
-                // Swallow layers block all unmatched keys from reaching
-                // lower layers and globals — matches the real dispatcher.
-                if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
-                    return None;
+                    ScopeMatch::None => {
+                        // Swallow layers block all unmatched keys from reaching
+                        // lower layers and globals — matches the real dispatcher.
+                        if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
+                            return None;
+                        }
+                    }
                 }
             }
         }

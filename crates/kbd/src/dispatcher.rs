@@ -20,6 +20,7 @@ use std::time::Instant;
 
 use self::layers::LayerEffect;
 use self::layers::LayerStackEntry;
+use self::resolve::ScopeMatch;
 use self::resolve::ScopeSequenceMatch;
 use self::sequence::ActiveSequence;
 use self::sequence::PendingStandalone;
@@ -323,63 +324,82 @@ impl Dispatcher {
                 continue;
             };
 
-            let scope_match = resolve::classify_scope_sequences(
-                stored.sequence_bindings.iter().map(|b| &b.sequence),
-                hotkey,
-            );
+            let scope_match = resolve::classify_layer_scope(stored, hotkey);
             let swallow_unmatched = matches!(stored.options.unmatched(), UnmatchedKeys::Swallow);
 
-            // Build candidates from scope classification. Indices refer to
-            // positions in stored.sequence_bindings.
-            let candidates: Vec<_> = match &scope_match {
-                ScopeSequenceMatch::SingleStep { index } => {
-                    let sb = &stored.sequence_bindings[*index];
-                    vec![SequenceStartCandidate::SingleStep {
+            match scope_match {
+                ScopeMatch::SingleStepSequence { index } => {
+                    let stored = &self.layers[&layer_name];
+                    let sb = &stored.sequence_bindings[index];
+                    let candidates = vec![SequenceStartCandidate::SingleStep {
                         binding_ref: MatchedBindingRef::SequenceLayer {
                             name: layer_name.clone(),
-                            index: *index,
+                            index,
                         },
                         layer_effect: LayerEffect::from_action(&sb.action),
                         propagation: sb.propagation,
-                    }]
+                    }];
+                    if let Some(outcome) =
+                        self.start_sequences(candidates, now, next_priority, None)
+                    {
+                        return Some(outcome);
+                    }
                 }
-                ScopeSequenceMatch::MultiStep { indices } => indices
-                    .iter()
-                    .map(|&idx| {
-                        let sb = &stored.sequence_bindings[idx];
-                        SequenceStartCandidate::MultiStep {
-                            binding_ref: SequenceBindingRef::Layer {
+                ScopeMatch::MultiStepSequences {
+                    indices,
+                    immediate_index,
+                } => {
+                    let stored = &self.layers[&layer_name];
+                    let candidates: Vec<_> = indices
+                        .iter()
+                        .map(|&idx| {
+                            let sb = &stored.sequence_bindings[idx];
+                            SequenceStartCandidate::MultiStep {
+                                binding_ref: SequenceBindingRef::Layer {
+                                    name: layer_name.clone(),
+                                    index: idx,
+                                },
+                                timeout: sb.options.timeout(),
+                            }
+                        })
+                        .collect();
+                    let pending_standalone = immediate_index.map(|idx| {
+                        let lb = &stored.bindings[idx];
+                        PendingStandalone {
+                            binding_ref: MatchedBindingRef::Layer {
                                 name: layer_name.clone(),
                                 index: idx,
                             },
-                            timeout: sb.options.timeout(),
+                            layer_effect: LayerEffect::from_action(&lb.action),
+                            propagation: lb.propagation,
                         }
-                    })
-                    .collect(),
-                ScopeSequenceMatch::None => Vec::new(),
-            };
-            // `stored` is last used above; NLL releases the borrow.
-
-            if !candidates.is_empty() {
-                let pending_standalone = self
-                    .pending_standalone_from_match(self.match_layer_hotkey(&layer_name, hotkey));
-                if let Some(outcome) =
-                    self.start_sequences(candidates, now, next_priority, pending_standalone)
-                {
-                    return Some(outcome);
+                    });
+                    // `stored` is last used above; NLL releases the borrow.
+                    if let Some(outcome) =
+                        self.start_sequences(candidates, now, next_priority, pending_standalone)
+                    {
+                        return Some(outcome);
+                    }
                 }
-            }
-
-            if let Some((binding_ref, propagation)) = self.match_layer_hotkey(&layer_name, hotkey) {
-                return Some(InternalOutcome::Matched {
-                    layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
-                    binding_ref,
-                    propagation,
-                });
-            }
-
-            if swallow_unmatched {
-                return Some(InternalOutcome::Suppressed);
+                ScopeMatch::Immediate { index } => {
+                    let stored = &self.layers[&layer_name];
+                    let lb = &stored.bindings[index];
+                    let propagation = lb.propagation;
+                    let layer_effect = LayerEffect::from_action(&lb.action);
+                    return Some(InternalOutcome::Matched {
+                        layer_effect,
+                        binding_ref: MatchedBindingRef::Layer {
+                            name: layer_name,
+                            index,
+                        },
+                        propagation,
+                    });
+                }
+                ScopeMatch::None => {
+                    if swallow_unmatched {
+                        return Some(InternalOutcome::Suppressed);
+                    }
+                }
             }
         }
 
@@ -439,31 +459,6 @@ impl Dispatcher {
         }
 
         InternalOutcome::NoMatch
-    }
-
-    fn match_layer_hotkey(
-        &self,
-        layer_name: &LayerName,
-        hotkey: &Hotkey,
-    ) -> Option<(MatchedBindingRef, KeyPropagation)> {
-        let stored = self.layers.get(layer_name)?;
-        stored
-            .bindings
-            .iter()
-            .enumerate()
-            .find_map(|(index, layer_binding)| {
-                if layer_binding.hotkey == *hotkey {
-                    Some((
-                        MatchedBindingRef::Layer {
-                            name: layer_name.clone(),
-                            index,
-                        },
-                        layer_binding.propagation,
-                    ))
-                } else {
-                    None
-                }
-            })
     }
 
     fn match_global_hotkey(&self, hotkey: &Hotkey) -> Option<(MatchedBindingRef, KeyPropagation)> {

@@ -2,6 +2,7 @@ use super::Dispatcher;
 use super::sequence::RegisteredSequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
+use crate::layer::StoredLayer;
 
 /// Classification of a single sequence binding's first step against a hotkey.
 enum SequencePrefixKind {
@@ -35,6 +36,11 @@ fn classify_sequence_prefix(sequence: &HotkeySequence, hotkey: &Hotkey) -> Seque
 /// Encodes the precedence rule: single-step sequences win over multi-step.
 /// Indices refer to positions in the input iterator passed to
 /// [`classify_scope_sequences`].
+///
+/// Used directly by the global-bindings path where immediate hotkey lookup
+/// is a separate `HashMap` operation. For layer scopes, prefer
+/// [`classify_layer_scope`] which combines sequence and immediate
+/// classification into [`ScopeMatch`].
 pub(super) enum ScopeSequenceMatch {
     /// No sequences in this scope matched the hotkey as a prefix.
     None,
@@ -42,6 +48,33 @@ pub(super) enum ScopeSequenceMatch {
     SingleStep { index: usize },
     /// One or more multi-step sequences matched as prefixes (pending state).
     MultiStep { indices: Vec<usize> },
+}
+
+/// What matched for a hotkey within a single layer scope.
+///
+/// Combines sequence classification and immediate hotkey scanning into
+/// a single result. Both the runtime path ([`Dispatcher::process`]) and
+/// the query path ([`Dispatcher::bindings_for_key`]) match on this enum,
+/// so adding a new match type (e.g., tap-hold) forces both paths to
+/// handle it via exhaustive matching.
+///
+/// Indices for sequence variants refer to positions in
+/// [`StoredLayer::sequence_bindings`]. The `Immediate` index refers to
+/// a position in [`StoredLayer::bindings`].
+pub(super) enum ScopeMatch {
+    /// A single-step sequence matched immediately.
+    SingleStepSequence { index: usize },
+    /// Multi-step sequences entered pending state.
+    /// `immediate_index` is set if an immediate hotkey also matches,
+    /// enabling standalone fallback on sequence timeout.
+    MultiStepSequences {
+        indices: Vec<usize>,
+        immediate_index: Option<usize>,
+    },
+    /// Only an immediate hotkey matched.
+    Immediate { index: usize },
+    /// Nothing matched.
+    None,
 }
 
 /// Classify all sequence bindings in a scope against a hotkey.
@@ -80,6 +113,46 @@ pub(super) fn classify_scope_sequences<'a>(
     } else {
         ScopeSequenceMatch::None
     }
+}
+
+/// Classify all bindings (sequences + immediate hotkeys) in a layer scope.
+///
+/// Applies the precedence rule: sequences are checked before immediate
+/// hotkeys. When multi-step sequences match, the immediate hotkey index
+/// is also recorded for standalone-fallback on sequence timeout.
+///
+/// Both the runtime and query paths call this function, ensuring
+/// consistent classification. When a new match type is added (e.g.,
+/// tap-hold), adding a variant to [`ScopeMatch`] forces both paths
+/// to handle it.
+pub(super) fn classify_layer_scope(stored: &StoredLayer, hotkey: &Hotkey) -> ScopeMatch {
+    let seq_match =
+        classify_scope_sequences(stored.sequence_bindings.iter().map(|b| &b.sequence), hotkey);
+
+    match seq_match {
+        ScopeSequenceMatch::SingleStep { index } => ScopeMatch::SingleStepSequence { index },
+        ScopeSequenceMatch::MultiStep { indices } => {
+            let immediate_index = find_immediate_in_layer(stored, hotkey);
+            ScopeMatch::MultiStepSequences {
+                indices,
+                immediate_index,
+            }
+        }
+        ScopeSequenceMatch::None => match find_immediate_in_layer(stored, hotkey) {
+            Some(index) => ScopeMatch::Immediate { index },
+            Option::None => ScopeMatch::None,
+        },
+    }
+}
+
+/// Find the first immediate hotkey binding in a layer that matches a hotkey.
+///
+/// Returns the index into `stored.bindings`.
+fn find_immediate_in_layer(stored: &StoredLayer, hotkey: &Hotkey) -> Option<usize> {
+    stored
+        .bindings
+        .iter()
+        .position(|binding| binding.hotkey == *hotkey)
 }
 
 impl Dispatcher {
