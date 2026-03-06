@@ -204,7 +204,12 @@ impl Dispatcher {
         self.pending_sequence_snapshot()
     }
 
-    /// Drain sequence step matches recorded since the last call.
+    /// Drain sequence step matches from the latest dispatch work.
+    ///
+    /// Consumers that care about sequence progress should call this promptly
+    /// after each [`process`](Self::process) or timeout check they want to
+    /// observe. Older undrained step records are discarded when a new dispatch
+    /// cycle starts so the dispatcher does not accumulate unbounded event state.
     #[must_use]
     pub fn drain_sequence_steps(&mut self) -> Vec<SequenceStepInfo> {
         std::mem::take(&mut self.sequence_steps)
@@ -244,6 +249,7 @@ impl Dispatcher {
     /// return `MatchResult::Ignored`. Modifier-only presses also return
     /// `MatchResult::Ignored`.
     pub fn process(&mut self, hotkey: &Hotkey, transition: KeyTransition) -> MatchResult<'_> {
+        self.sequence_steps.clear();
         let outcome = self.match_extract(hotkey, transition);
 
         if let InternalOutcome::Matched {

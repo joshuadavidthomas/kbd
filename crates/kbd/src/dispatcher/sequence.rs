@@ -890,6 +890,24 @@ mod tests {
     }
 
     #[test]
+    fn stale_sequence_steps_are_discarded_on_next_dispatch_cycle() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+            .expect("sequence should register");
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        let no_match = dispatcher.process(&Hotkey::new(Key::X), KeyTransition::Press);
+        assert!(matches!(no_match, MatchResult::NoMatch));
+        assert!(dispatcher.drain_sequence_steps().is_empty());
+    }
+
+    #[test]
     fn drain_sequence_steps_reports_single_step_sequence_completion() {
         let mut dispatcher = Dispatcher::new();
         let binding_id = dispatcher
