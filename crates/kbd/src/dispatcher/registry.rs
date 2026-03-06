@@ -105,11 +105,12 @@ impl Dispatcher {
         if self.bindings_by_id.contains_key(&id)
             || self.sequence_bindings_by_id.contains_key(&id)
             || self.binding_ids_by_hotkey.contains_key(&hotkey)
+            || self.alias_resolved_ids.contains_key(&hotkey)
         {
             return Err(crate::error::Error::AlreadyRegistered);
         }
 
-        // For aliased bindings, also check the resolved lookup table
+        // For aliased bindings, also check the resolved form for conflicts
         if has_aliases {
             if let Some(resolved) = self.resolve_hotkey(&hotkey) {
                 if self.binding_ids_by_hotkey.contains_key(&resolved)
@@ -120,17 +121,16 @@ impl Dispatcher {
             }
         }
 
+        // Aliased bindings additionally go into the resolved lookup table
+        // for matching (physical events always produce concrete modifiers).
+        // If the alias is undefined, the binding won't match until the alias
+        // is defined (at which point rebuild_alias_resolved_ids will add it).
         if has_aliases {
-            // Aliased bindings go into the alias-resolved lookup table
-            if let Some(resolved) = self.resolve_hotkey(&hotkey) {
+            if let Some(resolved) = self.resolve_hotkey(binding.hotkey()) {
                 self.alias_resolved_ids.insert(resolved, id);
             }
-            // Note: if alias is undefined, binding is stored but won't match
-            // until the alias is defined (at which point rebuild_alias_resolved_ids
-            // will add it)
-        } else {
-            self.binding_ids_by_hotkey.insert(hotkey, id);
         }
+        self.binding_ids_by_hotkey.insert(hotkey, id);
 
         self.bindings_by_id.insert(id, binding);
         Ok(())
@@ -191,7 +191,6 @@ impl Dispatcher {
     #[must_use]
     pub fn is_registered(&self, hotkey: &Hotkey) -> bool {
         self.binding_ids_by_hotkey.contains_key(hotkey)
-            || self.bindings_by_id.values().any(|b| b.hotkey() == hotkey)
     }
 }
 
@@ -356,5 +355,35 @@ mod tests {
         let mut dispatcher = Dispatcher::new();
         let result = dispatcher.register("Ctrl+@@@", Action::Suppress);
         assert!(matches!(result, Err(crate::error::Error::Parse(_))));
+    }
+
+    #[test]
+    fn concrete_binding_conflicts_with_alias_resolved_form() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+
+        // Register aliased Mod+T (resolves to Super+T)
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+
+        // Registering concrete Super+T must be rejected — it conflicts
+        // with the alias-resolved form
+        let result = dispatcher.register(
+            Hotkey::new(Key::T).modifier(Modifier::Super),
+            Action::Suppress,
+        );
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn is_registered_finds_aliased_binding() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+
+        let aliased_hotkey = "Mod+T".parse::<Hotkey>().unwrap();
+        assert!(dispatcher.is_registered(&aliased_hotkey));
     }
 }
