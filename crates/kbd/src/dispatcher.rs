@@ -629,16 +629,19 @@ impl Dispatcher {
         device: &DeviceContext<'_>,
     ) -> Option<(MatchedBindingRef, KeyPropagation)> {
         // Build the device-specific candidate hotkey for modifier isolation.
-        let device_hotkey = if let Some(device_mods) = device.device_modifiers() {
-            Hotkey::with_modifiers(hotkey.key(), device_mods.to_vec())
+        // Use a conditional reference to avoid cloning the aggregate hotkey
+        // when no per-device modifiers are set.
+        let owned_hotkey;
+        let lookup_key = if let Some(device_mods) = device.device_modifiers() {
+            owned_hotkey = Hotkey::with_modifiers(hotkey.key(), device_mods.to_vec());
+            &owned_hotkey
         } else {
-            // No device modifiers specified — use aggregate modifiers
-            hotkey.clone()
+            hotkey
         };
 
         // Look up bindings registered for the device-specific hotkey.
         // Walk from highest precedence to lowest for deterministic ordering.
-        let ids = self.binding_ids_by_hotkey.get(&device_hotkey)?;
+        let ids = self.binding_ids_by_hotkey.get(lookup_key)?;
         for id in ids.iter().rev() {
             if let Some(binding) = self.bindings_by_id.get(id) {
                 if let Some(filter) = binding.options().device() {
