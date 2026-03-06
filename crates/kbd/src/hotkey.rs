@@ -364,7 +364,14 @@ impl FromStr for Hotkey {
             key
         } else {
             let key = last_modifier_key.ok_or(ParseHotkeyError::MissingKey)?;
-            modifiers.pop();
+            // Remove the modifier that corresponds to the trigger key.
+            // We can't blindly pop() because alias modifiers may have been
+            // pushed after the last physical modifier.
+            let trigger_modifier =
+                Modifier::from_key(key).expect("last_modifier_key is always a modifier key");
+            if let Some(pos) = modifiers.iter().rposition(|m| m == &trigger_modifier) {
+                modifiers.remove(pos);
+            }
             key
         };
 
@@ -723,5 +730,35 @@ mod tests {
     fn hotkey_input_from_string_reports_parse_error() {
         let result = String::from("Ctrl+@@@").into_hotkey();
         assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
+    }
+
+    #[test]
+    fn modifier_only_with_trailing_alias_preserves_alias() {
+        // "Ctrl+Mod" with no trigger key: Ctrl becomes the trigger,
+        // and the alias "Mod" must be preserved as a modifier.
+        let hotkey = "Ctrl+Mod".parse::<Hotkey>().unwrap();
+        assert_eq!(hotkey.key(), Key::CONTROL_LEFT);
+        assert_eq!(
+            hotkey.modifiers(),
+            &[Modifier::Alias(ModifierAlias::new("Mod"))]
+        );
+    }
+
+    #[test]
+    fn modifier_only_with_leading_alias_preserves_alias() {
+        // "Mod+Ctrl": Ctrl is the only physical modifier → becomes trigger.
+        let hotkey = "Mod+Ctrl".parse::<Hotkey>().unwrap();
+        assert_eq!(hotkey.key(), Key::CONTROL_LEFT);
+        assert_eq!(
+            hotkey.modifiers(),
+            &[Modifier::Alias(ModifierAlias::new("Mod"))]
+        );
+    }
+
+    #[test]
+    fn alias_only_hotkey_returns_missing_key() {
+        // An alias alone has no physical key to use as trigger.
+        let result = "Mod".parse::<Hotkey>();
+        assert!(matches!(result, Err(ParseHotkeyError::MissingKey)));
     }
 }
