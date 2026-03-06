@@ -345,33 +345,10 @@ impl FromStr for Hotkey {
                 continue;
             }
 
-            // Try parsing as a known modifier name (Ctrl, Shift, Alt, Super + aliases)
-            let lower = token.to_ascii_lowercase();
-            if let Some(modifier) = match lower.as_str() {
-                "ctrl" | "control" => Some(Modifier::Ctrl),
-                "shift" => Some(Modifier::Shift),
-                "alt" => Some(Modifier::Alt),
-                "super" | "meta" | "win" | "windows" => Some(Modifier::Super),
-                _ => None,
-            } {
-                modifiers.push(modifier);
-                continue;
-            }
-
-            // Unknown token in modifier position — treat as a modifier alias.
-            // The alias will be resolved at match time by the Dispatcher.
-            // Only tokens that look like identifiers (start with a letter) are
-            // treated as aliases; others are still errors.
-            if token
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_alphabetic())
-            {
-                modifiers.push(Modifier::Alias(ModifierAlias::new(token)));
-                continue;
-            }
-
-            return Err(ParseHotkeyError::UnknownToken(token.to_string()));
+            // Not a recognized key — delegate to Modifier parsing, which
+            // handles concrete modifier names, user-defined aliases, and
+            // error reporting in one place.
+            modifiers.push(token.parse::<Modifier>()?);
         }
 
         let key = if let Some(key) = key {
