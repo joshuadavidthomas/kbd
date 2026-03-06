@@ -85,9 +85,9 @@ pub mod prelude {
     pub use crate::binding::BindingSource;
     pub use crate::binding::KeyPropagation;
     pub use crate::binding::OverlayVisibility;
+    pub use crate::device::DeviceContext;
     pub use crate::device::DeviceFilter;
     pub use crate::device::DeviceInfo;
-    pub use crate::dispatcher::DeviceContext;
     pub use crate::dispatcher::Dispatcher;
     pub use crate::dispatcher::MatchResult;
     pub use crate::hotkey::Hotkey;

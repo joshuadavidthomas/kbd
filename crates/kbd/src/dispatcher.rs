@@ -31,7 +31,9 @@ use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
-use crate::device::DeviceInfo;
+// Re-export for backward compatibility.
+#[doc(inline)]
+pub use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
@@ -39,91 +41,6 @@ use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
-
-/// Device context for a key event.
-///
-/// Carries device identity and per-device modifier state so the
-/// dispatcher can enforce device-specific bindings and modifier
-/// isolation. Created by the engine or by consumers of `kbd-core`
-/// that have device-level information.
-///
-/// # Modifier isolation
-///
-/// When [`device_modifiers`](DeviceContext::device_modifiers) is set,
-/// bindings with a [`DeviceFilter`](crate::device::DeviceFilter) use
-/// only those modifiers for matching — not the aggregate modifier state
-/// encoded in the `Hotkey` passed to
-/// [`process_with_device`](Dispatcher::process_with_device).
-///
-/// Global bindings (no device filter) always use the aggregate modifier
-/// state from the `Hotkey` argument.
-///
-/// # Examples
-///
-/// ```
-/// use kbd::device::DeviceInfo;
-/// use kbd::dispatcher::DeviceContext;
-/// use kbd::hotkey::Modifier;
-///
-/// let info = DeviceInfo::new("StreamDeck XL", 0x0fd9, 0x006c);
-/// let ctx = DeviceContext::new(10, &info)
-///     .with_device_modifiers(vec![Modifier::Ctrl]);
-///
-/// assert_eq!(ctx.device_id(), 10);
-/// assert_eq!(ctx.info().name(), "StreamDeck XL");
-/// assert_eq!(ctx.device_modifiers(), Some(&[Modifier::Ctrl][..]));
-/// ```
-#[derive(Debug)]
-pub struct DeviceContext<'a> {
-    device_id: i32,
-    info: &'a DeviceInfo,
-    device_modifiers: Option<Vec<Modifier>>,
-}
-
-impl<'a> DeviceContext<'a> {
-    /// Create a device context with device ID and info.
-    ///
-    /// Without calling [`with_device_modifiers`](Self::with_device_modifiers),
-    /// device-filtered bindings will use the aggregate modifiers from the
-    /// `Hotkey` argument — the same behavior as global bindings.
-    #[must_use]
-    pub fn new(device_id: i32, info: &'a DeviceInfo) -> Self {
-        Self {
-            device_id,
-            info,
-            device_modifiers: None,
-        }
-    }
-
-    /// Set per-device modifier state for modifier isolation.
-    ///
-    /// When set, bindings with a [`DeviceFilter`](crate::device::DeviceFilter)
-    /// will match against these modifiers instead of the aggregate modifiers
-    /// from the `Hotkey` argument.
-    #[must_use]
-    pub fn with_device_modifiers(mut self, modifiers: Vec<Modifier>) -> Self {
-        self.device_modifiers = Some(modifiers);
-        self
-    }
-
-    /// The platform-specific device identifier (e.g., file descriptor).
-    #[must_use]
-    pub const fn device_id(&self) -> i32 {
-        self.device_id
-    }
-
-    /// Device metadata (name, vendor, product).
-    #[must_use]
-    pub const fn info(&self) -> &DeviceInfo {
-        self.info
-    }
-
-    /// Per-device modifier state, if set.
-    #[must_use]
-    pub fn device_modifiers(&self) -> Option<&[Modifier]> {
-        self.device_modifiers.as_deref()
-    }
-}
 use crate::sequence::PendingSequenceInfo;
 
 /// Result of attempting to match a key event against registered bindings.

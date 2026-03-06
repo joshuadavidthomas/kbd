@@ -41,7 +41,7 @@ use std::sync::mpsc;
 
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
-use kbd::dispatcher::DeviceContext;
+use kbd::device::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
 use kbd::hotkey::Hotkey;
