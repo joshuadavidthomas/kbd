@@ -24,7 +24,7 @@ pub(crate) enum GrabState {
 /// Returned by `process_key_event` to indicate what happened with the
 /// event. Used by tests to verify forwarding and consumption behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeyEventDisposition {
+pub(crate) enum KeyEventOutcome {
     /// Event matched a binding and was consumed (not forwarded).
     MatchedConsumed,
     /// Event matched a binding with propagation and was forwarded.
