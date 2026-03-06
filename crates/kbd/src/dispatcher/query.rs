@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-
 use super::Dispatcher;
 use super::resolve;
 use super::resolve::LayerMatch;
 use super::resolve::SequencePrefixMatch;
+use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
@@ -14,11 +13,64 @@ use crate::introspection::ShadowedStatus;
 use crate::layer::LayerName;
 use crate::layer::UnmatchedKeys;
 
+#[derive(Clone)]
+enum HotkeyClaim {
+    LayerImmediate { layer: LayerName, index: usize },
+    LayerSequence { layer: LayerName },
+    GlobalImmediate { id: BindingId },
+    GlobalSequence,
+}
+
 impl Dispatcher {
+    fn active_layer_claim(&self, hotkey: &Hotkey) -> Option<HotkeyClaim> {
+        for entry in self.layer_stack.iter().rev() {
+            let Some(stored) = self.layers.get(&entry.name) else {
+                continue;
+            };
+
+            match resolve::classify_layer(stored, hotkey) {
+                LayerMatch::SingleStepSequence { .. } | LayerMatch::MultiStepSequences { .. } => {
+                    return Some(HotkeyClaim::LayerSequence {
+                        layer: entry.name.clone(),
+                    });
+                }
+                LayerMatch::Immediate { index } => {
+                    return Some(HotkeyClaim::LayerImmediate {
+                        layer: entry.name.clone(),
+                        index,
+                    });
+                }
+                LayerMatch::None => {}
+            }
+        }
+
+        None
+    }
+
+    fn global_claim(
+        &self,
+        hotkey: &Hotkey,
+        global_sequences: &[&super::sequence::RegisteredSequenceBinding],
+    ) -> Option<HotkeyClaim> {
+        match resolve::classify_sequence_prefixes(
+            global_sequences.iter().map(|binding| &binding.sequence),
+            hotkey,
+        ) {
+            SequencePrefixMatch::SingleStep { .. } | SequencePrefixMatch::MultiStep { .. } => {
+                Some(HotkeyClaim::GlobalSequence)
+            }
+            SequencePrefixMatch::None => self
+                .active_global_binding_id(hotkey)
+                .map(|id| HotkeyClaim::GlobalImmediate { id }),
+        }
+    }
+
     /// Return a snapshot of all registered immediate bindings with their status.
     ///
     /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
-    /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence).
+    /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence), but
+    /// sequence prefixes still affect whether an immediate binding is currently active
+    /// or shadowed.
     ///
     /// Results are returned in a deterministic order: global bindings are
     /// grouped by hotkey and then by precedence tier, followed by layer
@@ -26,17 +78,7 @@ impl Dispatcher {
     /// declaration order.
     #[must_use]
     pub fn list_bindings(&self) -> Vec<BindingInfo> {
-        // Build a map of hotkey → claiming layer name for active layers.
-        // Walk top-down so the topmost layer claiming a hotkey "wins".
-        let mut claimed_by: HashMap<&Hotkey, &LayerName> = HashMap::new();
-        for entry in self.layer_stack.iter().rev() {
-            if let Some(stored) = self.layers.get(&entry.name) {
-                for binding in &stored.bindings {
-                    claimed_by.entry(&binding.hotkey).or_insert(&entry.name);
-                }
-            }
-        }
-
+        let global_sequences = self.sorted_global_sequences();
         let mut results = Vec::new();
 
         let mut global_hotkeys: Vec<_> = self.binding_ids_by_hotkey.keys().collect();
@@ -52,12 +94,31 @@ impl Dispatcher {
                     continue;
                 };
 
-                let shadowed = if let Some(&layer_name) = claimed_by.get(binding.hotkey()) {
-                    ShadowedStatus::ShadowedBy(layer_name.clone())
-                } else if self.active_global_binding_id(binding.hotkey()) == Some(binding.id()) {
-                    ShadowedStatus::Active
-                } else {
-                    ShadowedStatus::ShadowedByGlobal
+                let shadowed = match self.active_layer_claim(binding.hotkey()) {
+                    Some(HotkeyClaim::LayerImmediate { layer, .. }) => {
+                        ShadowedStatus::ShadowedBy(layer)
+                    }
+                    Some(HotkeyClaim::LayerSequence { layer }) => {
+                        ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(layer))
+                    }
+                    Some(HotkeyClaim::GlobalImmediate { .. } | HotkeyClaim::GlobalSequence) => {
+                        unreachable!("layer claim helper only returns layer claims")
+                    }
+                    None => match self.global_claim(binding.hotkey(), &global_sequences) {
+                        Some(HotkeyClaim::GlobalImmediate { id }) if id == binding.id() => {
+                            ShadowedStatus::Active
+                        }
+                        Some(HotkeyClaim::GlobalImmediate { .. }) => {
+                            ShadowedStatus::ShadowedByGlobal
+                        }
+                        Some(HotkeyClaim::GlobalSequence) => {
+                            ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
+                        }
+                        Some(
+                            HotkeyClaim::LayerImmediate { .. } | HotkeyClaim::LayerSequence { .. },
+                        ) => unreachable!("global claim helper only returns global claims"),
+                        None => ShadowedStatus::Active,
+                    },
                 };
 
                 results.push(BindingInfo {
@@ -83,17 +144,28 @@ impl Dispatcher {
                 .iter()
                 .any(|entry| entry.name == layer_name);
 
-            for binding in &stored.bindings {
-                let shadowed = if !is_active {
-                    ShadowedStatus::Inactive
-                } else if let Some(&claiming_layer) = claimed_by.get(&binding.hotkey) {
-                    if claiming_layer == &layer_name {
-                        ShadowedStatus::Active
-                    } else {
-                        ShadowedStatus::ShadowedBy(claiming_layer.clone())
+            for (index, binding) in stored.bindings.iter().enumerate() {
+                let shadowed = if is_active {
+                    match self.active_layer_claim(&binding.hotkey) {
+                        Some(HotkeyClaim::LayerImmediate {
+                            layer,
+                            index: active_index,
+                        }) if layer == layer_name && active_index == index => {
+                            ShadowedStatus::Active
+                        }
+                        Some(HotkeyClaim::LayerImmediate { layer, .. }) => {
+                            ShadowedStatus::ShadowedBy(layer)
+                        }
+                        Some(HotkeyClaim::LayerSequence { layer }) => {
+                            ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(layer))
+                        }
+                        Some(HotkeyClaim::GlobalImmediate { .. } | HotkeyClaim::GlobalSequence) => {
+                            unreachable!("layer claims always beat global claims")
+                        }
+                        None => ShadowedStatus::Active,
                     }
                 } else {
-                    ShadowedStatus::Active
+                    ShadowedStatus::Inactive
                 };
 
                 results.push(BindingInfo {
@@ -220,7 +292,7 @@ impl Dispatcher {
             .collect()
     }
 
-    /// Return bindings shadowed by higher-priority layers.
+    /// Return bindings that are currently shadowed by another binding.
     #[must_use]
     pub fn conflicts(&self) -> Vec<ConflictInfo> {
         let all_bindings = self.list_bindings();
@@ -228,15 +300,28 @@ impl Dispatcher {
 
         for shadowed in &all_bindings {
             let shadowing = match &shadowed.shadowed {
-                ShadowedStatus::ShadowedBy(shadowing_layer) => all_bindings.iter().find(|binding| {
-                    binding.hotkey == shadowed.hotkey
-                        && matches!(&binding.location, BindingLocation::Layer(name) if name == shadowing_layer)
-                        && matches!(binding.shadowed, ShadowedStatus::Active)
-                }),
-                ShadowedStatus::ShadowedByGlobal => all_bindings.iter().find(|binding| {
-                    binding.hotkey == shadowed.hotkey
-                        && binding.location == BindingLocation::Global
-                        && matches!(binding.shadowed, ShadowedStatus::Active)
+                ShadowedStatus::ShadowedBy(shadowing_layer) => {
+                    all_bindings.iter().find(|binding| {
+                        binding.hotkey == shadowed.hotkey
+                            && matches!(&binding.location, BindingLocation::Layer(name) if name == shadowing_layer)
+                            && matches!(binding.shadowed, ShadowedStatus::Active)
+                    }).cloned()
+                }
+                ShadowedStatus::ShadowedByGlobal => all_bindings
+                    .iter()
+                    .find(|binding| {
+                        binding.hotkey == shadowed.hotkey
+                            && binding.location == BindingLocation::Global
+                            && matches!(binding.shadowed, ShadowedStatus::Active)
+                    })
+                    .cloned(),
+                ShadowedStatus::ShadowedBySequence(location) => Some(BindingInfo {
+                    hotkey: shadowed.hotkey.clone(),
+                    description: None,
+                    source: None,
+                    location: location.clone(),
+                    shadowed: ShadowedStatus::Active,
+                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
                 }),
                 ShadowedStatus::Active | ShadowedStatus::Inactive => None,
             };
@@ -245,7 +330,7 @@ impl Dispatcher {
                 conflicts.push(ConflictInfo {
                     hotkey: shadowed.hotkey.clone(),
                     shadowed_binding: shadowed.clone(),
-                    shadowing_binding: shadowing.clone(),
+                    shadowing_binding: shadowing,
                 });
             }
         }
@@ -389,6 +474,106 @@ mod tests {
         // Layer defined but not pushed — no conflict
 
         assert!(dispatcher.conflicts().is_empty());
+    }
+
+    #[test]
+    fn list_bindings_marks_global_immediate_shadowed_by_global_sequence_prefix() {
+        let mut dispatcher = Dispatcher::new();
+        let hotkey = Hotkey::new(Key::K).modifier(Modifier::Ctrl);
+
+        dispatcher
+            .register(hotkey.clone(), Action::Suppress)
+            .unwrap();
+        dispatcher
+            .register_sequence(
+                "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
+                Action::Suppress,
+            )
+            .unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(
+            bindings[0].shadowed,
+            ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
+        );
+        assert!(dispatcher.bindings_for_key(&hotkey).is_none());
+
+        let conflicts = dispatcher.conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(
+            conflicts[0].shadowing_binding.location,
+            BindingLocation::Global
+        );
+        assert_eq!(conflicts[0].shadowing_binding.source, None);
+    }
+
+    #[test]
+    fn list_bindings_marks_global_immediate_shadowed_by_layer_sequence_prefix() {
+        let mut dispatcher = Dispatcher::new();
+        let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
+
+        dispatcher
+            .register(hotkey.clone(), Action::Suppress)
+            .unwrap();
+        dispatcher
+            .define_layer(
+                Layer::new("nav")
+                    .bind_sequence("Ctrl+C, Ctrl+V", Action::Suppress)
+                    .unwrap(),
+            )
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(
+            bindings[0].shadowed,
+            ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(
+                crate::layer::LayerName::from("nav"),
+            ))
+        );
+        assert!(dispatcher.bindings_for_key(&hotkey).is_none());
+
+        let conflicts = dispatcher.conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(
+            conflicts[0].shadowing_binding.location,
+            BindingLocation::Layer(crate::layer::LayerName::from("nav"))
+        );
+    }
+
+    #[test]
+    fn list_bindings_marks_layer_immediate_shadowed_by_sequence_in_same_layer() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .define_layer(
+                Layer::new("nav")
+                    .bind(Key::K, Action::Suppress)
+                    .unwrap()
+                    .bind_sequence("K, C", Action::Suppress)
+                    .unwrap(),
+            )
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].location, BindingLocation::Layer("nav".into()));
+        assert_eq!(
+            bindings[0].shadowed,
+            ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(
+                crate::layer::LayerName::from("nav"),
+            ))
+        );
+
+        let conflicts = dispatcher.conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(
+            conflicts[0].shadowing_binding.location,
+            BindingLocation::Layer(crate::layer::LayerName::from("nav"))
+        );
     }
 
     #[test]

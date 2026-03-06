@@ -128,8 +128,14 @@ fn format_binding(b: &BindingInfo) -> String {
         .map_or(String::new(), |source| format!(" source={source}"));
     let shadow = match &b.shadowed {
         ShadowedStatus::Active => "active".to_string(),
-        ShadowedStatus::ShadowedBy(name) => format!("shadowed by {name}"),
+        ShadowedStatus::ShadowedBy(name) => format!("shadowed by layer {name}"),
         ShadowedStatus::ShadowedByGlobal => "shadowed by global override".to_string(),
+        ShadowedStatus::ShadowedBySequence(location) => {
+            format!(
+                "shadowed by sequence in {}",
+                format_location_from_location(location)
+            )
+        }
         ShadowedStatus::Inactive => "inactive".to_string(),
         _ => "unknown".to_string(),
     };
@@ -147,7 +153,11 @@ fn format_binding(b: &BindingInfo) -> String {
 }
 
 fn format_location(b: &BindingInfo) -> String {
-    match &b.location {
+    format_location_from_location(&b.location)
+}
+
+fn format_location_from_location(location: &BindingLocation) -> String {
+    match location {
         BindingLocation::Global => "global".to_string(),
         BindingLocation::Layer(name) => format!("layer:{name}"),
         _ => "unknown".to_string(),
