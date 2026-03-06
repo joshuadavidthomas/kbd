@@ -51,10 +51,7 @@ fn parse_hotkey_error_converts_into_library_error_with_source() {
     let error = Error::from(parse_error.clone());
 
     assert!(matches!(error, Error::Parse(_)));
-    assert_eq!(
-        error.to_string(),
-        "parse error: unknown hotkey token: @@@"
-    );
+    assert_eq!(error.to_string(), "parse error: unknown hotkey token: @@@");
 
     let source = error.source().expect("parse error should preserve source");
     assert_eq!(source.to_string(), parse_error.to_string());

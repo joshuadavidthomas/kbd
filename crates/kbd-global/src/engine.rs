@@ -2804,13 +2804,13 @@ mod tests {
         release_key(&mut engine, Key::T, 10);
         release_key(&mut engine, Key::META_LEFT, 10);
 
-        let (reply_tx2, reply_rx2) = mpsc::channel();
+        let (reassign_tx, reassign_rx) = mpsc::channel();
         engine.handle_command(Command::DefineModifierAlias {
             name: "Mod".into(),
             target: Modifier::Alt,
-            reply: reply_tx2,
+            reply: reassign_tx,
         });
-        assert!(reply_rx2.recv().unwrap().is_ok());
+        assert!(reassign_rx.recv().unwrap().is_ok());
 
         press_key(&mut engine, Key::ALT_LEFT, 10);
         press_key(&mut engine, Key::T, 10);

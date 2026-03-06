@@ -163,12 +163,9 @@ fn find_immediate_in_layer(
     hotkey: &Hotkey,
     aliases: &HashMap<String, Modifier>,
 ) -> Option<usize> {
-    stored
-        .bindings
-        .iter()
-        .position(|binding| {
-            super::aliases::hotkeys_match_with_aliases(&binding.hotkey, hotkey, aliases)
-        })
+    stored.bindings.iter().position(|binding| {
+        super::aliases::hotkeys_match_with_aliases(&binding.hotkey, hotkey, aliases)
+    })
 }
 
 impl Dispatcher {
@@ -195,14 +192,14 @@ mod tests {
     use crate::hotkey::Modifier;
     use crate::key::Key;
     use crate::layer::LayerBinding;
-
-    fn no_aliases() -> HashMap<String, Modifier> {
-        HashMap::new()
-    }
     use crate::layer::LayerOptions;
     use crate::layer::LayerSequenceBinding;
     use crate::layer::StoredLayer;
     use crate::sequence::SequenceOptions;
+
+    fn no_aliases() -> HashMap<String, Modifier> {
+        HashMap::new()
+    }
 
     fn single_step(key: Key) -> HotkeySequence {
         HotkeySequence::new(vec![Hotkey::new(key)]).unwrap()

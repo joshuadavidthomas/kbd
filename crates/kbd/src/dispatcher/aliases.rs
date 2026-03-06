@@ -46,7 +46,11 @@ impl Dispatcher {
     ///
     /// Returns `None` if any alias is undefined.
     pub(crate) fn resolve_hotkey(&self, hotkey: &Hotkey) -> Option<Hotkey> {
-        if !hotkey.modifiers().iter().any(|m| matches!(m, Modifier::Alias(_))) {
+        if !hotkey
+            .modifiers()
+            .iter()
+            .any(|m| matches!(m, Modifier::Alias(_)))
+        {
             return Some(hotkey.clone());
         }
 
@@ -133,8 +137,11 @@ pub(crate) fn hotkeys_match_with_aliases(
 #[cfg(test)]
 mod tests {
     use crate::action::Action;
-    use crate::dispatcher::{Dispatcher, MatchResult};
-    use crate::hotkey::{Hotkey, Modifier, ModifierAlias};
+    use crate::dispatcher::Dispatcher;
+    use crate::dispatcher::MatchResult;
+    use crate::hotkey::Hotkey;
+    use crate::hotkey::Modifier;
+    use crate::hotkey::ModifierAlias;
     use crate::key::Key;
     use crate::key_state::KeyTransition;
     use crate::layer::Layer;
@@ -172,9 +179,11 @@ mod tests {
         let hotkey: Hotkey = "Ctrl+Mod+A".parse().unwrap();
         assert_eq!(hotkey.key(), Key::A);
         assert!(hotkey.modifiers().contains(&Modifier::Ctrl));
-        assert!(hotkey
-            .modifiers()
-            .contains(&Modifier::Alias(ModifierAlias::new("Mod"))));
+        assert!(
+            hotkey
+                .modifiers()
+                .contains(&Modifier::Alias(ModifierAlias::new("Mod")))
+        );
     }
 
     #[test]
@@ -284,7 +293,7 @@ mod tests {
         let hotkey = Hotkey::new(Key::T).modifier(Modifier::Alias(ModifierAlias::new("Mod")));
         let display = hotkey.to_string();
         assert!(display.contains("Mod"));
-        assert!(display.contains("T"));
+        assert!(display.contains('T'));
     }
 
     #[test]
@@ -311,9 +320,7 @@ mod tests {
         let mut dispatcher = Dispatcher::new();
         dispatcher.define_modifier_alias("Mod", Modifier::Super);
 
-        dispatcher
-            .register("Ctrl+Mod+A", Action::Suppress)
-            .unwrap();
+        dispatcher.register("Ctrl+Mod+A", Action::Suppress).unwrap();
 
         let result = dispatcher.process(
             &Hotkey::new(Key::A)
@@ -332,10 +339,12 @@ mod tests {
 
         let bindings = dispatcher.list_bindings();
         assert_eq!(bindings.len(), 1);
-        assert!(bindings[0]
-            .hotkey
-            .modifiers()
-            .contains(&Modifier::Alias(ModifierAlias::new("Mod"))));
+        assert!(
+            bindings[0]
+                .hotkey
+                .modifiers()
+                .contains(&Modifier::Alias(ModifierAlias::new("Mod")))
+        );
     }
 
     #[test]

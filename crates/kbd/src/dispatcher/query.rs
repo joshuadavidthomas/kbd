@@ -154,7 +154,13 @@ impl Dispatcher {
         }
 
         // Fall through to global immediate bindings.
-        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey)
+        // Check both direct and alias-resolved lookups, matching match_global_hotkey().
+        let global_id = self
+            .binding_ids_by_hotkey
+            .get(hotkey)
+            .or_else(|| self.alias_resolved_ids.get(hotkey));
+
+        if let Some(&id) = global_id
             && let Some(binding) = self.bindings_by_id.get(&id)
         {
             return Some(BindingInfo {
@@ -319,6 +325,20 @@ mod tests {
 
         let result = dispatcher.bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn bindings_for_key_finds_alias_resolved_global_binding() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.define_modifier_alias("Mod", Modifier::Super);
+        dispatcher.register("Mod+T", Action::Suppress).unwrap();
+
+        // Query with the resolved concrete hotkey (Super+T)
+        let result = dispatcher
+            .bindings_for_key(&Hotkey::new(Key::T).modifier(Modifier::Super))
+            .expect("alias-resolved global binding should be found");
+
+        assert_eq!(result.location, BindingLocation::Global);
     }
 
     #[test]

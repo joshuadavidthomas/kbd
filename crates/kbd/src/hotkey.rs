@@ -36,7 +36,10 @@ use crate::key::Key;
 /// `Super` and let users rebind it to `Alt` without changing any hotkey
 /// definitions.
 ///
-/// Alias names are case-preserving but compared case-insensitively.
+/// Alias names are case-preserving. Resolution through the
+/// [`Dispatcher`](crate::dispatcher::Dispatcher) is case-insensitive
+/// (defining `"Mod"` and looking up `"mod"` reaches the same alias),
+/// but the type's own `Eq`/`Hash` are case-sensitive.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ModifierAlias(String);
@@ -131,12 +134,6 @@ impl Modifier {
             Self::Super => Some((Key::META_LEFT, Key::META_RIGHT)),
             Self::Alias(_) => None,
         }
-    }
-
-    /// Whether this modifier is a concrete (non-alias) modifier.
-    #[must_use]
-    pub fn is_concrete(&self) -> bool {
-        !matches!(self, Self::Alias(_))
     }
 
     /// Collect active modifiers from a list of `(flag, modifier)` pairs.
