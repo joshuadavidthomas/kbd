@@ -8,6 +8,7 @@
 //! Returns a [`MatchResult`] — the matched
 //! binding's action (or "no match" for forwarding).
 
+mod aliases;
 mod layers;
 mod query;
 mod registry;
@@ -155,12 +156,18 @@ pub enum MatchResult<'a> {
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
+    /// Resolved lookup table for bindings that contain modifier aliases.
+    /// Maps resolved (concrete-modifier) hotkeys to binding IDs.
+    /// Rebuilt when aliases are defined or reassigned.
+    alias_resolved_ids: HashMap<Hotkey, BindingId>,
     sequence_bindings_by_id: HashMap<BindingId, RegisteredSequenceBinding>,
     sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
     layer_stack: Vec<LayerStackEntry>,
     active_sequences: Vec<ActiveSequence>,
     pending_standalone: Option<PendingStandalone>,
+    /// Modifier aliases: maps lowercase alias name → concrete modifier.
+    modifier_aliases: HashMap<String, Modifier>,
 }
 
 /// Internal reference to a matched binding, used to re-find the action
@@ -324,7 +331,7 @@ impl Dispatcher {
                 continue;
             };
 
-            let layer_match = resolve::classify_layer(stored, hotkey);
+            let layer_match = resolve::classify_layer(stored, hotkey, &self.modifier_aliases);
             let swallow_unmatched = matches!(stored.options.unmatched(), UnmatchedKeys::Swallow);
 
             match layer_match {
@@ -464,9 +471,21 @@ impl Dispatcher {
     }
 
     fn match_global_hotkey(&self, hotkey: &Hotkey) -> Option<(MatchedBindingRef, KeyPropagation)> {
-        let id = *self.binding_ids_by_hotkey.get(hotkey)?;
-        let binding = self.bindings_by_id.get(&id)?;
-        Some((MatchedBindingRef::Global(id), binding.propagation()))
+        // Check non-aliased bindings first (fast HashMap lookup)
+        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey) {
+            if let Some(binding) = self.bindings_by_id.get(&id) {
+                return Some((MatchedBindingRef::Global(id), binding.propagation()));
+            }
+        }
+
+        // Check alias-resolved bindings
+        if let Some(&id) = self.alias_resolved_ids.get(hotkey) {
+            if let Some(binding) = self.bindings_by_id.get(&id) {
+                return Some((MatchedBindingRef::Global(id), binding.propagation()));
+            }
+        }
+
+        None
     }
 
     /// Resolve a binding reference back to its action.

@@ -446,7 +446,12 @@ fn parse_hotkey_errors() {
     let result = "Ctrl+".parse::<Hotkey>();
     assert!(matches!(result, Err(ParseHotkeyError::EmptySegment)));
 
-    let result = "Ctrl+NotAKey".parse::<Hotkey>();
+    // Alphabetic unknown tokens are now treated as modifier aliases (parsed, not errors)
+    let alias_result = "Ctrl+NotAKey".parse::<Hotkey>();
+    assert!(alias_result.is_ok());
+
+    // Non-alphabetic tokens remain errors
+    let result = "Ctrl+@@@".parse::<Hotkey>();
     assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
 }
 

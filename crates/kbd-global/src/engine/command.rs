@@ -80,6 +80,11 @@ pub(crate) enum Command {
     Conflicts {
         reply: mpsc::Sender<Vec<ConflictInfo>>,
     },
+    DefineModifierAlias {
+        name: String,
+        target: Modifier,
+        reply: mpsc::Sender<Result<(), Error>>,
+    },
     Shutdown,
 }
 

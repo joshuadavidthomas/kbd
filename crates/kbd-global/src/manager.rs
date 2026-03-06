@@ -435,6 +435,31 @@ impl HotkeyManager {
         self.request(|reply| Command::PendingSequence { reply })
     }
 
+    /// Define or reassign a modifier alias.
+    ///
+    /// Aliases let users define abstract modifier names like `"Mod"` that
+    /// resolve to concrete modifiers at match time. For example, a tiling WM
+    /// can define `"Mod"` as `Super` and let users rebind it to `Alt`
+    /// without changing any hotkey definitions.
+    ///
+    /// Reassigning an existing alias updates resolution for all bindings
+    /// that use it — no re-registration needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn define_modifier_alias(
+        &self,
+        name: impl Into<String>,
+        target: Modifier,
+    ) -> Result<(), Error> {
+        self.request(|reply| Command::DefineModifierAlias {
+            name: name.into(),
+            target,
+            reply,
+        })?
+    }
+
     // TODO: register_tap_hold() — dual-function key
 
     /// Find bindings that are shadowed by higher-priority layers.

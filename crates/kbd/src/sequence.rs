@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn str_sequence_input_reports_parse_error() {
-        let parsed = <&str as SequenceInput>::into_sequence("Ctrl+K, Ctrl+Nope");
+        let parsed = <&str as SequenceInput>::into_sequence("Ctrl+K, Ctrl+@@@");
         assert!(matches!(parsed, Err(ParseHotkeyError::UnknownToken(_))));
     }
 

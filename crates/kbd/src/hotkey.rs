@@ -27,11 +27,49 @@ use keyboard_types::Code;
 use crate::error::ParseHotkeyError;
 use crate::key::Key;
 
-/// A canonical modifier key (Ctrl, Shift, Alt, Super).
+/// A user-defined modifier alias name.
+///
+/// Aliases let users define abstract modifier names like `"Mod"` that
+/// resolve to concrete modifiers (`Ctrl`, `Shift`, `Alt`, `Super`) at
+/// match time. This enables portable bindings across different alias
+/// configurations — for example, a tiling WM can define `"Mod"` as
+/// `Super` and let users rebind it to `Alt` without changing any hotkey
+/// definitions.
+///
+/// Alias names are case-preserving but compared case-insensitively.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ModifierAlias(String);
+
+impl ModifierAlias {
+    /// Create a new modifier alias from a name.
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    /// The alias name as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ModifierAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// A canonical modifier key (Ctrl, Shift, Alt, Super) or a user-defined alias.
 ///
 /// Left and right physical variants are canonicalized — both `ControlLeft`
 /// and `ControlRight` map to `Modifier::Ctrl`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+///
+/// The `Alias` variant stores a user-defined modifier name that is
+/// resolved at match time by the [`Dispatcher`](crate::dispatcher::Dispatcher).
+/// This allows bindings to be portable across alias configurations.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Modifier {
     /// The Control modifier (left or right).
@@ -42,17 +80,23 @@ pub enum Modifier {
     Alt,
     /// The Super/Meta/Win modifier (left or right).
     Super,
+    /// A user-defined modifier alias, resolved at match time.
+    Alias(ModifierAlias),
 }
 
 impl Modifier {
     /// Human-readable name for this modifier.
+    ///
+    /// Returns the canonical name for concrete modifiers and the alias
+    /// name for [`Modifier::Alias`] variants.
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Ctrl => "Ctrl",
             Self::Shift => "Shift",
             Self::Alt => "Alt",
             Self::Super => "Super",
+            Self::Alias(alias) => alias.as_str(),
         }
     }
 
@@ -60,6 +104,9 @@ impl Modifier {
     ///
     /// Left/right variants canonicalize: both `ControlLeft` and `ControlRight`
     /// return `Some(Modifier::Ctrl)`.
+    ///
+    /// Never returns `Modifier::Alias` — aliases are a parsing/configuration
+    /// concept, not a physical key property.
     #[must_use]
     pub fn from_key(key: Key) -> Option<Self> {
         match Code::from(key) {
@@ -72,14 +119,24 @@ impl Modifier {
     }
 
     /// Return the left and right physical [`Key`] variants for this modifier.
+    ///
+    /// Returns `None` for [`Modifier::Alias`] — aliases don't correspond
+    /// to physical keys until resolved.
     #[must_use]
-    pub const fn keys(self) -> (Key, Key) {
+    pub fn keys(&self) -> Option<(Key, Key)> {
         match self {
-            Self::Ctrl => (Key::CONTROL_LEFT, Key::CONTROL_RIGHT),
-            Self::Shift => (Key::SHIFT_LEFT, Key::SHIFT_RIGHT),
-            Self::Alt => (Key::ALT_LEFT, Key::ALT_RIGHT),
-            Self::Super => (Key::META_LEFT, Key::META_RIGHT),
+            Self::Ctrl => Some((Key::CONTROL_LEFT, Key::CONTROL_RIGHT)),
+            Self::Shift => Some((Key::SHIFT_LEFT, Key::SHIFT_RIGHT)),
+            Self::Alt => Some((Key::ALT_LEFT, Key::ALT_RIGHT)),
+            Self::Super => Some((Key::META_LEFT, Key::META_RIGHT)),
+            Self::Alias(_) => None,
         }
+    }
+
+    /// Whether this modifier is a concrete (non-alias) modifier.
+    #[must_use]
+    pub fn is_concrete(&self) -> bool {
+        !matches!(self, Self::Alias(_))
     }
 
     /// Collect active modifiers from a list of `(flag, modifier)` pairs.
@@ -152,9 +209,18 @@ impl TryFrom<Key> for Modifier {
     }
 }
 
-impl From<Modifier> for Key {
-    fn from(value: Modifier) -> Self {
-        value.keys().0
+impl TryFrom<Modifier> for Key {
+    type Error = ModifierAlias;
+
+    /// Convert a concrete modifier to its left-side physical key.
+    ///
+    /// Returns `Err(alias)` for [`Modifier::Alias`] — aliases don't
+    /// correspond to physical keys until resolved.
+    fn try_from(value: Modifier) -> Result<Self, Self::Error> {
+        match value {
+            Modifier::Alias(alias) => Err(alias),
+            concrete => Ok(concrete.keys().expect("concrete modifier has keys").0),
+        }
     }
 }
 
@@ -254,19 +320,47 @@ impl FromStr for Hotkey {
                 return Err(ParseHotkeyError::EmptySegment);
             }
 
-            let parsed_key = token
-                .parse::<Key>()
-                .map_err(|_| ParseHotkeyError::UnknownToken(token.to_string()))?;
+            // Try parsing as a known key first
+            if let Ok(parsed_key) = token.parse::<Key>() {
+                if let Some(modifier) = Modifier::from_key(parsed_key) {
+                    modifiers.push(modifier);
+                    last_modifier_key = Some(parsed_key);
+                    continue;
+                }
 
-            if let Some(modifier) = Modifier::from_key(parsed_key) {
-                modifiers.push(modifier);
-                last_modifier_key = Some(parsed_key);
+                if key.replace(parsed_key).is_some() {
+                    return Err(ParseHotkeyError::MultipleKeys);
+                }
                 continue;
             }
 
-            if key.replace(parsed_key).is_some() {
-                return Err(ParseHotkeyError::MultipleKeys);
+            // Try parsing as a known modifier name (Ctrl, Shift, Alt, Super + aliases)
+            let lower = token.to_ascii_lowercase();
+            if let Some(modifier) = match lower.as_str() {
+                "ctrl" | "control" => Some(Modifier::Ctrl),
+                "shift" => Some(Modifier::Shift),
+                "alt" => Some(Modifier::Alt),
+                "super" | "meta" | "win" | "windows" => Some(Modifier::Super),
+                _ => None,
+            } {
+                modifiers.push(modifier);
+                continue;
             }
+
+            // Unknown token in modifier position — treat as a modifier alias.
+            // The alias will be resolved at match time by the Dispatcher.
+            // Only tokens that look like identifiers (start with a letter) are
+            // treated as aliases; others are still errors.
+            if token
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic())
+            {
+                modifiers.push(Modifier::Alias(ModifierAlias::new(token)));
+                continue;
+            }
+
+            return Err(ParseHotkeyError::UnknownToken(token.to_string()));
         }
 
         let key = if let Some(key) = key {
@@ -624,13 +718,13 @@ mod tests {
 
     #[test]
     fn hotkey_input_from_str_reports_parse_error() {
-        let result = "Ctrl+Nope".into_hotkey();
+        let result = "Ctrl+@@@".into_hotkey();
         assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
     }
 
     #[test]
     fn hotkey_input_from_string_reports_parse_error() {
-        let result = String::from("Ctrl+Nope").into_hotkey();
+        let result = String::from("Ctrl+@@@").into_hotkey();
         assert!(matches!(result, Err(ParseHotkeyError::UnknownToken(_))));
     }
 }

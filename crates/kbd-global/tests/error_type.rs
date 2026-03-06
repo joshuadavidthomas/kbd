@@ -46,13 +46,14 @@ fn error_display_messages_are_actionable() {
 
 #[test]
 fn parse_hotkey_error_converts_into_library_error_with_source() {
-    let parse_error = "Ctrl+NotARealKey".parse::<Hotkey>().unwrap_err();
+    // Alphabetic tokens are now treated as modifier aliases, so use a non-alphabetic token
+    let parse_error = "Ctrl+@@@".parse::<Hotkey>().unwrap_err();
     let error = Error::from(parse_error.clone());
 
     assert!(matches!(error, Error::Parse(_)));
     assert_eq!(
         error.to_string(),
-        "parse error: unknown hotkey token: NotARealKey"
+        "parse error: unknown hotkey token: @@@"
     );
 
     let source = error.source().expect("parse error should preserve source");

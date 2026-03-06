@@ -100,6 +100,7 @@ impl Dispatcher {
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
+        let has_aliases = super::aliases::has_alias_modifiers(&hotkey);
 
         if self.bindings_by_id.contains_key(&id)
             || self.sequence_bindings_by_id.contains_key(&id)
@@ -108,7 +109,29 @@ impl Dispatcher {
             return Err(crate::error::Error::AlreadyRegistered);
         }
 
-        self.binding_ids_by_hotkey.insert(hotkey, id);
+        // For aliased bindings, also check the resolved lookup table
+        if has_aliases {
+            if let Some(resolved) = self.resolve_hotkey(&hotkey) {
+                if self.binding_ids_by_hotkey.contains_key(&resolved)
+                    || self.alias_resolved_ids.contains_key(&resolved)
+                {
+                    return Err(crate::error::Error::AlreadyRegistered);
+                }
+            }
+        }
+
+        if has_aliases {
+            // Aliased bindings go into the alias-resolved lookup table
+            if let Some(resolved) = self.resolve_hotkey(&hotkey) {
+                self.alias_resolved_ids.insert(resolved, id);
+            }
+            // Note: if alias is undefined, binding is stored but won't match
+            // until the alias is defined (at which point rebuild_alias_resolved_ids
+            // will add it)
+        } else {
+            self.binding_ids_by_hotkey.insert(hotkey, id);
+        }
+
         self.bindings_by_id.insert(id, binding);
         Ok(())
     }
@@ -136,6 +159,8 @@ impl Dispatcher {
     pub fn unregister(&mut self, id: BindingId) {
         if let Some(binding) = self.bindings_by_id.remove(&id) {
             self.binding_ids_by_hotkey.remove(binding.hotkey());
+            // Also remove from alias-resolved lookup
+            self.alias_resolved_ids.retain(|_, v| *v != id);
         }
 
         if let Some(binding) = self.sequence_bindings_by_id.remove(&id) {
@@ -161,9 +186,12 @@ impl Dispatcher {
     }
 
     /// Check whether a hotkey has a registered global binding.
+    ///
+    /// For aliased bindings, checks the original (unresolved) hotkey.
     #[must_use]
     pub fn is_registered(&self, hotkey: &Hotkey) -> bool {
         self.binding_ids_by_hotkey.contains_key(hotkey)
+            || self.bindings_by_id.values().any(|b| b.hotkey() == hotkey)
     }
 }
 
@@ -250,7 +278,7 @@ mod tests {
     fn register_sequence_reports_parse_error_for_string_input() {
         let mut dispatcher = Dispatcher::new();
 
-        let result = dispatcher.register_sequence("Ctrl+K, Ctrl+Nope", Action::Suppress);
+        let result = dispatcher.register_sequence("Ctrl+K, Ctrl+@@@", Action::Suppress);
 
         assert!(matches!(result, Err(crate::error::Error::Parse(_))));
     }
@@ -326,7 +354,7 @@ mod tests {
     #[test]
     fn register_reports_parse_error_for_invalid_string() {
         let mut dispatcher = Dispatcher::new();
-        let result = dispatcher.register("Ctrl+Nope", Action::Suppress);
+        let result = dispatcher.register("Ctrl+@@@", Action::Suppress);
         assert!(matches!(result, Err(crate::error::Error::Parse(_))));
     }
 }

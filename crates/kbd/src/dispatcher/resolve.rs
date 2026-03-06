@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use super::Dispatcher;
 use super::sequence::RegisteredSequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
+use crate::hotkey::Modifier;
 use crate::layer::StoredLayer;
 
 /// Classification of a single sequence binding's first step against a hotkey.
@@ -127,20 +130,24 @@ pub(super) fn classify_sequence_prefixes<'a>(
 /// consistent classification. When a new match type is added (e.g.,
 /// tap-hold), adding a variant to [`LayerMatch`] forces both paths
 /// to handle it.
-pub(super) fn classify_layer(stored: &StoredLayer, hotkey: &Hotkey) -> LayerMatch {
+pub(super) fn classify_layer(
+    stored: &StoredLayer,
+    hotkey: &Hotkey,
+    aliases: &HashMap<String, Modifier>,
+) -> LayerMatch {
     let seq_match =
         classify_sequence_prefixes(stored.sequence_bindings.iter().map(|b| &b.sequence), hotkey);
 
     match seq_match {
         SequencePrefixMatch::SingleStep { index } => LayerMatch::SingleStepSequence { index },
         SequencePrefixMatch::MultiStep { indices } => {
-            let immediate_index = find_immediate_in_layer(stored, hotkey);
+            let immediate_index = find_immediate_in_layer(stored, hotkey, aliases);
             LayerMatch::MultiStepSequences {
                 indices,
                 immediate_index,
             }
         }
-        SequencePrefixMatch::None => match find_immediate_in_layer(stored, hotkey) {
+        SequencePrefixMatch::None => match find_immediate_in_layer(stored, hotkey, aliases) {
             Some(index) => LayerMatch::Immediate { index },
             None => LayerMatch::None,
         },
@@ -149,12 +156,19 @@ pub(super) fn classify_layer(stored: &StoredLayer, hotkey: &Hotkey) -> LayerMatc
 
 /// Find the first immediate hotkey binding in a layer that matches a hotkey.
 ///
-/// Returns the index into `stored.bindings`.
-fn find_immediate_in_layer(stored: &StoredLayer, hotkey: &Hotkey) -> Option<usize> {
+/// Returns the index into `stored.bindings`. Handles modifier alias
+/// resolution for bindings that contain alias modifiers.
+fn find_immediate_in_layer(
+    stored: &StoredLayer,
+    hotkey: &Hotkey,
+    aliases: &HashMap<String, Modifier>,
+) -> Option<usize> {
     stored
         .bindings
         .iter()
-        .position(|binding| binding.hotkey == *hotkey)
+        .position(|binding| {
+            super::aliases::hotkeys_match_with_aliases(&binding.hotkey, hotkey, aliases)
+        })
 }
 
 impl Dispatcher {
@@ -172,12 +186,19 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::action::Action;
     use crate::binding::KeyPropagation;
     use crate::hotkey::Hotkey;
+    use crate::hotkey::Modifier;
     use crate::key::Key;
     use crate::layer::LayerBinding;
+
+    fn no_aliases() -> HashMap<String, Modifier> {
+        HashMap::new()
+    }
     use crate::layer::LayerOptions;
     use crate::layer::LayerSequenceBinding;
     use crate::layer::StoredLayer;
@@ -303,35 +324,35 @@ mod tests {
     #[test]
     fn layer_no_bindings_returns_none() {
         let stored = layer(vec![], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::None);
     }
 
     #[test]
     fn layer_no_match_returns_none() {
         let stored = layer(vec![immediate(Key::B)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::None);
     }
 
     #[test]
     fn layer_immediate_only() {
         let stored = layer(vec![immediate(Key::A)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::Immediate { index: 0 });
     }
 
     #[test]
     fn layer_immediate_returns_first_match_index() {
         let stored = layer(vec![immediate(Key::B), immediate(Key::A)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::Immediate { index: 1 });
     }
 
     #[test]
     fn layer_single_step_sequence() {
         let stored = layer(vec![], vec![seq_binding(single_step(Key::A))]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 0 });
     }
 
@@ -341,14 +362,14 @@ mod tests {
             vec![immediate(Key::A)],
             vec![seq_binding(single_step(Key::A))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 0 });
     }
 
     #[test]
     fn layer_multi_step_without_immediate() {
         let stored = layer(vec![], vec![seq_binding(two_step(Key::A, Key::B))]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -364,7 +385,7 @@ mod tests {
             vec![immediate(Key::A)],
             vec![seq_binding(two_step(Key::A, Key::B))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -381,7 +402,7 @@ mod tests {
             vec![immediate(Key::X), immediate(Key::A)],
             vec![seq_binding(two_step(Key::A, Key::B))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -400,7 +421,7 @@ mod tests {
                 seq_binding(single_step(Key::A)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 1 });
     }
 
@@ -413,7 +434,7 @@ mod tests {
                 seq_binding(single_step(Key::A)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 1 });
     }
 
@@ -426,7 +447,7 @@ mod tests {
                 seq_binding(single_step(Key::Z)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), &no_aliases());
         assert_eq!(result, LayerMatch::None);
     }
 }

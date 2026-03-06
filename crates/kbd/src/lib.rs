@@ -88,6 +88,7 @@ pub mod prelude {
     pub use crate::hotkey::HotkeyInput;
     pub use crate::hotkey::HotkeySequence;
     pub use crate::hotkey::Modifier;
+    pub use crate::hotkey::ModifierAlias;
     pub use crate::key::Key;
     pub use crate::key_state::KeyTransition;
     pub use crate::layer::Layer;
