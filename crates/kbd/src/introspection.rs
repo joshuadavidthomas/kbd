@@ -33,6 +33,7 @@
 //! # }
 //! ```
 
+use crate::binding::BindingSource;
 use crate::binding::OverlayVisibility;
 use crate::hotkey::Hotkey;
 use crate::layer::LayerName;
@@ -91,6 +92,8 @@ pub enum ShadowedStatus {
     Active,
     /// A higher-priority layer has a binding with the same hotkey.
     ShadowedBy(LayerName),
+    /// A higher-priority global binding has the same hotkey.
+    ShadowedByGlobal,
     /// This binding's layer is not currently on the stack.
     Inactive,
 }
@@ -105,6 +108,8 @@ pub struct BindingInfo {
     pub hotkey: Hotkey,
     /// Human-readable label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
     pub description: Option<Box<str>>,
+    /// Provenance label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
+    pub source: Option<BindingSource>,
     /// Where this binding lives (global or a specific layer).
     pub location: BindingLocation,
     /// Whether this binding is currently reachable or shadowed.

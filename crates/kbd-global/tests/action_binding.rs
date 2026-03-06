@@ -9,6 +9,7 @@ use std::sync::atomic::Ordering;
 use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
+use kbd::binding::BindingSource;
 use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
 use kbd::hotkey::Hotkey;
@@ -89,10 +90,12 @@ fn binding_options_with_overlay_visibility_hidden() {
 fn binding_options_chains_all_metadata() {
     let options = BindingOptions::default()
         .with_description("Quit application")
+        .with_source(BindingSource::new("user"))
         .with_overlay_visibility(OverlayVisibility::Hidden)
         .with_propagation(KeyPropagation::Continue);
 
     assert_eq!(options.description(), Some("Quit application"));
+    assert_eq!(options.source().map(BindingSource::as_str), Some("user"));
     assert_eq!(options.overlay_visibility(), OverlayVisibility::Hidden);
     assert_eq!(options.propagation(), KeyPropagation::Continue);
 }

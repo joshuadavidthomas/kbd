@@ -22,7 +22,8 @@ impl Dispatcher {
     /// Returns [`Error::Parse`](crate::error::Error::Parse) when string
     /// input conversion fails, or
     /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same hotkey exists.
+    /// if a binding for the same hotkey already exists in the standard
+    /// precedence tier.
     pub fn register(
         &mut self,
         hotkey: impl HotkeyInput,
@@ -93,22 +94,39 @@ impl Dispatcher {
     /// # Errors
     ///
     /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
-    /// if a binding for the same hotkey exists.
+    /// if a binding for the same hotkey already exists in the same precedence
+    /// tier.
     pub fn register_binding(
         &mut self,
         binding: RegisteredBinding,
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
+        let new_tier = binding.options().precedence_tier();
 
-        if self.bindings_by_id.contains_key(&id)
-            || self.sequence_bindings_by_id.contains_key(&id)
-            || self.binding_ids_by_hotkey.contains_key(&hotkey)
-        {
+        if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
             return Err(crate::error::Error::AlreadyRegistered);
         }
 
-        self.binding_ids_by_hotkey.insert(hotkey, id);
+        let ids_for_hotkey = self.binding_ids_by_hotkey.entry(hotkey).or_default();
+        if ids_for_hotkey.iter().any(|existing_id| {
+            self.bindings_by_id
+                .get(existing_id)
+                .is_some_and(|existing| existing.options().precedence_tier() == new_tier)
+        }) {
+            return Err(crate::error::Error::AlreadyRegistered);
+        }
+
+        let insert_at = ids_for_hotkey
+            .iter()
+            .position(|existing_id| {
+                self.bindings_by_id
+                    .get(existing_id)
+                    .is_some_and(|existing| existing.options().precedence_tier() > new_tier)
+            })
+            .unwrap_or(ids_for_hotkey.len());
+
+        ids_for_hotkey.insert(insert_at, id);
         self.bindings_by_id.insert(id, binding);
         Ok(())
     }
@@ -135,7 +153,18 @@ impl Dispatcher {
     /// Unregister a binding by its [`BindingId`].
     pub fn unregister(&mut self, id: BindingId) {
         if let Some(binding) = self.bindings_by_id.remove(&id) {
-            self.binding_ids_by_hotkey.remove(binding.hotkey());
+            let hotkey = binding.hotkey().clone();
+            let remove_hotkey_entry =
+                if let Some(ids_for_hotkey) = self.binding_ids_by_hotkey.get_mut(&hotkey) {
+                    ids_for_hotkey.retain(|existing_id| *existing_id != id);
+                    ids_for_hotkey.is_empty()
+                } else {
+                    false
+                };
+
+            if remove_hotkey_entry {
+                self.binding_ids_by_hotkey.remove(&hotkey);
+            }
         }
 
         if let Some(binding) = self.sequence_bindings_by_id.remove(&id) {

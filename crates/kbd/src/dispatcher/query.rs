@@ -38,13 +38,16 @@ impl Dispatcher {
         for binding in self.bindings_by_id.values() {
             let shadowed = if let Some(&layer_name) = claimed_by.get(binding.hotkey()) {
                 ShadowedStatus::ShadowedBy(layer_name.clone())
-            } else {
+            } else if self.active_global_binding_id(binding.hotkey()) == Some(binding.id()) {
                 ShadowedStatus::Active
+            } else {
+                ShadowedStatus::ShadowedByGlobal
             };
 
             results.push(BindingInfo {
                 hotkey: binding.hotkey().clone(),
                 description: binding.options().description().map(Box::from),
+                source: binding.options().source().cloned(),
                 location: BindingLocation::Global,
                 shadowed,
                 overlay_visibility: binding.options().overlay_visibility(),
@@ -71,6 +74,7 @@ impl Dispatcher {
                 results.push(BindingInfo {
                     hotkey: binding.hotkey.clone(),
                     description: None,
+                    source: None,
                     location: BindingLocation::Layer(layer_name.clone()),
                     shadowed,
                     overlay_visibility: crate::binding::OverlayVisibility::Visible,
@@ -105,6 +109,7 @@ impl Dispatcher {
                         return Some(BindingInfo {
                             hotkey: sb.sequence.steps()[0].clone(),
                             description: None,
+                            source: None,
                             location: BindingLocation::Layer(entry.name.clone()),
                             shadowed: ShadowedStatus::Active,
                             overlay_visibility: crate::binding::OverlayVisibility::Visible,
@@ -118,6 +123,7 @@ impl Dispatcher {
                         return Some(BindingInfo {
                             hotkey: lb.hotkey.clone(),
                             description: None,
+                            source: None,
                             location: BindingLocation::Layer(entry.name.clone()),
                             shadowed: ShadowedStatus::Active,
                             overlay_visibility: crate::binding::OverlayVisibility::Visible,
@@ -145,6 +151,7 @@ impl Dispatcher {
                 return Some(BindingInfo {
                     hotkey: binding.sequence.steps()[0].clone(),
                     description: None,
+                    source: None,
                     location: BindingLocation::Global,
                     shadowed: ShadowedStatus::Active,
                     overlay_visibility: crate::binding::OverlayVisibility::Visible,
@@ -157,12 +164,13 @@ impl Dispatcher {
         }
 
         // Fall through to global immediate bindings.
-        if let Some(&id) = self.binding_ids_by_hotkey.get(hotkey)
+        if let Some(id) = self.active_global_binding_id(hotkey)
             && let Some(binding) = self.bindings_by_id.get(&id)
         {
             return Some(BindingInfo {
                 hotkey: binding.hotkey().clone(),
                 description: binding.options().description().map(Box::from),
+                source: binding.options().source().cloned(),
                 location: BindingLocation::Global,
                 shadowed: ShadowedStatus::Active,
                 overlay_visibility: binding.options().overlay_visibility(),
@@ -194,13 +202,21 @@ impl Dispatcher {
         let mut conflicts = Vec::new();
 
         for shadowed in &all_bindings {
-            if let ShadowedStatus::ShadowedBy(ref shadowing_layer) = shadowed.shadowed
-                && let Some(shadowing) = all_bindings.iter().find(|b| {
-                    b.hotkey == shadowed.hotkey
-                        && matches!(&b.location, BindingLocation::Layer(name) if name == shadowing_layer)
-                        && matches!(b.shadowed, ShadowedStatus::Active)
-                })
-            {
+            let shadowing = match &shadowed.shadowed {
+                ShadowedStatus::ShadowedBy(shadowing_layer) => all_bindings.iter().find(|binding| {
+                    binding.hotkey == shadowed.hotkey
+                        && matches!(&binding.location, BindingLocation::Layer(name) if name == shadowing_layer)
+                        && matches!(binding.shadowed, ShadowedStatus::Active)
+                }),
+                ShadowedStatus::ShadowedByGlobal => all_bindings.iter().find(|binding| {
+                    binding.hotkey == shadowed.hotkey
+                        && binding.location == BindingLocation::Global
+                        && matches!(binding.shadowed, ShadowedStatus::Active)
+                }),
+                ShadowedStatus::Active | ShadowedStatus::Inactive => None,
+            };
+
+            if let Some(shadowing) = shadowing {
                 conflicts.push(ConflictInfo {
                     hotkey: shadowed.hotkey.clone(),
                     shadowed_binding: shadowed.clone(),
@@ -348,5 +364,160 @@ mod tests {
         // Layer defined but not pushed — no conflict
 
         assert!(dispatcher.conflicts().is_empty());
+    }
+
+    #[test]
+    fn user_source_overrides_default_source_for_same_hotkey() {
+        let mut dispatcher = Dispatcher::new();
+        let hotkey = Hotkey::new(Key::C);
+
+        dispatcher
+            .register_binding(
+                crate::binding::RegisteredBinding::new(
+                    crate::binding::BindingId::new(),
+                    hotkey.clone(),
+                    Action::Suppress,
+                )
+                .with_options(crate::binding::BindingOptions::default().with_source("default")),
+            )
+            .unwrap();
+
+        dispatcher
+            .register_binding(
+                crate::binding::RegisteredBinding::new(
+                    crate::binding::BindingId::new(),
+                    hotkey.clone(),
+                    Action::Suppress,
+                )
+                .with_options(crate::binding::BindingOptions::default().with_source("user")),
+            )
+            .unwrap();
+
+        let active = dispatcher
+            .bindings_for_key(&hotkey)
+            .expect("winning binding should be queryable");
+        assert_eq!(active.location, BindingLocation::Global);
+        assert_eq!(
+            active
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str),
+            Some("user")
+        );
+
+        let bindings = dispatcher.list_bindings();
+        assert_eq!(bindings.len(), 2);
+        assert!(bindings.iter().any(|binding| {
+            binding
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str)
+                == Some("user")
+                && binding.shadowed == ShadowedStatus::Active
+        }));
+        assert!(bindings.iter().any(|binding| {
+            binding
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str)
+                == Some("default")
+                && binding.shadowed == ShadowedStatus::ShadowedByGlobal
+        }));
+
+        let conflicts = dispatcher.conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(
+            conflicts[0]
+                .shadowing_binding
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str),
+            Some("user")
+        );
+        assert_eq!(
+            conflicts[0]
+                .shadowed_binding
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str),
+            Some("default")
+        );
+    }
+
+    #[test]
+    fn global_precedence_restores_in_tier_order() {
+        let mut dispatcher = Dispatcher::new();
+        let hotkey = Hotkey::new(Key::V);
+
+        let default_id = crate::binding::BindingId::new();
+        dispatcher
+            .register_binding(
+                crate::binding::RegisteredBinding::new(
+                    default_id,
+                    hotkey.clone(),
+                    Action::Suppress,
+                )
+                .with_options(crate::binding::BindingOptions::default().with_source("DEFAULT")),
+            )
+            .unwrap();
+
+        let plugin_id = crate::binding::BindingId::new();
+        dispatcher
+            .register_binding(
+                crate::binding::RegisteredBinding::new(plugin_id, hotkey.clone(), Action::Suppress)
+                    .with_options(crate::binding::BindingOptions::default().with_source("plugin")),
+            )
+            .unwrap();
+
+        let user_id = crate::binding::BindingId::new();
+        dispatcher
+            .register_binding(
+                crate::binding::RegisteredBinding::new(user_id, hotkey.clone(), Action::Suppress)
+                    .with_options(crate::binding::BindingOptions::default().with_source("user")),
+            )
+            .unwrap();
+
+        let active = dispatcher
+            .bindings_for_key(&hotkey)
+            .expect("user binding should win over standard and default tiers");
+        assert_eq!(
+            active
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str),
+            Some("user")
+        );
+        assert_eq!(dispatcher.conflicts().len(), 2);
+
+        dispatcher.unregister(user_id);
+
+        let promoted = dispatcher
+            .bindings_for_key(&hotkey)
+            .expect("standard-tier binding should be promoted after user removal");
+        assert_eq!(
+            promoted
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str),
+            Some("plugin")
+        );
+        assert_eq!(dispatcher.conflicts().len(), 1);
+
+        dispatcher.unregister(plugin_id);
+
+        let restored = dispatcher
+            .bindings_for_key(&hotkey)
+            .expect("default-tier binding should be restored last");
+        assert_eq!(
+            restored
+                .source
+                .as_ref()
+                .map(crate::binding::BindingSource::as_str),
+            Some("DEFAULT")
+        );
+        assert!(dispatcher.conflicts().is_empty());
+
+        dispatcher.unregister(default_id);
+        assert!(dispatcher.bindings_for_key(&hotkey).is_none());
     }
 }

@@ -13,6 +13,7 @@ use std::time::Duration;
 use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
+use kbd::binding::BindingSource;
 use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
 use kbd::binding::RegisteredBinding;
@@ -307,6 +308,7 @@ fn introspection_full_picture() {
             .with_options(
                 BindingOptions::default()
                     .with_description("Copy")
+                    .with_source(BindingSource::new("user"))
                     .with_overlay_visibility(OverlayVisibility::Hidden),
             ),
         )
@@ -366,6 +368,10 @@ fn introspection_full_picture() {
         global_copy.shadowed,
         ShadowedStatus::ShadowedBy(_)
     ));
+    assert_eq!(
+        global_copy.source.as_ref().map(BindingSource::as_str),
+        Some("user")
+    );
     assert_eq!(global_copy.overlay_visibility, OverlayVisibility::Hidden);
 }
 

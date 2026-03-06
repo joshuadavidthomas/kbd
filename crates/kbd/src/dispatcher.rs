@@ -154,7 +154,7 @@ pub enum MatchResult<'a> {
 #[derive(Default)]
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
-    binding_ids_by_hotkey: HashMap<Hotkey, BindingId>,
+    binding_ids_by_hotkey: HashMap<Hotkey, Vec<BindingId>>,
     sequence_bindings_by_id: HashMap<BindingId, RegisteredSequenceBinding>,
     sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
@@ -463,8 +463,14 @@ impl Dispatcher {
         InternalOutcome::NoMatch
     }
 
+    fn active_global_binding_id(&self, hotkey: &Hotkey) -> Option<BindingId> {
+        self.binding_ids_by_hotkey
+            .get(hotkey)
+            .and_then(|ids| ids.last().copied())
+    }
+
     fn match_global_hotkey(&self, hotkey: &Hotkey) -> Option<(MatchedBindingRef, KeyPropagation)> {
-        let id = *self.binding_ids_by_hotkey.get(hotkey)?;
+        let id = self.active_global_binding_id(hotkey)?;
         let binding = self.bindings_by_id.get(&id)?;
         Some((MatchedBindingRef::Global(id), binding.propagation()))
     }

@@ -3,8 +3,8 @@
 //!
 //! Introspection lets you build help screens, hotkey overlays, and
 //! keybinding editors. Every binding carries metadata (description,
-//! overlay visibility) and the dispatcher can tell you what's active,
-//! what's shadowed, and what would fire for any given key.
+//! provenance, overlay visibility) and the dispatcher can tell you what's
+//! active, what's shadowed, and what would fire for any given key.
 //!
 //! ```sh
 //! cargo run -p kbd --example introspection
@@ -13,6 +13,7 @@
 use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
+use kbd::binding::BindingSource;
 use kbd::binding::OverlayVisibility;
 use kbd::binding::RegisteredBinding;
 use kbd::dispatcher::Dispatcher;
@@ -119,9 +120,14 @@ fn print_bindings(bindings: &[BindingInfo]) {
 
 fn format_binding(b: &BindingInfo) -> String {
     let desc = b.description.as_deref().unwrap_or("(no description)");
+    let source = b
+        .source
+        .as_ref()
+        .map_or(String::new(), |source| format!(" source={source}"));
     let shadow = match &b.shadowed {
         ShadowedStatus::Active => "active".to_string(),
         ShadowedStatus::ShadowedBy(name) => format!("shadowed by {name}"),
+        ShadowedStatus::ShadowedByGlobal => "shadowed by global override".to_string(),
         ShadowedStatus::Inactive => "inactive".to_string(),
         _ => "unknown".to_string(),
     };
@@ -130,7 +136,7 @@ fn format_binding(b: &BindingInfo) -> String {
         _ => "",
     };
     format!(
-        "{:20} {:30} [{}, {}]{vis}",
+        "{:20} {:30} [{}, {}{source}]{vis}",
         b.hotkey.to_string(),
         desc,
         format_location(b),
@@ -150,10 +156,19 @@ fn setup_dispatcher() -> (Dispatcher, BindingId) {
     let mut dispatcher = Dispatcher::new();
 
     // Register global bindings with metadata
-    let copy_id = dispatcher
-        .register(
-            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
-            Action::from(|| {}),
+    let copy_id = BindingId::new();
+    dispatcher
+        .register_binding(
+            RegisteredBinding::new(
+                copy_id,
+                Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+                Action::from(|| {}),
+            )
+            .with_options(
+                BindingOptions::default()
+                    .with_description("Copy to clipboard")
+                    .with_source(BindingSource::new("user")),
+            ),
         )
         .expect("register Ctrl+C");
 

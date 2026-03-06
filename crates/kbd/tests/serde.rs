@@ -8,6 +8,7 @@
 
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
+use kbd::binding::BindingSource;
 use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
 use kbd::hotkey::Hotkey;
@@ -190,6 +191,7 @@ fn overlay_visibility_round_trip() {
 fn binding_options_round_trip() {
     let opts = BindingOptions::default()
         .with_description("Copy to clipboard")
+        .with_source(BindingSource::new("user"))
         .with_propagation(KeyPropagation::Continue)
         .with_overlay_visibility(OverlayVisibility::Hidden);
     assert_eq!(round_trip(&opts), opts);
