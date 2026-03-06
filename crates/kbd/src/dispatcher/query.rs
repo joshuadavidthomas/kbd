@@ -17,6 +17,7 @@ use crate::layer::UnmatchedKeys;
 enum HotkeyClaim {
     LayerImmediate { layer: LayerName, index: usize },
     LayerSequence { layer: LayerName },
+    LayerSuppressed { layer: LayerName },
     GlobalImmediate { id: BindingId },
     GlobalSequence,
 }
@@ -38,6 +39,13 @@ impl Dispatcher {
                     return Some(HotkeyClaim::LayerImmediate {
                         layer: entry.name.clone(),
                         index,
+                    });
+                }
+                LayerMatch::None
+                    if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) =>
+                {
+                    return Some(HotkeyClaim::LayerSuppressed {
+                        layer: entry.name.clone(),
                     });
                 }
                 LayerMatch::None => {}
@@ -101,6 +109,9 @@ impl Dispatcher {
                     Some(HotkeyClaim::LayerSequence { layer }) => {
                         ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(layer))
                     }
+                    Some(HotkeyClaim::LayerSuppressed { layer }) => {
+                        ShadowedStatus::SuppressedBy(layer)
+                    }
                     Some(HotkeyClaim::GlobalImmediate { .. } | HotkeyClaim::GlobalSequence) => {
                         unreachable!("layer claim helper only returns layer claims")
                     }
@@ -115,7 +126,9 @@ impl Dispatcher {
                             ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
                         }
                         Some(
-                            HotkeyClaim::LayerImmediate { .. } | HotkeyClaim::LayerSequence { .. },
+                            HotkeyClaim::LayerImmediate { .. }
+                            | HotkeyClaim::LayerSequence { .. }
+                            | HotkeyClaim::LayerSuppressed { .. },
                         ) => unreachable!("global claim helper only returns global claims"),
                         None => ShadowedStatus::Active,
                     },
@@ -158,6 +171,9 @@ impl Dispatcher {
                         }
                         Some(HotkeyClaim::LayerSequence { layer }) => {
                             ShadowedStatus::ShadowedBySequence(BindingLocation::Layer(layer))
+                        }
+                        Some(HotkeyClaim::LayerSuppressed { layer }) => {
+                            ShadowedStatus::SuppressedBy(layer)
                         }
                         Some(HotkeyClaim::GlobalImmediate { .. } | HotkeyClaim::GlobalSequence) => {
                             unreachable!("layer claims always beat global claims")
@@ -323,7 +339,9 @@ impl Dispatcher {
                     shadowed: ShadowedStatus::Active,
                     overlay_visibility: crate::binding::OverlayVisibility::Visible,
                 }),
-                ShadowedStatus::Active | ShadowedStatus::Inactive => None,
+                ShadowedStatus::Active
+                | ShadowedStatus::SuppressedBy(_)
+                | ShadowedStatus::Inactive => None,
             };
 
             if let Some(shadowing) = shadowing {
@@ -437,6 +455,65 @@ mod tests {
         // X not in swallow layer → blocked from reaching global
         let result = dispatcher.bindings_for_key(&Hotkey::new(Key::X));
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn list_bindings_marks_global_binding_suppressed_by_swallow_layer() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(Hotkey::new(Key::X), Action::Suppress)
+            .unwrap();
+        dispatcher
+            .define_layer(
+                Layer::new("modal")
+                    .bind(Key::H, Action::Suppress)
+                    .unwrap()
+                    .swallow(),
+            )
+            .unwrap();
+        dispatcher.push_layer("modal").unwrap();
+
+        let global_binding = dispatcher
+            .list_bindings()
+            .into_iter()
+            .find(|binding| binding.location == BindingLocation::Global)
+            .expect("global binding should be listed");
+
+        assert_eq!(
+            global_binding.shadowed,
+            ShadowedStatus::SuppressedBy(crate::layer::LayerName::from("modal"))
+        );
+        assert!(dispatcher.conflicts().is_empty());
+    }
+
+    #[test]
+    fn list_bindings_marks_lower_layer_binding_suppressed_by_swallow_layer() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .define_layer(Layer::new("nav").bind(Key::X, Action::Suppress).unwrap())
+            .unwrap();
+        dispatcher
+            .define_layer(
+                Layer::new("modal")
+                    .bind(Key::H, Action::Suppress)
+                    .unwrap()
+                    .swallow(),
+            )
+            .unwrap();
+        dispatcher.push_layer("nav").unwrap();
+        dispatcher.push_layer("modal").unwrap();
+
+        let nav_binding = dispatcher
+            .list_bindings()
+            .into_iter()
+            .find(|binding| binding.location == BindingLocation::Layer("nav".into()))
+            .expect("nav binding should be listed");
+
+        assert_eq!(
+            nav_binding.shadowed,
+            ShadowedStatus::SuppressedBy(crate::layer::LayerName::from("modal"))
+        );
+        assert!(dispatcher.conflicts().is_empty());
     }
 
     #[test]

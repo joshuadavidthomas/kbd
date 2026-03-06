@@ -52,10 +52,11 @@ pub enum BindingLocation {
 
 /// Whether a binding is currently reachable or shadowed.
 ///
-/// When another binding would intercept the same hotkey first, the lower-priority
-/// immediate binding is considered shadowed. This includes higher-priority layer
-/// bindings, higher-precedence global bindings, and sequence prefixes that enter
-/// a pending state before the immediate binding can fire.
+/// When something else would prevent this binding from firing, the lower-priority
+/// immediate binding is considered shadowed or suppressed. This includes
+/// higher-priority layer bindings, higher-precedence global bindings, sequence
+/// prefixes that enter a pending state before the immediate binding can fire,
+/// and swallow layers that block unmatched keys from reaching lower scopes.
 ///
 /// # Examples
 ///
@@ -93,6 +94,9 @@ pub enum ShadowedStatus {
     Active,
     /// A layer binding in the given layer has precedence over this binding.
     ShadowedBy(LayerName),
+    /// An active swallow layer in the given layer blocks unmatched keys before
+    /// they can reach this binding.
+    SuppressedBy(LayerName),
     /// A higher-precedence global immediate binding has the same hotkey.
     ShadowedByGlobal,
     /// A sequence binding in the given location intercepts this hotkey first.

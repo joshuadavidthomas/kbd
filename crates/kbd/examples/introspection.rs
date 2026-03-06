@@ -127,7 +127,8 @@ fn format_binding(b: &BindingInfo) -> String {
         .map_or(String::new(), |source| format!(" source={source}"));
     let shadow = match &b.shadowed {
         ShadowedStatus::Active => "active".to_string(),
-        ShadowedStatus::ShadowedBy(name) => format!("shadowed by layer {name}"),
+        ShadowedStatus::ShadowedBy(name) => format!("shadowed by layer binding in {name}"),
+        ShadowedStatus::SuppressedBy(name) => format!("suppressed by swallow layer {name}"),
         ShadowedStatus::ShadowedByGlobal => "shadowed by global override".to_string(),
         ShadowedStatus::ShadowedBySequence(location) => {
             format!(
