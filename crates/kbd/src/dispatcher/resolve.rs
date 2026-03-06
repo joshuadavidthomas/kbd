@@ -205,6 +205,7 @@ mod tests {
 
     fn seq_binding(sequence: HotkeySequence) -> LayerSequenceBinding {
         LayerSequenceBinding {
+            id: crate::binding::BindingId::new(),
             sequence,
             action: Action::Suppress,
             propagation: KeyPropagation::default(),

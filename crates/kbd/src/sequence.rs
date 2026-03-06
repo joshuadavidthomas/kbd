@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use crate::binding::BindingId;
 use crate::error::ParseHotkeyError;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -108,6 +109,19 @@ pub struct PendingSequenceInfo {
     /// Number of steps already matched.
     pub steps_matched: usize,
     /// Number of steps still required to complete.
+    pub steps_remaining: usize,
+}
+
+/// A sequence step that matched during dispatch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SequenceStepInfo {
+    /// The binding whose sequence advanced.
+    pub binding_id: BindingId,
+    /// The hotkey that matched this step.
+    pub hotkey: Hotkey,
+    /// Number of steps matched so far, including this step.
+    pub steps_matched: usize,
+    /// Number of steps remaining after this step.
     pub steps_remaining: usize,
 }
 

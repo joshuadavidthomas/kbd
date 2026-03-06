@@ -39,6 +39,7 @@ use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
 use crate::sequence::PendingSequenceInfo;
+use crate::sequence::SequenceStepInfo;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
@@ -161,6 +162,7 @@ pub struct Dispatcher {
     layer_stack: Vec<LayerStackEntry>,
     active_sequences: Vec<ActiveSequence>,
     pending_standalone: Option<PendingStandalone>,
+    sequence_steps: Vec<SequenceStepInfo>,
 }
 
 /// Internal reference to a matched binding, used to re-find the action
@@ -202,6 +204,17 @@ impl Dispatcher {
         self.pending_sequence_snapshot()
     }
 
+    /// Drain sequence step matches from the latest dispatch work.
+    ///
+    /// Consumers that care about sequence progress should call this promptly
+    /// after each [`process`](Self::process) or timeout check they want to
+    /// observe. Older undrained step records are discarded when a new dispatch
+    /// cycle starts so the dispatcher does not accumulate unbounded event state.
+    #[must_use]
+    pub fn drain_sequence_steps(&mut self) -> Vec<SequenceStepInfo> {
+        std::mem::take(&mut self.sequence_steps)
+    }
+
     /// Define a named layer. The layer is not active until pushed.
     ///
     /// # Errors
@@ -236,6 +249,7 @@ impl Dispatcher {
     /// return `MatchResult::Ignored`. Modifier-only presses also return
     /// `MatchResult::Ignored`.
     pub fn process(&mut self, hotkey: &Hotkey, transition: KeyTransition) -> MatchResult<'_> {
+        self.sequence_steps.clear();
         let outcome = self.match_extract(hotkey, transition);
 
         if let InternalOutcome::Matched {
@@ -340,7 +354,7 @@ impl Dispatcher {
                         propagation: sb.propagation,
                     }];
                     if let Some(outcome) =
-                        self.start_sequences(candidates, now, next_priority, None)
+                        self.start_sequences(candidates, hotkey, now, next_priority, None)
                     {
                         return Some(outcome);
                     }
@@ -375,9 +389,13 @@ impl Dispatcher {
                         }
                     });
                     // `stored` is last used above; NLL releases the borrow.
-                    if let Some(outcome) =
-                        self.start_sequences(candidates, now, next_priority, pending_standalone)
-                    {
+                    if let Some(outcome) = self.start_sequences(
+                        candidates,
+                        hotkey,
+                        now,
+                        next_priority,
+                        pending_standalone,
+                    ) {
                         return Some(outcome);
                     }
                 }
@@ -445,9 +463,13 @@ impl Dispatcher {
         if !candidates.is_empty() {
             let pending_standalone =
                 self.pending_standalone_from_match(self.match_global_hotkey(hotkey));
-            if let Some(outcome) =
-                self.start_sequences(candidates, now, &mut next_priority, pending_standalone)
-            {
+            if let Some(outcome) = self.start_sequences(
+                candidates,
+                hotkey,
+                now,
+                &mut next_priority,
+                pending_standalone,
+            ) {
                 return outcome;
             }
         }

@@ -45,6 +45,7 @@ impl Dispatcher {
 
     /// Check timeout-driven state transitions and return any timeout matches.
     pub fn check_timeouts_with_results(&mut self) -> Vec<MatchResult<'_>> {
+        self.sequence_steps.clear();
         let now = Instant::now();
 
         let mut timed_out_layers = Vec::new();
@@ -112,6 +113,7 @@ mod tests {
     use super::super::MatchResult;
     use crate::action::Action;
     use crate::hotkey::Hotkey;
+    use crate::hotkey::Modifier;
     use crate::key::Key;
     use crate::key_state::KeyTransition;
     use crate::layer::Layer;
@@ -159,5 +161,23 @@ mod tests {
         // Second press → layer should be gone now
         let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
         assert!(matches!(result, MatchResult::NoMatch));
+    }
+
+    #[test]
+    fn timeout_checks_discard_undrained_sequence_steps_from_prior_dispatch() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)
+            .unwrap();
+
+        let first = dispatcher.process(
+            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            KeyTransition::Press,
+        );
+        assert!(matches!(first, MatchResult::Pending { .. }));
+
+        let timeout_results = dispatcher.check_timeouts_with_results();
+        assert!(timeout_results.is_empty());
+        assert!(dispatcher.drain_sequence_steps().is_empty());
     }
 }
