@@ -23,54 +23,23 @@ enum HotkeyClaim {
 }
 
 impl Dispatcher {
-    fn active_layer_claim(&self, hotkey: &Hotkey) -> Option<HotkeyClaim> {
-        for entry in self.layer_stack.iter().rev() {
-            let Some(stored) = self.layers.get(&entry.name) else {
-                continue;
-            };
-
-            match resolve::classify_layer(stored, hotkey, None) {
-                LayerMatch::SingleStepSequence { .. } | LayerMatch::MultiStepSequences { .. } => {
-                    return Some(HotkeyClaim::LayerSequence {
-                        layer: entry.name.clone(),
-                    });
-                }
-                LayerMatch::Immediate { index } => {
-                    return Some(HotkeyClaim::LayerImmediate {
-                        layer: entry.name.clone(),
-                        index,
-                    });
-                }
-                LayerMatch::None
-                    if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) =>
-                {
-                    return Some(HotkeyClaim::LayerSuppressed {
-                        layer: entry.name.clone(),
-                    });
-                }
-                LayerMatch::None => {}
-            }
-        }
-
-        None
-    }
-
-    fn global_claim(
-        &self,
-        hotkey: &Hotkey,
-        global_sequences: &[&super::sequence::RegisteredSequenceBinding],
-    ) -> Option<HotkeyClaim> {
-        match resolve::classify_sequence_prefixes(
-            global_sequences.iter().map(|binding| &binding.sequence),
-            hotkey,
-        ) {
-            SequencePrefixMatch::SingleStep { .. } | SequencePrefixMatch::MultiStep { .. } => {
-                Some(HotkeyClaim::GlobalSequence)
-            }
-            SequencePrefixMatch::None => self
-                .active_global_binding_id(hotkey)
-                .map(|id| HotkeyClaim::GlobalImmediate { id }),
-        }
+    /// Return a snapshot of all registered immediate bindings with their status.
+    ///
+    /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
+    /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence), but
+    /// sequence prefixes still affect whether an immediate binding is currently active
+    /// or shadowed.
+    ///
+    /// Results are returned in a deterministic order: global bindings are
+    /// grouped by hotkey and then by precedence tier, followed by layer
+    /// bindings ordered by layer name while preserving each layer's binding
+    /// declaration order.
+    #[must_use]
+    pub fn list_bindings(&self) -> Vec<BindingInfo> {
+        let global_seqs = self.sorted_global_sequences();
+        let mut results = self.collect_global_bindings(&global_seqs);
+        results.extend(self.collect_layer_bindings());
+        results
     }
 
     /// Collect global immediate bindings with their shadowed status.
@@ -158,6 +127,24 @@ impl Dispatcher {
         results
     }
 
+    fn global_claim(
+        &self,
+        hotkey: &Hotkey,
+        global_sequences: &[&super::sequence::RegisteredSequenceBinding],
+    ) -> Option<HotkeyClaim> {
+        match resolve::classify_sequence_prefixes(
+            global_sequences.iter().map(|binding| &binding.sequence),
+            hotkey,
+        ) {
+            SequencePrefixMatch::SingleStep { .. } | SequencePrefixMatch::MultiStep { .. } => {
+                Some(HotkeyClaim::GlobalSequence)
+            }
+            SequencePrefixMatch::None => self
+                .active_global_binding_id(hotkey)
+                .map(|id| HotkeyClaim::GlobalImmediate { id }),
+        }
+    }
+
     /// Collect layer immediate bindings with their shadowed status.
     ///
     /// Results are ordered by layer name, preserving each layer's
@@ -218,23 +205,36 @@ impl Dispatcher {
         results
     }
 
-    /// Return a snapshot of all registered immediate bindings with their status.
-    ///
-    /// Sequence bindings are queried through [`bindings_for_key`](Self::bindings_for_key)
-    /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence), but
-    /// sequence prefixes still affect whether an immediate binding is currently active
-    /// or shadowed.
-    ///
-    /// Results are returned in a deterministic order: global bindings are
-    /// grouped by hotkey and then by precedence tier, followed by layer
-    /// bindings ordered by layer name while preserving each layer's binding
-    /// declaration order.
-    #[must_use]
-    pub fn list_bindings(&self) -> Vec<BindingInfo> {
-        let global_sequences = self.sorted_global_sequences();
-        let mut results = self.collect_global_bindings(&global_sequences);
-        results.extend(self.collect_layer_bindings());
-        results
+    fn active_layer_claim(&self, hotkey: &Hotkey) -> Option<HotkeyClaim> {
+        for entry in self.layer_stack.iter().rev() {
+            let Some(stored) = self.layers.get(&entry.name) else {
+                continue;
+            };
+
+            match resolve::classify_layer(stored, hotkey, None) {
+                LayerMatch::SingleStepSequence { .. } | LayerMatch::MultiStepSequences { .. } => {
+                    return Some(HotkeyClaim::LayerSequence {
+                        layer: entry.name.clone(),
+                    });
+                }
+                LayerMatch::Immediate { index } => {
+                    return Some(HotkeyClaim::LayerImmediate {
+                        layer: entry.name.clone(),
+                        index,
+                    });
+                }
+                LayerMatch::None
+                    if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) =>
+                {
+                    return Some(HotkeyClaim::LayerSuppressed {
+                        layer: entry.name.clone(),
+                    });
+                }
+                LayerMatch::None => {}
+            }
+        }
+
+        None
     }
 
     /// Query what would fire if this hotkey were pressed now.
