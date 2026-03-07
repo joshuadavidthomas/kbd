@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::time::Duration;
 use std::time::Instant;
 
 use super::Dispatcher;
@@ -44,20 +45,12 @@ impl From<&MatchedBindingRef> for ThrottleKey {
     }
 }
 
+#[derive(Default)]
 struct ThrottleState {
     /// When the binding last successfully fired (not throttled).
     last_fire: Option<Instant>,
     /// Timestamps of recent fires for rate limiting (sliding window).
     recent_fires: VecDeque<Instant>,
-}
-
-impl ThrottleState {
-    fn new() -> Self {
-        Self {
-            last_fire: None,
-            recent_fires: VecDeque::new(),
-        }
-    }
 }
 
 impl ThrottleTracker {
@@ -67,7 +60,7 @@ impl ThrottleTracker {
     /// `recent_fires` for sliding-window rate limiting. Without it,
     /// only `last_fire` is updated (for debounce tracking).
     fn record_fire(&mut self, key: ThrottleKey, now: Instant, has_rate_limit: bool) {
-        let state = self.state.entry(key).or_insert_with(ThrottleState::new);
+        let state = self.state.entry(key).or_default();
         state.last_fire = Some(now);
         if has_rate_limit {
             state.recent_fires.push_back(now);
@@ -77,13 +70,11 @@ impl ThrottleTracker {
     /// Check if a binding should be throttled by debounce.
     ///
     /// Returns `true` if the binding should be suppressed.
-    fn is_debounced(&self, key: &ThrottleKey, debounce: std::time::Duration, now: Instant) -> bool {
-        if let Some(state) = self.state.get(key) {
-            if let Some(last) = state.last_fire {
-                return now.duration_since(last) < debounce;
-            }
-        }
-        false
+    fn is_debounced(&self, key: &ThrottleKey, debounce: Duration, now: Instant) -> bool {
+        self.state
+            .get(key)
+            .and_then(|s| s.last_fire)
+            .is_some_and(|last| now.duration_since(last) < debounce)
     }
 
     /// Check if a binding should be throttled by rate limit.
@@ -94,7 +85,7 @@ impl ThrottleTracker {
         &mut self,
         key: &ThrottleKey,
         max_count: u32,
-        window: std::time::Duration,
+        window: Duration,
         now: Instant,
     ) -> bool {
         let Some(state) = self.state.get_mut(key) else {
