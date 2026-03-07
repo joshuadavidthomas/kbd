@@ -385,7 +385,6 @@ impl Engine {
 
     /// Process a key press event through the Dispatcher.
     fn process_press_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let now = Instant::now();
         let (match_outcome, repeat_info) = {
             let result = self.dispatch(event);
             match result {
@@ -397,6 +396,7 @@ impl Engine {
                     // Capture press_time before executing the action so
                     // Custom repeat delay is measured from the key event,
                     // not from after callback completion.
+                    let press_time = Instant::now();
                     execute_action(action);
                     let callback = match action {
                         Action::Callback(cb) => Some(Arc::clone(cb)),
@@ -405,7 +405,7 @@ impl Engine {
                     let repeat_info = Some(RepeatInfo {
                         callback,
                         policy: repeat_policy,
-                        press_time: now,
+                        press_time,
                         last_repeat_fire: None,
                     });
                     (MatchOutcome::Matched { propagation }, repeat_info)
