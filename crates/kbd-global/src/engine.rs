@@ -630,6 +630,7 @@ mod tests {
     use super::EngineRuntime;
     use super::GrabState;
     use super::KeyEventOutcome;
+    use super::MatchResult;
     use super::devices;
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
@@ -818,6 +819,33 @@ mod tests {
             key,
             transition: KeyTransition::Repeat,
         })
+    }
+
+    /// Drain pending timeouts through the engine, executing actions and
+    /// updating the press cache — mirrors the real event loop's behavior.
+    fn drain_pending_timeouts(engine: &mut Engine) {
+        let pending = engine.dispatcher.pending_timeouts();
+        for p in &pending {
+            if let Some(MatchResult::Matched {
+                action,
+                propagation,
+                repeat_policy,
+            }) = engine.dispatcher.match_pending_timeout(p)
+            {
+                let repeat_info = p
+                    .tap_hold_key()
+                    .map(|_| super::types::RepeatInfo::for_action(action, repeat_policy));
+                super::execute_action(action);
+                if let Some(key) = p.tap_hold_key() {
+                    let outcome = engine.resolve_outcome(
+                        super::types::MatchOutcome::Matched { propagation },
+                        key,
+                        KeyTransition::Press,
+                    );
+                    engine.cache_press(key, outcome, repeat_info);
+                }
+            }
+        }
     }
 
     #[test]
@@ -3269,8 +3297,13 @@ mod tests {
         // Press CapsLock — consumed (buffered)
         press_key(&mut engine, Key::CAPS_LOCK, 10);
 
-        // Press A — interrupts CapsLock → hold resolves
+        // Press A — interrupts CapsLock, marks it resolved.
+        // The hold action is buffered, not executed inline.
         press_key(&mut engine, Key::A, 10);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 0);
+
+        // Drain pending_timeouts — hold action fires here, same as timeout holds.
+        drain_pending_timeouts(&mut engine);
         assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
         assert_eq!(hold_counter.load(Ordering::Relaxed), 1);
 

@@ -47,6 +47,9 @@ pub(crate) struct TapHoldState {
     bindings: HashMap<Key, TapHoldBinding>,
     /// Currently active (pressed) tap-hold keys.
     active: HashMap<Key, ActiveTapHold>,
+    /// Holds resolved by interrupt, buffered for the engine to drain
+    /// via the `pending_timeouts` pipeline.
+    resolved_holds: Vec<(Key, BindingId)>,
 }
 
 /// What the tap-hold state machine decided about an event.
@@ -55,26 +58,9 @@ pub(crate) enum TapHoldOutcome {
     Consumed,
     /// Tap resolved — return the tap action.
     TapResolved { binding_id: BindingId },
-    /// Hold resolved by interrupt — hold action(s) should be executed.
-    /// Returns the binding IDs of resolved hold actions.
-    HoldResolved { binding_ids: Vec<BindingId> },
     /// Repeat event consumed for an active tap-hold key.
     RepeatConsumed,
     /// Not a tap-hold key — pass through to normal matching.
-    PassThrough,
-}
-
-/// Borrow-free result of tap-hold processing, used to avoid lifetime
-/// conflicts with subsequent `self` usage in `process_internal`.
-pub(super) enum TapHoldDecision {
-    /// Event consumed (buffered or repeat suppressed).
-    Consumed,
-    /// Tap resolved — look up the tap action by binding ID.
-    TapResolved { binding_id: BindingId },
-    /// Hold resolved by interrupt, and the pressing key was also a tap-hold
-    /// key that got consumed.
-    HoldResolvedThenConsumed,
-    /// Not handled by tap-hold — pass through to normal matching.
     PassThrough,
 }
 
@@ -104,8 +90,10 @@ impl TapHoldState {
 
     /// Process a key press event for tap-hold.
     pub(crate) fn on_press(&mut self, key: Key, now: Instant) -> TapHoldOutcome {
-        // First, resolve any pending tap-holds that get interrupted by this press.
-        let interrupt_ids = self.resolve_pending_for_interrupt(key);
+        // Resolve any pending tap-holds that get interrupted by this press.
+        // Resolved holds are buffered internally and drained via
+        // `drain_resolved_holds` in the pending_timeouts pipeline.
+        self.resolve_pending_for_interrupt(key);
 
         if let Some(binding) = self.bindings.get(&key) {
             let binding_id = binding.id;
@@ -123,19 +111,7 @@ impl TapHoldState {
                 },
             );
 
-            if interrupt_ids.is_empty() {
-                TapHoldOutcome::Consumed
-            } else {
-                // Both: this key was consumed AND other pending holds resolved.
-                // The engine needs to handle both.
-                TapHoldOutcome::HoldResolved {
-                    binding_ids: interrupt_ids,
-                }
-            }
-        } else if !interrupt_ids.is_empty() {
-            TapHoldOutcome::HoldResolved {
-                binding_ids: interrupt_ids,
-            }
+            TapHoldOutcome::Consumed
         } else {
             TapHoldOutcome::PassThrough
         }
@@ -232,21 +208,25 @@ impl TapHoldState {
             .map(|b| &b.hold_action)
     }
 
-    /// Resolve all pending tap-holds as holds (used by interrupting keypresses).
-    /// Excludes the specified key (the one being pressed).
-    fn resolve_pending_for_interrupt(&mut self, pressing_key: Key) -> Vec<BindingId> {
-        let mut resolved = Vec::new();
+    /// Drain interrupt-resolved holds. Returns `(key, binding_id)` pairs
+    /// that should be wrapped as `PendingTimeout::TapHoldHold` and handled
+    /// through the same pipeline as timeout-resolved holds.
+    pub(crate) fn drain_resolved_holds(&mut self) -> Vec<(Key, BindingId)> {
+        std::mem::take(&mut self.resolved_holds)
+    }
 
+    /// Resolve all pending tap-holds as holds (used by interrupting keypresses).
+    /// Excludes the specified key (the one being pressed). Resolved holds are
+    /// buffered in `self.resolved_holds` for the engine to drain.
+    fn resolve_pending_for_interrupt(&mut self, pressing_key: Key) {
         for (key, active) in &mut self.active {
             if *key == pressing_key {
                 continue;
             }
             if active.resolution == HoldResolution::Pending {
                 active.resolution = HoldResolution::Resolved;
-                resolved.push(active.binding_id);
+                self.resolved_holds.push((*key, active.binding_id));
             }
         }
-
-        resolved
     }
 }

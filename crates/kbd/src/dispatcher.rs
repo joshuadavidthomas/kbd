@@ -31,7 +31,6 @@ use self::sequence::SequenceBindingRef;
 use self::sequence::SequenceStartCandidate;
 use self::sequence::StandaloneMatch;
 use self::tap_hold::TapHoldBinding;
-use self::tap_hold::TapHoldDecision;
 use self::tap_hold::TapHoldOutcome;
 use self::tap_hold::TapHoldState;
 use self::throttle::ThrottleTracker;
@@ -352,21 +351,17 @@ impl Dispatcher {
         // Tap-hold is checked first — it intercepts events before normal
         // matching, similar to how speculative patterns (sequences) take
         // priority over immediate patterns (hotkeys).
-        //
-        // We resolve tap-hold to a `TapHoldDecision` (no borrows on self)
-        // so the borrow checker allows subsequent `self` usage.
-        let tap_hold_decision = self.process_tap_hold(hotkey.key(), transition);
+        let tap_hold_outcome = self.process_tap_hold(hotkey.key(), transition);
 
-        match tap_hold_decision {
-            TapHoldDecision::Consumed | TapHoldDecision::HoldResolvedThenConsumed => {
+        match tap_hold_outcome {
+            TapHoldOutcome::Consumed | TapHoldOutcome::RepeatConsumed => {
                 return MatchResult::Matched {
                     action: &Action::Suppress,
                     propagation: KeyPropagation::Stop,
                     repeat_policy: RepeatPolicy::Suppress,
                 };
             }
-            TapHoldDecision::TapResolved { binding_id } => {
-                // Look up the tap action now (single borrow, no conflict).
+            TapHoldOutcome::TapResolved { binding_id } => {
                 return match self.tap_hold.tap_action(binding_id) {
                     Some(action) => MatchResult::Matched {
                         action,
@@ -376,7 +371,7 @@ impl Dispatcher {
                     None => MatchResult::Ignored,
                 };
             }
-            TapHoldDecision::PassThrough => {
+            TapHoldOutcome::PassThrough => {
                 // Fall through to normal matching.
             }
         }
@@ -437,82 +432,30 @@ impl Dispatcher {
         }
     }
 
-    /// Process tap-hold events, returning a decision enum with no borrows
-    /// on self. Hold-resolved-by-interrupt actions are executed inline.
+    /// Process tap-hold events, returning the outcome directly.
     ///
-    /// NOTE: Executing callbacks here (in the Dispatcher) is architecturally
-    /// imperfect — the engine should own action execution for panic isolation
-    /// and consistent handling of non-callback actions. This is mitigated by
-    /// wrapping calls in `catch_unwind`. A future refactor could buffer
-    /// resolved hold IDs and let the engine drain/execute them.
-    fn process_tap_hold(&mut self, key: Key, transition: KeyTransition) -> TapHoldDecision {
+    /// This is a thin wrapper: fast-path check, timestamp, dispatch to
+    /// `on_press`/`on_release`/`on_repeat`. No callback execution happens
+    /// here — hold actions resolved by interrupt are buffered in
+    /// `TapHoldState` and drained through the `pending_timeouts` pipeline,
+    /// where the engine handles them identically to timeout-resolved holds.
+    fn process_tap_hold(&mut self, key: Key, transition: KeyTransition) -> TapHoldOutcome {
         // Fast path: skip all tap-hold work when no bindings are registered
         // and no keys are actively being tracked. This keeps the common case
         // (no tap-hold configured) essentially zero-cost.
         if !self.tap_hold.has_state() {
-            return TapHoldDecision::PassThrough;
+            return TapHoldOutcome::PassThrough;
         }
 
         let now = Instant::now();
 
         match transition {
-            KeyTransition::Press => {
-                let outcome = self.tap_hold.on_press(key, now);
-                match outcome {
-                    TapHoldOutcome::Consumed => TapHoldDecision::Consumed,
-                    TapHoldOutcome::HoldResolved { binding_ids } => {
-                        // Execute hold actions inline — interrupt resolution
-                        // is immediate. Only callbacks are executed; layer
-                        // actions would need apply_layer_effect (a future
-                        // refactor to buffer+drain resolved IDs would fix
-                        // this and the panic isolation concern together).
-                        for &id in &binding_ids {
-                            if let Some(Action::Callback(cb)) = self.tap_hold.hold_action(id) {
-                                let _ =
-                                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cb()));
-                            }
-                        }
-
-                        if self.tap_hold.is_registered(key) {
-                            TapHoldDecision::HoldResolvedThenConsumed
-                        } else {
-                            TapHoldDecision::PassThrough
-                        }
-                    }
-                    TapHoldOutcome::PassThrough => TapHoldDecision::PassThrough,
-                    // TapResolved and RepeatConsumed cannot occur on Press.
-                    TapHoldOutcome::TapResolved { .. } | TapHoldOutcome::RepeatConsumed => {
-                        TapHoldDecision::PassThrough
-                    }
-                }
-            }
-            KeyTransition::Release => {
-                let outcome = self.tap_hold.on_release(key);
-                match outcome {
-                    TapHoldOutcome::TapResolved { binding_id } => {
-                        TapHoldDecision::TapResolved { binding_id }
-                    }
-                    // PassThrough is expected; other variants cannot occur on Release.
-                    TapHoldOutcome::PassThrough
-                    | TapHoldOutcome::Consumed
-                    | TapHoldOutcome::HoldResolved { .. }
-                    | TapHoldOutcome::RepeatConsumed => TapHoldDecision::PassThrough,
-                }
-            }
-            KeyTransition::Repeat => {
-                let outcome = self.tap_hold.on_repeat(key);
-                match outcome {
-                    TapHoldOutcome::RepeatConsumed => TapHoldDecision::Consumed,
-                    // PassThrough is expected; other variants cannot occur on Repeat.
-                    TapHoldOutcome::PassThrough
-                    | TapHoldOutcome::Consumed
-                    | TapHoldOutcome::TapResolved { .. }
-                    | TapHoldOutcome::HoldResolved { .. } => TapHoldDecision::PassThrough,
-                }
-            }
+            KeyTransition::Press => self.tap_hold.on_press(key, now),
+            KeyTransition::Release => self.tap_hold.on_release(key),
+            KeyTransition::Repeat => self.tap_hold.on_repeat(key),
             // KeyTransition is #[non_exhaustive]; future variants pass through.
             #[allow(unreachable_patterns)]
-            _ => TapHoldDecision::PassThrough,
+            _ => TapHoldOutcome::PassThrough,
         }
     }
 
@@ -1492,8 +1435,23 @@ mod tests {
 
         dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
 
-        // Interrupt with A — CapsLock should resolve as hold
+        // Interrupt with A — CapsLock is marked resolved immediately,
+        // but the hold action is deferred to the pending_timeouts pipeline.
         let _interrupt = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 0);
+
+        // Drain pending timeouts — hold action surfaces here.
+        let pending = dispatcher.pending_timeouts();
+        assert!(!pending.is_empty());
+        for p in &pending {
+            if let Some(MatchResult::Matched {
+                action: Action::Callback(cb),
+                ..
+            }) = dispatcher.match_pending_timeout(p)
+            {
+                cb();
+            }
+        }
 
         assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
         assert_eq!(hold_counter.load(Ordering::Relaxed), 1);

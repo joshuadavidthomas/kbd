@@ -114,6 +114,16 @@ impl Dispatcher {
                 },
             });
         }
+        // Interrupt-resolved holds use the same pipeline as timeout-resolved
+        // holds — the engine handles both identically via pending_timeouts.
+        for (key, id) in self.tap_hold.drain_resolved_holds() {
+            pending.push(PendingTimeout {
+                kind: TimeoutKind::TapHoldHold {
+                    key,
+                    binding_id: id,
+                },
+            });
+        }
 
         pending
     }
