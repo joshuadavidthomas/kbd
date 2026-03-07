@@ -382,6 +382,7 @@ impl Engine {
     /// Process a key press event through the Dispatcher.
     fn process_press_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
         let result = self.dispatch(event);
+
         let (match_outcome, repeat_info) = match result {
             MatchResult::Matched {
                 action,
@@ -409,6 +410,7 @@ impl Engine {
 
         let outcome = self.resolve_outcome(match_outcome, event.key, event.transition);
         self.cache_press(event.key, outcome, repeat_info);
+
         outcome
     }
 
