@@ -155,8 +155,8 @@ impl TapHoldState {
     }
 
     /// Check for tap-hold timeouts — resolve pending holds past their threshold.
-    /// Returns binding IDs of newly resolved holds.
-    pub(crate) fn check_timeouts(&mut self, now: Instant) -> Vec<BindingId> {
+    /// Returns `(key, binding_id)` pairs for newly resolved holds.
+    pub(crate) fn check_timeouts(&mut self, now: Instant) -> Vec<(Key, BindingId)> {
         let mut resolved = Vec::new();
 
         for (key, active) in &mut self.active {
@@ -171,7 +171,7 @@ impl TapHoldState {
             let elapsed = now.saturating_duration_since(active.pressed_at);
             if elapsed >= binding.options.threshold() {
                 active.resolution = HoldResolution::Resolved;
-                resolved.push(active.binding_id);
+                resolved.push((*key, active.binding_id));
             }
         }
 

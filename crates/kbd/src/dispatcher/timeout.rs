@@ -5,6 +5,7 @@ use super::Dispatcher;
 use super::MatchResult;
 use super::sequence::StandaloneMatch;
 use crate::binding::BindingId;
+use crate::key::Key;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 
@@ -22,9 +23,23 @@ pub struct PendingTimeout {
     pub(super) kind: TimeoutKind,
 }
 
+impl PendingTimeout {
+    /// Returns the key associated with this timeout, if it's a tap-hold hold resolution.
+    ///
+    /// The engine uses this to update the press cache after a hold resolves
+    /// by timeout, enabling correct repeat and release handling.
+    #[must_use]
+    pub fn tap_hold_key(&self) -> Option<Key> {
+        match &self.kind {
+            TimeoutKind::TapHoldHold { key, .. } => Some(*key),
+            TimeoutKind::Standalone(_) => None,
+        }
+    }
+}
+
 pub(super) enum TimeoutKind {
     Standalone(StandaloneMatch),
-    TapHoldHold { binding_id: BindingId },
+    TapHoldHold { key: Key, binding_id: BindingId },
 }
 
 impl Dispatcher {
@@ -91,9 +106,12 @@ impl Dispatcher {
         if let Some(p) = self.check_sequence_timeouts(now) {
             pending.push(p);
         }
-        for id in self.tap_hold.check_timeouts(now) {
+        for (key, id) in self.tap_hold.check_timeouts(now) {
             pending.push(PendingTimeout {
-                kind: TimeoutKind::TapHoldHold { binding_id: id },
+                kind: TimeoutKind::TapHoldHold {
+                    key,
+                    binding_id: id,
+                },
             });
         }
 
@@ -113,15 +131,14 @@ impl Dispatcher {
                 propagation: standalone.propagation,
                 repeat_policy: standalone.repeat_policy,
             }),
-            TimeoutKind::TapHoldHold { binding_id } => {
-                self.tap_hold
-                    .hold_action(*binding_id)
-                    .map(|action| MatchResult::Matched {
-                        action,
-                        propagation: KeyPropagation::Stop,
-                        repeat_policy: RepeatPolicy::Suppress,
-                    })
-            }
+            TimeoutKind::TapHoldHold { binding_id, .. } => self
+                .tap_hold
+                .hold_action(*binding_id)
+                .map(|action| MatchResult::Matched {
+                    action,
+                    propagation: KeyPropagation::Stop,
+                    repeat_policy: RepeatPolicy::Suppress,
+                }),
         }
     }
 

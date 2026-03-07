@@ -414,9 +414,7 @@ impl Engine {
                 // still respects the binding's propagation setting.
                 (MatchOutcome::Matched { propagation }, None)
             }
-            MatchResult::Pending { .. } | MatchResult::Suppressed => {
-                (MatchOutcome::Consumed, None)
-            }
+            MatchResult::Pending { .. } | MatchResult::Suppressed => (MatchOutcome::Consumed, None),
             MatchResult::NoMatch | MatchResult::Ignored => (MatchOutcome::Unmatched, None),
             // MatchResult is #[non_exhaustive]
             #[allow(clippy::match_same_arms)]
@@ -584,10 +582,39 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
         engine.process_polled_events(&poll_fds);
         let pending = engine.dispatcher.pending_timeouts();
         for pending in &pending {
-            if let Some(MatchResult::Matched { action, .. }) =
-                engine.dispatcher.match_pending_timeout(pending)
+            if let Some(MatchResult::Matched {
+                action,
+                propagation,
+                repeat_policy,
+            }) = engine.dispatcher.match_pending_timeout(pending)
             {
+                let press_time = Instant::now();
                 execute_action(action);
+
+                let match_outcome = MatchOutcome::Matched { propagation };
+
+                // Tap-hold hold resolutions need press cache updates so
+                // repeat and release events use the correct disposition.
+                if let Some(key) = pending.tap_hold_key() {
+                    let callback = match action {
+                        Action::Callback(cb) => Some(Arc::clone(cb)),
+                        _ => None,
+                    };
+                    let repeat_info = Some(RepeatInfo {
+                        callback,
+                        policy: repeat_policy,
+                        press_time,
+                        last_repeat_fire: None,
+                    });
+                    let outcome = engine.resolve_outcome(match_outcome, key, KeyTransition::Press);
+                    engine.press_cache.insert(
+                        key,
+                        PressCacheEntry {
+                            outcome,
+                            repeat_info,
+                        },
+                    );
+                }
             }
         }
     }
