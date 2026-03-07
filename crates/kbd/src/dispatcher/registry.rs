@@ -12,6 +12,33 @@ use crate::hotkey::HotkeySequence;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 
+/// Precedence tier derived from a [`BindingSource`](crate::binding::BindingSource) label.
+///
+/// The registry uses this to resolve conflicts when multiple global
+/// bindings share the same hotkey. Variants are ordered by priority:
+/// `Default` < `Standard` < `User`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum BindingSourceTier {
+    Default,
+    Standard,
+    User,
+}
+
+/// Derive the precedence tier from a binding's source label.
+///
+/// - `"default"` (case-insensitive) → [`BindingSourceTier::Default`]
+/// - `"user"` (case-insensitive) → [`BindingSourceTier::User`]
+/// - anything else or no source → [`BindingSourceTier::Standard`]
+pub(crate) fn precedence_tier(options: &BindingOptions) -> BindingSourceTier {
+    match options.source() {
+        Some(source) if source.as_str().eq_ignore_ascii_case("default") => {
+            BindingSourceTier::Default
+        }
+        Some(source) if source.as_str().eq_ignore_ascii_case("user") => BindingSourceTier::User,
+        _ => BindingSourceTier::Standard,
+    }
+}
+
 impl Dispatcher {
     /// Register a binding. Returns the assigned [`BindingId`].
     ///
@@ -126,7 +153,7 @@ impl Dispatcher {
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
-        let new_tier = binding.options().precedence_tier();
+        let new_tier = precedence_tier(binding.options());
         let new_device = binding.options().device();
 
         if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
@@ -138,7 +165,7 @@ impl Dispatcher {
             self.bindings_by_id
                 .get(existing_id)
                 .is_some_and(|existing| {
-                    existing.options().precedence_tier() == new_tier
+                    precedence_tier(existing.options()) == new_tier
                         && existing.options().device() == new_device
                 })
         }) {
@@ -150,7 +177,7 @@ impl Dispatcher {
             .position(|existing_id| {
                 self.bindings_by_id
                     .get(existing_id)
-                    .is_some_and(|existing| existing.options().precedence_tier() > new_tier)
+                    .is_some_and(|existing| precedence_tier(existing.options()) > new_tier)
             })
             .unwrap_or(ids_for_hotkey.len());
 
@@ -228,14 +255,41 @@ impl Dispatcher {
 #[cfg(test)]
 mod tests {
     use super::super::Dispatcher;
+    use super::BindingSourceTier;
+    use super::precedence_tier;
     use crate::action::Action;
     use crate::binding::BindingId;
+    use crate::binding::BindingOptions;
     use crate::binding::RegisteredBinding;
     use crate::hotkey::Hotkey;
     use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
     use crate::key::Key;
     use crate::sequence::SequenceOptions;
+
+    #[test]
+    fn precedence_tier_from_source_labels() {
+        let default = BindingOptions::default().with_source("default");
+        assert_eq!(precedence_tier(&default), BindingSourceTier::Default);
+
+        let user = BindingOptions::default().with_source("user");
+        assert_eq!(precedence_tier(&user), BindingSourceTier::User);
+
+        let plugin = BindingOptions::default().with_source("plugin");
+        assert_eq!(precedence_tier(&plugin), BindingSourceTier::Standard);
+
+        let no_source = BindingOptions::default();
+        assert_eq!(precedence_tier(&no_source), BindingSourceTier::Standard);
+    }
+
+    #[test]
+    fn precedence_tier_is_case_insensitive() {
+        let default = BindingOptions::default().with_source("DEFAULT");
+        assert_eq!(precedence_tier(&default), BindingSourceTier::Default);
+
+        let user = BindingOptions::default().with_source("UsEr");
+        assert_eq!(precedence_tier(&user), BindingSourceTier::User);
+    }
 
     #[test]
     fn register_returns_unique_id() {

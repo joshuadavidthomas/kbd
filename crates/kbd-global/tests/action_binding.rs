@@ -10,11 +10,11 @@ use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::BindingSource;
-use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
+use kbd::policy::KeyPropagation;
 
 #[test]
 fn action_from_closure_runs_callback() {

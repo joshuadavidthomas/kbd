@@ -41,7 +41,6 @@ use std::sync::mpsc;
 use std::time::Instant;
 
 use kbd::action::Action;
-use kbd::binding::KeyPropagation;
 use kbd::device::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
@@ -49,6 +48,7 @@ use kbd::hotkey::Hotkey;
 use kbd::key::Key;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
+use kbd::policy::KeyPropagation;
 use kbd::policy::RepeatPolicy;
 
 use crate::Error;
@@ -530,12 +530,12 @@ mod tests {
     use kbd::action::Action;
     use kbd::binding::BindingId;
     use kbd::binding::BindingOptions;
-    use kbd::binding::KeyPropagation;
     use kbd::binding::RegisteredBinding;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
     use kbd::key::Key;
     use kbd::key_state::KeyTransition;
+    use kbd::policy::KeyPropagation;
     use kbd::policy::RepeatPolicy;
 
     use super::Command;

@@ -16,11 +16,11 @@ use std::time::Duration;
 
 use crate::action::Action;
 use crate::binding::BindingOptions;
-use crate::binding::KeyPropagation;
 use crate::error::ParseHotkeyError;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
+use crate::policy::KeyPropagation;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 

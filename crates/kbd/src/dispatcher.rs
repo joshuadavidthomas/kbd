@@ -31,7 +31,6 @@ use self::sequence::SequenceStartCandidate;
 use self::throttle::ThrottleTracker;
 use crate::action::Action;
 use crate::binding::BindingId;
-use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
 use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
@@ -41,6 +40,7 @@ use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
+use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
 

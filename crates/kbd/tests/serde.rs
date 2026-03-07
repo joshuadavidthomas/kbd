@@ -9,7 +9,6 @@
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::BindingSource;
-use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
 use kbd::device::DeviceFilter;
 use kbd::device::DeviceInfo;
@@ -21,6 +20,7 @@ use kbd::key_state::KeyTransition;
 use kbd::layer::LayerName;
 use kbd::layer::LayerOptions;
 use kbd::layer::UnmatchedKeys;
+use kbd::policy::KeyPropagation;
 
 fn round_trip<T>(value: &T) -> T
 where

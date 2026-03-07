@@ -12,6 +12,7 @@ use std::time::Duration;
 use crate::action::Action;
 use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
+use crate::policy::KeyPropagation;
 use crate::policy::RateLimit;
 use crate::policy::RepeatPolicy;
 
@@ -47,11 +48,11 @@ impl Default for BindingId {
 /// Tracks where a binding came from — for example `"default"`, `"user"`,
 /// `"plugin"`, or an application-specific label.
 ///
-/// The dispatcher recognizes two labels for precedence when multiple global
-/// bindings share the same hotkey: `"default"` is lower-priority and `"user"`
-/// is higher-priority. Matching is case-insensitive. Other labels — and
-/// bindings with no source at all — use the normal priority tier, so there can
-/// be at most one binding per hotkey in each tier.
+/// The dispatcher's registry recognizes two labels for precedence when
+/// multiple global bindings share the same hotkey: `"default"` is
+/// lower-priority and `"user"` is higher-priority (case-insensitive).
+/// Other labels use the normal priority tier. See the registry module
+/// for precedence resolution details.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
@@ -68,16 +69,6 @@ impl BindingSource {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-
-    pub(crate) fn precedence_tier(&self) -> BindingSourceTier {
-        if self.as_str().eq_ignore_ascii_case("default") {
-            BindingSourceTier::Default
-        } else if self.as_str().eq_ignore_ascii_case("user") {
-            BindingSourceTier::User
-        } else {
-            BindingSourceTier::Standard
-        }
     }
 }
 
@@ -97,44 +88,6 @@ impl std::fmt::Display for BindingSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum BindingSourceTier {
-    Default,
-    Standard,
-    User,
-}
-
-/// How a matched binding handles the original key event.
-///
-/// # Examples
-///
-/// ```
-/// use kbd::action::Action;
-/// use kbd::binding::{BindingId, BindingOptions, KeyPropagation, RegisteredBinding};
-/// use kbd::hotkey::{Hotkey, Modifier};
-/// use kbd::key::Key;
-///
-/// // A binding that forwards the key event to the application
-/// // while still running its action (e.g., logging keypresses).
-/// let binding = RegisteredBinding::new(
-///     BindingId::new(),
-///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-///     Action::Suppress,
-/// ).with_propagation(KeyPropagation::Continue);
-///
-/// assert_eq!(binding.propagation(), KeyPropagation::Continue);
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[non_exhaustive]
-pub enum KeyPropagation {
-    /// Stop propagation — the event is consumed and not forwarded.
-    #[default]
-    Stop,
-    /// Continue propagation — forward the event while still running the action.
-    Continue,
 }
 
 /// Whether a binding appears in hotkey overlays and help screens.
@@ -176,7 +129,8 @@ pub enum OverlayVisibility {
 /// # Examples
 ///
 /// ```
-/// use kbd::binding::{BindingOptions, BindingSource, KeyPropagation, OverlayVisibility};
+/// use kbd::binding::{BindingOptions, BindingSource, OverlayVisibility};
+/// use kbd::policy::KeyPropagation;
 ///
 /// let opts = BindingOptions::default()
 ///     .with_description("Copy to clipboard")
@@ -259,12 +213,6 @@ impl BindingOptions {
     pub fn with_source(mut self, source: impl Into<BindingSource>) -> Self {
         self.source = Some(source.into());
         self
-    }
-
-    pub(crate) fn precedence_tier(&self) -> BindingSourceTier {
-        self.source
-            .as_ref()
-            .map_or(BindingSourceTier::Standard, BindingSource::precedence_tier)
     }
 
     /// Whether this binding appears in hotkey overlays.
@@ -452,6 +400,8 @@ mod tests {
 
     #[test]
     fn binding_options_defaults() {
+        use crate::policy::KeyPropagation;
+
         let opts = BindingOptions::default();
         assert_eq!(opts.propagation(), KeyPropagation::Stop);
         assert_eq!(opts.description(), None);
@@ -461,6 +411,8 @@ mod tests {
 
     #[test]
     fn binding_options_builder_chain() {
+        use crate::policy::KeyPropagation;
+
         let opts = BindingOptions::default()
             .with_propagation(KeyPropagation::Continue)
             .with_description("Save file")
@@ -483,23 +435,9 @@ mod tests {
     }
 
     #[test]
-    fn binding_source_reserved_labels_are_case_insensitive() {
-        assert_eq!(
-            BindingSource::new("DEFAULT").precedence_tier(),
-            BindingSourceTier::Default
-        );
-        assert_eq!(
-            BindingSource::new("UsEr").precedence_tier(),
-            BindingSourceTier::User
-        );
-        assert_eq!(
-            BindingSource::new("plugin").precedence_tier(),
-            BindingSourceTier::Standard
-        );
-    }
-
-    #[test]
     fn registered_binding_stores_fields() {
+        use crate::policy::KeyPropagation;
+
         let id = BindingId::new();
         let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
         let binding = RegisteredBinding::new(id, hotkey.clone(), Action::Suppress);
@@ -511,6 +449,8 @@ mod tests {
 
     #[test]
     fn registered_binding_with_propagation() {
+        use crate::policy::KeyPropagation;
+
         let id = BindingId::new();
         let binding = RegisteredBinding::new(id, Hotkey::new(Key::A), Action::Suppress)
             .with_propagation(KeyPropagation::Continue);
