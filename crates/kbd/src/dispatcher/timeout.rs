@@ -77,11 +77,12 @@ impl Dispatcher {
         min_remaining
     }
 
-    /// Process all timeout-driven state transitions and return any that fired.
+    /// Process deferred state transitions and return any that fired.
     ///
     /// Handles layer auto-pop, sequence step timeouts, and tap-hold hold
-    /// resolution. Returns [`PendingTimeout`] values that can be matched
-    /// to actions via [`match_pending_timeout`](Self::match_pending_timeout).
+    /// resolution (both timeout-based and interrupt-based). Returns
+    /// [`PendingTimeout`] values that can be matched to actions via
+    /// [`match_pending_timeout`](Self::match_pending_timeout).
     pub fn pending_timeouts(&mut self) -> Vec<PendingTimeout> {
         let now = Instant::now();
 
