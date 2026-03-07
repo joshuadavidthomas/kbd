@@ -4,6 +4,7 @@ use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
+use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
 use kbd::layer::Layer;
 
@@ -79,7 +80,8 @@ pub fn generate_hotkeys(n: usize) -> Vec<Hotkey> {
     for i in 0..n {
         let key = KEYS[i % KEYS.len()];
         let mods = MODIFIER_SETS[i / KEYS.len() % MODIFIER_SETS.len()];
-        hotkeys.push(Hotkey::with_modifiers(key, mods.to_vec()));
+        let modifiers: ModifierSet = mods.iter().copied().collect();
+        hotkeys.push(Hotkey::with_modifiers(key, modifiers));
     }
     hotkeys
 }
@@ -126,7 +128,7 @@ pub fn dispatcher_with_layers(n_per_layer: usize, layer_count: usize) -> Dispatc
         let mut layer = Layer::new(&*name);
         for hotkey in &all_hotkeys[start..end] {
             layer = layer
-                .bind(hotkey.clone(), Action::Suppress)
+                .bind(*hotkey, Action::Suppress)
                 .expect("unique hotkeys");
         }
         dispatcher.define_layer(layer).expect("unique layer name");
@@ -149,7 +151,7 @@ pub fn dispatcher_with_sequences(n: usize) -> Dispatcher {
         let second_key = KEYS[(i + 1) % KEYS.len()];
         let second = Hotkey::new(second_key);
         dispatcher
-            .register_sequence(vec![first.clone(), second], Action::Suppress)
+            .register_sequence(vec![*first, second], Action::Suppress)
             .expect("unique sequences");
     }
     dispatcher

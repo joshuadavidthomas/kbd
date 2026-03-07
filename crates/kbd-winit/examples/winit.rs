@@ -124,7 +124,7 @@ impl ApplicationHandler for App {
                     return;
                 };
 
-                match self.dispatcher.process(&hotkey, KeyTransition::Press) {
+                match self.dispatcher.process(hotkey, KeyTransition::Press) {
                     MatchResult::Matched { action, .. } => {
                         println!("{hotkey} → matched!");
                         if let Action::Callback(cb) = action {

@@ -101,7 +101,8 @@ fn hotkey_serializes_as_string() {
 fn hotkey_deserializes_from_string() {
     let hotkey: Hotkey = serde_json::from_str(r#""Ctrl+A""#).unwrap();
     assert_eq!(hotkey.key(), Key::A);
-    assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl]);
+    assert!(hotkey.has_modifier(Modifier::Ctrl));
+    assert_eq!(hotkey.modifier_count(), 1);
 }
 
 #[test]

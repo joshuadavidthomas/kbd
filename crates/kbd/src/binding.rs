@@ -386,8 +386,8 @@ impl RegisteredBinding {
 
     /// The hotkey pattern that triggers this binding.
     #[must_use]
-    pub fn hotkey(&self) -> &Hotkey {
-        &self.hotkey
+    pub fn hotkey(&self) -> Hotkey {
+        self.hotkey
     }
 
     /// The action to execute when this binding matches.
@@ -508,10 +508,10 @@ mod tests {
     fn registered_binding_stores_fields() {
         let id = BindingId::new();
         let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
-        let binding = RegisteredBinding::new(id, hotkey.clone(), Action::Suppress);
+        let binding = RegisteredBinding::new(id, hotkey, Action::Suppress);
 
         assert_eq!(binding.id(), id);
-        assert_eq!(*binding.hotkey(), hotkey);
+        assert_eq!(binding.hotkey(), hotkey);
         assert_eq!(binding.propagation(), KeyPropagation::Stop);
     }
 

@@ -29,7 +29,7 @@ use kbd::binding::RegisteredBinding;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeyInput;
 use kbd::hotkey::HotkeySequence;
-use kbd::hotkey::Modifier;
+use kbd::hotkey::ModifierSet;
 use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
 use kbd::introspection::ConflictInfo;
@@ -277,7 +277,7 @@ impl HotkeyManager {
     /// # Errors
     ///
     /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn active_modifiers(&self) -> Result<Vec<Modifier>, Error> {
+    pub fn active_modifiers(&self) -> Result<ModifierSet, Error> {
         self.request(|reply| Command::ActiveModifiers { reply })
     }
 

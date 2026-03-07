@@ -20,7 +20,7 @@
 //! - [`IcedKeyExt`] — converts an iced [`key::Code`] or [`key::Physical`]
 //!   to a [`kbd::key::Key`].
 //! - [`IcedModifiersExt`] — converts iced [`Modifiers`] to a
-//!   `Vec<Modifier>`.
+//!   [`ModifierSet`](kbd::hotkey::ModifierSet).
 //! - [`IcedEventExt`] — converts an iced keyboard [`Event`] to a
 //!   [`kbd::hotkey::Hotkey`].
 //!
@@ -62,7 +62,8 @@
 //!
 //! // Modifier conversion
 //! let mods = Modifiers::CTRL.to_modifiers();
-//! assert_eq!(mods, vec![Modifier::Ctrl]);
+//! assert!(mods.contains(Modifier::Ctrl));
+//! assert_eq!(mods.len(), 1);
 //! ```
 
 use iced_core::keyboard::Event;
@@ -346,14 +347,14 @@ impl IcedKeyExt for key::Physical {
     }
 }
 
-/// Convert iced [`Modifiers`] bitflags to a sorted `Vec<Modifier>`.
+/// Convert iced [`Modifiers`] bitflags to a kbd [`ModifierSet`](kbd::hotkey::ModifierSet).
 ///
 /// Iced uses `LOGO` for the Super/Meta/Windows key. This maps to
 /// `Modifier::Super` in `kbd`.
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait IcedModifiersExt: private::Sealed {
-    /// Convert these iced modifier flags to a `Vec<Modifier>`.
+    /// Convert these iced modifier flags to a kbd [`ModifierSet`](kbd::hotkey::ModifierSet).
     ///
     /// # Examples
     ///
@@ -363,14 +364,15 @@ pub trait IcedModifiersExt: private::Sealed {
     /// use kbd_iced::IcedModifiersExt;
     ///
     /// let mods = (Modifiers::CTRL | Modifiers::SHIFT).to_modifiers();
-    /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
+    /// assert!(mods.contains(Modifier::Ctrl));
+    /// assert!(mods.contains(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> Vec<Modifier>;
+    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet;
 }
 
 impl IcedModifiersExt for Modifiers {
-    fn to_modifiers(&self) -> Vec<Modifier> {
+    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet {
         Modifier::collect_active([
             (self.control(), Modifier::Ctrl),
             (self.shift(), Modifier::Shift),
@@ -440,7 +442,7 @@ impl IcedEventExt for Event {
 
         // Strip the modifier that corresponds to the key itself.
         if let Some(self_modifier) = Modifier::from_key(key) {
-            mods.retain(|m| *m != self_modifier);
+            mods = mods.without(self_modifier);
         }
 
         Some(Hotkey::with_modifiers(key, mods))
@@ -455,6 +457,7 @@ mod tests {
     use iced_core::keyboard::key;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
+    use kbd::hotkey::ModifierSet as KbdModifiers;
     use kbd::key::Key;
 
     use super::*;
@@ -620,22 +623,25 @@ mod tests {
 
     #[test]
     fn empty_modifiers() {
-        assert_eq!(Modifiers::empty().to_modifiers(), Vec::<Modifier>::new());
+        assert_eq!(Modifiers::empty().to_modifiers(), KbdModifiers::NONE);
     }
 
     #[test]
     fn single_modifiers() {
-        assert_eq!(Modifiers::CTRL.to_modifiers(), vec![Modifier::Ctrl]);
-        assert_eq!(Modifiers::SHIFT.to_modifiers(), vec![Modifier::Shift]);
-        assert_eq!(Modifiers::ALT.to_modifiers(), vec![Modifier::Alt]);
+        assert_eq!(Modifiers::CTRL.to_modifiers(), KbdModifiers::CTRL);
+        assert_eq!(Modifiers::SHIFT.to_modifiers(), KbdModifiers::SHIFT);
+        assert_eq!(Modifiers::ALT.to_modifiers(), KbdModifiers::ALT);
         // iced's LOGO = kbd's Super
-        assert_eq!(Modifiers::LOGO.to_modifiers(), vec![Modifier::Super]);
+        assert_eq!(Modifiers::LOGO.to_modifiers(), KbdModifiers::SUPER);
     }
 
     #[test]
     fn combined_modifiers() {
         let mods = Modifiers::CTRL | Modifiers::SHIFT;
-        assert_eq!(mods.to_modifiers(), vec![Modifier::Ctrl, Modifier::Shift]);
+        assert_eq!(
+            mods.to_modifiers(),
+            KbdModifiers::CTRL.with(Modifier::Shift)
+        );
     }
 
     #[test]
@@ -643,12 +649,11 @@ mod tests {
         let mods = Modifiers::CTRL | Modifiers::SHIFT | Modifiers::ALT | Modifiers::LOGO;
         assert_eq!(
             mods.to_modifiers(),
-            vec![
-                Modifier::Ctrl,
-                Modifier::Shift,
-                Modifier::Alt,
-                Modifier::Super,
-            ]
+            KbdModifiers::NONE
+                .with(Modifier::Ctrl)
+                .with(Modifier::Shift)
+                .with(Modifier::Alt)
+                .with(Modifier::Super)
         );
     }
 

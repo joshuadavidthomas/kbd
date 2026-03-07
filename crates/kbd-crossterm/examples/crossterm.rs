@@ -94,7 +94,7 @@ fn run_event_loop(dispatcher: &mut Dispatcher) -> Result<(), Box<dyn std::error:
             };
 
             // Process through the dispatcher
-            match dispatcher.process(&hotkey, KeyTransition::Press) {
+            match dispatcher.process(hotkey, KeyTransition::Press) {
                 MatchResult::Matched { action, .. } => {
                     print!("{hotkey}: matched!\r\n");
                     if let Action::Callback(cb) = action {

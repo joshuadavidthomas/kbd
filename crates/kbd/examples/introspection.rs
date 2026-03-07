@@ -38,7 +38,7 @@ fn main() {
     // Query what would fire for a specific key
     println!("2. What fires for Ctrl+C (no layers active)?");
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-    match dispatcher.bindings_for_key(&hotkey) {
+    match dispatcher.bindings_for_key(hotkey) {
         Some(info) => println!("  {}", format_binding(&info)),
         None => println!("  (nothing)"),
     }
@@ -70,7 +70,7 @@ fn main() {
 
     // What fires for Ctrl+C now?
     println!("5. What fires for Ctrl+C (with vim-normal layer)?");
-    match dispatcher.bindings_for_key(&hotkey) {
+    match dispatcher.bindings_for_key(hotkey) {
         Some(info) => println!("  {}", format_binding(&info)),
         None => println!("  (nothing)"),
     }
@@ -112,12 +112,12 @@ fn main() {
 
     // Right now Ctrl+S is a "default" source binding
     println!("  Before user override:");
-    print_binding_for_key(&dispatcher, &save_hotkey);
+    print_binding_for_key(&dispatcher, save_hotkey);
 
     // Register a user override for the same hotkey
     let user_save_id = dispatcher
         .register_with_options(
-            save_hotkey.clone(),
+            save_hotkey,
             Action::from(|| {}),
             BindingOptions::default()
                 .with_description("Save file (auto-format first)")
@@ -127,7 +127,7 @@ fn main() {
 
     // The user binding wins — the default is shadowed
     println!("  After user override:");
-    print_binding_for_key(&dispatcher, &save_hotkey);
+    print_binding_for_key(&dispatcher, save_hotkey);
 
     // Show the conflict
     let save_conflicts: Vec<_> = dispatcher
@@ -146,7 +146,7 @@ fn main() {
     // Unregister the user binding — the default is promoted back
     dispatcher.unregister(user_save_id);
     println!("  After removing user override:");
-    print_binding_for_key(&dispatcher, &save_hotkey);
+    print_binding_for_key(&dispatcher, save_hotkey);
 
     // Clean up — demonstrate that unregister works
     dispatcher.unregister(copy_id);
@@ -157,7 +157,7 @@ fn main() {
     );
 }
 
-fn print_binding_for_key(dispatcher: &Dispatcher, hotkey: &Hotkey) {
+fn print_binding_for_key(dispatcher: &Dispatcher, hotkey: Hotkey) {
     match dispatcher.bindings_for_key(hotkey) {
         Some(info) => println!("    {}", format_binding(&info)),
         None => println!("    (nothing)"),

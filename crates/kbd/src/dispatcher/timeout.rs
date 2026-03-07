@@ -143,10 +143,10 @@ mod tests {
             .unwrap();
 
         // Press F1 → pushes oneshot layer (should NOT consume a oneshot count)
-        dispatcher.process(&Hotkey::new(Key::F1), KeyTransition::Press);
+        dispatcher.process(Hotkey::new(Key::F1), KeyTransition::Press);
 
         // First keypress in the oneshot layer — should match and then pop
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
         if let MatchResult::Matched {
             action: Action::Callback(cb),
             ..
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(counter.load(Ordering::Relaxed), 1);
 
         // Second press → layer should be gone now
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
         assert!(matches!(result, MatchResult::NoMatch));
     }
 }

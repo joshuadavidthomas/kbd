@@ -101,9 +101,9 @@ fn dropping_guard_unregisters_hotkey() {
     let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
 
     let guard = manager
-        .register(hotkey.clone(), || {})
+        .register(hotkey, || {})
         .expect("register should succeed");
-    assert!(manager.is_registered(hotkey.clone()).unwrap());
+    assert!(manager.is_registered(hotkey).unwrap());
 
     drop(guard);
     assert!(!manager.is_registered(hotkey).unwrap());
@@ -115,9 +115,9 @@ fn explicit_unregister_removes_binding() {
     let hotkey = Hotkey::new(Key::B).modifier(Modifier::Alt);
 
     let guard = manager
-        .register(hotkey.clone(), || {})
+        .register(hotkey, || {})
         .expect("register should succeed");
-    assert!(manager.is_registered(hotkey.clone()).unwrap());
+    assert!(manager.is_registered(hotkey).unwrap());
 
     guard.unregister().expect("unregister should succeed");
     assert!(!manager.is_registered(hotkey).unwrap());
@@ -133,7 +133,7 @@ fn register_with_options_sets_metadata() {
         .with_overlay_visibility(kbd::binding::OverlayVisibility::Visible);
 
     let _guard = manager
-        .register_with_options(hotkey.clone(), Action::Suppress, options)
+        .register_with_options(hotkey, Action::Suppress, options)
         .expect("register should succeed");
 
     let bindings = manager.list_bindings().expect("query should succeed");
@@ -149,7 +149,7 @@ fn duplicate_registration_returns_already_registered() {
     let manager = utils::test_manager();
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
 
-    let _first = manager.register(hotkey.clone(), || {}).unwrap();
+    let _first = manager.register(hotkey, || {}).unwrap();
     let result = manager.register(hotkey, || {});
     assert!(matches!(result, Err(Error::AlreadyRegistered)));
 }
@@ -247,7 +247,7 @@ fn bindings_for_key_finds_registered_hotkey() {
     let manager = utils::test_manager();
     let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
 
-    let _guard = manager.register(hotkey.clone(), || {}).unwrap();
+    let _guard = manager.register(hotkey, || {}).unwrap();
 
     let info = manager
         .bindings_for_key(hotkey)

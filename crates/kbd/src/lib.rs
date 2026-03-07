@@ -26,7 +26,7 @@
 //!
 //! // Simulate a key press
 //! let result = dispatcher.process(
-//!     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+//!     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 //!     KeyTransition::Press,
 //! );
 //! assert!(matches!(result, MatchResult::Matched { .. }));
@@ -73,7 +73,7 @@ pub mod sequence;
 /// )?;
 ///
 /// let result = dispatcher.process(
-///     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 ///     KeyTransition::Press,
 /// );
 /// assert!(matches!(result, MatchResult::Matched { .. }));

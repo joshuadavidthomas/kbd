@@ -29,7 +29,7 @@ fn convert_and_dispatch_simple_hotkey() {
         .unwrap();
 
     let hotkey = tao_key_to_hotkey(KeyCode::KeyS, ModifiersState::CONTROL).unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -47,7 +47,7 @@ fn convert_and_dispatch_multi_modifier_hotkey() {
 
     let mods = ModifiersState::CONTROL | ModifiersState::SHIFT;
     let hotkey = tao_key_to_hotkey(KeyCode::KeyA, mods).unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -62,7 +62,7 @@ fn unregistered_hotkey_does_not_match() {
         .unwrap();
 
     let hotkey = tao_key_to_hotkey(KeyCode::KeyQ, ModifiersState::CONTROL).unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::NoMatch));
 }
 
@@ -111,7 +111,7 @@ fn function_key_with_modifiers_roundtrip() {
 
     let mods = ModifiersState::CONTROL | ModifiersState::SHIFT;
     let hotkey = tao_key_to_hotkey(KeyCode::F5, mods).unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -156,7 +156,7 @@ fn super_maps_to_super_in_dispatch() {
         .unwrap();
 
     let hotkey = tao_key_to_hotkey(KeyCode::KeyS, ModifiersState::SUPER).unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -168,7 +168,7 @@ fn media_key_converts_and_dispatches() {
         .unwrap();
 
     let hotkey = tao_key_to_hotkey(KeyCode::MediaPlayPause, ModifiersState::empty()).unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 

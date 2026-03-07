@@ -226,7 +226,7 @@ impl Engine {
 
             // Queries
             Command::IsRegistered { hotkey, reply } => {
-                let _ = reply.send(self.dispatcher.is_registered(&hotkey));
+                let _ = reply.send(self.dispatcher.is_registered(hotkey));
             }
             Command::IsKeyPressed { key, reply } => {
                 let _ = reply.send(self.key_state.is_pressed(key));
@@ -238,7 +238,7 @@ impl Engine {
                 let _ = reply.send(self.dispatcher.list_bindings());
             }
             Command::BindingsForKey { hotkey, reply } => {
-                let _ = reply.send(self.dispatcher.bindings_for_key(&hotkey));
+                let _ = reply.send(self.dispatcher.bindings_for_key(hotkey));
             }
             Command::ActiveLayers { reply } => {
                 let _ = reply.send(self.dispatcher.active_layers());
@@ -373,9 +373,9 @@ impl Engine {
                 let ctx = DeviceContext::new(event.device_fd, info)
                     .with_device_modifiers(device_modifiers);
                 self.dispatcher
-                    .process_with_device(&candidate, event.transition, &ctx)
+                    .process_with_device(candidate, event.transition, &ctx)
             } else {
-                self.dispatcher.process(&candidate, event.transition)
+                self.dispatcher.process(candidate, event.transition)
             };
             match result {
                 MatchResult::Matched {
@@ -533,6 +533,7 @@ mod tests {
     use kbd::binding::RegisteredBinding;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
+    use kbd::hotkey::ModifierSet;
     use kbd::key::Key;
     use kbd::key_state::KeyTransition;
     use kbd::policy::KeyPropagation;
@@ -628,7 +629,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: RegisteredBinding::new(BindingId::new(), hotkey.clone(), Action::Suppress),
+                binding: RegisteredBinding::new(BindingId::new(), hotkey, Action::Suppress),
                 reply: register_reply_tx,
             })
             .expect("register command should send");
@@ -1084,16 +1085,16 @@ mod tests {
         assert!(engine.key_state.active_modifiers().is_empty());
 
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
-        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Ctrl]);
+        assert_eq!(engine.key_state.active_modifiers(), ModifierSet::CTRL);
 
         press_key(&mut engine, Key::SHIFT_LEFT, 10);
         assert_eq!(
             engine.key_state.active_modifiers(),
-            vec![Modifier::Ctrl, Modifier::Shift]
+            ModifierSet::CTRL.with(Modifier::Shift)
         );
 
         release_key(&mut engine, Key::CONTROL_LEFT, 10);
-        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
+        assert_eq!(engine.key_state.active_modifiers(), ModifierSet::SHIFT);
     }
 
     #[test]
@@ -1197,14 +1198,14 @@ mod tests {
 
         assert_eq!(
             engine.key_state.active_modifiers(),
-            vec![Modifier::Ctrl, Modifier::Shift]
+            ModifierSet::CTRL.with(Modifier::Shift)
         );
 
         // Simulate device 10 disconnecting
         engine.key_state.disconnect_device(10);
 
         // Only modifiers from device 11 should remain
-        assert_eq!(engine.key_state.active_modifiers(), vec![Modifier::Shift]);
+        assert_eq!(engine.key_state.active_modifiers(), ModifierSet::SHIFT);
         assert!(!engine.key_state.is_pressed(Key::CONTROL_LEFT));
     }
 
@@ -1285,7 +1286,7 @@ mod tests {
         // H should match in the layer
         let result = engine
             .dispatcher
-            .process(&Hotkey::new(Key::H), KeyTransition::Press);
+            .process(Hotkey::new(Key::H), KeyTransition::Press);
         assert!(matches!(
             result,
             kbd::dispatcher::MatchResult::Matched { .. }
@@ -1294,7 +1295,7 @@ mod tests {
         // After oneshot depth of 1, layer should be gone
         let result = engine
             .dispatcher
-            .process(&Hotkey::new(Key::H), KeyTransition::Press);
+            .process(Hotkey::new(Key::H), KeyTransition::Press);
         assert!(matches!(result, kbd::dispatcher::MatchResult::NoMatch));
     }
 
@@ -2504,7 +2505,7 @@ mod tests {
 
         let result = engine
             .dispatcher
-            .bindings_for_key(&Hotkey::new(Key::C).modifier(Modifier::Ctrl));
+            .bindings_for_key(Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert!(result.is_some());
 
         let info = result.unwrap();
@@ -2528,7 +2529,7 @@ mod tests {
 
         let result = engine
             .dispatcher
-            .bindings_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
+            .bindings_for_key(Hotkey::new(Key::V).modifier(Modifier::Ctrl));
         assert!(result.is_none());
     }
 
@@ -2555,7 +2556,7 @@ mod tests {
             .push_layer(kbd::layer::LayerName::from("nav"))
             .unwrap();
 
-        let result = engine.dispatcher.bindings_for_key(&Hotkey::new(Key::H));
+        let result = engine.dispatcher.bindings_for_key(Hotkey::new(Key::H));
         assert!(result.is_some());
 
         let info = result.unwrap();
@@ -2822,13 +2823,13 @@ mod tests {
             .push_layer(kbd::layer::LayerName::from("modal"))
             .unwrap();
 
-        let result = engine.dispatcher.bindings_for_key(&Hotkey::new(Key::X));
+        let result = engine.dispatcher.bindings_for_key(Hotkey::new(Key::X));
         assert!(
             result.is_none(),
             "swallow layer should block fallthrough to global binding"
         );
 
-        let result = engine.dispatcher.bindings_for_key(&Hotkey::new(Key::H));
+        let result = engine.dispatcher.bindings_for_key(Hotkey::new(Key::H));
         assert!(result.is_some());
     }
 
@@ -2847,7 +2848,7 @@ mod tests {
 
         let result = engine
             .dispatcher
-            .bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
+            .bindings_for_key(Hotkey::new(Key::CONTROL_LEFT));
         assert!(
             result.is_none(),
             "modifier-only key should not match, consistent with real dispatcher"

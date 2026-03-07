@@ -40,7 +40,7 @@ fn convert_and_dispatch_simple_hotkey() {
 
     let event = key_event(EguiKey::S, Modifiers::CTRL);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -65,7 +65,7 @@ fn convert_and_dispatch_multi_modifier_hotkey() {
     };
     let event = key_event(EguiKey::A, mods);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -81,7 +81,7 @@ fn unregistered_hotkey_does_not_match() {
 
     let event = key_event(EguiKey::Q, Modifiers::CTRL);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::NoMatch));
 }
 
@@ -156,7 +156,7 @@ fn function_key_with_modifiers_roundtrip() {
     };
     let event = key_event(EguiKey::F5, mods);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -196,7 +196,7 @@ fn mac_cmd_maps_to_super_in_dispatch() {
     };
     let event = key_event(EguiKey::S, mods);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -209,6 +209,6 @@ fn browser_back_converts_and_dispatches() {
 
     let event = key_event(EguiKey::BrowserBack, Modifiers::NONE);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }

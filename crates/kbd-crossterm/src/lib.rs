@@ -15,7 +15,7 @@
 //! - [`CrosstermKeyExt`] — converts a [`crossterm::event::KeyCode`] to a
 //!   [`kbd::key::Key`].
 //! - [`CrosstermModifiersExt`] — converts [`crossterm::event::KeyModifiers`]
-//!   to a `Vec<Modifier>`.
+//!   to a [`ModifierSet`].
 //! - [`CrosstermEventExt`] — converts a full [`crossterm::event::KeyEvent`]
 //!   to a [`kbd::hotkey::Hotkey`].
 //!
@@ -56,7 +56,8 @@
 //!
 //! // Modifier conversion
 //! let mods = KeyModifiers::CONTROL.to_modifiers();
-//! assert_eq!(mods, vec![Modifier::Ctrl]);
+//! assert!(mods.contains(Modifier::Ctrl));
+//! assert_eq!(mods.len(), 1);
 //!
 //! // Full event conversion
 //! let event = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
@@ -71,6 +72,7 @@ use crossterm::event::MediaKeyCode;
 use crossterm::event::ModifierKeyCode;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
+use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
 
 mod private {
@@ -136,14 +138,14 @@ impl CrosstermKeyExt for KeyCode {
     }
 }
 
-/// Convert crossterm [`KeyModifiers`] bitflags to a sorted `Vec<Modifier>`.
+/// Convert crossterm [`KeyModifiers`] bitflags to a [`ModifierSet`].
 ///
 /// Crossterm's `HYPER` and `META` flags have no `kbd` equivalent and
 /// are silently ignored.
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait CrosstermModifiersExt: private::Sealed {
-    /// Convert these modifier flags to a `Vec<Modifier>`.
+    /// Convert these modifier flags to a [`ModifierSet`].
     ///
     /// # Examples
     ///
@@ -153,14 +155,15 @@ pub trait CrosstermModifiersExt: private::Sealed {
     /// use kbd_crossterm::CrosstermModifiersExt;
     ///
     /// let mods = (KeyModifiers::CONTROL | KeyModifiers::SHIFT).to_modifiers();
-    /// assert_eq!(mods, vec![Modifier::Ctrl, Modifier::Shift]);
+    /// assert!(mods.contains(Modifier::Ctrl));
+    /// assert!(mods.contains(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> Vec<Modifier>;
+    fn to_modifiers(&self) -> ModifierSet;
 }
 
 impl CrosstermModifiersExt for KeyModifiers {
-    fn to_modifiers(&self) -> Vec<Modifier> {
+    fn to_modifiers(&self) -> ModifierSet {
         Modifier::collect_active([
             (self.contains(KeyModifiers::CONTROL), Modifier::Ctrl),
             (self.contains(KeyModifiers::SHIFT), Modifier::Shift),
@@ -591,22 +594,22 @@ mod tests {
 
     #[test]
     fn empty_modifiers() {
-        assert_eq!(KeyModifiers::NONE.to_modifiers(), Vec::<Modifier>::new());
+        assert_eq!(KeyModifiers::NONE.to_modifiers(), ModifierSet::NONE);
     }
 
     #[test]
     fn single_modifier() {
-        assert_eq!(KeyModifiers::CONTROL.to_modifiers(), vec![Modifier::Ctrl]);
-        assert_eq!(KeyModifiers::SHIFT.to_modifiers(), vec![Modifier::Shift]);
-        assert_eq!(KeyModifiers::ALT.to_modifiers(), vec![Modifier::Alt]);
-        assert_eq!(KeyModifiers::SUPER.to_modifiers(), vec![Modifier::Super]);
+        assert_eq!(KeyModifiers::CONTROL.to_modifiers(), ModifierSet::CTRL);
+        assert_eq!(KeyModifiers::SHIFT.to_modifiers(), ModifierSet::SHIFT);
+        assert_eq!(KeyModifiers::ALT.to_modifiers(), ModifierSet::ALT);
+        assert_eq!(KeyModifiers::SUPER.to_modifiers(), ModifierSet::SUPER);
     }
 
     #[test]
     fn combined_modifiers() {
         let mods = KeyModifiers::CONTROL | KeyModifiers::SHIFT;
         let result = mods.to_modifiers();
-        assert_eq!(result, vec![Modifier::Ctrl, Modifier::Shift]);
+        assert_eq!(result, ModifierSet::CTRL.with(Modifier::Shift));
     }
 
     #[test]
@@ -616,19 +619,18 @@ mod tests {
         let result = mods.to_modifiers();
         assert_eq!(
             result,
-            vec![
-                Modifier::Ctrl,
-                Modifier::Shift,
-                Modifier::Alt,
-                Modifier::Super
-            ]
+            ModifierSet::NONE
+                .with(Modifier::Ctrl)
+                .with(Modifier::Shift)
+                .with(Modifier::Alt)
+                .with(Modifier::Super)
         );
     }
 
     #[test]
     fn hyper_and_meta_ignored() {
         let mods = KeyModifiers::HYPER | KeyModifiers::META;
-        assert_eq!(mods.to_modifiers(), Vec::<Modifier>::new());
+        assert_eq!(mods.to_modifiers(), ModifierSet::NONE);
     }
 
     // CrosstermEventExt tests

@@ -25,7 +25,7 @@ fn convert_and_dispatch_simple_hotkey() {
 
     let key = KeyCode::KEY_A.to_key();
     let hotkey = Hotkey::new(key).modifier(Modifier::Ctrl);
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -45,7 +45,7 @@ fn convert_and_dispatch_multi_modifier_hotkey() {
     let hotkey = Hotkey::new(key)
         .modifier(Modifier::Ctrl)
         .modifier(Modifier::Shift);
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -61,7 +61,7 @@ fn unregistered_hotkey_does_not_match() {
 
     let key = KeyCode::KEY_Q.to_key();
     let hotkey = Hotkey::new(key).modifier(Modifier::Ctrl);
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::NoMatch));
 }
 
@@ -159,7 +159,7 @@ fn function_key_with_modifiers_dispatches() {
     let hotkey = Hotkey::new(key)
         .modifier(Modifier::Ctrl)
         .modifier(Modifier::Shift);
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -184,7 +184,7 @@ fn media_key_converts_and_dispatches() {
 
     let key = KeyCode::KEY_PLAYPAUSE.to_key();
     let hotkey = Hotkey::new(key);
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -197,6 +197,6 @@ fn browser_key_converts_and_dispatches() {
 
     let key = KeyCode::KEY_BACK.to_key();
     let hotkey = Hotkey::new(key);
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
