@@ -141,16 +141,11 @@ impl Dispatcher {
     /// Sequence bindings don't carry `BindingOptions`, so they return
     /// the default (no debounce, no rate limit, suppress repeats).
     fn binding_options(&self, binding_ref: &MatchedBindingRef) -> &BindingOptions {
-        // Sequence bindings use SequenceOptions (timeout, abort_key) rather
-        // than BindingOptions. Since they don't support debounce/rate-limit,
-        // return a static default.
-        static DEFAULT_OPTIONS: BindingOptions = BindingOptions::DEFAULT;
-
         match binding_ref {
             MatchedBindingRef::Global(id) => self.bindings_by_id[id].options(),
             MatchedBindingRef::Layer { name, index } => &self.layers[name].bindings[*index].options,
             MatchedBindingRef::SequenceGlobal(_) | MatchedBindingRef::SequenceLayer { .. } => {
-                &DEFAULT_OPTIONS
+                &BindingOptions::DEFAULT
             }
         }
     }
