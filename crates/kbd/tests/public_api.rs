@@ -286,7 +286,7 @@ fn timeout_auto_pops() {
     assert_eq!(dispatcher.active_layers().len(), 1);
 
     std::thread::sleep(Duration::from_millis(80));
-    dispatcher.check_timeouts();
+    let _ = dispatcher.pending_timeouts();
 
     assert!(dispatcher.active_layers().is_empty());
 }

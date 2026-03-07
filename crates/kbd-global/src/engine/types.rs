@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use kbd::action::Action;
 use kbd::policy::KeyPropagation;
 use kbd::policy::RepeatPolicy;
 
@@ -71,6 +72,25 @@ pub(super) struct RepeatInfo {
     pub(super) last_repeat_fire: Option<Instant>,
 }
 
+impl RepeatInfo {
+    /// Build repeat info from a matched action and its repeat policy.
+    ///
+    /// Captures the callback (if any) and records the current time as
+    /// the press time for Custom delay/rate tracking.
+    pub(super) fn for_action(action: &Action, policy: RepeatPolicy) -> Self {
+        let callback = match action {
+            Action::Callback(cb) => Some(Arc::clone(cb)),
+            _ => None,
+        };
+        Self {
+            callback,
+            policy,
+            press_time: Instant::now(),
+            last_repeat_fire: None,
+        }
+    }
+}
+
 /// Intermediate result from matching, used for forwarding decisions.
 ///
 /// The `Dispatcher` returns a rich `MatchResult` with six variants, but the
@@ -78,6 +98,7 @@ pub(super) struct RepeatInfo {
 /// - A binding matched and produced an action (with a propagation setting).
 /// - The event was consumed without producing a callback (mid-sequence or swallowed).
 /// - Nothing matched and the event should be forwarded (in grab mode) or ignored.
+#[derive(Clone, Copy)]
 pub(super) enum MatchOutcome {
     /// A binding matched. The action has already been executed; only the
     /// propagation setting remains for forwarding decisions.

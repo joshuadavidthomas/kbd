@@ -1,11 +1,12 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use super::BindingMatch;
 use super::Dispatcher;
-use super::InternalOutcome;
-use super::MatchResult;
 use super::MatchedBindingRef;
 use super::layers::LayerEffect;
+use super::timeout::PendingTimeout;
+use super::timeout::TimeoutKind;
 use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -53,11 +54,24 @@ pub(super) struct ActiveSequence {
     pub(super) priority: usize,
 }
 
-pub(super) struct PendingStandalone {
+/// The match data shared between a pending standalone and a fired timeout.
+///
+/// This is the core of a deferred standalone binding: everything needed
+/// to resolve it to an action, minus the layer effect (which is applied
+/// during the pending → fired transition).
+pub(super) struct StandaloneMatch {
     pub(super) binding_ref: MatchedBindingRef,
     pub(super) propagation: KeyPropagation,
-    pub(super) layer_effect: LayerEffect,
     pub(super) repeat_policy: RepeatPolicy,
+}
+
+/// A standalone binding deferred while sequences are in progress.
+///
+/// Contains a [`StandaloneMatch`] plus a [`LayerEffect`] that will be
+/// applied when the standalone fires (on sequence timeout or mismatch).
+pub(super) struct PendingStandalone {
+    pub(super) inner: StandaloneMatch,
+    pub(super) layer_effect: LayerEffect,
 }
 
 pub(super) enum SequenceStartCandidate {
@@ -73,7 +87,7 @@ pub(super) enum SequenceStartCandidate {
 }
 
 impl Dispatcher {
-    pub(super) fn match_active_sequences(&mut self, hotkey: Hotkey) -> Option<InternalOutcome> {
+    pub(super) fn match_active_sequences(&mut self, hotkey: Hotkey) -> Option<BindingMatch> {
         if self.active_sequences.is_empty() {
             return None;
         }
@@ -123,27 +137,27 @@ impl Dispatcher {
             // that first-step standalone action.
             self.pending_standalone = None;
             if let Some(pending) = self.pending_sequence_snapshot() {
-                return Some(InternalOutcome::Pending {
+                return Some(BindingMatch::Pending {
                     steps_matched: pending.steps_matched,
                     steps_remaining: pending.steps_remaining,
                 });
             }
-            return Some(InternalOutcome::NoMatch);
+            return Some(BindingMatch::NoMatch);
         }
 
         self.active_sequences.clear();
 
         if aborted {
             self.pending_standalone = None;
-            return Some(InternalOutcome::NoMatch);
+            return Some(BindingMatch::NoMatch);
         }
 
         if expired && let Some(standalone) = self.pending_standalone.take() {
-            return Some(InternalOutcome::Matched {
-                binding_ref: standalone.binding_ref,
+            return Some(BindingMatch::Matched {
+                binding_ref: standalone.inner.binding_ref,
                 layer_effect: standalone.layer_effect,
-                propagation: standalone.propagation,
-                repeat_policy: standalone.repeat_policy,
+                propagation: standalone.inner.propagation,
+                repeat_policy: standalone.inner.repeat_policy,
             });
         }
 
@@ -157,7 +171,7 @@ impl Dispatcher {
         now: Instant,
         next_priority: &mut usize,
         pending_standalone: Option<PendingStandalone>,
-    ) -> Option<InternalOutcome> {
+    ) -> Option<BindingMatch> {
         if candidates.is_empty() {
             return None;
         }
@@ -172,7 +186,7 @@ impl Dispatcher {
                 } => {
                     self.active_sequences.clear();
                     self.pending_standalone = None;
-                    return Some(InternalOutcome::Matched {
+                    return Some(BindingMatch::Matched {
                         binding_ref,
                         layer_effect,
                         propagation,
@@ -198,32 +212,35 @@ impl Dispatcher {
         self.pending_standalone = pending_standalone;
 
         if let Some(pending) = self.pending_sequence_snapshot() {
-            return Some(InternalOutcome::Pending {
+            return Some(BindingMatch::Pending {
                 steps_matched: pending.steps_matched,
                 steps_remaining: pending.steps_remaining,
             });
         }
 
-        Some(InternalOutcome::NoMatch)
+        Some(BindingMatch::NoMatch)
     }
 
     pub(super) fn pending_standalone_from_match(
         &self,
         binding_match: Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)>,
     ) -> Option<PendingStandalone> {
-        binding_match.map(
-            |(binding_ref, propagation, repeat_policy)| PendingStandalone {
-                layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
-                binding_ref,
-                propagation,
-                repeat_policy,
-            },
-        )
+        binding_match.map(|(binding_ref, propagation, repeat_policy)| {
+            let layer_effect = LayerEffect::from_action(self.resolve_binding(&binding_ref));
+            PendingStandalone {
+                inner: StandaloneMatch {
+                    binding_ref,
+                    propagation,
+                    repeat_policy,
+                },
+                layer_effect,
+            }
+        })
     }
 
-    pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Vec<MatchResult<'_>> {
+    pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Option<PendingTimeout> {
         if self.active_sequences.is_empty() {
-            return Vec::new();
+            return None;
         }
 
         let before = self.active_sequences.len();
@@ -233,18 +250,15 @@ impl Dispatcher {
         if expired > 0 && self.active_sequences.is_empty() {
             if let Some(standalone) = self.pending_standalone.take() {
                 self.apply_layer_effect(&standalone.layer_effect);
-                let action = self.resolve_binding(&standalone.binding_ref);
-                return vec![MatchResult::Matched {
-                    action,
-                    propagation: standalone.propagation,
-                    repeat_policy: standalone.repeat_policy,
-                }];
+                return Some(PendingTimeout {
+                    kind: TimeoutKind::Standalone(standalone.inner),
+                });
             }
 
             self.pending_standalone = None;
         }
 
-        Vec::new()
+        None
     }
 
     fn sequence_step_count(&self, binding_ref: &SequenceBindingRef) -> usize {
@@ -290,11 +304,11 @@ impl Dispatcher {
         }
     }
 
-    fn matched_outcome_for_sequence(&self, sequence_ref: SequenceBindingRef) -> InternalOutcome {
+    fn matched_outcome_for_sequence(&self, sequence_ref: SequenceBindingRef) -> BindingMatch {
         match sequence_ref {
             SequenceBindingRef::Global(id) => {
                 let binding = &self.sequence_bindings_by_id[&id];
-                InternalOutcome::Matched {
+                BindingMatch::Matched {
                     binding_ref: MatchedBindingRef::SequenceGlobal(id),
                     layer_effect: LayerEffect::from_action(&binding.action),
                     propagation: binding.propagation,
@@ -303,7 +317,7 @@ impl Dispatcher {
             }
             SequenceBindingRef::Layer { name, index } => {
                 let binding = &self.layers[&name].sequence_bindings[index];
-                InternalOutcome::Matched {
+                BindingMatch::Matched {
                     binding_ref: MatchedBindingRef::SequenceLayer { name, index },
                     layer_effect: LayerEffect::from_action(&binding.action),
                     propagation: binding.propagation,
@@ -348,7 +362,7 @@ impl Dispatcher {
 
         if self.pending_standalone.as_ref().is_some_and(|pending| {
             matches!(
-                pending.binding_ref,
+                pending.inner.binding_ref,
                 MatchedBindingRef::Layer { ref name, .. }
                     | MatchedBindingRef::SequenceLayer { ref name, .. }
                     if name == layer_name
@@ -389,6 +403,14 @@ mod tests {
         } = result
         {
             callback();
+        }
+    }
+
+    fn fire_pending_timeouts(dispatcher: &mut Dispatcher) {
+        for pending in &dispatcher.pending_timeouts() {
+            if let Some(result) = dispatcher.match_pending_timeout(pending) {
+                execute_callback(&result);
+            }
         }
     }
 
@@ -448,9 +470,7 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for timeout_result in dispatcher.check_timeouts_with_results() {
-            execute_callback(&timeout_result);
-        }
+        fire_pending_timeouts(&mut dispatcher);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
@@ -557,9 +577,7 @@ mod tests {
         assert!(matches!(pending, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for timeout_result in dispatcher.check_timeouts_with_results() {
-            execute_callback(&timeout_result);
-        }
+        fire_pending_timeouts(&mut dispatcher);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
@@ -596,9 +614,7 @@ mod tests {
         assert!(matches!(second, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for timeout_result in dispatcher.check_timeouts_with_results() {
-            execute_callback(&timeout_result);
-        }
+        fire_pending_timeouts(&mut dispatcher);
 
         assert_eq!(counter.load(Ordering::Relaxed), 0);
     }
@@ -669,7 +685,7 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        dispatcher.check_timeouts();
+        let _ = dispatcher.pending_timeouts();
 
         assert!(dispatcher.pending_sequence().is_none());
     }
@@ -736,8 +752,8 @@ mod tests {
         dispatcher.unregister(standalone_id);
 
         std::thread::sleep(Duration::from_millis(20));
-        let timeout_results = dispatcher.check_timeouts_with_results();
-        assert!(timeout_results.is_empty());
+        let pending = dispatcher.pending_timeouts();
+        assert!(pending.is_empty());
     }
 
     #[test]
@@ -776,9 +792,7 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for timeout_result in dispatcher.check_timeouts_with_results() {
-            execute_callback(&timeout_result);
-        }
+        fire_pending_timeouts(&mut dispatcher);
 
         let h = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
         execute_callback(&h);

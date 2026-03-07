@@ -59,6 +59,7 @@ pub mod key_state;
 pub mod layer;
 pub mod policy;
 pub mod sequence;
+pub mod tap_hold;
 
 /// Convenience re-exports for common types.
 ///
@@ -90,6 +91,7 @@ pub mod prelude {
     pub use crate::device::DeviceInfo;
     pub use crate::dispatcher::Dispatcher;
     pub use crate::dispatcher::MatchResult;
+    pub use crate::dispatcher::PendingTimeout;
     pub use crate::hotkey::Hotkey;
     pub use crate::hotkey::HotkeyInput;
     pub use crate::hotkey::HotkeySequence;
@@ -105,4 +107,5 @@ pub mod prelude {
     pub use crate::sequence::PendingSequenceInfo;
     pub use crate::sequence::SequenceInput;
     pub use crate::sequence::SequenceOptions;
+    pub use crate::tap_hold::TapHoldOptions;
 }
