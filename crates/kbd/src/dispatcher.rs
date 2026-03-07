@@ -449,6 +449,13 @@ impl Dispatcher {
     /// wrapping calls in `catch_unwind`. A future refactor could buffer
     /// resolved hold IDs and let the engine drain/execute them.
     fn process_tap_hold(&mut self, key: Key, transition: KeyTransition) -> TapHoldDecision {
+        // Fast path: skip all tap-hold work when no bindings are registered
+        // and no keys are actively being tracked. This keeps the common case
+        // (no tap-hold configured) essentially zero-cost.
+        if !self.tap_hold.has_state() {
+            return TapHoldDecision::PassThrough;
+        }
+
         let now = Instant::now();
 
         match transition {

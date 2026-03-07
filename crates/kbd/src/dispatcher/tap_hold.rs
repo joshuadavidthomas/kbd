@@ -76,6 +76,13 @@ impl TapHoldState {
         self.active.retain(|_, a| a.binding_id != id);
     }
 
+    /// Returns `true` if any tap-hold bindings exist or any keys are
+    /// actively being tracked. Used for fast-path skipping in `process()`.
+    #[inline]
+    pub(crate) fn has_state(&self) -> bool {
+        !self.bindings.is_empty() || !self.active.is_empty()
+    }
+
     /// Check if a key has a tap-hold binding registered.
     pub(crate) fn is_registered(&self, key: Key) -> bool {
         self.bindings.contains_key(&key)
