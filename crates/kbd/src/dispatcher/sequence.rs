@@ -8,10 +8,10 @@ use super::MatchedBindingRef;
 use super::layers::LayerEffect;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
-use crate::binding::RepeatPolicy;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::layer::LayerName;
+use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
 use crate::sequence::SequenceOptions;
 

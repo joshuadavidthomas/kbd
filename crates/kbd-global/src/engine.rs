@@ -42,7 +42,6 @@ use std::time::Instant;
 
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
-use kbd::binding::RepeatPolicy;
 use kbd::device::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
@@ -50,6 +49,7 @@ use kbd::hotkey::Hotkey;
 use kbd::key::Key;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
+use kbd::policy::RepeatPolicy;
 
 use crate::Error;
 use crate::engine::devices::DeviceKeyEvent;
@@ -307,13 +307,13 @@ impl Engine {
             Some(info) => match info.policy {
                 RepeatPolicy::Suppress => false,
                 RepeatPolicy::Allow => true,
-                RepeatPolicy::Custom { delay, rate } => {
+                RepeatPolicy::Custom(timing) => {
                     let since_press = now.duration_since(info.press_time);
 
-                    if since_press < delay {
+                    if since_press < timing.delay() {
                         false
                     } else if let Some(last_fire) = info.last_repeat_fire {
-                        now.duration_since(last_fire) >= rate
+                        now.duration_since(last_fire) >= timing.rate()
                     } else {
                         true
                     }
@@ -553,11 +553,11 @@ mod tests {
     use kbd::binding::BindingOptions;
     use kbd::binding::KeyPropagation;
     use kbd::binding::RegisteredBinding;
-    use kbd::binding::RepeatPolicy;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
     use kbd::key::Key;
     use kbd::key_state::KeyTransition;
+    use kbd::policy::RepeatPolicy;
 
     use super::Command;
     use super::Engine;
@@ -2934,19 +2934,20 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let binding = RegisteredBinding::new(
-            BindingId::new(),
-            Hotkey::new(Key::A),
-            Action::from(move || {
-                cc.fetch_add(1, Ordering::Relaxed);
-            }),
-        )
-        .with_options(
-            BindingOptions::default().with_repeat_policy(RepeatPolicy::Custom {
-                delay: Duration::from_millis(50),
-                rate: Duration::from_millis(10),
-            }),
-        );
+        let binding =
+            RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::A),
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .with_options(BindingOptions::default().with_repeat_policy(
+                RepeatPolicy::Custom(kbd::policy::RepeatTiming::new(
+                    Duration::from_millis(50),
+                    Duration::from_millis(10),
+                )),
+            ));
         engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::A, 10);
@@ -2975,10 +2976,9 @@ mod tests {
             }),
         )
         .with_options(
-            BindingOptions::default().with_repeat_policy(RepeatPolicy::Custom {
-                delay: Duration::from_millis(0),
-                rate: Duration::from_millis(50),
-            }),
+            BindingOptions::default().with_repeat_policy(RepeatPolicy::Custom(
+                kbd::policy::RepeatTiming::new(Duration::from_millis(0), Duration::from_millis(50)),
+            )),
         );
         engine.dispatcher.register_binding(binding).unwrap();
 
@@ -3038,7 +3038,7 @@ mod tests {
         )
         .with_options(
             BindingOptions::default()
-                .with_rate_limit(kbd::binding::RateLimit::new(2, Duration::from_secs(1))),
+                .with_rate_limit(kbd::policy::RateLimit::new(2, Duration::from_secs(1))),
         );
         engine.dispatcher.register_binding(binding).unwrap();
 

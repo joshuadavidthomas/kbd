@@ -6,7 +6,7 @@
 use std::time::Instant;
 
 use kbd::binding::KeyPropagation;
-use kbd::binding::RepeatPolicy;
+use kbd::policy::RepeatPolicy;
 
 /// Whether the engine is running in grab mode.
 ///

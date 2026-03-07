@@ -33,7 +33,6 @@ use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
 use crate::binding::RegisteredBinding;
-use crate::binding::RepeatPolicy;
 use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -42,6 +41,7 @@ use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
+use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
 
 /// Result of attempting to match a key event against registered bindings.
@@ -682,11 +682,11 @@ mod tests {
 
     use super::*;
     use crate::binding::BindingOptions;
-    use crate::binding::RateLimit;
     use crate::device::DeviceFilter;
     use crate::device::DeviceInfo;
     use crate::key::Key;
     use crate::layer::Layer;
+    use crate::policy::RateLimit;
 
     #[test]
     fn device_binding_matches_on_correct_device() {
