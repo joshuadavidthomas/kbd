@@ -62,10 +62,16 @@ impl ThrottleState {
 
 impl ThrottleTracker {
     /// Record that a binding has fired at the given time.
-    fn record_fire(&mut self, key: ThrottleKey, now: Instant) {
+    ///
+    /// `has_rate_limit` controls whether the fire is also pushed into
+    /// `recent_fires` for sliding-window rate limiting. Without it,
+    /// only `last_fire` is updated (for debounce tracking).
+    fn record_fire(&mut self, key: ThrottleKey, now: Instant, has_rate_limit: bool) {
         let state = self.state.entry(key).or_insert_with(ThrottleState::new);
         state.last_fire = Some(now);
-        state.recent_fires.push_back(now);
+        if has_rate_limit {
+            state.recent_fires.push_back(now);
+        }
     }
 
     /// Check if a binding should be throttled by debounce.
@@ -127,12 +133,21 @@ impl Dispatcher {
             return outcome;
         };
 
+        // Copy throttle options out before any mutable borrows on self.
         let options = self.binding_options(binding_ref);
+        let debounce = options.debounce();
+        let rate_limit = options.rate_limit().copied();
+
+        // No throttle policy configured — skip all tracking.
+        if debounce.is_none() && rate_limit.is_none() {
+            return outcome;
+        }
+
         let now = Instant::now();
         let throttle_key = ThrottleKey::from(binding_ref);
 
         // Check debounce
-        if let Some(debounce) = options.debounce() {
+        if let Some(debounce) = debounce {
             if self
                 .throttle_tracker
                 .is_debounced(&throttle_key, debounce, now)
@@ -142,7 +157,7 @@ impl Dispatcher {
         }
 
         // Check rate limit
-        if let Some(rate_limit) = options.rate_limit() {
+        if let Some(rate_limit) = rate_limit {
             if self.throttle_tracker.is_rate_limited(
                 &throttle_key,
                 rate_limit.max_count(),
@@ -154,7 +169,8 @@ impl Dispatcher {
         }
 
         // Not throttled — record this fire
-        self.throttle_tracker.record_fire(throttle_key, now);
+        self.throttle_tracker
+            .record_fire(throttle_key, now, rate_limit.is_some());
 
         outcome
     }

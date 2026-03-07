@@ -291,6 +291,8 @@ impl Engine {
 
     /// Handle a repeat event using the press cache and repeat policy.
     fn handle_repeat_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
+        let now = std::time::Instant::now();
+
         let Some(cached) = self.press_cache.get(&event.key) else {
             // No cache entry — modifier key or key pressed before cache.
             return KeyEventOutcome::Ignored;
@@ -304,7 +306,6 @@ impl Engine {
                 kbd::binding::RepeatPolicy::Suppress => false,
                 kbd::binding::RepeatPolicy::Allow => true,
                 kbd::binding::RepeatPolicy::Custom { delay, rate } => {
-                    let now = std::time::Instant::now();
                     let since_press = now.duration_since(info.press_time);
 
                     if since_press < delay {
@@ -343,12 +344,15 @@ impl Engine {
 
             if let Some(action) = action {
                 execute_action(action);
-            }
 
-            // Update last repeat fire time for Custom rate tracking
-            if let Some(entry) = self.press_cache.get_mut(&event.key) {
-                if let Some(ref mut info) = entry.repeat_info {
-                    info.last_repeat_fire = Some(std::time::Instant::now());
+                // Update last repeat fire time for Custom rate tracking.
+                // Only update when the action actually fired — if the
+                // binding was removed or a layer changed, we shouldn't
+                // advance the rate timer.
+                if let Some(entry) = self.press_cache.get_mut(&event.key) {
+                    if let Some(ref mut info) = entry.repeat_info {
+                        info.last_repeat_fire = Some(now);
+                    }
                 }
             }
         }
@@ -373,6 +377,7 @@ impl Engine {
         let device_info = self.devices.device_info(event.device_fd);
 
         // Process through the Dispatcher.
+        let now = std::time::Instant::now();
         let (outcome, repeat_info) = {
             let result = if let Some(info) = device_info {
                 let ctx = DeviceContext::new(event.device_fd, info)
@@ -388,12 +393,15 @@ impl Engine {
                     propagation,
                     repeat_policy,
                 } => {
-                    execute_action(action);
+                    // Capture press_time before executing the action so
+                    // Custom repeat delay is measured from the key event,
+                    // not from after callback completion.
                     let repeat_info = Some(RepeatInfo {
                         policy: *repeat_policy,
-                        press_time: std::time::Instant::now(),
+                        press_time: now,
                         last_repeat_fire: None,
                     });
+                    execute_action(action);
                     (
                         MatchOutcome::Matched {
                             propagation: *propagation,

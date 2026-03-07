@@ -59,8 +59,9 @@ pub enum MatchResult<'a> {
     },
     /// A binding matched but was throttled (debounce or rate limit).
     ///
-    /// The event should be consumed (not forwarded) but the action
-    /// should NOT execute. Distinct from [`Suppressed`](Self::Suppressed),
+    /// The action should NOT execute. Key forwarding still respects the
+    /// binding's `propagation` setting — a `Continue` binding forwards the
+    /// event even when throttled. Distinct from [`Suppressed`](Self::Suppressed),
     /// which means a layer swallowed an unmatched key.
     Throttled {
         /// Whether to consume or forward the original key event.
@@ -629,7 +630,7 @@ impl Dispatcher {
     /// re-execute the matched action without triggering debounce, rate
     /// limiting, oneshot ticks, or layer effects.
     ///
-    /// Returns the action and propagation if a binding matches.
+    /// Returns the action if a binding matches, `None` otherwise.
     #[must_use]
     pub fn lookup_action(
         &self,
