@@ -385,24 +385,9 @@ impl Engine {
 
     /// Process a key press event through the Dispatcher.
     fn process_press_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let active_modifiers = self.key_state.active_modifiers();
-        let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
-
-        // Build device context for device-specific binding support.
-        let device_modifiers = self.key_state.active_modifiers_for_device(event.device_fd);
-        let device_info = self.devices.device_info(event.device_fd);
-
-        // Process through the Dispatcher.
         let now = Instant::now();
         let (match_outcome, repeat_info) = {
-            let result = if let Some(info) = device_info {
-                let ctx = DeviceContext::new(event.device_fd, info)
-                    .with_device_modifiers(device_modifiers);
-                self.dispatcher
-                    .process_with_device(candidate, event.transition, &ctx)
-            } else {
-                self.dispatcher.process(candidate, event.transition)
-            };
+            let result = self.dispatch(event);
             match result {
                 MatchResult::Matched {
                     action,
@@ -467,20 +452,7 @@ impl Engine {
     /// KeyEventOutcome` reduction as normal presses, so the propagation
     /// policy is determined solely by the dispatcher.
     fn process_tap_hold_release(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let active_modifiers = self.key_state.active_modifiers();
-        let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
-
-        let device_modifiers = self.key_state.active_modifiers_for_device(event.device_fd);
-        let device_info = self.devices.device_info(event.device_fd);
-
-        let result = if let Some(info) = device_info {
-            let ctx =
-                DeviceContext::new(event.device_fd, info).with_device_modifiers(device_modifiers);
-            self.dispatcher
-                .process_with_device(candidate, event.transition, &ctx)
-        } else {
-            self.dispatcher.process(candidate, event.transition)
-        };
+        let result = self.dispatch(event);
 
         let outcome = match result {
             MatchResult::Matched {
@@ -501,6 +473,25 @@ impl Engine {
         };
 
         self.resolve_outcome(outcome, event.key, event.transition)
+    }
+
+    /// Dispatch a key event through the Dispatcher, building the device
+    /// context from the event's device info when available.
+    fn dispatch(&mut self, event: DeviceKeyEvent) -> MatchResult<'_> {
+        let active_modifiers = self.key_state.active_modifiers();
+        let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
+        let device_modifiers = self.key_state.active_modifiers_for_device(event.device_fd);
+        let device_info = self.devices.device_info(event.device_fd);
+
+        match device_info {
+            Some(info) => {
+                let ctx = DeviceContext::new(event.device_fd, info)
+                    .with_device_modifiers(device_modifiers);
+                self.dispatcher
+                    .process_with_device(candidate, event.transition, &ctx)
+            }
+            None => self.dispatcher.process(candidate, event.transition),
+        }
     }
 
     /// Map a [`MatchOutcome`] to a [`KeyEventOutcome`], forwarding the
