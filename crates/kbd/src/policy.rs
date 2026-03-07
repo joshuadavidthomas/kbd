@@ -19,21 +19,15 @@ use std::time::Duration;
 ///
 /// ```
 /// use std::time::Duration;
-/// use kbd::policy::RepeatPolicy;
+/// use kbd::policy::{RepeatPolicy, RepeatTiming};
+/// use kbd::binding::BindingOptions;
 ///
-/// // Default: suppress repeat events
-/// let policy = RepeatPolicy::default();
-/// assert!(matches!(policy, RepeatPolicy::Suppress));
-///
-/// // Allow repeats at OS rate
-/// let policy = RepeatPolicy::Allow;
-///
-/// // Custom repeat with delay before first repeat and rate limiting
-/// use kbd::policy::RepeatTiming;
-/// let policy = RepeatPolicy::Custom(RepeatTiming::new(
-///     Duration::from_millis(500),
-///     Duration::from_millis(30),
-/// ));
+/// // Hold-to-scroll: repeat at a controlled rate after a short delay
+/// let opts = BindingOptions::default()
+///     .with_repeat_policy(RepeatPolicy::Custom(RepeatTiming::new(
+///         Duration::from_millis(200),
+///         Duration::from_millis(50),
+///     )));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
