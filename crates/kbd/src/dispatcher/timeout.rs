@@ -1,6 +1,9 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::policy::KeyPropagation;
+use crate::policy::RepeatPolicy;
+
 use super::Dispatcher;
 use super::MatchResult;
 
@@ -93,8 +96,8 @@ impl Dispatcher {
             if let Some(action) = self.tap_hold.hold_action(id) {
                 results.push(MatchResult::Matched {
                     action,
-                    propagation: crate::policy::KeyPropagation::Stop,
-                    repeat_policy: crate::policy::RepeatPolicy::Suppress,
+                    propagation: KeyPropagation::Stop,
+                    repeat_policy: RepeatPolicy::Suppress,
                 });
             }
         }
