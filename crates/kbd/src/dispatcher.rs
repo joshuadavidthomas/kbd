@@ -627,9 +627,10 @@ impl Dispatcher {
 
     /// Look up the action that would match for a hotkey, without side effects.
     ///
-    /// Used by the engine for repeat event handling — repeats should
-    /// re-execute the matched action without triggering debounce, rate
-    /// limiting, oneshot ticks, or layer effects.
+    /// Walks layers and globals in the same order as [`process`](Self::process),
+    /// but does not trigger debounce, rate limiting, oneshot ticks, or
+    /// layer mutations. Useful when you need to re-fire a matched action
+    /// (e.g. on key repeat) without altering dispatcher state.
     ///
     /// Returns the action if a binding matches, `None` otherwise.
     #[must_use]
