@@ -102,27 +102,18 @@ impl Dispatcher {
             self.clear_sequences_for_layer_if_inactive(&layer_name);
         }
 
-        let mut pending = Vec::new();
+        let mut pending: Vec<PendingTimeout> = self
+            .tap_hold
+            .check_timeouts(now)
+            .into_iter()
+            .chain(self.tap_hold.drain_resolved_holds())
+            .map(|(key, binding_id)| PendingTimeout {
+                kind: TimeoutKind::TapHoldHold { key, binding_id },
+            })
+            .collect();
+
         if let Some(p) = self.check_sequence_timeouts(now) {
             pending.push(p);
-        }
-        for (key, id) in self.tap_hold.check_timeouts(now) {
-            pending.push(PendingTimeout {
-                kind: TimeoutKind::TapHoldHold {
-                    key,
-                    binding_id: id,
-                },
-            });
-        }
-        // Interrupt-resolved holds use the same pipeline as timeout-resolved
-        // holds — the engine handles both identically via pending_timeouts.
-        for (key, id) in self.tap_hold.drain_resolved_holds() {
-            pending.push(PendingTimeout {
-                kind: TimeoutKind::TapHoldHold {
-                    key,
-                    binding_id: id,
-                },
-            });
         }
 
         pending
@@ -149,41 +140,6 @@ impl Dispatcher {
                     propagation: KeyPropagation::Stop,
                     repeat_policy: RepeatPolicy::Suppress,
                 }),
-        }
-    }
-
-    /// Reset all layer inactivity timeouts to `now`.
-    ///
-    /// Called on every non-ignored key event so that layers remain alive
-    /// while the user is actively typing.
-    pub(super) fn reset_layer_timeouts(&mut self) {
-        let now = Instant::now();
-        for entry in &mut self.layer_stack {
-            if let Some(timeout) = &mut entry.timeout {
-                timeout.last_activity = now;
-            }
-        }
-    }
-
-    /// Tick the topmost oneshot layer, popping it when its count reaches zero.
-    ///
-    /// Oneshot layers are event-driven (not time-based): each qualifying
-    /// keypress decrements the counter of the topmost oneshot layer. Only one
-    /// oneshot layer is ticked per event.
-    pub(super) fn tick_oneshot_layers(&mut self) {
-        let mut pop_index = None;
-        for (i, entry) in self.layer_stack.iter_mut().enumerate().rev() {
-            if let Some(remaining) = &mut entry.oneshot_remaining {
-                *remaining = remaining.saturating_sub(1);
-                if *remaining == 0 {
-                    pop_index = Some(i);
-                }
-                break;
-            }
-        }
-        if let Some(index) = pop_index {
-            let removed = self.layer_stack.remove(index);
-            self.clear_sequences_for_layer_if_inactive(&removed.name);
         }
     }
 }

@@ -391,7 +391,14 @@ impl Dispatcher {
         }
 
         if !matches!(outcome, InternalOutcome::Ignored) {
-            self.reset_layer_timeouts();
+            // Reset layer inactivity timeouts so layers remain alive
+            // while the user is actively typing.
+            let now = Instant::now();
+            for entry in &mut self.layer_stack {
+                if let Some(timeout) = &mut entry.timeout {
+                    timeout.last_activity = now;
+                }
+            }
             if !matches!(
                 outcome,
                 InternalOutcome::Matched {
@@ -400,7 +407,23 @@ impl Dispatcher {
                 } | InternalOutcome::Pending { .. }
                     | InternalOutcome::Throttled { .. }
             ) {
-                self.tick_oneshot_layers();
+                // Tick the topmost oneshot layer, popping it when its
+                // count reaches zero. Only one oneshot layer is ticked
+                // per event.
+                let mut pop_index = None;
+                for (i, entry) in self.layer_stack.iter_mut().enumerate().rev() {
+                    if let Some(remaining) = &mut entry.oneshot_remaining {
+                        *remaining = remaining.saturating_sub(1);
+                        if *remaining == 0 {
+                            pop_index = Some(i);
+                        }
+                        break;
+                    }
+                }
+                if let Some(index) = pop_index {
+                    let removed = self.layer_stack.remove(index);
+                    self.clear_sequences_for_layer_if_inactive(&removed.name);
+                }
             }
         }
 
