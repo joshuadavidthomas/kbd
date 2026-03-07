@@ -3,7 +3,11 @@
 //! Internal types used by the engine to track grab mode and classify how
 //! each key event was handled.
 
+use std::sync::Arc;
+use std::time::Instant;
+
 use kbd::binding::KeyPropagation;
+use kbd::policy::RepeatPolicy;
 
 /// Whether the engine is running in grab mode.
 ///
@@ -35,9 +39,41 @@ pub(crate) enum KeyEventOutcome {
     Ignored,
 }
 
+/// Entry in the press cache, tracking the disposition and repeat policy
+/// for a key that was pressed.
+///
+/// The press cache ensures that release and repeat events use the same
+/// disposition as the original press — essential for correctness across
+/// layer transitions (keyd's `cache_entry` pattern).
+pub(super) struct PressCacheEntry {
+    /// The original forwarding disposition from the press event.
+    pub(super) outcome: KeyEventOutcome,
+    /// Repeat handling info for matched bindings.
+    pub(super) repeat_info: Option<RepeatInfo>,
+}
+
+/// Repeat handling state for a matched binding in the press cache.
+///
+/// Caches the callback from the original press so repeat events can
+/// re-fire it without re-querying the dispatcher (which would trigger
+/// debounce, rate limiting, and layer side effects).
+pub(super) struct RepeatInfo {
+    /// The callback to re-fire on repeat, if the action was a callback.
+    ///
+    /// Layer actions, suppress, and emit don't repeat — only user
+    /// callbacks do.
+    pub(super) callback: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// How repeat events should be handled.
+    pub(super) policy: RepeatPolicy,
+    /// When the original press occurred (for Custom delay tracking).
+    pub(super) press_time: Instant,
+    /// When the last repeat action fired (for Custom rate tracking).
+    pub(super) last_repeat_fire: Option<Instant>,
+}
+
 /// Intermediate result from matching, used for forwarding decisions.
 ///
-/// The `Dispatcher` returns a rich `MatchResult` with five variants, but the
+/// The `Dispatcher` returns a rich `MatchResult` with six variants, but the
 /// engine only cares about three distinctions:
 /// - A binding matched and produced an action (with a propagation setting).
 /// - The event was consumed without producing a callback (mid-sequence or swallowed).

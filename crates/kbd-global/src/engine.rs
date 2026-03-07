@@ -38,6 +38,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
+use std::time::Instant;
 
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
@@ -48,6 +49,7 @@ use kbd::hotkey::Hotkey;
 use kbd::key::Key;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
+use kbd::policy::RepeatPolicy;
 
 use crate::Error;
 use crate::engine::devices::DeviceKeyEvent;
@@ -65,6 +67,8 @@ pub(crate) use self::runtime::EngineRuntime;
 pub(crate) use self::types::GrabState;
 pub(crate) use self::types::KeyEventOutcome;
 use self::types::MatchOutcome;
+use self::types::PressCacheEntry;
+use self::types::RepeatInfo;
 use self::wake::WakeFd;
 
 pub(crate) struct Engine {
@@ -76,8 +80,11 @@ pub(crate) struct Engine {
     /// on press, its release should also be consumed even if the layer
     /// was popped in between (oneshot, `PopLayer` action, etc.).
     ///
+    /// Also stores repeat policy info so the engine can handle OS
+    /// auto-repeat events per-binding (Allow, Suppress, or Custom).
+    ///
     /// Mirrors the approach used by keyd's `cache_entry` system.
-    press_cache: HashMap<Key, KeyEventOutcome>,
+    press_cache: HashMap<Key, PressCacheEntry>,
     devices: devices::DeviceManager,
     key_state: KeyState,
     grab_state: GrabState,
@@ -261,72 +268,149 @@ impl Engine {
         self.key_state
             .apply_device_event(event.device_fd, event.key, event.transition);
 
-        // Press cache: on release or repeat, use the cached disposition from
-        // the corresponding press instead of re-matching. This ensures:
-        // - Release: correct behavior across layer transitions — if a key was
-        //   consumed on press, its release is consumed even if the layer was popped.
-        // - Repeat: consumed keys don't leak repeats through the virtual device
-        //   in grab mode, and passthrough keys correctly forward repeats.
-        // Release removes the cache entry; repeat peeks without removing.
-        if !matches!(event.transition, KeyTransition::Press) {
-            let cached = if matches!(event.transition, KeyTransition::Release) {
-                self.press_cache.remove(&event.key)
-            } else {
-                self.press_cache.get(&event.key).copied()
-            };
-            if let Some(cached) = cached {
-                match cached {
+        // Release: use cached disposition, remove cache entry.
+        if matches!(event.transition, KeyTransition::Release) {
+            if let Some(cached) = self.press_cache.remove(&event.key) {
+                match cached.outcome {
                     KeyEventOutcome::MatchedForwarded | KeyEventOutcome::UnmatchedForwarded => {
                         self.forward_event(event.key, event.transition);
                     }
                     KeyEventOutcome::MatchedConsumed | KeyEventOutcome::Ignored => {}
                 }
-                return cached;
+                return cached.outcome;
             }
         }
-        // No cache entry (modifier key, or key pressed before cache existed).
-        // Fall through to normal processing.
 
+        // Repeat: use cached disposition for forwarding, check repeat
+        // policy for action re-execution.
+        if matches!(event.transition, KeyTransition::Repeat) {
+            return self.handle_repeat_event(event);
+        }
+
+        // Press: match through the Dispatcher.
+        self.process_press_event(event)
+    }
+
+    /// Handle a repeat event using the press cache and repeat policy.
+    fn handle_repeat_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
+        let now = Instant::now();
+
+        let Some(cached) = self.press_cache.get(&event.key) else {
+            // No cache entry — modifier key or key pressed before cache.
+            return KeyEventOutcome::Ignored;
+        };
+
+        // Extract what we need from the cache before any mutable borrows.
+        let outcome = cached.outcome;
+        let should_fire = match &cached.repeat_info {
+            None => false,
+            Some(info) => match info.policy {
+                RepeatPolicy::Suppress => false,
+                RepeatPolicy::Allow => true,
+                RepeatPolicy::Custom(timing) => {
+                    let since_press = now.duration_since(info.press_time);
+
+                    if since_press < timing.delay() {
+                        false
+                    } else if let Some(last_fire) = info.last_repeat_fire {
+                        now.duration_since(last_fire) >= timing.rate()
+                    } else {
+                        true
+                    }
+                }
+                // RepeatPolicy is #[non_exhaustive]
+                #[allow(clippy::match_same_arms)]
+                _ => false,
+            },
+        };
+        // `cached` is no longer used; NLL releases the borrow on
+        // `self.press_cache` so the mutable calls below compile.
+
+        if should_fire {
+            // Re-fire the cached callback from the original press — no
+            // dispatcher re-query, so debounce/rate-limit/layer side
+            // effects are not triggered.
+            if let Some(cb) = self
+                .press_cache
+                .get(&event.key)
+                .and_then(|e| e.repeat_info.as_ref())
+                .and_then(|info| info.callback.as_ref())
+            {
+                invoke_callback(cb.as_ref());
+            }
+
+            // Update last repeat fire time for Custom rate tracking.
+            if let Some(entry) = self.press_cache.get_mut(&event.key) {
+                if let Some(ref mut info) = entry.repeat_info {
+                    info.last_repeat_fire = Some(now);
+                }
+            }
+        }
+
+        // Forwarding follows the original press disposition
+        match outcome {
+            KeyEventOutcome::MatchedForwarded | KeyEventOutcome::UnmatchedForwarded => {
+                self.forward_event(event.key, event.transition);
+            }
+            KeyEventOutcome::MatchedConsumed | KeyEventOutcome::Ignored => {}
+        }
+        outcome
+    }
+
+    /// Process a key press event through the Dispatcher.
+    fn process_press_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
         let active_modifiers = self.key_state.active_modifiers();
         let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
 
         // Build device context for device-specific binding support.
-        // Per-device modifier state enables modifier isolation: device-filtered
-        // bindings only see modifiers from their own device.
         let device_modifiers = self.key_state.active_modifiers_for_device(event.device_fd);
         let device_info = self.devices.device_info(event.device_fd);
 
-        // Process through the Dispatcher which handles matching + layer effects.
-        // The Dispatcher applies layer effects (PushLayer/PopLayer/ToggleLayer)
-        // internally during process(). We extract the outcome to handle
-        // callback execution and forwarding.
-        let outcome = {
+        // Process through the Dispatcher.
+        let now = Instant::now();
+        let (outcome, repeat_info) = {
             let result = if let Some(info) = device_info {
                 let ctx = DeviceContext::new(event.device_fd, info)
                     .with_device_modifiers(device_modifiers);
                 self.dispatcher
                     .process_with_device(&candidate, event.transition, &ctx)
             } else {
-                // Device info unavailable (shouldn't happen but handle gracefully)
                 self.dispatcher.process(&candidate, event.transition)
             };
-            match &result {
+            match result {
                 MatchResult::Matched {
                     action,
                     propagation,
+                    repeat_policy,
                 } => {
+                    // Capture press_time before executing the action so
+                    // Custom repeat delay is measured from the key event,
+                    // not from after callback completion.
                     execute_action(action);
-                    MatchOutcome::Matched {
-                        propagation: *propagation,
-                    }
+                    let callback = match action {
+                        Action::Callback(cb) => Some(Arc::clone(cb)),
+                        _ => None,
+                    };
+                    let repeat_info = Some(RepeatInfo {
+                        callback,
+                        policy: repeat_policy,
+                        press_time: now,
+                        last_repeat_fire: None,
+                    });
+                    (MatchOutcome::Matched { propagation }, repeat_info)
                 }
-                MatchResult::Pending { .. } | MatchResult::Suppressed => MatchOutcome::Consumed,
-                MatchResult::NoMatch | MatchResult::Ignored => MatchOutcome::Unmatched,
-                // MatchResult is #[non_exhaustive]; new variants should be
-                // evaluated and mapped intentionally, but we must have a
-                // fallback arm.
+                MatchResult::Throttled { propagation } => {
+                    // Throttled: action doesn't fire, but key forwarding
+                    // still respects the binding's propagation setting.
+                    (MatchOutcome::Matched { propagation }, None)
+                }
+                MatchResult::Pending { .. } | MatchResult::Suppressed => {
+                    (MatchOutcome::Consumed, None)
+                }
+                MatchResult::NoMatch | MatchResult::Ignored => (MatchOutcome::Unmatched, None),
+                // MatchResult is #[non_exhaustive]
                 #[allow(clippy::match_same_arms)]
-                _ => MatchOutcome::Unmatched,
+                _ => (MatchOutcome::Unmatched, None),
             }
         };
 
@@ -355,12 +439,15 @@ impl Engine {
             }
         };
 
-        // Cache the disposition for non-modifier key presses so the
-        // corresponding release uses the same disposition.
-        if matches!(event.transition, KeyTransition::Press)
-            && kbd::hotkey::Modifier::from_key(event.key).is_none()
-        {
-            self.press_cache.insert(event.key, disposition);
+        // Cache the disposition for non-modifier key presses.
+        if kbd::hotkey::Modifier::from_key(event.key).is_none() {
+            self.press_cache.insert(
+                event.key,
+                PressCacheEntry {
+                    outcome: disposition,
+                    repeat_info,
+                },
+            );
         }
 
         disposition
@@ -386,16 +473,7 @@ impl Engine {
 /// they will panic if reached. Key emission support is planned.
 fn execute_action(action: &Action) {
     match action {
-        Action::Callback(callback) => {
-            if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                callback();
-            })) {
-                tracing::error!(
-                    panic_info = format!("{panic:?}"),
-                    "user callback panicked — panic caught, engine continues"
-                );
-            }
-        }
+        Action::Callback(callback) => invoke_callback(callback.as_ref()),
         Action::EmitHotkey(_) => {
             todo!("Action::EmitHotkey is not yet implemented in the kbd-global runtime")
         }
@@ -408,6 +486,18 @@ fn execute_action(action: &Action) {
         #[allow(clippy::match_same_arms)]
         Action::PushLayer(_) | Action::PopLayer | Action::ToggleLayer(_) | Action::Suppress => {}
         _ => {}
+    }
+}
+
+/// Execute a callback with panic protection.
+fn invoke_callback(callback: &(dyn Fn() + Send + Sync)) {
+    if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        callback();
+    })) {
+        tracing::error!(
+            panic_info = format!("{panic:?}"),
+            "user callback panicked — panic caught, engine continues"
+        );
     }
 }
 
@@ -439,12 +529,14 @@ mod tests {
 
     use kbd::action::Action;
     use kbd::binding::BindingId;
+    use kbd::binding::BindingOptions;
     use kbd::binding::KeyPropagation;
     use kbd::binding::RegisteredBinding;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
     use kbd::key::Key;
     use kbd::key_state::KeyTransition;
+    use kbd::policy::RepeatPolicy;
 
     use super::Command;
     use super::Engine;
@@ -630,6 +722,14 @@ mod tests {
             device_fd,
             key,
             transition: KeyTransition::Release,
+        })
+    }
+
+    fn repeat_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventOutcome {
+        engine.process_key_event(DeviceKeyEvent {
+            device_fd,
+            key,
+            transition: KeyTransition::Repeat,
         })
     }
 
@@ -2752,5 +2852,211 @@ mod tests {
             result.is_none(),
             "modifier-only key should not match, consistent with real dispatcher"
         );
+    }
+
+    // Repeat policy tests
+
+    #[test]
+    fn repeat_suppress_does_not_refire_callback() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let binding = RegisteredBinding::new(
+            BindingId::new(),
+            Hotkey::new(Key::A),
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn repeat_allow_refires_callback() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let binding = RegisteredBinding::new(
+            BindingId::new(),
+            Hotkey::new(Key::A),
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        )
+        .with_options(BindingOptions::default().with_repeat_policy(RepeatPolicy::Allow));
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn repeat_custom_respects_initial_delay() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let binding =
+            RegisteredBinding::new(
+                BindingId::new(),
+                Hotkey::new(Key::A),
+                Action::from(move || {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                }),
+            )
+            .with_options(BindingOptions::default().with_repeat_policy(
+                RepeatPolicy::Custom(kbd::policy::RepeatTiming::new(
+                    Duration::from_millis(50),
+                    Duration::from_millis(10),
+                )),
+            ));
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        std::thread::sleep(Duration::from_millis(55));
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn repeat_custom_respects_rate() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let binding = RegisteredBinding::new(
+            BindingId::new(),
+            Hotkey::new(Key::A),
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        )
+        .with_options(
+            BindingOptions::default().with_repeat_policy(RepeatPolicy::Custom(
+                kbd::policy::RepeatTiming::new(Duration::from_millis(0), Duration::from_millis(50)),
+            )),
+        );
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+
+        std::thread::sleep(Duration::from_millis(55));
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 3);
+    }
+
+    // Debounce and rate limit in engine
+
+    #[test]
+    fn debounce_suppresses_rapid_repress_through_engine() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let binding = RegisteredBinding::new(
+            BindingId::new(),
+            Hotkey::new(Key::A),
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        )
+        .with_options(BindingOptions::default().with_debounce(Duration::from_millis(100)));
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+        release_key(&mut engine, Key::A, 10);
+
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn rate_limit_caps_invocations_through_engine() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let binding = RegisteredBinding::new(
+            BindingId::new(),
+            Hotkey::new(Key::A),
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        )
+        .with_options(
+            BindingOptions::default()
+                .with_rate_limit(kbd::policy::RateLimit::new(2, Duration::from_secs(1))),
+        );
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        for _ in 0..2 {
+            press_key(&mut engine, Key::A, 10);
+            release_key(&mut engine, Key::A, 10);
+        }
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+    }
+
+    // Debounce and repeat interaction
+
+    #[test]
+    fn debounce_does_not_suppress_repeats() {
+        let mut engine = test_engine();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = Arc::clone(&counter);
+
+        let binding = RegisteredBinding::new(
+            BindingId::new(),
+            Hotkey::new(Key::A),
+            Action::from(move || {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        )
+        .with_options(
+            BindingOptions::default()
+                .with_debounce(Duration::from_millis(100))
+                .with_repeat_policy(RepeatPolicy::Allow),
+        );
+        engine.dispatcher.register_binding(binding).unwrap();
+
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        repeat_key(&mut engine, Key::A, 10);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
     }
 }

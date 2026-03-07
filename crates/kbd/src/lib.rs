@@ -57,6 +57,7 @@ pub mod introspection;
 pub mod key;
 pub mod key_state;
 pub mod layer;
+pub mod policy;
 pub mod sequence;
 
 /// Convenience re-exports for common types.
@@ -98,6 +99,9 @@ pub mod prelude {
     pub use crate::key_state::KeyTransition;
     pub use crate::layer::Layer;
     pub use crate::layer::LayerName;
+    pub use crate::policy::RateLimit;
+    pub use crate::policy::RepeatPolicy;
+    pub use crate::policy::RepeatTiming;
     pub use crate::sequence::PendingSequenceInfo;
     pub use crate::sequence::SequenceInput;
     pub use crate::sequence::SequenceOptions;

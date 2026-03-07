@@ -13,6 +13,7 @@ mod query;
 mod registry;
 mod resolve;
 mod sequence;
+mod throttle;
 mod timeout;
 
 use std::collections::HashMap;
@@ -27,6 +28,7 @@ use self::sequence::PendingStandalone;
 use self::sequence::RegisteredSequenceBinding;
 use self::sequence::SequenceBindingRef;
 use self::sequence::SequenceStartCandidate;
+use self::throttle::ThrottleTracker;
 use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
@@ -39,6 +41,7 @@ use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
+use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
 
 /// Result of attempting to match a key event against registered bindings.
@@ -49,6 +52,18 @@ pub enum MatchResult<'a> {
     Matched {
         /// The action to execute.
         action: &'a Action,
+        /// Whether to consume or forward the original key event.
+        propagation: KeyPropagation,
+        /// How OS auto-repeat events should be handled for this binding.
+        repeat_policy: RepeatPolicy,
+    },
+    /// A binding matched but was throttled (debounce or rate limit).
+    ///
+    /// The action should NOT execute. Key forwarding still respects the
+    /// binding's `propagation` setting — a `Continue` binding forwards the
+    /// event even when throttled. Distinct from [`Suppressed`](Self::Suppressed),
+    /// which means a layer swallowed an unmatched key.
+    Throttled {
         /// Whether to consume or forward the original key event.
         propagation: KeyPropagation,
     },
@@ -163,11 +178,12 @@ pub struct Dispatcher {
     layer_stack: Vec<LayerStackEntry>,
     active_sequences: Vec<ActiveSequence>,
     pending_standalone: Option<PendingStandalone>,
+    throttle_tracker: ThrottleTracker,
 }
 
 /// Internal reference to a matched binding, used to re-find the action
 /// after layer mutations are applied.
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 enum MatchedBindingRef {
     Global(BindingId),
     Layer { name: LayerName, index: usize },
@@ -180,6 +196,10 @@ enum InternalOutcome {
     Matched {
         binding_ref: MatchedBindingRef,
         layer_effect: LayerEffect,
+        propagation: KeyPropagation,
+        repeat_policy: RepeatPolicy,
+    },
+    Throttled {
         propagation: KeyPropagation,
     },
     Pending {
@@ -272,6 +292,11 @@ impl Dispatcher {
     ) -> MatchResult<'_> {
         let outcome = self.match_extract(hotkey, transition, device);
 
+        // Check debounce/rate-limit for matched bindings.
+        // Throttled matches do NOT apply layer effects — if a PushLayer
+        // action is throttled, the layer is not pushed.
+        let outcome = self.check_throttle(outcome);
+
         if let InternalOutcome::Matched {
             ref layer_effect, ..
         } = outcome
@@ -287,6 +312,7 @@ impl Dispatcher {
                     layer_effect: LayerEffect::Push(_) | LayerEffect::Pop | LayerEffect::Toggle(_),
                     ..
                 } | InternalOutcome::Pending { .. }
+                    | InternalOutcome::Throttled { .. }
             ) {
                 self.tick_oneshot_layers();
             }
@@ -296,14 +322,17 @@ impl Dispatcher {
             InternalOutcome::Matched {
                 binding_ref,
                 propagation,
+                repeat_policy,
                 ..
             } => {
                 let action = self.resolve_binding(&binding_ref);
                 MatchResult::Matched {
                     action,
                     propagation,
+                    repeat_policy,
                 }
             }
+            InternalOutcome::Throttled { propagation } => MatchResult::Throttled { propagation },
             InternalOutcome::Pending {
                 steps_matched,
                 steps_remaining,
@@ -412,6 +441,7 @@ impl Dispatcher {
                             },
                             layer_effect: LayerEffect::from_action(&lb.action),
                             propagation: lb.options.propagation(),
+                            repeat_policy: lb.options.repeat_policy(),
                         }
                     });
                     // `stored` is last used above; NLL releases the borrow.
@@ -425,6 +455,7 @@ impl Dispatcher {
                     let stored = &self.layers[&layer_name];
                     let lb = &stored.bindings[index];
                     let propagation = lb.options.propagation();
+                    let repeat_policy = lb.options.repeat_policy();
                     let layer_effect = LayerEffect::from_action(&lb.action);
                     return Some(InternalOutcome::Matched {
                         layer_effect,
@@ -433,6 +464,7 @@ impl Dispatcher {
                             index,
                         },
                         propagation,
+                        repeat_policy,
                     });
                 }
                 LayerMatch::None => {
@@ -493,11 +525,14 @@ impl Dispatcher {
             }
         }
 
-        if let Some((binding_ref, propagation)) = self.match_global_hotkey(hotkey, device) {
+        if let Some((binding_ref, propagation, repeat_policy)) =
+            self.match_global_hotkey(hotkey, device)
+        {
             return InternalOutcome::Matched {
                 layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
                 binding_ref,
                 propagation,
+                repeat_policy,
             };
         }
 
@@ -526,7 +561,7 @@ impl Dispatcher {
         &self,
         hotkey: &Hotkey,
         device: Option<&DeviceContext<'_>>,
-    ) -> Option<(MatchedBindingRef, KeyPropagation)> {
+    ) -> Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)> {
         // First, try device-filtered bindings if we have device context.
         // These use per-device modifier isolation.
         if let Some(ctx) = device {
@@ -542,7 +577,11 @@ impl Dispatcher {
         for id in ids.iter().rev() {
             if let Some(binding) = self.bindings_by_id.get(id) {
                 if binding.options().device().is_none() {
-                    return Some((MatchedBindingRef::Global(*id), binding.propagation()));
+                    return Some((
+                        MatchedBindingRef::Global(*id),
+                        binding.propagation(),
+                        binding.options().repeat_policy(),
+                    ));
                 }
             }
         }
@@ -554,7 +593,7 @@ impl Dispatcher {
         &self,
         hotkey: &Hotkey,
         device: &DeviceContext<'_>,
-    ) -> Option<(MatchedBindingRef, KeyPropagation)> {
+    ) -> Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)> {
         // Build the device-specific candidate hotkey for modifier isolation.
         // Use a conditional reference to avoid cloning the aggregate hotkey
         // when no per-device modifiers are set.
@@ -573,7 +612,11 @@ impl Dispatcher {
             if let Some(binding) = self.bindings_by_id.get(id) {
                 if let Some(filter) = binding.options().device() {
                     if filter.matches(device.info()) {
-                        return Some((MatchedBindingRef::Global(*id), binding.propagation()));
+                        return Some((
+                            MatchedBindingRef::Global(*id),
+                            binding.propagation(),
+                            binding.options().repeat_policy(),
+                        ));
                     }
                 }
             }
@@ -600,6 +643,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
+    use std::time::Duration;
 
     use super::*;
     use crate::binding::BindingOptions;
@@ -607,6 +651,7 @@ mod tests {
     use crate::device::DeviceInfo;
     use crate::key::Key;
     use crate::layer::Layer;
+    use crate::policy::RateLimit;
 
     #[test]
     fn device_binding_matches_on_correct_device() {
@@ -951,5 +996,219 @@ mod tests {
             cb();
         }
         assert_eq!(global_counter.load(Ordering::Relaxed), 1);
+    }
+
+    // Debounce tests
+
+    #[test]
+    fn debounce_first_press_matches() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_debounce(Duration::from_millis(100)),
+            )
+            .unwrap();
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+    }
+
+    #[test]
+    fn debounce_rapid_repress_is_throttled() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_debounce(Duration::from_millis(100)),
+            )
+            .unwrap();
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Throttled { .. }));
+    }
+
+    #[test]
+    fn debounce_after_window_expires_matches_again() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_debounce(Duration::from_millis(10)),
+            )
+            .unwrap();
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+
+        std::thread::sleep(Duration::from_millis(15));
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+    }
+
+    #[test]
+    fn debounce_is_per_binding() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_debounce(Duration::from_millis(100)),
+            )
+            .unwrap();
+        dispatcher
+            .register(Hotkey::new(Key::B), Action::Suppress)
+            .unwrap();
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Throttled { .. }));
+
+        let result = dispatcher.process(&Hotkey::new(Key::B), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+    }
+
+    // Rate limit tests
+
+    #[test]
+    fn rate_limit_allows_up_to_max_count() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_rate_limit(RateLimit::new(3, Duration::from_secs(1))),
+            )
+            .unwrap();
+
+        for _ in 0..3 {
+            let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+            assert!(matches!(result, MatchResult::Matched { .. }));
+        }
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Throttled { .. }));
+    }
+
+    #[test]
+    fn rate_limit_resets_after_window() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_rate_limit(RateLimit::new(2, Duration::from_millis(10))),
+            )
+            .unwrap();
+
+        for _ in 0..2 {
+            let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+            assert!(matches!(result, MatchResult::Matched { .. }));
+        }
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Throttled { .. }));
+
+        std::thread::sleep(Duration::from_millis(15));
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+    }
+
+    // RepeatPolicy in MatchResult tests
+
+    #[test]
+    fn matched_result_carries_repeat_policy() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default().with_repeat_policy(RepeatPolicy::Allow),
+            )
+            .unwrap();
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        match result {
+            MatchResult::Matched { repeat_policy, .. } => {
+                assert!(matches!(repeat_policy, RepeatPolicy::Allow));
+            }
+            _ => panic!("expected Matched"),
+        }
+    }
+
+    #[test]
+    fn matched_result_default_repeat_policy_is_suppress() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register(Hotkey::new(Key::A), Action::Suppress)
+            .unwrap();
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        match result {
+            MatchResult::Matched { repeat_policy, .. } => {
+                assert!(matches!(repeat_policy, RepeatPolicy::Suppress));
+            }
+            _ => panic!("expected Matched"),
+        }
+    }
+
+    // Debounce and repeat interaction
+
+    #[test]
+    fn debounce_does_not_affect_repeat_events() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_debounce(Duration::from_millis(100))
+                    .with_repeat_policy(RepeatPolicy::Allow),
+            )
+            .unwrap();
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Repeat);
+        assert!(matches!(result, MatchResult::Ignored));
+    }
+
+    // Throttled result preserves propagation
+
+    #[test]
+    fn throttled_result_carries_propagation() {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                BindingOptions::default()
+                    .with_debounce(Duration::from_millis(100))
+                    .with_propagation(KeyPropagation::Continue),
+            )
+            .unwrap();
+
+        dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+
+        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        match result {
+            MatchResult::Throttled { propagation } => {
+                assert_eq!(propagation, KeyPropagation::Continue);
+            }
+            _ => panic!("expected Throttled, got {result:?}"),
+        }
     }
 }

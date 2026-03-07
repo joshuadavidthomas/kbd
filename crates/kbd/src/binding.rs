@@ -9,10 +9,13 @@
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use crate::action::Action;
 use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
+use crate::policy::RateLimit;
+use crate::policy::RepeatPolicy;
 
 /// Unique identifier for a registered binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -203,6 +206,16 @@ pub struct BindingOptions {
     /// the filter. Additionally, per-device modifier isolation applies:
     /// only modifiers held on the matching device count toward matching.
     device: Option<DeviceFilter>,
+    /// Suppress rapid re-presses within this time window.
+    ///
+    /// When set, if the binding fires and the same hotkey is pressed
+    /// again within the debounce window, the second press is throttled
+    /// (consumed but action not executed).
+    debounce: Option<Duration>,
+    /// Cap how many times the action fires within a sliding time window.
+    rate_limit: Option<RateLimit>,
+    /// How OS auto-repeat events are handled for this binding.
+    repeat_policy: RepeatPolicy,
 }
 
 impl BindingOptions {
@@ -288,6 +301,56 @@ impl BindingOptions {
     #[must_use]
     pub fn with_device(mut self, filter: DeviceFilter) -> Self {
         self.device = Some(filter);
+        self
+    }
+
+    /// The debounce window for this binding, if set.
+    ///
+    /// When set, rapid re-presses within this duration are suppressed.
+    #[must_use]
+    pub const fn debounce(&self) -> Option<Duration> {
+        self.debounce
+    }
+
+    /// Set a debounce window — suppress rapid re-presses within this
+    /// duration.
+    ///
+    /// Debounce applies to press events only — it does not affect OS
+    /// auto-repeat events (those are governed by
+    /// [`repeat_policy`](Self::repeat_policy)).
+    #[must_use]
+    pub const fn with_debounce(mut self, window: Duration) -> Self {
+        self.debounce = Some(window);
+        self
+    }
+
+    /// The rate limit for this binding, if set.
+    #[must_use]
+    pub const fn rate_limit(&self) -> Option<RateLimit> {
+        self.rate_limit
+    }
+
+    /// Set a rate limit — cap how many times the action fires within a
+    /// sliding time window.
+    #[must_use]
+    pub const fn with_rate_limit(mut self, rate_limit: RateLimit) -> Self {
+        self.rate_limit = Some(rate_limit);
+        self
+    }
+
+    /// How OS auto-repeat events are handled for this binding.
+    #[must_use]
+    pub const fn repeat_policy(&self) -> RepeatPolicy {
+        self.repeat_policy
+    }
+
+    /// Set the repeat policy for this binding.
+    ///
+    /// Controls whether OS auto-repeat events (from holding a key down)
+    /// re-fire the binding's action.
+    #[must_use]
+    pub const fn with_repeat_policy(mut self, policy: RepeatPolicy) -> Self {
+        self.repeat_policy = policy;
         self
     }
 }
@@ -487,5 +550,86 @@ mod tests {
     fn binding_options_device_default_is_none() {
         let opts = BindingOptions::default();
         assert!(opts.device().is_none());
+    }
+
+    #[test]
+    fn repeat_policy_default_is_suppress() {
+        let policy = RepeatPolicy::default();
+        assert!(matches!(policy, RepeatPolicy::Suppress));
+    }
+
+    #[test]
+    fn repeat_policy_custom_stores_delay_and_rate() {
+        use crate::policy::RepeatTiming;
+
+        let timing = RepeatTiming::new(Duration::from_millis(500), Duration::from_millis(30));
+        let policy = RepeatPolicy::Custom(timing);
+        match policy {
+            RepeatPolicy::Custom(t) => {
+                assert_eq!(t.delay(), Duration::from_millis(500));
+                assert_eq!(t.rate(), Duration::from_millis(30));
+            }
+            _ => panic!("expected Custom variant"),
+        }
+    }
+
+    #[test]
+    fn rate_limit_construction() {
+        let rl = RateLimit::new(3, Duration::from_secs(1));
+        assert_eq!(rl.max_count(), 3);
+        assert_eq!(rl.window(), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn binding_options_debounce_default_is_none() {
+        let opts = BindingOptions::default();
+        assert_eq!(opts.debounce(), None);
+    }
+
+    #[test]
+    fn binding_options_with_debounce() {
+        let opts = BindingOptions::default().with_debounce(Duration::from_millis(100));
+        assert_eq!(opts.debounce(), Some(Duration::from_millis(100)));
+    }
+
+    #[test]
+    fn binding_options_rate_limit_default_is_none() {
+        let opts = BindingOptions::default();
+        assert!(opts.rate_limit().is_none());
+    }
+
+    #[test]
+    fn binding_options_with_rate_limit() {
+        let rl = RateLimit::new(5, Duration::from_secs(1));
+        let opts = BindingOptions::default().with_rate_limit(rl);
+        let stored = opts.rate_limit().unwrap();
+        assert_eq!(stored.max_count(), 5);
+        assert_eq!(stored.window(), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn binding_options_repeat_policy_default_is_suppress() {
+        let opts = BindingOptions::default();
+        assert!(matches!(opts.repeat_policy(), RepeatPolicy::Suppress));
+    }
+
+    #[test]
+    fn binding_options_with_repeat_policy() {
+        let opts = BindingOptions::default().with_repeat_policy(RepeatPolicy::Allow);
+        assert!(matches!(opts.repeat_policy(), RepeatPolicy::Allow));
+    }
+
+    #[test]
+    fn binding_options_chains_all_new_options() {
+        let opts = BindingOptions::default()
+            .with_debounce(Duration::from_millis(50))
+            .with_rate_limit(RateLimit::new(10, Duration::from_secs(1)))
+            .with_repeat_policy(RepeatPolicy::Allow)
+            .with_description("test");
+
+        assert_eq!(opts.debounce(), Some(Duration::from_millis(50)));
+        assert!(opts.rate_limit().is_some());
+        assert!(matches!(opts.repeat_policy(), RepeatPolicy::Allow));
+        assert_eq!(opts.description(), Some("test"));
     }
 }

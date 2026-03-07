@@ -180,6 +180,7 @@ impl Dispatcher {
 
     /// Unregister a binding by its [`BindingId`].
     pub fn unregister(&mut self, id: BindingId) {
+        self.throttle_tracker.remove_global(id);
         if let Some(binding) = self.bindings_by_id.remove(&id) {
             let hotkey = binding.hotkey().clone();
             let remove_hotkey_entry =
