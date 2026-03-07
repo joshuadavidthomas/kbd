@@ -13,6 +13,7 @@ mod query;
 mod registry;
 mod resolve;
 mod sequence;
+pub(crate) mod tap_hold;
 mod throttle;
 mod timeout;
 
@@ -28,6 +29,9 @@ use self::sequence::PendingStandalone;
 use self::sequence::RegisteredSequenceBinding;
 use self::sequence::SequenceBindingRef;
 use self::sequence::SequenceStartCandidate;
+use self::tap_hold::TapHoldBinding;
+use self::tap_hold::TapHoldOutcome;
+use self::tap_hold::TapHoldState;
 use self::throttle::ThrottleTracker;
 use crate::action::Action;
 use crate::binding::BindingId;
@@ -36,6 +40,7 @@ use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
+use crate::key::Key;
 use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
@@ -43,6 +48,7 @@ use crate::layer::UnmatchedKeys;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
+use crate::tap_hold::TapHoldOptions;
 
 /// Result of attempting to match a key event against registered bindings.
 #[derive(Debug)]
@@ -179,6 +185,7 @@ pub struct Dispatcher {
     active_sequences: Vec<ActiveSequence>,
     pending_standalone: Option<PendingStandalone>,
     throttle_tracker: ThrottleTracker,
+    tap_hold: TapHoldState,
 }
 
 /// Internal reference to a matched binding, used to re-find the action
@@ -189,6 +196,20 @@ enum MatchedBindingRef {
     Layer { name: LayerName, index: usize },
     SequenceGlobal(BindingId),
     SequenceLayer { name: LayerName, index: usize },
+}
+
+/// Borrow-free result of tap-hold processing, used to avoid lifetime
+/// conflicts with subsequent `self` usage in `process_internal`.
+enum TapHoldDecision {
+    /// Event consumed (buffered or repeat suppressed).
+    Consumed,
+    /// Tap resolved — look up the tap action by binding ID.
+    TapResolved { binding_id: BindingId },
+    /// Hold resolved by interrupt, and the pressing key was also a tap-hold
+    /// key that got consumed.
+    HoldResolvedThenConsumed,
+    /// Not handled by tap-hold — pass through to normal matching.
+    PassThrough,
 }
 
 /// Internal match outcome that carries binding refs and layer effects.
@@ -222,6 +243,37 @@ impl Dispatcher {
     #[must_use]
     pub fn pending_sequence(&self) -> Option<PendingSequenceInfo> {
         self.pending_sequence_snapshot()
+    }
+
+    /// Register a tap-hold binding.
+    ///
+    /// The `tap_action` fires when the key is pressed and released quickly
+    /// (before the threshold). The `hold_action` fires when the key is held
+    /// past the threshold or interrupted by another keypress.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a tap-hold binding is already registered for the
+    /// same key.
+    pub fn register_tap_hold(
+        &mut self,
+        key: Key,
+        tap_action: impl Into<Action>,
+        hold_action: impl Into<Action>,
+        options: TapHoldOptions,
+    ) -> Result<BindingId, crate::error::Error> {
+        if self.tap_hold.is_registered(key) {
+            return Err(crate::error::Error::AlreadyRegistered);
+        }
+        let id = BindingId::new();
+        self.tap_hold.register(TapHoldBinding {
+            id,
+            key,
+            tap_action: tap_action.into(),
+            hold_action: hold_action.into(),
+            options,
+        });
+        Ok(id)
     }
 
     /// Define a named layer. The layer is not active until pushed.
@@ -290,6 +342,45 @@ impl Dispatcher {
         transition: KeyTransition,
         device: Option<&DeviceContext<'_>>,
     ) -> MatchResult<'_> {
+        // Tap-hold is checked first — it intercepts events before normal
+        // matching, similar to how speculative patterns (sequences) take
+        // priority over immediate patterns (hotkeys).
+        //
+        // We resolve tap-hold to a `TapHoldDecision` (no borrows on self)
+        // so the borrow checker allows subsequent `self` usage.
+        let tap_hold_decision = self.process_tap_hold(hotkey.key(), transition);
+
+        match tap_hold_decision {
+            TapHoldDecision::Consumed => {
+                return MatchResult::Matched {
+                    action: &Action::Suppress,
+                    propagation: KeyPropagation::Stop,
+                    repeat_policy: RepeatPolicy::Suppress,
+                };
+            }
+            TapHoldDecision::TapResolved { binding_id } => {
+                // Look up the tap action now (single borrow, no conflict).
+                return match self.tap_hold.tap_action(binding_id) {
+                    Some(action) => MatchResult::Matched {
+                        action,
+                        propagation: KeyPropagation::Stop,
+                        repeat_policy: RepeatPolicy::Suppress,
+                    },
+                    None => MatchResult::Ignored,
+                };
+            }
+            TapHoldDecision::HoldResolvedThenConsumed => {
+                return MatchResult::Matched {
+                    action: &Action::Suppress,
+                    propagation: KeyPropagation::Stop,
+                    repeat_policy: RepeatPolicy::Suppress,
+                };
+            }
+            TapHoldDecision::PassThrough => {
+                // Fall through to normal matching.
+            }
+        }
+
         let outcome = self.match_extract(hotkey, transition, device);
 
         // Check debounce/rate-limit for matched bindings.
@@ -343,6 +434,60 @@ impl Dispatcher {
             InternalOutcome::Suppressed => MatchResult::Suppressed,
             InternalOutcome::NoMatch => MatchResult::NoMatch,
             InternalOutcome::Ignored => MatchResult::Ignored,
+        }
+    }
+
+    /// Process tap-hold events, returning a decision enum with no borrows
+    /// on self. Hold-resolved-by-interrupt actions are executed inline.
+    fn process_tap_hold(&mut self, key: Key, transition: KeyTransition) -> TapHoldDecision {
+        let now = Instant::now();
+
+        match transition {
+            KeyTransition::Press => {
+                let outcome = self.tap_hold.on_press(key, now);
+                match outcome {
+                    TapHoldOutcome::Consumed => TapHoldDecision::Consumed,
+                    TapHoldOutcome::HoldResolved { binding_ids } => {
+                        // Execute hold actions inline — the engine will also
+                        // see the actions via check_timeouts if needed, but
+                        // interrupt resolution is immediate.
+                        for &id in &binding_ids {
+                            if let Some(action) = self.tap_hold.hold_action(id) {
+                                if let Action::Callback(cb) = action {
+                                    cb();
+                                }
+                            }
+                        }
+
+                        if self.tap_hold.is_registered(key) {
+                            TapHoldDecision::HoldResolvedThenConsumed
+                        } else {
+                            TapHoldDecision::PassThrough
+                        }
+                    }
+                    TapHoldOutcome::PassThrough => TapHoldDecision::PassThrough,
+                    _ => TapHoldDecision::PassThrough,
+                }
+            }
+            KeyTransition::Release => {
+                let outcome = self.tap_hold.on_release(key);
+                match outcome {
+                    TapHoldOutcome::TapResolved { binding_id } => {
+                        TapHoldDecision::TapResolved { binding_id }
+                    }
+                    _ => TapHoldDecision::PassThrough,
+                }
+            }
+            KeyTransition::Repeat => {
+                let outcome = self.tap_hold.on_repeat(key);
+                match outcome {
+                    TapHoldOutcome::RepeatConsumed => TapHoldDecision::Consumed,
+                    _ => TapHoldDecision::PassThrough,
+                }
+            }
+            // KeyTransition is #[non_exhaustive]; future variants pass through.
+            #[allow(unreachable_patterns)]
+            _ => TapHoldDecision::PassThrough,
         }
     }
 
@@ -650,6 +795,7 @@ mod tests {
     use crate::key::Key;
     use crate::layer::Layer;
     use crate::policy::RateLimit;
+    use crate::tap_hold::TapHoldOptions;
 
     #[test]
     fn device_binding_matches_on_correct_device() {
@@ -1208,5 +1354,222 @@ mod tests {
             }
             _ => panic!("expected Throttled, got {result:?}"),
         }
+    }
+
+    // Tap-hold tests
+
+    #[test]
+    fn tap_hold_tap_resolves_on_release_before_threshold() {
+        let mut dispatcher = Dispatcher::new();
+        let tap_counter = Arc::new(AtomicUsize::new(0));
+        let hold_counter = Arc::new(AtomicUsize::new(0));
+        let tc = Arc::clone(&tap_counter);
+        let hc = Arc::clone(&hold_counter);
+
+        dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::from(move || {
+                    tc.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::from(move || {
+                    hc.fetch_add(1, Ordering::Relaxed);
+                }),
+                TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        // Press CapsLock — consumed (buffered)
+        let press_result =
+            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        assert!(matches!(press_result, MatchResult::Matched { .. }));
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 0);
+
+        // Release before threshold — tap action resolves
+        let release_result =
+            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
+        assert!(matches!(release_result, MatchResult::Matched { .. }));
+        if let MatchResult::Matched { action, .. } = release_result {
+            if let Action::Callback(cb) = action {
+                cb();
+            }
+        }
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 1);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn tap_hold_hold_resolves_on_threshold_expiry() {
+        let mut dispatcher = Dispatcher::new();
+        let tap_counter = Arc::new(AtomicUsize::new(0));
+        let hold_counter = Arc::new(AtomicUsize::new(0));
+        let tc = Arc::clone(&tap_counter);
+        let hc = Arc::clone(&hold_counter);
+
+        dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::from(move || {
+                    tc.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::from(move || {
+                    hc.fetch_add(1, Ordering::Relaxed);
+                }),
+                TapHoldOptions::new().with_threshold(Duration::from_millis(50)),
+            )
+            .unwrap();
+
+        dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        std::thread::sleep(Duration::from_millis(60));
+
+        let timeout_results = dispatcher.check_tap_hold_timeouts();
+        assert!(timeout_results
+            .iter()
+            .any(|r| matches!(r, MatchResult::Matched { .. })));
+        for result in &timeout_results {
+            if let MatchResult::Matched { action, .. } = result {
+                if let Action::Callback(cb) = action {
+                    cb();
+                }
+            }
+        }
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn tap_hold_hold_resolves_on_interrupting_keypress() {
+        let mut dispatcher = Dispatcher::new();
+        let tap_counter = Arc::new(AtomicUsize::new(0));
+        let hold_counter = Arc::new(AtomicUsize::new(0));
+        let tc = Arc::clone(&tap_counter);
+        let hc = Arc::clone(&hold_counter);
+
+        dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::from(move || {
+                    tc.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::from(move || {
+                    hc.fetch_add(1, Ordering::Relaxed);
+                }),
+                TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+
+        // Interrupt with A — CapsLock should resolve as hold
+        let _interrupt = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
+
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn tap_hold_can_be_reused_after_tap() {
+        let mut dispatcher = Dispatcher::new();
+        let tap_counter = Arc::new(AtomicUsize::new(0));
+        let hold_counter = Arc::new(AtomicUsize::new(0));
+        let tc = Arc::clone(&tap_counter);
+        let hc = Arc::clone(&hold_counter);
+
+        dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::from(move || {
+                    tc.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::from(move || {
+                    hc.fetch_add(1, Ordering::Relaxed);
+                }),
+                TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        // First tap
+        dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        let result =
+            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
+        if let MatchResult::Matched { action, .. } = result {
+            if let Action::Callback(cb) = action {
+                cb();
+            }
+        }
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 1);
+
+        // Second tap
+        dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        let result =
+            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
+        if let MatchResult::Matched { action, .. } = result {
+            if let Action::Callback(cb) = action {
+                cb();
+            }
+        }
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn tap_hold_repeat_events_are_consumed() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::Suppress,
+                Action::Suppress,
+                TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+
+        let result =
+            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Repeat);
+        assert!(!matches!(
+            result,
+            MatchResult::NoMatch | MatchResult::Ignored
+        ));
+    }
+
+    #[test]
+    fn tap_hold_non_registered_key_passes_through() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::Suppress,
+                Action::Suppress,
+                TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::NoMatch));
+    }
+
+    #[test]
+    fn tap_hold_timeout_deadline_reported() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::Suppress,
+                Action::Suppress,
+                TapHoldOptions::new().with_threshold(Duration::from_millis(200)),
+            )
+            .unwrap();
+
+        assert!(dispatcher.next_timeout_deadline().is_none());
+
+        dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        let deadline = dispatcher.next_timeout_deadline();
+        assert!(deadline.is_some());
+        assert!(deadline.unwrap() <= Duration::from_millis(201));
     }
 }

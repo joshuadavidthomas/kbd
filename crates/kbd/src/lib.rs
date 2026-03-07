@@ -59,6 +59,7 @@ pub mod key_state;
 pub mod layer;
 pub mod policy;
 pub mod sequence;
+pub mod tap_hold;
 
 /// Convenience re-exports for common types.
 ///

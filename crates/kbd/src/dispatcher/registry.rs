@@ -246,6 +246,9 @@ impl Dispatcher {
         if self.active_sequences.is_empty() {
             self.pending_standalone = None;
         }
+
+        // Also remove from tap-hold bindings.
+        self.tap_hold.unregister(id);
     }
 
     /// Check whether a hotkey has a registered global binding.

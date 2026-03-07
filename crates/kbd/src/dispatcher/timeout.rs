@@ -5,7 +5,7 @@ use super::Dispatcher;
 use super::MatchResult;
 
 impl Dispatcher {
-    /// Return the nearest layer or sequence timeout deadline, if any.
+    /// Return the nearest layer, sequence, or tap-hold timeout deadline, if any.
     #[must_use]
     pub fn next_timeout_deadline(&self) -> Option<Duration> {
         let now = Instant::now();
@@ -30,6 +30,13 @@ impl Dispatcher {
             });
         }
 
+        if let Some(tap_hold_remaining) = self.tap_hold.next_deadline() {
+            min_remaining = Some(match min_remaining {
+                Some(current) => std::cmp::min(current, tap_hold_remaining),
+                None => tap_hold_remaining,
+            });
+        }
+
         min_remaining
     }
 
@@ -44,6 +51,11 @@ impl Dispatcher {
     }
 
     /// Check timeout-driven state transitions and return any timeout matches.
+    ///
+    /// Includes layer auto-pop timeouts and sequence step timeouts.
+    /// For tap-hold timeouts, use [`check_tap_hold_timeouts`](Self::check_tap_hold_timeouts)
+    /// separately — the two must be called independently due to lifetime constraints
+    /// on `MatchResult`.
     pub fn check_timeouts_with_results(&mut self) -> Vec<MatchResult<'_>> {
         let now = Instant::now();
 
@@ -64,6 +76,29 @@ impl Dispatcher {
         }
 
         self.check_sequence_timeouts(now)
+    }
+
+    /// Check tap-hold timeouts — resolve pending holds past their threshold.
+    ///
+    /// Returns `MatchResult::Matched` for each hold action that resolved.
+    /// Called separately from [`check_timeouts_with_results`](Self::check_timeouts_with_results)
+    /// because both return `MatchResult` references into different parts of
+    /// the dispatcher, and Rust's borrow checker requires them to be separate calls.
+    pub fn check_tap_hold_timeouts(&mut self) -> Vec<MatchResult<'_>> {
+        let now = Instant::now();
+        let resolved_ids = self.tap_hold.check_timeouts(now);
+
+        let mut results = Vec::new();
+        for id in resolved_ids {
+            if let Some(action) = self.tap_hold.hold_action(id) {
+                results.push(MatchResult::Matched {
+                    action,
+                    propagation: crate::policy::KeyPropagation::Stop,
+                    repeat_policy: crate::policy::RepeatPolicy::Suppress,
+                });
+            }
+        }
+        results
     }
 
     /// Reset all layer inactivity timeouts to `now`.

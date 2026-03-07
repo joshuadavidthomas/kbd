@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::sync::mpsc;
 
+use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::RegisteredBinding;
 use kbd::hotkey::Hotkey;
@@ -20,6 +21,7 @@ use kbd::layer::Layer;
 use kbd::layer::LayerName;
 use kbd::sequence::PendingSequenceInfo;
 use kbd::sequence::SequenceOptions;
+use kbd::tap_hold::TapHoldOptions;
 
 use super::wake::WakeFd;
 use crate::Error;
@@ -31,8 +33,15 @@ pub(crate) enum Command {
     },
     RegisterSequence {
         sequence: HotkeySequence,
-        action: kbd::action::Action,
+        action: Action,
         options: SequenceOptions,
+        reply: mpsc::Sender<Result<BindingId, Error>>,
+    },
+    RegisterTapHold {
+        key: Key,
+        tap_action: Action,
+        hold_action: Action,
+        options: TapHoldOptions,
         reply: mpsc::Sender<Result<BindingId, Error>>,
     },
     PendingSequence {

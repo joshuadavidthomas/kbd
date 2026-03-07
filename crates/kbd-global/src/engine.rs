@@ -203,6 +203,25 @@ impl Engine {
                     .map_err(Error::from);
                 let _ = reply.send(result);
             }
+            Command::RegisterTapHold {
+                key,
+                tap_action,
+                hold_action,
+                options,
+                reply,
+            } => {
+                // Tap-hold requires grab mode — without it, we can't
+                // intercept and buffer key events.
+                if matches!(self.grab_state, GrabState::Disabled) {
+                    let _ = reply.send(Err(Error::UnsupportedFeature));
+                } else {
+                    let result = self
+                        .dispatcher
+                        .register_tap_hold(key, tap_action, hold_action, options)
+                        .map_err(Error::from);
+                    let _ = reply.send(result);
+                }
+            }
             Command::Unregister { id } => self.dispatcher.unregister(id),
 
             // Sequences
@@ -511,6 +530,11 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
 
         engine.process_polled_events(&poll_fds);
         for timeout_result in engine.dispatcher.check_timeouts_with_results() {
+            if let MatchResult::Matched { action, .. } = timeout_result {
+                execute_action(action);
+            }
+        }
+        for timeout_result in engine.dispatcher.check_tap_hold_timeouts() {
             if let MatchResult::Matched { action, .. } = timeout_result {
                 execute_action(action);
             }
@@ -3059,5 +3083,67 @@ mod tests {
 
         repeat_key(&mut engine, Key::A, 10);
         assert_eq!(counter.load(Ordering::Relaxed), 2);
+    }
+
+    // Tap-hold tests
+
+    #[test]
+    fn tap_hold_requires_grab_mode() {
+        let runtime = EngineRuntime::spawn(GrabState::Disabled).expect("engine should spawn");
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::RegisterTapHold {
+                key: Key::CAPS_LOCK,
+                tap_action: Action::Suppress,
+                hold_action: Action::Suppress,
+                options: kbd::tap_hold::TapHoldOptions::default(),
+                reply: reply_tx,
+            })
+            .expect("register tap-hold command should send");
+
+        let result = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("should receive reply");
+
+        assert!(
+            matches!(result, Err(Error::UnsupportedFeature)),
+            "tap-hold without grab mode should return UnsupportedFeature, got: {result:?}"
+        );
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn tap_hold_succeeds_with_grab_mode() {
+        let (recorder, _events) = super::forwarder::testing::RecordingForwarder::new();
+        let grab_state = GrabState::Enabled {
+            forwarder: Box::new(recorder),
+        };
+        let runtime = EngineRuntime::spawn(grab_state).expect("engine should spawn");
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        runtime
+            .commands()
+            .send(Command::RegisterTapHold {
+                key: Key::CAPS_LOCK,
+                tap_action: Action::Suppress,
+                hold_action: Action::Suppress,
+                options: kbd::tap_hold::TapHoldOptions::default(),
+                reply: reply_tx,
+            })
+            .expect("register tap-hold command should send");
+
+        let result = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("should receive reply");
+
+        assert!(
+            result.is_ok(),
+            "tap-hold with grab mode should succeed: {result:?}"
+        );
+
+        runtime.shutdown().expect("engine should shutdown cleanly");
     }
 }
