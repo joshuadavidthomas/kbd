@@ -435,7 +435,37 @@ impl HotkeyManager {
         self.request(|reply| Command::PendingSequence { reply })
     }
 
-    // TODO: register_tap_hold() — dual-function key
+    /// Register a tap-hold binding for a dual-function key.
+    ///
+    /// The `tap_action` fires when the key is pressed and released quickly
+    /// (before the threshold). The `hold_action` fires when the key is held
+    /// past the threshold or interrupted by another keypress.
+    ///
+    /// **Requires grab mode.** Tap-hold must intercept and buffer key events
+    /// before they reach other applications — without grab, the original key
+    /// event would be delivered immediately.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnsupportedFeature`] if grab mode is not enabled,
+    /// [`Error::AlreadyRegistered`] if the key already has a tap-hold binding,
+    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    pub fn register_tap_hold(
+        &self,
+        key: Key,
+        tap_action: impl Into<Action>,
+        hold_action: impl Into<Action>,
+        options: kbd::tap_hold::TapHoldOptions,
+    ) -> Result<BindingGuard, Error> {
+        let id = self.request(|reply| Command::RegisterTapHold {
+            key,
+            tap_action: tap_action.into(),
+            hold_action: hold_action.into(),
+            options,
+            reply,
+        })??;
+        Ok(BindingGuard::new(id, self.commands.clone()))
+    }
 
     /// Find bindings that are shadowed by higher-priority layers.
     ///
