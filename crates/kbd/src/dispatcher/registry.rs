@@ -12,28 +12,28 @@ use crate::hotkey::HotkeySequence;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 
-/// Precedence tier derived from a [`BindingSource`](crate::binding::BindingSource) label.
+/// Priority level derived from a binding's [`BindingSource`](crate::binding::BindingSource) label.
 ///
 /// The registry uses this to resolve conflicts when multiple global
-/// bindings share the same hotkey. Variants are ordered by priority:
+/// bindings share the same hotkey. Variants are ordered:
 /// `Default` < `Standard` < `User`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum PrecedenceTier {
+pub(crate) enum SourcePriority {
     Default,
     Standard,
     User,
 }
 
-/// Derive the precedence tier from a binding's source label.
+/// Derive the priority level from a binding's source label.
 ///
-/// - `"default"` (case-insensitive) → [`PrecedenceTier::Default`]
-/// - `"user"` (case-insensitive) → [`PrecedenceTier::User`]
-/// - anything else or no source → [`PrecedenceTier::Standard`]
-pub(crate) fn precedence_tier(options: &BindingOptions) -> PrecedenceTier {
+/// - `"default"` (case-insensitive) → [`SourcePriority::Default`]
+/// - `"user"` (case-insensitive) → [`SourcePriority::User`]
+/// - anything else or no source → [`SourcePriority::Standard`]
+pub(crate) fn source_priority(options: &BindingOptions) -> SourcePriority {
     match options.source() {
-        Some(source) if source.as_str().eq_ignore_ascii_case("default") => PrecedenceTier::Default,
-        Some(source) if source.as_str().eq_ignore_ascii_case("user") => PrecedenceTier::User,
-        _ => PrecedenceTier::Standard,
+        Some(source) if source.as_str().eq_ignore_ascii_case("default") => SourcePriority::Default,
+        Some(source) if source.as_str().eq_ignore_ascii_case("user") => SourcePriority::User,
+        _ => SourcePriority::Standard,
     }
 }
 
@@ -151,7 +151,7 @@ impl Dispatcher {
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
-        let new_tier = precedence_tier(binding.options());
+        let new_priority = source_priority(binding.options());
         let new_device = binding.options().device();
 
         if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
@@ -163,7 +163,7 @@ impl Dispatcher {
             self.bindings_by_id
                 .get(existing_id)
                 .is_some_and(|existing| {
-                    precedence_tier(existing.options()) == new_tier
+                    source_priority(existing.options()) == new_priority
                         && existing.options().device() == new_device
                 })
         }) {
@@ -175,7 +175,7 @@ impl Dispatcher {
             .position(|existing_id| {
                 self.bindings_by_id
                     .get(existing_id)
-                    .is_some_and(|existing| precedence_tier(existing.options()) > new_tier)
+                    .is_some_and(|existing| source_priority(existing.options()) > new_priority)
             })
             .unwrap_or(ids_for_hotkey.len());
 
@@ -253,8 +253,8 @@ impl Dispatcher {
 #[cfg(test)]
 mod tests {
     use super::super::Dispatcher;
-    use super::PrecedenceTier;
-    use super::precedence_tier;
+    use super::SourcePriority;
+    use super::source_priority;
     use crate::action::Action;
     use crate::binding::BindingId;
     use crate::binding::BindingOptions;
@@ -266,27 +266,27 @@ mod tests {
     use crate::sequence::SequenceOptions;
 
     #[test]
-    fn precedence_tier_from_source_labels() {
+    fn source_priority_from_source_labels() {
         let default = BindingOptions::default().with_source("default");
-        assert_eq!(precedence_tier(&default), PrecedenceTier::Default);
+        assert_eq!(source_priority(&default), SourcePriority::Default);
 
         let user = BindingOptions::default().with_source("user");
-        assert_eq!(precedence_tier(&user), PrecedenceTier::User);
+        assert_eq!(source_priority(&user), SourcePriority::User);
 
         let plugin = BindingOptions::default().with_source("plugin");
-        assert_eq!(precedence_tier(&plugin), PrecedenceTier::Standard);
+        assert_eq!(source_priority(&plugin), SourcePriority::Standard);
 
         let no_source = BindingOptions::default();
-        assert_eq!(precedence_tier(&no_source), PrecedenceTier::Standard);
+        assert_eq!(source_priority(&no_source), SourcePriority::Standard);
     }
 
     #[test]
-    fn precedence_tier_is_case_insensitive() {
+    fn source_priority_is_case_insensitive() {
         let default = BindingOptions::default().with_source("DEFAULT");
-        assert_eq!(precedence_tier(&default), PrecedenceTier::Default);
+        assert_eq!(source_priority(&default), SourcePriority::Default);
 
         let user = BindingOptions::default().with_source("UsEr");
-        assert_eq!(precedence_tier(&user), PrecedenceTier::User);
+        assert_eq!(source_priority(&user), SourcePriority::User);
     }
 
     #[test]
