@@ -14,7 +14,6 @@ use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::BindingSource;
-use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
 use kbd::binding::RegisteredBinding;
 use kbd::dispatcher::Dispatcher;
@@ -31,6 +30,7 @@ use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
 use kbd::layer::Layer;
 use kbd::layer::LayerName;
+use kbd::policy::KeyPropagation;
 
 // Register, match, fire callback
 #[test]

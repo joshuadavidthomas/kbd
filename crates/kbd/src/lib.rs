@@ -84,7 +84,6 @@ pub mod prelude {
     pub use crate::action::Action;
     pub use crate::binding::BindingOptions;
     pub use crate::binding::BindingSource;
-    pub use crate::binding::KeyPropagation;
     pub use crate::binding::OverlayVisibility;
     pub use crate::device::DeviceContext;
     pub use crate::device::DeviceFilter;
@@ -99,6 +98,7 @@ pub mod prelude {
     pub use crate::key_state::KeyTransition;
     pub use crate::layer::Layer;
     pub use crate::layer::LayerName;
+    pub use crate::policy::KeyPropagation;
     pub use crate::policy::RateLimit;
     pub use crate::policy::RepeatPolicy;
     pub use crate::policy::RepeatTiming;

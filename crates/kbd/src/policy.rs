@@ -1,12 +1,50 @@
-//! Timing and repeat policies for bindings.
+//! Dispatch policies for bindings.
 //!
-//! These types control how a binding reacts to timing-sensitive events:
-//! OS auto-repeat (held keys), rapid re-presses (debounce), and
-//! steady-state throughput (rate limiting). They're carried by
-//! [`BindingOptions`](crate::binding::BindingOptions) and consumed by
-//! the dispatcher and engine at runtime.
+//! These types control how the dispatcher and engine handle a matched
+//! binding at runtime: whether the original key event is consumed or
+//! forwarded ([`KeyPropagation`]), how OS auto-repeat is handled
+//! ([`RepeatPolicy`]), and how rapid re-presses and steady-state
+//! throughput are throttled ([`RateLimit`]). They're carried by
+//! [`BindingOptions`](crate::binding::BindingOptions) and read by the
+//! dispatcher during event processing.
 
 use std::time::Duration;
+
+/// How a matched binding handles the original key event.
+///
+/// After a binding matches, the dispatcher needs to know what to do with the
+/// key event itself — consume it so the application never sees it, or forward
+/// it while still running the action.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::action::Action;
+/// use kbd::binding::{BindingId, BindingOptions, RegisteredBinding};
+/// use kbd::hotkey::{Hotkey, Modifier};
+/// use kbd::key::Key;
+/// use kbd::policy::KeyPropagation;
+///
+/// // A binding that forwards the key event to the application
+/// // while still running its action (e.g., logging keypresses).
+/// let binding = RegisteredBinding::new(
+///     BindingId::new(),
+///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     Action::Suppress,
+/// ).with_propagation(KeyPropagation::Continue);
+///
+/// assert_eq!(binding.propagation(), KeyPropagation::Continue);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub enum KeyPropagation {
+    /// Stop propagation — the event is consumed and not forwarded.
+    #[default]
+    Stop,
+    /// Continue propagation — forward the event while still running the action.
+    Continue,
+}
 
 /// How a matched binding handles OS auto-repeat events.
 ///

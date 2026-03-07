@@ -884,7 +884,7 @@ mod tests {
                 .source
                 .as_ref()
                 .map(crate::binding::BindingSource::as_str),
-            Some("DEFAULT")
+            Some("default")
         );
         assert!(dispatcher.conflicts().is_empty());
 

@@ -9,7 +9,6 @@
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::BindingSource;
-use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
 use kbd::device::DeviceFilter;
 use kbd::device::DeviceInfo;
@@ -21,6 +20,7 @@ use kbd::key_state::KeyTransition;
 use kbd::layer::LayerName;
 use kbd::layer::LayerOptions;
 use kbd::layer::UnmatchedKeys;
+use kbd::policy::KeyPropagation;
 
 fn round_trip<T>(value: &T) -> T
 where
@@ -185,6 +185,29 @@ fn overlay_visibility_round_trip() {
     for variant in [OverlayVisibility::Visible, OverlayVisibility::Hidden] {
         assert_eq!(round_trip(&variant), variant);
     }
+}
+
+#[test]
+fn binding_source_round_trip() {
+    // Reserved variants serialize as their canonical lowercase forms
+    assert_eq!(round_trip(&BindingSource::Default), BindingSource::Default);
+    assert_eq!(round_trip(&BindingSource::User), BindingSource::User);
+
+    // Custom labels preserve their value
+    let plugin = BindingSource::new("plugin");
+    assert_eq!(round_trip(&plugin), plugin);
+}
+
+#[test]
+fn binding_source_deserialize_normalizes_reserved_labels() {
+    // Deserializing a reserved label in any case produces the typed variant
+    let from_upper: BindingSource = serde_json::from_str(r#""DEFAULT""#).unwrap();
+    assert_eq!(from_upper, BindingSource::Default);
+    assert_eq!(serde_json::to_string(&from_upper).unwrap(), r#""default""#);
+
+    let from_mixed: BindingSource = serde_json::from_str(r#""UsEr""#).unwrap();
+    assert_eq!(from_mixed, BindingSource::User);
+    assert_eq!(serde_json::to_string(&from_mixed).unwrap(), r#""user""#);
 }
 
 // Composite types

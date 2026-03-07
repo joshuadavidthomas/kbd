@@ -5,12 +5,42 @@ use super::sequence::SequenceBindingRef;
 use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
+use crate::binding::BindingSource;
 use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
+
+/// Priority level derived from a binding's [`BindingSource`](crate::binding::BindingSource) label.
+///
+/// The registry uses this to resolve conflicts when multiple global
+/// bindings share the same hotkey. Variants are ordered:
+/// `Default` < `Standard` < `User`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum SourcePriority {
+    Default,
+    Standard,
+    User,
+}
+
+impl From<&BindingSource> for SourcePriority {
+    fn from(source: &BindingSource) -> Self {
+        match source {
+            BindingSource::Default => Self::Default,
+            BindingSource::User => Self::User,
+            BindingSource::Custom(_) => Self::Standard,
+        }
+    }
+}
+
+impl From<&BindingOptions> for SourcePriority {
+    /// Bindings with no source are treated as [`SourcePriority::Standard`].
+    fn from(options: &BindingOptions) -> Self {
+        options.source().map_or(Self::Standard, Self::from)
+    }
+}
 
 impl Dispatcher {
     /// Register a binding. Returns the assigned [`BindingId`].
@@ -126,7 +156,7 @@ impl Dispatcher {
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
-        let new_tier = binding.options().precedence_tier();
+        let new_priority = SourcePriority::from(binding.options());
         let new_device = binding.options().device();
 
         if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
@@ -138,7 +168,7 @@ impl Dispatcher {
             self.bindings_by_id
                 .get(existing_id)
                 .is_some_and(|existing| {
-                    existing.options().precedence_tier() == new_tier
+                    SourcePriority::from(existing.options()) == new_priority
                         && existing.options().device() == new_device
                 })
         }) {
@@ -150,7 +180,7 @@ impl Dispatcher {
             .position(|existing_id| {
                 self.bindings_by_id
                     .get(existing_id)
-                    .is_some_and(|existing| existing.options().precedence_tier() > new_tier)
+                    .is_some_and(|existing| SourcePriority::from(existing.options()) > new_priority)
             })
             .unwrap_or(ids_for_hotkey.len());
 
@@ -228,14 +258,44 @@ impl Dispatcher {
 #[cfg(test)]
 mod tests {
     use super::super::Dispatcher;
+    use super::SourcePriority;
     use crate::action::Action;
     use crate::binding::BindingId;
+    use crate::binding::BindingSource;
     use crate::binding::RegisteredBinding;
     use crate::hotkey::Hotkey;
     use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
     use crate::key::Key;
     use crate::sequence::SequenceOptions;
+
+    #[test]
+    fn source_priority_from_source_labels() {
+        assert_eq!(
+            SourcePriority::from(&BindingSource::new("default")),
+            SourcePriority::Default,
+        );
+        assert_eq!(
+            SourcePriority::from(&BindingSource::new("user")),
+            SourcePriority::User,
+        );
+        assert_eq!(
+            SourcePriority::from(&BindingSource::new("plugin")),
+            SourcePriority::Standard,
+        );
+    }
+
+    #[test]
+    fn source_priority_is_case_insensitive() {
+        assert_eq!(
+            SourcePriority::from(&BindingSource::new("DEFAULT")),
+            SourcePriority::Default,
+        );
+        assert_eq!(
+            SourcePriority::from(&BindingSource::new("UsEr")),
+            SourcePriority::User,
+        );
+    }
 
     #[test]
     fn register_returns_unique_id() {

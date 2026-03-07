@@ -219,13 +219,13 @@ mod tests {
     use super::*;
     use crate::action::Action;
     use crate::binding::BindingOptions;
-    use crate::binding::KeyPropagation;
     use crate::hotkey::Hotkey;
     use crate::key::Key;
     use crate::layer::LayerBinding;
     use crate::layer::LayerOptions;
     use crate::layer::LayerSequenceBinding;
     use crate::layer::StoredLayer;
+    use crate::policy::KeyPropagation;
     use crate::sequence::SequenceOptions;
 
     fn single_step(key: Key) -> HotkeySequence {

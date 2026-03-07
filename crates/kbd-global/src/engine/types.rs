@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use kbd::binding::KeyPropagation;
+use kbd::policy::KeyPropagation;
 use kbd::policy::RepeatPolicy;
 
 /// Whether the engine is running in grab mode.

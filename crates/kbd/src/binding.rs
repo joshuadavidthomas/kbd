@@ -12,6 +12,7 @@ use std::time::Duration;
 use crate::action::Action;
 use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
+use crate::policy::KeyPropagation;
 use crate::policy::RateLimit;
 use crate::policy::RepeatPolicy;
 
@@ -44,39 +45,54 @@ impl Default for BindingId {
 
 /// Provenance label for a binding.
 ///
-/// Tracks where a binding came from — for example `"default"`, `"user"`,
-/// `"plugin"`, or an application-specific label.
+/// Tracks where a binding came from. The two reserved variants —
+/// [`Default`](Self::Default) and [`User`](Self::User) — have special
+/// meaning for the dispatcher's registry: `Default` bindings are
+/// lower-priority and `User` bindings are higher-priority when multiple
+/// bindings share the same hotkey. [`Custom`](Self::Custom) covers
+/// application-specific labels like `"plugin"` or `"vim-extension"`.
 ///
-/// The dispatcher recognizes two labels for precedence when multiple global
-/// bindings share the same hotkey: `"default"` is lower-priority and `"user"`
-/// is higher-priority. Matching is case-insensitive. Other labels — and
-/// bindings with no source at all — use the normal priority tier, so there can
-/// be at most one binding per hotkey in each tier.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct BindingSource(Box<str>);
+/// Construction from strings parses the reserved labels
+/// case-insensitively: `BindingSource::new("default")` and
+/// `BindingSource::new("DEFAULT")` both produce
+/// [`BindingSource::Default`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum BindingSource {
+    /// Application-provided defaults — lowest priority.
+    Default,
+    /// User-defined bindings — highest priority.
+    User,
+    /// Application-specific label (e.g., `"plugin"`, `"vim-extension"`).
+    Custom(Box<str>),
+}
 
 impl BindingSource {
-    /// Create a new source label.
+    /// Create a source from a string label.
+    ///
+    /// Reserved labels are recognized case-insensitively:
+    /// - `"default"` → [`BindingSource::Default`]
+    /// - `"user"` → [`BindingSource::User`]
+    /// - anything else → [`BindingSource::Custom`]
     #[must_use]
     pub fn new(value: impl Into<Box<str>>) -> Self {
-        Self(value.into())
+        let value = value.into();
+        if value.eq_ignore_ascii_case("default") {
+            Self::Default
+        } else if value.eq_ignore_ascii_case("user") {
+            Self::User
+        } else {
+            Self::Custom(value)
+        }
     }
 
     /// Return the source label as a string slice.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    pub(crate) fn precedence_tier(&self) -> BindingSourceTier {
-        if self.as_str().eq_ignore_ascii_case("default") {
-            BindingSourceTier::Default
-        } else if self.as_str().eq_ignore_ascii_case("user") {
-            BindingSourceTier::User
-        } else {
-            BindingSourceTier::Standard
+        match self {
+            Self::Default => "default",
+            Self::User => "user",
+            Self::Custom(label) => label,
         }
     }
 }
@@ -99,42 +115,19 @@ impl std::fmt::Display for BindingSource {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum BindingSourceTier {
-    Default,
-    Standard,
-    User,
+#[cfg(feature = "serde")]
+impl serde::Serialize for BindingSource {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
 }
 
-/// How a matched binding handles the original key event.
-///
-/// # Examples
-///
-/// ```
-/// use kbd::action::Action;
-/// use kbd::binding::{BindingId, BindingOptions, KeyPropagation, RegisteredBinding};
-/// use kbd::hotkey::{Hotkey, Modifier};
-/// use kbd::key::Key;
-///
-/// // A binding that forwards the key event to the application
-/// // while still running its action (e.g., logging keypresses).
-/// let binding = RegisteredBinding::new(
-///     BindingId::new(),
-///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-///     Action::Suppress,
-/// ).with_propagation(KeyPropagation::Continue);
-///
-/// assert_eq!(binding.propagation(), KeyPropagation::Continue);
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[non_exhaustive]
-pub enum KeyPropagation {
-    /// Stop propagation — the event is consumed and not forwarded.
-    #[default]
-    Stop,
-    /// Continue propagation — forward the event while still running the action.
-    Continue,
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for BindingSource {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = Box::<str>::deserialize(deserializer)?;
+        Ok(Self::new(s))
+    }
 }
 
 /// Whether a binding appears in hotkey overlays and help screens.
@@ -176,7 +169,8 @@ pub enum OverlayVisibility {
 /// # Examples
 ///
 /// ```
-/// use kbd::binding::{BindingOptions, BindingSource, KeyPropagation, OverlayVisibility};
+/// use kbd::binding::{BindingOptions, BindingSource, OverlayVisibility};
+/// use kbd::policy::KeyPropagation;
 ///
 /// let opts = BindingOptions::default()
 ///     .with_description("Copy to clipboard")
@@ -259,12 +253,6 @@ impl BindingOptions {
     pub fn with_source(mut self, source: impl Into<BindingSource>) -> Self {
         self.source = Some(source.into());
         self
-    }
-
-    pub(crate) fn precedence_tier(&self) -> BindingSourceTier {
-        self.source
-            .as_ref()
-            .map_or(BindingSourceTier::Standard, BindingSource::precedence_tier)
     }
 
     /// Whether this binding appears in hotkey overlays.
@@ -426,6 +414,7 @@ mod tests {
     use super::*;
     use crate::hotkey::Modifier;
     use crate::key::Key;
+    use crate::policy::RepeatTiming;
 
     #[test]
     fn binding_id_produces_unique_ids() {
@@ -474,28 +463,45 @@ mod tests {
     }
 
     #[test]
+    fn binding_source_parses_reserved_labels() {
+        assert!(matches!(
+            BindingSource::new("default"),
+            BindingSource::Default
+        ));
+        assert!(matches!(BindingSource::new("user"), BindingSource::User));
+        assert!(matches!(
+            BindingSource::new("plugin"),
+            BindingSource::Custom(_)
+        ));
+    }
+
+    #[test]
+    fn binding_source_parsing_is_case_insensitive() {
+        assert_eq!(BindingSource::new("DEFAULT"), BindingSource::Default);
+        assert_eq!(BindingSource::new("UsEr"), BindingSource::User);
+    }
+
+    #[test]
+    fn binding_source_as_str_normalizes_reserved_labels() {
+        assert_eq!(BindingSource::new("DEFAULT").as_str(), "default");
+        assert_eq!(BindingSource::new("UsEr").as_str(), "user");
+        assert_eq!(BindingSource::new("plugin").as_str(), "plugin");
+    }
+
+    #[test]
+    fn binding_source_display() {
+        assert_eq!(BindingSource::Default.to_string(), "default");
+        assert_eq!(BindingSource::User.to_string(), "user");
+        assert_eq!(BindingSource::Custom("plugin".into()).to_string(), "plugin");
+    }
+
+    #[test]
     fn binding_options_can_track_binding_source() {
         let source = BindingSource::new("user");
         let options = BindingOptions::default().with_source(source.clone());
 
         assert_eq!(source.as_str(), "user");
         assert_eq!(options.source(), Some(&source));
-    }
-
-    #[test]
-    fn binding_source_reserved_labels_are_case_insensitive() {
-        assert_eq!(
-            BindingSource::new("DEFAULT").precedence_tier(),
-            BindingSourceTier::Default
-        );
-        assert_eq!(
-            BindingSource::new("UsEr").precedence_tier(),
-            BindingSourceTier::User
-        );
-        assert_eq!(
-            BindingSource::new("plugin").precedence_tier(),
-            BindingSourceTier::Standard
-        );
     }
 
     #[test]
@@ -558,8 +564,6 @@ mod tests {
 
     #[test]
     fn repeat_policy_custom_stores_delay_and_rate() {
-        use crate::policy::RepeatTiming;
-
         let timing = RepeatTiming::new(Duration::from_millis(500), Duration::from_millis(30));
         let policy = RepeatPolicy::Custom(timing);
         match policy {
