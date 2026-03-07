@@ -348,9 +348,6 @@ impl Engine {
                 _ => false,
             },
         };
-        // `cached` is no longer used; NLL releases the borrow on
-        // `self.press_cache` so the mutable calls below compile.
-
         if should_fire {
             // Re-fire the cached callback from the original press — no
             // dispatcher re-query, so debounce/rate-limit/layer side
