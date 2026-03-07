@@ -403,6 +403,14 @@ mod tests {
         }
     }
 
+    fn fire_pending_timeouts(dispatcher: &mut Dispatcher) {
+        for pending in &dispatcher.pending_timeouts() {
+            if let Some(result) = dispatcher.match_pending_timeout(pending) {
+                execute_callback(&result);
+            }
+        }
+    }
+
     #[test]
     fn sequence_reports_pending_then_fires_on_completion() {
         let mut dispatcher = Dispatcher::new();
@@ -459,11 +467,7 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for pending in &dispatcher.pending_timeouts() {
-            if let Some(result) = dispatcher.match_pending_timeout(pending) {
-                execute_callback(&result);
-            }
-        }
+        fire_pending_timeouts(&mut dispatcher);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
@@ -570,11 +574,7 @@ mod tests {
         assert!(matches!(pending, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for pending in &dispatcher.pending_timeouts() {
-            if let Some(result) = dispatcher.match_pending_timeout(pending) {
-                execute_callback(&result);
-            }
-        }
+        fire_pending_timeouts(&mut dispatcher);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
@@ -611,11 +611,7 @@ mod tests {
         assert!(matches!(second, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for pending in &dispatcher.pending_timeouts() {
-            if let Some(result) = dispatcher.match_pending_timeout(pending) {
-                execute_callback(&result);
-            }
-        }
+        fire_pending_timeouts(&mut dispatcher);
 
         assert_eq!(counter.load(Ordering::Relaxed), 0);
     }
@@ -793,11 +789,7 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for pending in &dispatcher.pending_timeouts() {
-            if let Some(result) = dispatcher.match_pending_timeout(pending) {
-                execute_callback(&result);
-            }
-        }
+        fire_pending_timeouts(&mut dispatcher);
 
         let h = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
         execute_callback(&h);

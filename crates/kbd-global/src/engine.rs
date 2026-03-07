@@ -45,6 +45,7 @@ use kbd::device::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
 use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
 use kbd::key::Key;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
@@ -442,7 +443,7 @@ impl Engine {
         let outcome = self.resolve_outcome(match_outcome, event.key, event.transition);
 
         // Cache the outcome for non-modifier key presses.
-        if kbd::hotkey::Modifier::from_key(event.key).is_none() {
+        if Modifier::from_key(event.key).is_none() {
             self.press_cache.insert(
                 event.key,
                 PressCacheEntry {
