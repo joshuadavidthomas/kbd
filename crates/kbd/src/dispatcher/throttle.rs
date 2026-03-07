@@ -8,41 +8,11 @@ use super::InternalOutcome;
 use super::MatchedBindingRef;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
-use crate::layer::LayerName;
 
 /// Tracks per-binding timing state for debounce and rate limiting.
 #[derive(Default)]
 pub(super) struct ThrottleTracker {
-    state: HashMap<ThrottleKey, ThrottleState>,
-}
-
-/// Unique key identifying a binding for throttle tracking.
-///
-/// Mirrors [`MatchedBindingRef`] but derives Hash/Eq for use as a
-/// `HashMap` key.
-#[derive(Clone, Hash, PartialEq, Eq)]
-enum ThrottleKey {
-    Global(BindingId),
-    Layer { name: LayerName, index: usize },
-    SequenceGlobal(BindingId),
-    SequenceLayer { name: LayerName, index: usize },
-}
-
-impl From<&MatchedBindingRef> for ThrottleKey {
-    fn from(binding_ref: &MatchedBindingRef) -> Self {
-        match binding_ref {
-            MatchedBindingRef::Global(id) => ThrottleKey::Global(*id),
-            MatchedBindingRef::Layer { name, index } => ThrottleKey::Layer {
-                name: name.clone(),
-                index: *index,
-            },
-            MatchedBindingRef::SequenceGlobal(id) => ThrottleKey::SequenceGlobal(*id),
-            MatchedBindingRef::SequenceLayer { name, index } => ThrottleKey::SequenceLayer {
-                name: name.clone(),
-                index: *index,
-            },
-        }
-    }
+    state: HashMap<MatchedBindingRef, ThrottleState>,
 }
 
 #[derive(Default)]
@@ -59,7 +29,7 @@ impl ThrottleTracker {
     /// `has_rate_limit` controls whether the fire is also pushed into
     /// `recent_fires` for sliding-window rate limiting. Without it,
     /// only `last_fire` is updated (for debounce tracking).
-    fn record_fire(&mut self, key: ThrottleKey, now: Instant, has_rate_limit: bool) {
+    fn record_fire(&mut self, key: MatchedBindingRef, now: Instant, has_rate_limit: bool) {
         let state = self.state.entry(key).or_default();
         state.last_fire = Some(now);
         if has_rate_limit {
@@ -70,7 +40,7 @@ impl ThrottleTracker {
     /// Check if a binding should be throttled by debounce.
     ///
     /// Returns `true` if the binding should be suppressed.
-    fn is_debounced(&self, key: &ThrottleKey, debounce: Duration, now: Instant) -> bool {
+    fn is_debounced(&self, key: &MatchedBindingRef, debounce: Duration, now: Instant) -> bool {
         self.state
             .get(key)
             .and_then(|s| s.last_fire)
@@ -83,7 +53,7 @@ impl ThrottleTracker {
     /// the count within the window meets or exceeds `max_count`.
     fn is_rate_limited(
         &mut self,
-        key: &ThrottleKey,
+        key: &MatchedBindingRef,
         max_count: u32,
         window: Duration,
         now: Instant,
@@ -106,7 +76,7 @@ impl ThrottleTracker {
 
     /// Remove throttle state for a specific global binding (on unregister).
     pub(super) fn remove_global(&mut self, id: BindingId) {
-        self.state.remove(&ThrottleKey::Global(id));
+        self.state.remove(&MatchedBindingRef::Global(id));
     }
 }
 
@@ -135,13 +105,13 @@ impl Dispatcher {
         }
 
         let now = Instant::now();
-        let throttle_key = ThrottleKey::from(binding_ref);
+        let binding_ref = binding_ref.clone();
 
         // Check debounce
         if let Some(debounce) = debounce {
             if self
                 .throttle_tracker
-                .is_debounced(&throttle_key, debounce, now)
+                .is_debounced(&binding_ref, debounce, now)
             {
                 return InternalOutcome::Throttled { propagation };
             }
@@ -150,7 +120,7 @@ impl Dispatcher {
         // Check rate limit
         if let Some(rate_limit) = rate_limit {
             if self.throttle_tracker.is_rate_limited(
-                &throttle_key,
+                &binding_ref,
                 rate_limit.max_count(),
                 rate_limit.window(),
                 now,
@@ -161,7 +131,7 @@ impl Dispatcher {
 
         // Not throttled — record this fire
         self.throttle_tracker
-            .record_fire(throttle_key, now, rate_limit.is_some());
+            .record_fire(binding_ref, now, rate_limit.is_some());
 
         outcome
     }
