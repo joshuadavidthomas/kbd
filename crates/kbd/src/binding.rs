@@ -414,6 +414,7 @@ mod tests {
     use super::*;
     use crate::hotkey::Modifier;
     use crate::key::Key;
+    use crate::policy::RepeatTiming;
 
     #[test]
     fn binding_id_produces_unique_ids() {
@@ -440,8 +441,6 @@ mod tests {
 
     #[test]
     fn binding_options_defaults() {
-        use crate::policy::KeyPropagation;
-
         let opts = BindingOptions::default();
         assert_eq!(opts.propagation(), KeyPropagation::Stop);
         assert_eq!(opts.description(), None);
@@ -451,8 +450,6 @@ mod tests {
 
     #[test]
     fn binding_options_builder_chain() {
-        use crate::policy::KeyPropagation;
-
         let opts = BindingOptions::default()
             .with_propagation(KeyPropagation::Continue)
             .with_description("Save file")
@@ -509,8 +506,6 @@ mod tests {
 
     #[test]
     fn registered_binding_stores_fields() {
-        use crate::policy::KeyPropagation;
-
         let id = BindingId::new();
         let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
         let binding = RegisteredBinding::new(id, hotkey.clone(), Action::Suppress);
@@ -522,8 +517,6 @@ mod tests {
 
     #[test]
     fn registered_binding_with_propagation() {
-        use crate::policy::KeyPropagation;
-
         let id = BindingId::new();
         let binding = RegisteredBinding::new(id, Hotkey::new(Key::A), Action::Suppress)
             .with_propagation(KeyPropagation::Continue);
@@ -571,8 +564,6 @@ mod tests {
 
     #[test]
     fn repeat_policy_custom_stores_delay_and_rate() {
-        use crate::policy::RepeatTiming;
-
         let timing = RepeatTiming::new(Duration::from_millis(500), Duration::from_millis(30));
         let policy = RepeatPolicy::Custom(timing);
         match policy {
