@@ -45,30 +45,55 @@ impl Default for BindingId {
 
 /// Provenance label for a binding.
 ///
-/// Tracks where a binding came from — for example `"default"`, `"user"`,
-/// `"plugin"`, or an application-specific label.
+/// Tracks where a binding came from. The two reserved variants —
+/// [`Default`](Self::Default) and [`User`](Self::User) — have special
+/// meaning for the dispatcher's registry: `Default` bindings are
+/// lower-priority and `User` bindings are higher-priority when multiple
+/// bindings share the same hotkey. [`Custom`](Self::Custom) covers
+/// application-specific labels like `"plugin"` or `"vim-extension"`.
 ///
-/// The dispatcher's registry recognizes two labels for precedence when
-/// multiple global bindings share the same hotkey: `"default"` is
-/// lower-priority and `"user"` is higher-priority (case-insensitive).
-/// Other labels use the normal priority tier. See the registry module
-/// for precedence resolution details.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct BindingSource(Box<str>);
+/// Construction from strings parses the reserved labels
+/// case-insensitively: `BindingSource::new("default")` and
+/// `BindingSource::new("DEFAULT")` both produce
+/// [`BindingSource::Default`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum BindingSource {
+    /// Application-provided defaults — lowest priority.
+    Default,
+    /// User-defined bindings — highest priority.
+    User,
+    /// Application-specific label (e.g., `"plugin"`, `"vim-extension"`).
+    Custom(Box<str>),
+}
 
 impl BindingSource {
-    /// Create a new source label.
+    /// Create a source from a string label.
+    ///
+    /// Reserved labels are recognized case-insensitively:
+    /// - `"default"` → [`BindingSource::Default`]
+    /// - `"user"` → [`BindingSource::User`]
+    /// - anything else → [`BindingSource::Custom`]
     #[must_use]
     pub fn new(value: impl Into<Box<str>>) -> Self {
-        Self(value.into())
+        let value = value.into();
+        if value.eq_ignore_ascii_case("default") {
+            Self::Default
+        } else if value.eq_ignore_ascii_case("user") {
+            Self::User
+        } else {
+            Self::Custom(value)
+        }
     }
 
     /// Return the source label as a string slice.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.0
+        match self {
+            Self::Default => "default",
+            Self::User => "user",
+            Self::Custom(label) => label,
+        }
     }
 }
 
@@ -87,6 +112,21 @@ impl From<String> for BindingSource {
 impl std::fmt::Display for BindingSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for BindingSource {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for BindingSource {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = Box::<str>::deserialize(deserializer)?;
+        Ok(Self::new(s))
     }
 }
 

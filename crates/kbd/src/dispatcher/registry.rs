@@ -27,18 +27,11 @@ pub(crate) enum SourcePriority {
 }
 
 impl From<&BindingSource> for SourcePriority {
-    /// Derive the priority level from a binding's source label.
-    ///
-    /// - `"default"` (case-insensitive) → [`SourcePriority::Default`]
-    /// - `"user"` (case-insensitive) → [`SourcePriority::User`]
-    /// - anything else → [`SourcePriority::Standard`]
     fn from(source: &BindingSource) -> Self {
-        if source.as_str().eq_ignore_ascii_case("default") {
-            Self::Default
-        } else if source.as_str().eq_ignore_ascii_case("user") {
-            Self::User
-        } else {
-            Self::Standard
+        match source {
+            BindingSource::Default => Self::Default,
+            BindingSource::User => Self::User,
+            BindingSource::Custom(_) => Self::Standard,
         }
     }
 }
