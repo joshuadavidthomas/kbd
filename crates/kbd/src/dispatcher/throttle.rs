@@ -143,3 +143,106 @@ impl Dispatcher {
         outcome
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn global_key() -> MatchedBindingRef {
+        MatchedBindingRef::Global(BindingId::new())
+    }
+
+    #[test]
+    fn first_fire_is_not_debounced() {
+        let tracker = ThrottleTracker::default();
+        let key = global_key();
+        let now = Instant::now();
+        assert!(!tracker.is_debounced(&key, Duration::from_millis(100), now));
+    }
+
+    #[test]
+    fn fire_within_debounce_window_is_suppressed() {
+        let mut tracker = ThrottleTracker::default();
+        let key = global_key();
+        let t0 = Instant::now();
+        tracker.record_fire(key.clone(), t0, false);
+
+        assert!(tracker.is_debounced(&key, Duration::from_millis(100), t0));
+    }
+
+    #[test]
+    fn fire_after_debounce_window_is_allowed() {
+        let mut tracker = ThrottleTracker::default();
+        let key = global_key();
+        let t0 = Instant::now();
+        tracker.record_fire(key.clone(), t0, false);
+
+        let t1 = t0 + Duration::from_millis(101);
+        assert!(!tracker.is_debounced(&key, Duration::from_millis(100), t1));
+    }
+
+    #[test]
+    fn debounce_is_per_binding() {
+        let mut tracker = ThrottleTracker::default();
+        let key_a = global_key();
+        let key_b = global_key();
+        let t0 = Instant::now();
+        tracker.record_fire(key_a, t0, false);
+
+        assert!(!tracker.is_debounced(&key_b, Duration::from_millis(100), t0));
+    }
+
+    #[test]
+    fn first_fire_is_not_rate_limited() {
+        let mut tracker = ThrottleTracker::default();
+        let key = global_key();
+        let now = Instant::now();
+        assert!(!tracker.is_rate_limited(&key, 3, Duration::from_secs(1), now));
+    }
+
+    #[test]
+    fn fires_up_to_max_are_allowed() {
+        let mut tracker = ThrottleTracker::default();
+        let key = global_key();
+        let t0 = Instant::now();
+
+        for i in 0..3 {
+            let t = t0 + Duration::from_millis(i * 10);
+            assert!(!tracker.is_rate_limited(&key, 3, Duration::from_secs(1), t));
+            tracker.record_fire(key.clone(), t, true);
+        }
+
+        let t3 = t0 + Duration::from_millis(30);
+        assert!(tracker.is_rate_limited(&key, 3, Duration::from_secs(1), t3));
+    }
+
+    #[test]
+    fn rate_limit_resets_after_window() {
+        let mut tracker = ThrottleTracker::default();
+        let key = global_key();
+        let t0 = Instant::now();
+
+        for i in 0..3 {
+            let t = t0 + Duration::from_millis(i * 10);
+            tracker.record_fire(key.clone(), t, true);
+        }
+
+        let t_after = t0 + Duration::from_secs(1);
+        assert!(!tracker.is_rate_limited(&key, 3, Duration::from_secs(1), t_after));
+    }
+
+    #[test]
+    fn remove_global_clears_state() {
+        let id = BindingId::new();
+        let key = MatchedBindingRef::Global(id);
+        let mut tracker = ThrottleTracker::default();
+        let t0 = Instant::now();
+        tracker.record_fire(key.clone(), t0, false);
+
+        assert!(tracker.is_debounced(&key, Duration::from_millis(100), t0));
+
+        tracker.remove_global(id);
+
+        assert!(!tracker.is_debounced(&key, Duration::from_millis(100), t0));
+    }
+}
