@@ -3,12 +3,7 @@
 //! Internal types used by the engine to track grab mode and classify how
 //! each key event was handled.
 
-use std::sync::Arc;
-use std::time::Instant;
-
-use kbd::action::Action;
 use kbd::policy::KeyPropagation;
-use kbd::policy::RepeatPolicy;
 
 /// Whether the engine is running in grab mode.
 ///
@@ -38,57 +33,6 @@ pub(crate) enum KeyEventOutcome {
     UnmatchedForwarded,
     /// Event did not match any binding and was not forwarded (non-grab mode).
     Ignored,
-}
-
-/// Entry in the press cache, tracking the disposition and repeat policy
-/// for a key that was pressed.
-///
-/// The press cache ensures that release and repeat events use the same
-/// disposition as the original press — essential for correctness across
-/// layer transitions (keyd's `cache_entry` pattern).
-pub(super) struct PressCacheEntry {
-    /// The original forwarding disposition from the press event.
-    pub(super) outcome: KeyEventOutcome,
-    /// Repeat handling info for matched bindings.
-    pub(super) repeat_info: Option<RepeatInfo>,
-}
-
-/// Repeat handling state for a matched binding in the press cache.
-///
-/// Caches the callback from the original press so repeat events can
-/// re-fire it without re-querying the dispatcher (which would trigger
-/// debounce, rate limiting, and layer side effects).
-pub(super) struct RepeatInfo {
-    /// The callback to re-fire on repeat, if the action was a callback.
-    ///
-    /// Layer actions, suppress, and emit don't repeat — only user
-    /// callbacks do.
-    pub(super) callback: Option<Arc<dyn Fn() + Send + Sync>>,
-    /// How repeat events should be handled.
-    pub(super) policy: RepeatPolicy,
-    /// When the original press occurred (for Custom delay tracking).
-    pub(super) press_time: Instant,
-    /// When the last repeat action fired (for Custom rate tracking).
-    pub(super) last_repeat_fire: Option<Instant>,
-}
-
-impl RepeatInfo {
-    /// Build repeat info from a matched action and its repeat policy.
-    ///
-    /// Captures the callback (if any) and records the current time as
-    /// the press time for Custom delay/rate tracking.
-    pub(super) fn for_action(action: &Action, policy: RepeatPolicy) -> Self {
-        let callback = match action {
-            Action::Callback(cb) => Some(Arc::clone(cb)),
-            _ => None,
-        };
-        Self {
-            callback,
-            policy,
-            press_time: Instant::now(),
-            last_repeat_fire: None,
-        }
-    }
 }
 
 /// Intermediate result from matching, used for forwarding decisions.
