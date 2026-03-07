@@ -100,7 +100,7 @@ impl Dispatcher {
             MatchedBindingRef::Global(id) => self.bindings_by_id[id].options(),
             MatchedBindingRef::Layer { name, index } => &self.layers[name].bindings[*index].options,
             MatchedBindingRef::SequenceGlobal(_) | MatchedBindingRef::SequenceLayer { .. } => {
-                &BindingOptions::DEFAULT
+                &BindingOptions::default()
             }
         };
         let debounce = options.debounce();

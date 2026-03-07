@@ -219,18 +219,6 @@ pub struct BindingOptions {
 }
 
 impl BindingOptions {
-    /// A const default value for use in static contexts.
-    pub(crate) const DEFAULT: Self = Self {
-        propagation: KeyPropagation::Stop,
-        description: None,
-        source: None,
-        overlay_visibility: OverlayVisibility::Visible,
-        device: None,
-        debounce: None,
-        rate_limit: None,
-        repeat_policy: RepeatPolicy::Suppress,
-    };
-
     /// How the original key event is handled after matching.
     #[must_use]
     pub const fn propagation(&self) -> KeyPropagation {
