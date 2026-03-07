@@ -94,8 +94,15 @@ impl Dispatcher {
             return outcome;
         };
 
-        // Copy throttle options out before any mutable borrows on self.
-        let options = self.binding_options(binding_ref);
+        // Look up options for the matched binding. Sequence bindings
+        // don't carry BindingOptions, so they fall back to the default.
+        let options = match binding_ref {
+            MatchedBindingRef::Global(id) => self.bindings_by_id[id].options(),
+            MatchedBindingRef::Layer { name, index } => &self.layers[name].bindings[*index].options,
+            MatchedBindingRef::SequenceGlobal(_) | MatchedBindingRef::SequenceLayer { .. } => {
+                &BindingOptions::DEFAULT
+            }
+        };
         let debounce = options.debounce();
         let rate_limit = options.rate_limit();
 
@@ -134,19 +141,5 @@ impl Dispatcher {
             .record_fire(binding_ref, now, rate_limit.is_some());
 
         outcome
-    }
-
-    /// Look up the binding options for a given binding reference.
-    ///
-    /// Sequence bindings don't carry `BindingOptions`, so they return
-    /// the default (no debounce, no rate limit, suppress repeats).
-    fn binding_options(&self, binding_ref: &MatchedBindingRef) -> &BindingOptions {
-        match binding_ref {
-            MatchedBindingRef::Global(id) => self.bindings_by_id[id].options(),
-            MatchedBindingRef::Layer { name, index } => &self.layers[name].bindings[*index].options,
-            MatchedBindingRef::SequenceGlobal(_) | MatchedBindingRef::SequenceLayer { .. } => {
-                &BindingOptions::DEFAULT
-            }
-        }
     }
 }
