@@ -3,7 +3,10 @@
 //! Internal types used by the engine to track grab mode and classify how
 //! each key event was handled.
 
+use std::time::Instant;
+
 use kbd::binding::KeyPropagation;
+use kbd::binding::RepeatPolicy;
 
 /// Whether the engine is running in grab mode.
 ///
@@ -33,6 +36,31 @@ pub(crate) enum KeyEventOutcome {
     UnmatchedForwarded,
     /// Event did not match any binding and was not forwarded (non-grab mode).
     Ignored,
+}
+
+/// Entry in the press cache, tracking the disposition and repeat policy
+/// for a key that was pressed.
+///
+/// The press cache ensures that release and repeat events use the same
+/// disposition as the original press — essential for correctness across
+/// layer transitions (keyd's `cache_entry` pattern).
+#[derive(Debug, Clone)]
+pub(super) struct PressCacheEntry {
+    /// The original forwarding disposition from the press event.
+    pub(super) outcome: KeyEventOutcome,
+    /// Repeat handling info for matched bindings.
+    pub(super) repeat_info: Option<RepeatInfo>,
+}
+
+/// Repeat handling state for a matched binding in the press cache.
+#[derive(Debug, Clone)]
+pub(super) struct RepeatInfo {
+    /// How repeat events should be handled.
+    pub(super) policy: RepeatPolicy,
+    /// When the original press occurred (for Custom delay tracking).
+    pub(super) press_time: Instant,
+    /// When the last repeat action fired (for Custom rate tracking).
+    pub(super) last_repeat_fire: Option<Instant>,
 }
 
 /// Intermediate result from matching, used for forwarding decisions.

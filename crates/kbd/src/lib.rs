@@ -85,6 +85,8 @@ pub mod prelude {
     pub use crate::binding::BindingSource;
     pub use crate::binding::KeyPropagation;
     pub use crate::binding::OverlayVisibility;
+    pub use crate::binding::RateLimit;
+    pub use crate::binding::RepeatPolicy;
     pub use crate::device::DeviceContext;
     pub use crate::device::DeviceFilter;
     pub use crate::device::DeviceInfo;

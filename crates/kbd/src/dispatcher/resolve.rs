@@ -152,6 +152,15 @@ pub(super) fn classify_layer(
     }
 }
 
+/// Read-only lookup variant for repeat event handling.
+pub(super) fn find_immediate_in_layer_pub(
+    stored: &StoredLayer,
+    hotkey: &Hotkey,
+    device: Option<&DeviceContext<'_>>,
+) -> Option<usize> {
+    find_immediate_in_layer(stored, hotkey, device)
+}
+
 /// Find the first immediate hotkey binding in a layer that matches a hotkey.
 ///
 /// When device context is provided, bindings with a device filter are only

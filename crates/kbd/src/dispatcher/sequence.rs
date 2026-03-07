@@ -8,6 +8,7 @@ use super::MatchedBindingRef;
 use super::layers::LayerEffect;
 use crate::binding::BindingId;
 use crate::binding::KeyPropagation;
+use crate::binding::RepeatPolicy;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::layer::LayerName;
@@ -141,6 +142,7 @@ impl Dispatcher {
                 binding_ref: standalone.binding_ref,
                 layer_effect: standalone.layer_effect,
                 propagation: standalone.propagation,
+                repeat_policy: RepeatPolicy::default(),
             });
         }
 
@@ -173,6 +175,7 @@ impl Dispatcher {
                         binding_ref,
                         layer_effect,
                         propagation,
+                        repeat_policy: RepeatPolicy::default(),
                     });
                 }
                 SequenceStartCandidate::MultiStep {
@@ -205,9 +208,9 @@ impl Dispatcher {
 
     pub(super) fn pending_standalone_from_match(
         &self,
-        binding_match: Option<(MatchedBindingRef, KeyPropagation)>,
+        binding_match: Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)>,
     ) -> Option<PendingStandalone> {
-        binding_match.map(|(binding_ref, propagation)| PendingStandalone {
+        binding_match.map(|(binding_ref, propagation, _repeat_policy)| PendingStandalone {
             layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
             binding_ref,
             propagation,
@@ -230,6 +233,7 @@ impl Dispatcher {
                 return vec![MatchResult::Matched {
                     action,
                     propagation: standalone.propagation,
+                    repeat_policy: RepeatPolicy::default(),
                 }];
             }
 
@@ -290,6 +294,7 @@ impl Dispatcher {
                     binding_ref: MatchedBindingRef::SequenceGlobal(id),
                     layer_effect: LayerEffect::from_action(&binding.action),
                     propagation: binding.propagation,
+                    repeat_policy: RepeatPolicy::default(),
                 }
             }
             SequenceBindingRef::Layer { name, index } => {
@@ -298,6 +303,7 @@ impl Dispatcher {
                     binding_ref: MatchedBindingRef::SequenceLayer { name, index },
                     layer_effect: LayerEffect::from_action(&binding.action),
                     propagation: binding.propagation,
+                    repeat_policy: RepeatPolicy::default(),
                 }
             }
         }
