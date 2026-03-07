@@ -20,7 +20,12 @@ serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+divan = { version = "4.3.0", package = "codspeed-divan-compat" }
 serde_json = { workspace = true }
+
+[[bench]]
+name = "benchmarks"
+harness = false
 
 [package.metadata.docs.rs]
 all-features = true

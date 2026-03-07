@@ -1,6 +1,7 @@
 # kbd
 
 [![CI](https://github.com/joshuadavidthomas/kbd/actions/workflows/test.yml/badge.svg)](https://github.com/joshuadavidthomas/kbd/actions/workflows/test.yml)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge/json/joshuadavidthomas/kbd&style=flat)](https://codspeed.io/joshuadavidthomas/kbd?utm_source=badge)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](#)
 
