@@ -13,7 +13,7 @@ mod query;
 mod registry;
 mod resolve;
 mod sequence;
-pub(crate) mod throttle;
+mod throttle;
 mod timeout;
 
 use std::collections::HashMap;

@@ -12,7 +12,7 @@ use crate::layer::LayerName;
 
 /// Tracks per-binding timing state for debounce and rate limiting.
 #[derive(Default)]
-pub(crate) struct ThrottleTracker {
+pub(super) struct ThrottleTracker {
     state: HashMap<ThrottleKey, ThrottleState>,
 }
 
@@ -105,7 +105,7 @@ impl ThrottleTracker {
     }
 
     /// Remove throttle state for a specific global binding (on unregister).
-    pub(crate) fn remove_global(&mut self, id: BindingId) {
+    pub(super) fn remove_global(&mut self, id: BindingId) {
         self.state.remove(&ThrottleKey::Global(id));
     }
 }
