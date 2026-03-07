@@ -237,9 +237,9 @@ impl Dispatcher {
         })
     }
 
-    pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Vec<PendingTimeout> {
+    pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Option<PendingTimeout> {
         if self.active_sequences.is_empty() {
-            return Vec::new();
+            return None;
         }
 
         let before = self.active_sequences.len();
@@ -249,13 +249,13 @@ impl Dispatcher {
         if expired > 0 && self.active_sequences.is_empty() {
             if let Some(standalone) = self.pending_standalone.take() {
                 self.apply_layer_effect(&standalone.layer_effect);
-                return vec![PendingTimeout::standalone(standalone.inner)];
+                return Some(PendingTimeout::standalone(standalone.inner));
             }
 
             self.pending_standalone = None;
         }
 
-        Vec::new()
+        None
     }
 
     fn sequence_step_count(&self, binding_ref: &SequenceBindingRef) -> usize {

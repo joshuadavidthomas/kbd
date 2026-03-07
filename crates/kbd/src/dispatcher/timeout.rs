@@ -101,8 +101,10 @@ impl Dispatcher {
             self.clear_sequences_for_layer_if_inactive(&layer_name);
         }
 
-        let mut pending = self.check_sequence_timeouts(now);
-
+        let mut pending = Vec::new();
+        if let Some(p) = self.check_sequence_timeouts(now) {
+            pending.push(p);
+        }
         for id in self.tap_hold.check_timeouts(now) {
             pending.push(PendingTimeout::tap_hold_hold(id));
         }
