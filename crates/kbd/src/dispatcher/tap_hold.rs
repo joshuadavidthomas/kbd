@@ -16,12 +16,12 @@ use crate::key::Key;
 use crate::tap_hold::TapHoldOptions;
 
 /// A registered tap-hold binding.
-pub(crate) struct TapHoldBinding {
-    pub(crate) id: BindingId,
-    pub(crate) key: Key,
-    pub(crate) tap_action: Action,
-    pub(crate) hold_action: Action,
-    pub(crate) options: TapHoldOptions,
+pub(super) struct TapHoldBinding {
+    pub(super) id: BindingId,
+    pub(super) key: Key,
+    pub(super) tap_action: Action,
+    pub(super) hold_action: Action,
+    pub(super) options: TapHoldOptions,
 }
 
 /// Whether a tap-hold key has been resolved as a hold yet.
@@ -42,7 +42,7 @@ struct ActiveTapHold {
 
 /// State machine for tap-hold processing within the dispatcher.
 #[derive(Default)]
-pub(crate) struct TapHoldState {
+pub(super) struct TapHoldState {
     /// Registered tap-hold bindings, keyed by trigger key.
     bindings: HashMap<Key, TapHoldBinding>,
     /// Currently active (pressed) tap-hold keys.
@@ -53,7 +53,7 @@ pub(crate) struct TapHoldState {
 }
 
 /// What the tap-hold state machine decided about an event.
-pub(crate) enum TapHoldOutcome {
+pub(super) enum TapHoldOutcome {
     /// The key press was consumed (buffered for tap-hold).
     Consumed,
     /// Tap resolved — return the tap action.
@@ -66,12 +66,12 @@ pub(crate) enum TapHoldOutcome {
 
 impl TapHoldState {
     /// Register a tap-hold binding.
-    pub(crate) fn register(&mut self, binding: TapHoldBinding) {
+    pub(super) fn register(&mut self, binding: TapHoldBinding) {
         self.bindings.insert(binding.key, binding);
     }
 
     /// Unregister a tap-hold binding by ID.
-    pub(crate) fn unregister(&mut self, id: BindingId) {
+    pub(super) fn unregister(&mut self, id: BindingId) {
         self.bindings.retain(|_, b| b.id != id);
         self.active.retain(|_, a| a.binding_id != id);
         self.resolved_holds.retain(|(_, bid)| *bid != id);
@@ -80,17 +80,17 @@ impl TapHoldState {
     /// Returns `true` if any tap-hold bindings exist or any keys are
     /// actively being tracked. Used for fast-path skipping in `process()`.
     #[inline]
-    pub(crate) fn has_state(&self) -> bool {
+    pub(super) fn has_state(&self) -> bool {
         !self.bindings.is_empty() || !self.active.is_empty()
     }
 
     /// Check if a key has a tap-hold binding registered.
-    pub(crate) fn is_registered(&self, key: Key) -> bool {
+    pub(super) fn is_registered(&self, key: Key) -> bool {
         self.bindings.contains_key(&key)
     }
 
     /// Process a key press event for tap-hold.
-    pub(crate) fn on_press(&mut self, key: Key, now: Instant) -> TapHoldOutcome {
+    pub(super) fn on_press(&mut self, key: Key, now: Instant) -> TapHoldOutcome {
         // Resolve any pending tap-holds that get interrupted by this press.
         // Resolved holds are buffered internally and drained via
         // `drain_resolved_holds` in the pending_timeouts pipeline.
@@ -119,7 +119,7 @@ impl TapHoldState {
     }
 
     /// Process a key release event for tap-hold.
-    pub(crate) fn on_release(&mut self, key: Key) -> TapHoldOutcome {
+    pub(super) fn on_release(&mut self, key: Key) -> TapHoldOutcome {
         let Some(active) = self.active.remove(&key) else {
             return TapHoldOutcome::PassThrough;
         };
@@ -137,7 +137,7 @@ impl TapHoldState {
     }
 
     /// Process a repeat event for tap-hold.
-    pub(crate) fn on_repeat(&self, key: Key) -> TapHoldOutcome {
+    pub(super) fn on_repeat(&self, key: Key) -> TapHoldOutcome {
         if self.active.contains_key(&key) {
             TapHoldOutcome::RepeatConsumed
         } else {
@@ -147,7 +147,7 @@ impl TapHoldState {
 
     /// Check for tap-hold timeouts — resolve pending holds past their threshold.
     /// Returns `(key, binding_id)` pairs for newly resolved holds.
-    pub(crate) fn check_timeouts(&mut self, now: Instant) -> Vec<(Key, BindingId)> {
+    pub(super) fn check_timeouts(&mut self, now: Instant) -> Vec<(Key, BindingId)> {
         let mut resolved = Vec::new();
 
         for (key, active) in &mut self.active {
@@ -170,7 +170,7 @@ impl TapHoldState {
     }
 
     /// Return the nearest tap-hold timeout deadline, if any pending.
-    pub(crate) fn next_deadline(&self, now: Instant) -> Option<Duration> {
+    pub(super) fn next_deadline(&self, now: Instant) -> Option<Duration> {
         let mut min_remaining: Option<Duration> = None;
 
         for (key, active) in &self.active {
@@ -194,7 +194,7 @@ impl TapHoldState {
     }
 
     /// Get the tap action for a binding by ID.
-    pub(crate) fn tap_action(&self, id: BindingId) -> Option<&Action> {
+    pub(super) fn tap_action(&self, id: BindingId) -> Option<&Action> {
         self.bindings
             .values()
             .find(|b| b.id == id)
@@ -202,7 +202,7 @@ impl TapHoldState {
     }
 
     /// Get the hold action for a binding by ID.
-    pub(crate) fn hold_action(&self, id: BindingId) -> Option<&Action> {
+    pub(super) fn hold_action(&self, id: BindingId) -> Option<&Action> {
         self.bindings
             .values()
             .find(|b| b.id == id)
@@ -212,7 +212,7 @@ impl TapHoldState {
     /// Drain interrupt-resolved holds. Returns `(key, binding_id)` pairs
     /// that should be wrapped as `PendingTimeout::TapHoldHold` and handled
     /// through the same pipeline as timeout-resolved holds.
-    pub(crate) fn drain_resolved_holds(&mut self) -> Vec<(Key, BindingId)> {
+    pub(super) fn drain_resolved_holds(&mut self) -> Vec<(Key, BindingId)> {
         std::mem::take(&mut self.resolved_holds)
     }
 
