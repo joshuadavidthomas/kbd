@@ -6,6 +6,7 @@ use super::InternalOutcome;
 use super::MatchedBindingRef;
 use super::layers::LayerEffect;
 use super::timeout::PendingTimeout;
+use super::timeout::TimeoutKind;
 use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -249,7 +250,9 @@ impl Dispatcher {
         if expired > 0 && self.active_sequences.is_empty() {
             if let Some(standalone) = self.pending_standalone.take() {
                 self.apply_layer_effect(&standalone.layer_effect);
-                return Some(PendingTimeout::standalone(standalone.inner));
+                return Some(PendingTimeout {
+                    kind: TimeoutKind::Standalone(standalone.inner),
+                });
             }
 
             self.pending_standalone = None;

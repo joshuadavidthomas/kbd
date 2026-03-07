@@ -19,26 +19,12 @@ use crate::policy::RepeatPolicy;
 /// [`pending_timeouts`](Dispatcher::pending_timeouts)
 /// and pass it back to [`match_pending_timeout`](Dispatcher::match_pending_timeout).
 pub struct PendingTimeout {
-    kind: TimeoutKind,
+    pub(super) kind: TimeoutKind,
 }
 
-enum TimeoutKind {
+pub(super) enum TimeoutKind {
     Standalone(StandaloneMatch),
     TapHoldHold { binding_id: BindingId },
-}
-
-impl PendingTimeout {
-    pub(super) fn standalone(inner: StandaloneMatch) -> Self {
-        Self {
-            kind: TimeoutKind::Standalone(inner),
-        }
-    }
-
-    pub(super) fn tap_hold_hold(binding_id: BindingId) -> Self {
-        Self {
-            kind: TimeoutKind::TapHoldHold { binding_id },
-        }
-    }
 }
 
 impl Dispatcher {
@@ -106,7 +92,9 @@ impl Dispatcher {
             pending.push(p);
         }
         for id in self.tap_hold.check_timeouts(now) {
-            pending.push(PendingTimeout::tap_hold_hold(id));
+            pending.push(PendingTimeout {
+                kind: TimeoutKind::TapHoldHold { binding_id: id },
+            });
         }
 
         pending
