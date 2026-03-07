@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use kbd::action::Action;
 use kbd::policy::KeyPropagation;
 use kbd::policy::RepeatPolicy;
 
@@ -69,6 +70,25 @@ pub(super) struct RepeatInfo {
     pub(super) press_time: Instant,
     /// When the last repeat action fired (for Custom rate tracking).
     pub(super) last_repeat_fire: Option<Instant>,
+}
+
+impl RepeatInfo {
+    /// Build repeat info from a matched action and its repeat policy.
+    ///
+    /// Captures the callback (if any) and records the current time as
+    /// the press time for Custom delay/rate tracking.
+    pub(super) fn for_action(action: &Action, policy: RepeatPolicy) -> Self {
+        let callback = match action {
+            Action::Callback(cb) => Some(Arc::clone(cb)),
+            _ => None,
+        };
+        Self {
+            callback,
+            policy,
+            press_time: Instant::now(),
+            last_repeat_fire: None,
+        }
+    }
 }
 
 /// Intermediate result from matching, used for forwarding decisions.

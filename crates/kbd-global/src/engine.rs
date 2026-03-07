@@ -388,21 +388,11 @@ impl Engine {
                 propagation,
                 repeat_policy,
             } => {
-                // Capture press_time before executing the action so
+                // Build repeat info before executing the action so
                 // Custom repeat delay is measured from the key event,
                 // not from after callback completion.
-                let press_time = Instant::now();
+                let repeat_info = Some(RepeatInfo::for_action(action, repeat_policy));
                 execute_action(action);
-                let callback = match action {
-                    Action::Callback(cb) => Some(Arc::clone(cb)),
-                    _ => None,
-                };
-                let repeat_info = Some(RepeatInfo {
-                    callback,
-                    policy: repeat_policy,
-                    press_time,
-                    last_repeat_fire: None,
-                });
                 (MatchOutcome::Matched { propagation }, repeat_info)
             }
             MatchResult::Throttled { propagation } => {
@@ -418,18 +408,7 @@ impl Engine {
         };
 
         let outcome = self.resolve_outcome(match_outcome, event.key, event.transition);
-
-        // Cache the outcome for non-modifier key presses.
-        if Modifier::from_key(event.key).is_none() {
-            self.press_cache.insert(
-                event.key,
-                PressCacheEntry {
-                    outcome,
-                    repeat_info,
-                },
-            );
-        }
-
+        self.cache_press(event.key, outcome, repeat_info);
         outcome
     }
 
@@ -519,6 +498,21 @@ impl Engine {
         }
     }
 
+    /// Record a press outcome in the cache so release and repeat events
+    /// use the same disposition. Modifier keys are excluded — they don't
+    /// go through binding matching.
+    fn cache_press(&mut self, key: Key, outcome: KeyEventOutcome, repeat_info: Option<RepeatInfo>) {
+        if Modifier::from_key(key).is_none() {
+            self.press_cache.insert(
+                key,
+                PressCacheEntry {
+                    outcome,
+                    repeat_info,
+                },
+            );
+        }
+    }
+
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {
         if let GrabState::Enabled { forwarder } = &mut self.grab_state
             && let Err(error) = forwarder.forward_key(key, transition)
@@ -584,32 +578,24 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
                 repeat_policy,
             }) = engine.dispatcher.match_pending_timeout(pending)
             {
-                let press_time = Instant::now();
-                execute_action(action);
+                // Build repeat info before executing the action so
+                // Custom repeat delay is measured from resolution time,
+                // not from after callback completion.
+                let repeat_info = pending
+                    .tap_hold_key()
+                    .map(|_| RepeatInfo::for_action(action, repeat_policy));
 
-                let match_outcome = MatchOutcome::Matched { propagation };
+                execute_action(action);
 
                 // Tap-hold hold resolutions need press cache updates so
                 // repeat and release events use the correct disposition.
                 if let Some(key) = pending.tap_hold_key() {
-                    let callback = match action {
-                        Action::Callback(cb) => Some(Arc::clone(cb)),
-                        _ => None,
-                    };
-                    let repeat_info = Some(RepeatInfo {
-                        callback,
-                        policy: repeat_policy,
-                        press_time,
-                        last_repeat_fire: None,
-                    });
-                    let outcome = engine.resolve_outcome(match_outcome, key, KeyTransition::Press);
-                    engine.press_cache.insert(
+                    let outcome = engine.resolve_outcome(
+                        MatchOutcome::Matched { propagation },
                         key,
-                        PressCacheEntry {
-                            outcome,
-                            repeat_info,
-                        },
+                        KeyTransition::Press,
                     );
+                    engine.cache_press(key, outcome, repeat_info);
                 }
             }
         }
