@@ -159,7 +159,7 @@ pub(super) fn classify_layer(
 /// applies: device-filtered bindings match against a device-specific hotkey.
 ///
 /// Returns the index into `stored.bindings`.
-pub(super) fn find_immediate_in_layer(
+fn find_immediate_in_layer(
     stored: &StoredLayer,
     hotkey: &Hotkey,
     device: Option<&DeviceContext<'_>>,

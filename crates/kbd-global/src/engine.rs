@@ -327,41 +327,22 @@ impl Engine {
         // `self.press_cache` so the mutable calls below compile.
 
         if should_fire {
-            // Re-execute the action using lookup_action — a read-only
-            // query that doesn't trigger debounce, rate limiting, oneshot
-            // ticks, or layer effects.
-            //
-            // Note: lookup_action resolves against the *current* layer
-            // stack. If a layer was popped after the original press,
-            // the repeat may match a different binding (or none). This
-            // is acceptable — the alternative (caching the Action
-            // itself) would prevent live-updated bindings from taking
-            // effect during a held key.
-            let active_modifiers = self.key_state.active_modifiers();
-            let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
+            // Re-fire the cached callback from the original press — no
+            // dispatcher re-query, so debounce/rate-limit/layer side
+            // effects are not triggered.
+            if let Some(cb) = self
+                .press_cache
+                .get(&event.key)
+                .and_then(|e| e.repeat_info.as_ref())
+                .and_then(|info| info.callback.as_ref())
+            {
+                invoke_callback(cb.as_ref());
+            }
 
-            let device_modifiers = self.key_state.active_modifiers_for_device(event.device_fd);
-            let device_info = self.devices.device_info(event.device_fd);
-
-            let action = if let Some(info) = device_info {
-                let ctx = DeviceContext::new(event.device_fd, info)
-                    .with_device_modifiers(device_modifiers);
-                self.dispatcher.lookup_action(&candidate, Some(&ctx))
-            } else {
-                self.dispatcher.lookup_action(&candidate, None)
-            };
-
-            if let Some(action) = action {
-                execute_action(action);
-
-                // Update last repeat fire time for Custom rate tracking.
-                // Only update when the action actually fired — if the
-                // binding was removed or a layer changed, we shouldn't
-                // advance the rate timer.
-                if let Some(entry) = self.press_cache.get_mut(&event.key) {
-                    if let Some(ref mut info) = entry.repeat_info {
-                        info.last_repeat_fire = Some(now);
-                    }
+            // Update last repeat fire time for Custom rate tracking.
+            if let Some(entry) = self.press_cache.get_mut(&event.key) {
+                if let Some(ref mut info) = entry.repeat_info {
+                    info.last_repeat_fire = Some(now);
                 }
             }
         }
@@ -396,7 +377,7 @@ impl Engine {
             } else {
                 self.dispatcher.process(&candidate, event.transition)
             };
-            match &result {
+            match result {
                 MatchResult::Matched {
                     action,
                     propagation,
@@ -405,28 +386,23 @@ impl Engine {
                     // Capture press_time before executing the action so
                     // Custom repeat delay is measured from the key event,
                     // not from after callback completion.
+                    execute_action(action);
+                    let callback = match action {
+                        Action::Callback(cb) => Some(Arc::clone(cb)),
+                        _ => None,
+                    };
                     let repeat_info = Some(RepeatInfo {
-                        policy: *repeat_policy,
+                        callback,
+                        policy: repeat_policy,
                         press_time: now,
                         last_repeat_fire: None,
                     });
-                    execute_action(action);
-                    (
-                        MatchOutcome::Matched {
-                            propagation: *propagation,
-                        },
-                        repeat_info,
-                    )
+                    (MatchOutcome::Matched { propagation }, repeat_info)
                 }
                 MatchResult::Throttled { propagation } => {
                     // Throttled: action doesn't fire, but key forwarding
                     // still respects the binding's propagation setting.
-                    (
-                        MatchOutcome::Matched {
-                            propagation: *propagation,
-                        },
-                        None,
-                    )
+                    (MatchOutcome::Matched { propagation }, None)
                 }
                 MatchResult::Pending { .. } | MatchResult::Suppressed => {
                     (MatchOutcome::Consumed, None)
@@ -497,16 +473,7 @@ impl Engine {
 /// they will panic if reached. Key emission support is planned.
 fn execute_action(action: &Action) {
     match action {
-        Action::Callback(callback) => {
-            if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                callback();
-            })) {
-                tracing::error!(
-                    panic_info = format!("{panic:?}"),
-                    "user callback panicked — panic caught, engine continues"
-                );
-            }
-        }
+        Action::Callback(callback) => invoke_callback(callback.as_ref()),
         Action::EmitHotkey(_) => {
             todo!("Action::EmitHotkey is not yet implemented in the kbd-global runtime")
         }
@@ -519,6 +486,18 @@ fn execute_action(action: &Action) {
         #[allow(clippy::match_same_arms)]
         Action::PushLayer(_) | Action::PopLayer | Action::ToggleLayer(_) | Action::Suppress => {}
         _ => {}
+    }
+}
+
+/// Execute a callback with panic protection.
+fn invoke_callback(callback: &(dyn Fn() + Send + Sync)) {
+    if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        callback();
+    })) {
+        tracing::error!(
+            panic_info = format!("{panic:?}"),
+            "user callback panicked — panic caught, engine continues"
+        );
     }
 }
 

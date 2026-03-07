@@ -625,42 +625,6 @@ impl Dispatcher {
         None
     }
 
-    /// Look up the action that would match for a hotkey, without side effects.
-    ///
-    /// Walks layers and globals in the same order as [`process`](Self::process),
-    /// but does not trigger debounce, rate limiting, oneshot ticks, or
-    /// layer mutations. Useful when you need to re-fire a matched action
-    /// (e.g. on key repeat) without altering dispatcher state.
-    ///
-    /// Returns the action if a binding matches, `None` otherwise.
-    #[must_use]
-    pub fn lookup_action(
-        &self,
-        hotkey: &Hotkey,
-        device: Option<&DeviceContext<'_>>,
-    ) -> Option<&Action> {
-        // Walk layers top-down, then globals — same order as match_extract
-        // but read-only (no sequence handling, no side effects).
-        for entry in self.layer_stack.iter().rev() {
-            let Some(stored) = self.layers.get(&entry.name) else {
-                continue;
-            };
-            if let Some(index) = resolve::find_immediate_in_layer(stored, hotkey, device) {
-                return Some(&stored.bindings[index].action);
-            }
-            if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
-                return None;
-            }
-        }
-
-        // Check globals
-        if let Some((binding_ref, _, _)) = self.match_global_hotkey(hotkey, device) {
-            return Some(self.resolve_binding(&binding_ref));
-        }
-
-        None
-    }
-
     /// Resolve a binding reference back to its action.
     fn resolve_binding(&self, binding_ref: &MatchedBindingRef) -> &Action {
         match binding_ref {

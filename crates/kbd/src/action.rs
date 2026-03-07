@@ -12,6 +12,7 @@
 //! - `Suppress` — explicitly consume the key, do nothing
 
 use std::fmt;
+use std::sync::Arc;
 
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -21,7 +22,7 @@ use crate::layer::LayerName;
 #[non_exhaustive]
 pub enum Action {
     /// Execute user callback code.
-    Callback(Box<dyn Fn() + Send + Sync + 'static>),
+    Callback(Arc<dyn Fn() + Send + Sync + 'static>),
     /// Emit a single key (with optional modifiers) through the virtual device.
     ///
     /// **Not yet implemented in `kbd-global`'s runtime.** The variant exists
@@ -51,7 +52,7 @@ where
     F: Fn() + Send + Sync + 'static,
 {
     fn from(value: F) -> Self {
-        Self::Callback(Box::new(value))
+        Self::Callback(Arc::new(value))
     }
 }
 

@@ -3,6 +3,7 @@
 //! Internal types used by the engine to track grab mode and classify how
 //! each key event was handled.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use kbd::binding::KeyPropagation;
@@ -44,7 +45,6 @@ pub(crate) enum KeyEventOutcome {
 /// The press cache ensures that release and repeat events use the same
 /// disposition as the original press — essential for correctness across
 /// layer transitions (keyd's `cache_entry` pattern).
-#[derive(Debug, Clone)]
 pub(super) struct PressCacheEntry {
     /// The original forwarding disposition from the press event.
     pub(super) outcome: KeyEventOutcome,
@@ -53,8 +53,16 @@ pub(super) struct PressCacheEntry {
 }
 
 /// Repeat handling state for a matched binding in the press cache.
-#[derive(Debug, Clone)]
+///
+/// Caches the callback from the original press so repeat events can
+/// re-fire it without re-querying the dispatcher (which would trigger
+/// debounce, rate limiting, and layer side effects).
 pub(super) struct RepeatInfo {
+    /// The callback to re-fire on repeat, if the action was a callback.
+    ///
+    /// Layer actions, suppress, and emit don't repeat — only user
+    /// callbacks do.
+    pub(super) callback: Option<Arc<dyn Fn() + Send + Sync>>,
     /// How repeat events should be handled.
     pub(super) policy: RepeatPolicy,
     /// When the original press occurred (for Custom delay tracking).
