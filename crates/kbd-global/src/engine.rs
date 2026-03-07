@@ -319,8 +319,6 @@ impl Engine {
 
     /// Handle a repeat event using the press cache and repeat policy.
     fn handle_repeat_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let now = Instant::now();
-
         let Some(cached) = self.press_cache.get(&event.key) else {
             // No cache entry — modifier key or key pressed before cache.
             return KeyEventOutcome::Ignored;
@@ -334,6 +332,7 @@ impl Engine {
                 RepeatPolicy::Suppress => false,
                 RepeatPolicy::Allow => true,
                 RepeatPolicy::Custom(timing) => {
+                    let now = Instant::now();
                     let since_press = now.duration_since(info.press_time);
 
                     if since_press < timing.delay() {
@@ -368,7 +367,7 @@ impl Engine {
             // Update last repeat fire time for Custom rate tracking.
             if let Some(entry) = self.press_cache.get_mut(&event.key) {
                 if let Some(ref mut info) = entry.repeat_info {
-                    info.last_repeat_fire = Some(now);
+                    info.last_repeat_fire = Some(Instant::now());
                 }
             }
         }
