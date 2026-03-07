@@ -323,13 +323,20 @@ impl Engine {
                 _ => false,
             },
         };
-        // Drop the immutable borrow before mutable operations.
+        // `cached` is no longer used; NLL releases the borrow on
+        // `self.press_cache` so the mutable calls below compile.
 
         if should_fire {
             // Re-execute the action using lookup_action — a read-only
             // query that doesn't trigger debounce, rate limiting, oneshot
-            // ticks, or layer effects. Repeats should re-fire the same
-            // action without side effects.
+            // ticks, or layer effects.
+            //
+            // Note: lookup_action resolves against the *current* layer
+            // stack. If a layer was popped after the original press,
+            // the repeat may match a different binding (or none). This
+            // is acceptable — the alternative (caching the Action
+            // itself) would prevent live-updated bindings from taking
+            // effect during a held key.
             let active_modifiers = self.key_state.active_modifiers();
             let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
 
