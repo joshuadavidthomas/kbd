@@ -13,10 +13,9 @@ mod query;
 mod registry;
 mod resolve;
 mod sequence;
-pub(crate) mod tap_hold;
+mod tap_hold;
 mod throttle;
-/// Timeout-driven state transitions and resolution.
-pub mod timeout;
+mod timeout;
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -35,6 +34,7 @@ use self::tap_hold::TapHoldBinding;
 use self::tap_hold::TapHoldOutcome;
 use self::tap_hold::TapHoldState;
 use self::throttle::ThrottleTracker;
+pub use self::timeout::PendingTimeout;
 use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::RegisteredBinding;
