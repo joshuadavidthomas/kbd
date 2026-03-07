@@ -352,6 +352,14 @@ impl Dispatcher {
         transition: KeyTransition,
         device: Option<&DeviceContext<'_>>,
     ) -> MatchResult<'_> {
+        // Fast path: non-Press events (Release, Repeat) with no active
+        // tap-hold state are always Ignored. This skips tap-hold processing,
+        // match_extract, throttle checks, and the final outcome match —
+        // keeping the common case for release/repeat events near-zero cost.
+        if !matches!(transition, KeyTransition::Press) && !self.tap_hold.has_state() {
+            return MatchResult::Ignored;
+        }
+
         // Tap-hold is checked first — it intercepts events before normal
         // matching, similar to how speculative patterns (sequences) take
         // priority over immediate patterns (hotkeys).
