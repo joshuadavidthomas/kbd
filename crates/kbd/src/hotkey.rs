@@ -21,6 +21,7 @@
 //! ```
 
 use std::fmt;
+use std::iter::FusedIterator;
 use std::str::FromStr;
 
 use keyboard_types::Code;
@@ -196,8 +197,6 @@ impl From<Modifier> for Key {
 /// assert_eq!(collected, vec![Modifier::Ctrl, Modifier::Shift]);
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Modifiers(u8);
 
 impl Modifiers {
@@ -334,18 +333,6 @@ impl<'a> FromIterator<&'a Modifier> for Modifiers {
     }
 }
 
-impl From<Vec<Modifier>> for Modifiers {
-    fn from(modifiers: Vec<Modifier>) -> Self {
-        modifiers.iter().collect()
-    }
-}
-
-impl From<&[Modifier]> for Modifiers {
-    fn from(modifiers: &[Modifier]) -> Self {
-        modifiers.iter().collect()
-    }
-}
-
 impl<const N: usize> From<[Modifier; N]> for Modifiers {
     fn from(modifiers: [Modifier; N]) -> Self {
         modifiers.iter().collect()
@@ -393,6 +380,44 @@ impl Iterator for ModifiersIter {
 
 impl ExactSizeIterator for ModifiersIter {}
 
+impl FusedIterator for ModifiersIter {}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Modifiers {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for modifier in self.iter() {
+            seq.serialize_element(modifier.as_str())?;
+        }
+        seq.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Modifiers {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let names: Vec<&str> = serde::Deserialize::deserialize(deserializer)?;
+        let mut set = Self::NONE;
+        for name in names {
+            let modifier: Modifier = match name.to_ascii_lowercase().as_str() {
+                "ctrl" | "control" => Modifier::Ctrl,
+                "shift" => Modifier::Shift,
+                "alt" => Modifier::Alt,
+                "super" | "meta" | "win" | "windows" => Modifier::Super,
+                _ => {
+                    return Err(serde::de::Error::unknown_variant(
+                        name,
+                        &["Ctrl", "Shift", "Alt", "Super"],
+                    ));
+                }
+            };
+            set = set.with(modifier);
+        }
+        Ok(set)
+    }
+}
+
 /// A key combined with zero or more modifiers.
 ///
 /// Hotkeys are the matching unit — `"Ctrl+C"`, `"Shift+F5"`, or just `"Escape"`.
@@ -431,7 +456,7 @@ impl Hotkey {
     /// Create a hotkey from a key and a modifier set.
     ///
     /// Accepts anything convertible to a [`Modifiers`] — a `Modifiers`,
-    /// a single `Modifier`, a `Vec<Modifier>`, a slice, an array, etc.
+    /// a single `Modifier`, an array, etc.
     #[must_use]
     pub fn with_modifiers(key: Key, modifiers: impl Into<Modifiers>) -> Self {
         Self {
@@ -477,8 +502,7 @@ impl FromStr for Hotkey {
 
         let mut key = None;
         let mut modifiers = Modifiers::NONE;
-        let mut last_modifier_key = None;
-        let mut last_modifier = None;
+        let mut last_modifier_pair = None;
 
         for segment in trimmed.split('+') {
             let token = segment.trim();
@@ -492,8 +516,7 @@ impl FromStr for Hotkey {
 
             if let Some(modifier) = Modifier::from_key(parsed_key) {
                 modifiers = modifiers.with(modifier);
-                last_modifier_key = Some(parsed_key);
-                last_modifier = Some(modifier);
+                last_modifier_pair = Some((parsed_key, modifier));
                 continue;
             }
 
@@ -505,10 +528,8 @@ impl FromStr for Hotkey {
         let key = if let Some(key) = key {
             key
         } else {
-            let key = last_modifier_key.ok_or(ParseHotkeyError::MissingKey)?;
-            if let Some(modifier) = last_modifier {
-                modifiers = modifiers.without(modifier);
-            }
+            let (key, modifier) = last_modifier_pair.ok_or(ParseHotkeyError::MissingKey)?;
+            modifiers = modifiers.without(modifier);
             key
         };
 
@@ -710,8 +731,7 @@ mod tests {
 
     #[test]
     fn hotkey_new_dedups_modifiers() {
-        let hotkey =
-            Hotkey::with_modifiers(Key::A, vec![Modifier::Alt, Modifier::Ctrl, Modifier::Alt]);
+        let hotkey = Hotkey::with_modifiers(Key::A, [Modifier::Alt, Modifier::Ctrl, Modifier::Alt]);
         let expected = Modifiers::NONE.with(Modifier::Ctrl).with(Modifier::Alt);
         assert_eq!(hotkey.modifiers(), expected);
     }
