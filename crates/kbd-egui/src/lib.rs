@@ -19,7 +19,7 @@
 //!
 //! - [`EguiKeyExt`] — converts an [`egui::Key`] to a [`kbd::key::Key`].
 //! - [`EguiModifiersExt`] — converts [`egui::Modifiers`] to a
-//!   [`ModifierSet`].
+//!   [`Modifiers`].
 //! - [`EguiEventExt`] — converts a full [`egui::Event`] keyboard event
 //!   to a [`kbd::hotkey::Hotkey`].
 //!
@@ -57,7 +57,7 @@
 //!
 //! // Modifier conversion
 //! let mods = Modifiers::CTRL.to_modifiers();
-//! assert_eq!(mods, ModifierSet::CTRL);
+//! assert_eq!(mods, kbd::hotkey::Modifiers::CTRL);
 //!
 //! // Full event conversion
 //! let event = egui::Event::Key {
@@ -75,7 +75,6 @@ use egui::Key as EguiKey;
 use egui::Modifiers;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
-use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
 
 mod private {
@@ -243,7 +242,7 @@ impl EguiKeyExt for EguiKey {
     }
 }
 
-/// Convert [`egui::Modifiers`] to a [`ModifierSet`].
+/// Convert [`egui::Modifiers`] to a [`Modifiers`].
 ///
 /// Egui's `mac_cmd` and `command` fields are platform-dependent
 /// abstractions. On non-macOS platforms, `command` mirrors `ctrl`.
@@ -260,7 +259,7 @@ impl EguiKeyExt for EguiKey {
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait EguiModifiersExt: private::Sealed {
-    /// Convert these egui modifiers to a [`ModifierSet`].
+    /// Convert these egui modifiers to kbd [`Modifiers`](kbd::hotkey::Modifiers).
     ///
     /// # Examples
     ///
@@ -273,14 +272,14 @@ pub trait EguiModifiersExt: private::Sealed {
     ///     alt: false, ctrl: true, shift: true,
     ///     mac_cmd: false, command: false,
     /// };
-    /// assert_eq!(mods.to_modifiers(), ModifierSet::CTRL.with(Modifier::Shift));
+    /// assert_eq!(mods.to_modifiers(), kbd::hotkey::Modifiers::CTRL.with(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> ModifierSet;
+    fn to_modifiers(&self) -> kbd::hotkey::Modifiers;
 }
 
 impl EguiModifiersExt for Modifiers {
-    fn to_modifiers(&self) -> ModifierSet {
+    fn to_modifiers(&self) -> kbd::hotkey::Modifiers {
         Modifier::collect_active([
             (self.ctrl, Modifier::Ctrl),
             (self.shift, Modifier::Shift),
@@ -343,6 +342,7 @@ mod tests {
     use egui::Modifiers;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
+    use kbd::hotkey::Modifiers as KbdModifiers;
     use kbd::key::Key;
 
     use super::*;
@@ -439,22 +439,22 @@ mod tests {
 
     #[test]
     fn empty_modifiers() {
-        assert_eq!(Modifiers::NONE.to_modifiers(), ModifierSet::EMPTY);
+        assert_eq!(Modifiers::NONE.to_modifiers(), KbdModifiers::NONE);
     }
 
     #[test]
     fn single_ctrl_modifier() {
-        assert_eq!(Modifiers::CTRL.to_modifiers(), ModifierSet::CTRL);
+        assert_eq!(Modifiers::CTRL.to_modifiers(), KbdModifiers::CTRL);
     }
 
     #[test]
     fn single_shift_modifier() {
-        assert_eq!(Modifiers::SHIFT.to_modifiers(), ModifierSet::SHIFT);
+        assert_eq!(Modifiers::SHIFT.to_modifiers(), KbdModifiers::SHIFT);
     }
 
     #[test]
     fn single_alt_modifier() {
-        assert_eq!(Modifiers::ALT.to_modifiers(), ModifierSet::ALT);
+        assert_eq!(Modifiers::ALT.to_modifiers(), KbdModifiers::ALT);
     }
 
     #[test]
@@ -466,7 +466,7 @@ mod tests {
             mac_cmd: true,
             command: true,
         };
-        assert_eq!(mods.to_modifiers(), ModifierSet::SUPER);
+        assert_eq!(mods.to_modifiers(), KbdModifiers::SUPER);
     }
 
     #[test]
@@ -478,7 +478,10 @@ mod tests {
             mac_cmd: false,
             command: false,
         };
-        assert_eq!(mods.to_modifiers(), ModifierSet::CTRL.with(Modifier::Shift));
+        assert_eq!(
+            mods.to_modifiers(),
+            KbdModifiers::CTRL.with(Modifier::Shift)
+        );
     }
 
     #[test]
@@ -492,7 +495,7 @@ mod tests {
         };
         assert_eq!(
             mods.to_modifiers(),
-            ModifierSet::EMPTY
+            KbdModifiers::NONE
                 .with(Modifier::Ctrl)
                 .with(Modifier::Shift)
                 .with(Modifier::Alt)

@@ -533,7 +533,7 @@ mod tests {
     use kbd::binding::RegisteredBinding;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
-    use kbd::hotkey::ModifierSet;
+    use kbd::hotkey::Modifiers;
     use kbd::key::Key;
     use kbd::key_state::KeyTransition;
     use kbd::policy::KeyPropagation;
@@ -1085,16 +1085,16 @@ mod tests {
         assert!(engine.key_state.active_modifiers().is_empty());
 
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
-        assert_eq!(engine.key_state.active_modifiers(), ModifierSet::CTRL);
+        assert_eq!(engine.key_state.active_modifiers(), Modifiers::CTRL);
 
         press_key(&mut engine, Key::SHIFT_LEFT, 10);
         assert_eq!(
             engine.key_state.active_modifiers(),
-            ModifierSet::CTRL.with(Modifier::Shift)
+            Modifiers::CTRL.with(Modifier::Shift)
         );
 
         release_key(&mut engine, Key::CONTROL_LEFT, 10);
-        assert_eq!(engine.key_state.active_modifiers(), ModifierSet::SHIFT);
+        assert_eq!(engine.key_state.active_modifiers(), Modifiers::SHIFT);
     }
 
     #[test]
@@ -1198,14 +1198,14 @@ mod tests {
 
         assert_eq!(
             engine.key_state.active_modifiers(),
-            ModifierSet::CTRL.with(Modifier::Shift)
+            Modifiers::CTRL.with(Modifier::Shift)
         );
 
         // Simulate device 10 disconnecting
         engine.key_state.disconnect_device(10);
 
         // Only modifiers from device 11 should remain
-        assert_eq!(engine.key_state.active_modifiers(), ModifierSet::SHIFT);
+        assert_eq!(engine.key_state.active_modifiers(), Modifiers::SHIFT);
         assert!(!engine.key_state.is_pressed(Key::CONTROL_LEFT));
     }
 

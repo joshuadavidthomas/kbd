@@ -646,7 +646,7 @@ mod tests {
     use crate::binding::BindingOptions;
     use crate::device::DeviceFilter;
     use crate::device::DeviceInfo;
-    use crate::hotkey::ModifierSet;
+    use crate::hotkey::Modifiers;
     use crate::key::Key;
     use crate::layer::Layer;
     use crate::policy::RateLimit;
@@ -708,7 +708,7 @@ mod tests {
             )
             .unwrap();
 
-        let ctx_b = DeviceContext::new(11, &device_b).with_device_modifiers(ModifierSet::EMPTY);
+        let ctx_b = DeviceContext::new(11, &device_b).with_device_modifiers(Modifiers::NONE);
 
         let candidate = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
         let result = dispatcher.process_with_device(candidate, KeyTransition::Press, &ctx_b);
@@ -746,7 +746,7 @@ mod tests {
             )
             .unwrap();
 
-        let ctx = DeviceContext::new(10, &streamdeck).with_device_modifiers(ModifierSet::CTRL);
+        let ctx = DeviceContext::new(10, &streamdeck).with_device_modifiers(Modifiers::CTRL);
 
         let candidate = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
         let result = dispatcher.process_with_device(candidate, KeyTransition::Press, &ctx);
@@ -905,13 +905,13 @@ mod tests {
             .unwrap();
 
         // From the StreamDeck: device-filtered binding should match
-        let ctx_sd = DeviceContext::new(10, &streamdeck).with_device_modifiers(ModifierSet::EMPTY);
+        let ctx_sd = DeviceContext::new(10, &streamdeck).with_device_modifiers(Modifiers::NONE);
         let result =
             dispatcher.process_with_device(Hotkey::new(Key::A), KeyTransition::Press, &ctx_sd);
         assert!(matches!(result, MatchResult::Matched { .. }));
 
         // From the keyboard: device filter doesn't match, should fall through to global
-        let ctx_kb = DeviceContext::new(11, &keyboard).with_device_modifiers(ModifierSet::EMPTY);
+        let ctx_kb = DeviceContext::new(11, &keyboard).with_device_modifiers(Modifiers::NONE);
         let result =
             dispatcher.process_with_device(Hotkey::new(Key::A), KeyTransition::Press, &ctx_kb);
         if let MatchResult::Matched {
