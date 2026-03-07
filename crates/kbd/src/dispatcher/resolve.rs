@@ -1,3 +1,4 @@
+use super::DeviceContext;
 use super::Dispatcher;
 use super::sequence::RegisteredSequenceBinding;
 use crate::hotkey::Hotkey;
@@ -127,20 +128,24 @@ pub(super) fn classify_sequence_prefixes<'a>(
 /// consistent classification. When a new match type is added (e.g.,
 /// tap-hold), adding a variant to [`LayerMatch`] forces both paths
 /// to handle it.
-pub(super) fn classify_layer(stored: &StoredLayer, hotkey: &Hotkey) -> LayerMatch {
+pub(super) fn classify_layer(
+    stored: &StoredLayer,
+    hotkey: &Hotkey,
+    device: Option<&DeviceContext<'_>>,
+) -> LayerMatch {
     let seq_match =
         classify_sequence_prefixes(stored.sequence_bindings.iter().map(|b| &b.sequence), hotkey);
 
     match seq_match {
         SequencePrefixMatch::SingleStep { index } => LayerMatch::SingleStepSequence { index },
         SequencePrefixMatch::MultiStep { indices } => {
-            let immediate_index = find_immediate_in_layer(stored, hotkey);
+            let immediate_index = find_immediate_in_layer(stored, hotkey, device);
             LayerMatch::MultiStepSequences {
                 indices,
                 immediate_index,
             }
         }
-        SequencePrefixMatch::None => match find_immediate_in_layer(stored, hotkey) {
+        SequencePrefixMatch::None => match find_immediate_in_layer(stored, hotkey, device) {
             Some(index) => LayerMatch::Immediate { index },
             None => LayerMatch::None,
         },
@@ -149,12 +154,51 @@ pub(super) fn classify_layer(stored: &StoredLayer, hotkey: &Hotkey) -> LayerMatc
 
 /// Find the first immediate hotkey binding in a layer that matches a hotkey.
 ///
+/// When device context is provided, bindings with a device filter are only
+/// considered if the device matches the filter. Per-device modifier isolation
+/// applies: device-filtered bindings match against a device-specific hotkey.
+///
 /// Returns the index into `stored.bindings`.
-fn find_immediate_in_layer(stored: &StoredLayer, hotkey: &Hotkey) -> Option<usize> {
+fn find_immediate_in_layer(
+    stored: &StoredLayer,
+    hotkey: &Hotkey,
+    device: Option<&DeviceContext<'_>>,
+) -> Option<usize> {
     stored
         .bindings
         .iter()
-        .position(|binding| binding.hotkey == *hotkey)
+        .position(|binding| binding_matches_hotkey(binding, hotkey, device))
+}
+
+/// Check whether a layer binding matches a hotkey, respecting device filters.
+fn binding_matches_hotkey(
+    binding: &crate::layer::LayerBinding,
+    hotkey: &Hotkey,
+    device: Option<&DeviceContext<'_>>,
+) -> bool {
+    let Some(filter) = binding.options.device() else {
+        // No device filter — match against aggregate hotkey
+        return binding.hotkey == *hotkey;
+    };
+
+    // Binding has a device filter — need device context
+    let Some(ctx) = device else {
+        // No device context available — can't match device-filtered bindings
+        return false;
+    };
+
+    if !filter.matches(ctx.info()) {
+        return false;
+    }
+
+    // Build device-specific hotkey for modifier isolation
+    if let Some(device_mods) = ctx.device_modifiers() {
+        let device_hotkey = Hotkey::with_modifiers(hotkey.key(), device_mods.to_vec());
+        binding.hotkey == device_hotkey
+    } else {
+        // No device modifiers — use aggregate
+        binding.hotkey == *hotkey
+    }
 }
 
 impl Dispatcher {
@@ -304,35 +348,35 @@ mod tests {
     #[test]
     fn layer_no_bindings_returns_none() {
         let stored = layer(vec![], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::None);
     }
 
     #[test]
     fn layer_no_match_returns_none() {
         let stored = layer(vec![immediate(Key::B)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::None);
     }
 
     #[test]
     fn layer_immediate_only() {
         let stored = layer(vec![immediate(Key::A)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::Immediate { index: 0 });
     }
 
     #[test]
     fn layer_immediate_returns_first_match_index() {
         let stored = layer(vec![immediate(Key::B), immediate(Key::A)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::Immediate { index: 1 });
     }
 
     #[test]
     fn layer_single_step_sequence() {
         let stored = layer(vec![], vec![seq_binding(single_step(Key::A))]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 0 });
     }
 
@@ -342,14 +386,14 @@ mod tests {
             vec![immediate(Key::A)],
             vec![seq_binding(single_step(Key::A))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 0 });
     }
 
     #[test]
     fn layer_multi_step_without_immediate() {
         let stored = layer(vec![], vec![seq_binding(two_step(Key::A, Key::B))]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -365,7 +409,7 @@ mod tests {
             vec![immediate(Key::A)],
             vec![seq_binding(two_step(Key::A, Key::B))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -382,7 +426,7 @@ mod tests {
             vec![immediate(Key::X), immediate(Key::A)],
             vec![seq_binding(two_step(Key::A, Key::B))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -401,7 +445,7 @@ mod tests {
                 seq_binding(single_step(Key::A)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 1 });
     }
 
@@ -414,7 +458,7 @@ mod tests {
                 seq_binding(single_step(Key::A)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 1 });
     }
 
@@ -427,7 +471,7 @@ mod tests {
                 seq_binding(single_step(Key::Z)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A));
+        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::None);
     }
 }

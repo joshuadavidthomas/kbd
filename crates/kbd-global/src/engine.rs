@@ -41,6 +41,7 @@ use std::sync::mpsc;
 
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
+use kbd::device::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
 use kbd::hotkey::Hotkey;
@@ -289,12 +290,26 @@ impl Engine {
         let active_modifiers = self.key_state.active_modifiers();
         let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
 
+        // Build device context for device-specific binding support.
+        // Per-device modifier state enables modifier isolation: device-filtered
+        // bindings only see modifiers from their own device.
+        let device_modifiers = self.key_state.active_modifiers_for_device(event.device_fd);
+        let device_info = self.devices.device_info(event.device_fd);
+
         // Process through the Dispatcher which handles matching + layer effects.
         // The Dispatcher applies layer effects (PushLayer/PopLayer/ToggleLayer)
         // internally during process(). We extract the outcome to handle
         // callback execution and forwarding.
         let outcome = {
-            let result = self.dispatcher.process(&candidate, event.transition);
+            let result = if let Some(info) = device_info {
+                let ctx = DeviceContext::new(event.device_fd, info)
+                    .with_device_modifiers(device_modifiers);
+                self.dispatcher
+                    .process_with_device(&candidate, event.transition, &ctx)
+            } else {
+                // Device info unavailable (shouldn't happen but handle gracefully)
+                self.dispatcher.process(&candidate, event.transition)
+            };
             match &result {
                 MatchResult::Matched {
                     action,

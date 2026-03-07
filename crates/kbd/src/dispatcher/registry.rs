@@ -118,7 +118,8 @@ impl Dispatcher {
     ///
     /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
     /// if a binding for the same hotkey already exists in the same precedence
-    /// tier.
+    /// tier and device scope. Bindings with different device filters (or one
+    /// with a filter and one without) can coexist for the same hotkey and tier.
     pub fn register_binding(
         &mut self,
         binding: RegisteredBinding,
@@ -126,6 +127,7 @@ impl Dispatcher {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
         let new_tier = binding.options().precedence_tier();
+        let new_device = binding.options().device();
 
         if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
             return Err(crate::error::Error::AlreadyRegistered);
@@ -135,7 +137,10 @@ impl Dispatcher {
         if ids_for_hotkey.iter().any(|existing_id| {
             self.bindings_by_id
                 .get(existing_id)
-                .is_some_and(|existing| existing.options().precedence_tier() == new_tier)
+                .is_some_and(|existing| {
+                    existing.options().precedence_tier() == new_tier
+                        && existing.options().device() == new_device
+                })
         }) {
             return Err(crate::error::Error::AlreadyRegistered);
         }
@@ -427,5 +432,73 @@ mod tests {
         let mut dispatcher = Dispatcher::new();
         let result = dispatcher.register("Ctrl+Nope", Action::Suppress);
         assert!(matches!(result, Err(crate::error::Error::Parse(_))));
+    }
+
+    #[test]
+    fn register_allows_device_filtered_and_global_for_same_hotkey() {
+        let mut dispatcher = Dispatcher::new();
+
+        // Device-filtered binding
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                crate::binding::BindingOptions::default()
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        // Global binding for same hotkey — should succeed
+        let result = dispatcher.register(Hotkey::new(Key::A), Action::Suppress);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn register_rejects_duplicate_device_filter_for_same_hotkey() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                crate::binding::BindingOptions::default()
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        // Same device filter, same hotkey, same tier — rejected
+        let result = dispatcher.register_with_options(
+            Hotkey::new(Key::A),
+            Action::Suppress,
+            crate::binding::BindingOptions::default()
+                .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
+        );
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn register_allows_different_device_filters_for_same_hotkey() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .register_with_options(
+                Hotkey::new(Key::A),
+                Action::Suppress,
+                crate::binding::BindingOptions::default()
+                    .with_device(crate::device::DeviceFilter::name_contains("StreamDeck")),
+            )
+            .unwrap();
+
+        // Different device filter, same hotkey, same tier — allowed
+        let result = dispatcher.register_with_options(
+            Hotkey::new(Key::A),
+            Action::Suppress,
+            crate::binding::BindingOptions::default()
+                .with_device(crate::device::DeviceFilter::usb(0x1234, 0x5678)),
+        );
+        assert!(result.is_ok());
     }
 }

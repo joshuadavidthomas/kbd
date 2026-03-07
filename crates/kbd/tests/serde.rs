@@ -11,6 +11,8 @@ use kbd::binding::BindingOptions;
 use kbd::binding::BindingSource;
 use kbd::binding::KeyPropagation;
 use kbd::binding::OverlayVisibility;
+use kbd::device::DeviceFilter;
+use kbd::device::DeviceInfo;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
@@ -213,4 +215,40 @@ fn layer_options_round_trip() {
 fn binding_id_round_trip() {
     let id = BindingId::new();
     assert_eq!(round_trip(&id), id);
+}
+
+// DeviceInfo
+
+#[test]
+fn device_info_round_trip() {
+    let info = DeviceInfo::new("Elgato StreamDeck XL", 0x0fd9, 0x006c);
+    assert_eq!(round_trip(&info), info);
+}
+
+// DeviceFilter
+
+#[test]
+fn device_filter_name_contains_round_trip() {
+    let filter = DeviceFilter::name_contains("StreamDeck");
+    assert_eq!(round_trip(&filter), filter);
+}
+
+#[test]
+fn device_filter_usb_id_round_trip() {
+    let filter = DeviceFilter::usb(0x0fd9, 0x006c);
+    assert_eq!(round_trip(&filter), filter);
+}
+
+#[test]
+fn binding_options_with_device_round_trip() {
+    let opts = BindingOptions::default()
+        .with_description("StreamDeck button")
+        .with_device(DeviceFilter::name_contains("StreamDeck"));
+    assert_eq!(round_trip(&opts), opts);
+}
+
+#[test]
+fn binding_options_with_usb_device_round_trip() {
+    let opts = BindingOptions::default().with_device(DeviceFilter::usb(0x1234, 0x5678));
+    assert_eq!(round_trip(&opts), opts);
 }

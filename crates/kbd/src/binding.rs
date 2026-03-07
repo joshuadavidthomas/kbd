@@ -11,6 +11,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use crate::action::Action;
+use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
 
 /// Unique identifier for a registered binding.
@@ -196,6 +197,12 @@ pub struct BindingOptions {
     source: Option<BindingSource>,
     /// Whether this binding appears in hotkey overlays and help screens.
     overlay_visibility: OverlayVisibility,
+    /// Restrict this binding to a specific device.
+    ///
+    /// When set, the binding only matches events from devices that pass
+    /// the filter. Additionally, per-device modifier isolation applies:
+    /// only modifiers held on the matching device count toward matching.
+    device: Option<DeviceFilter>,
 }
 
 impl BindingOptions {
@@ -259,6 +266,28 @@ impl BindingOptions {
     #[must_use]
     pub const fn with_overlay_visibility(mut self, visibility: OverlayVisibility) -> Self {
         self.overlay_visibility = visibility;
+        self
+    }
+
+    /// The device filter for this binding, if set.
+    ///
+    /// When a device filter is set, the binding only matches events from
+    /// devices that pass the filter, and per-device modifier isolation
+    /// applies.
+    #[must_use]
+    pub fn device(&self) -> Option<&DeviceFilter> {
+        self.device.as_ref()
+    }
+
+    /// Restrict this binding to events from a specific device.
+    ///
+    /// When set, the binding only fires for events from devices matching
+    /// the filter. Per-device modifier isolation also applies: only
+    /// modifiers held on the matching device count toward matching,
+    /// not the aggregate modifier state across all devices.
+    #[must_use]
+    pub fn with_device(mut self, filter: DeviceFilter) -> Self {
+        self.device = Some(filter);
         self
     }
 }
@@ -442,5 +471,21 @@ mod tests {
             binding.options().overlay_visibility(),
             OverlayVisibility::Hidden
         );
+    }
+
+    #[test]
+    fn binding_options_with_device() {
+        let opts = BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck"));
+        assert!(opts.device().is_some());
+        assert!(matches!(
+            opts.device().unwrap(),
+            DeviceFilter::NameContains(_)
+        ));
+    }
+
+    #[test]
+    fn binding_options_device_default_is_none() {
+        let opts = BindingOptions::default();
+        assert!(opts.device().is_none());
     }
 }
