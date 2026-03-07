@@ -447,10 +447,8 @@ impl Dispatcher {
             return TapHoldOutcome::PassThrough;
         }
 
-        let now = Instant::now();
-
         match transition {
-            KeyTransition::Press => self.tap_hold.on_press(key, now),
+            KeyTransition::Press => self.tap_hold.on_press(key, Instant::now()),
             KeyTransition::Release => self.tap_hold.on_release(key),
             KeyTransition::Repeat => self.tap_hold.on_repeat(key),
             // KeyTransition is #[non_exhaustive]; future variants pass through.

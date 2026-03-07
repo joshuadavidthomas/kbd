@@ -74,6 +74,7 @@ impl TapHoldState {
     pub(crate) fn unregister(&mut self, id: BindingId) {
         self.bindings.retain(|_, b| b.id != id);
         self.active.retain(|_, a| a.binding_id != id);
+        self.resolved_holds.retain(|(_, bid)| *bid != id);
     }
 
     /// Returns `true` if any tap-hold bindings exist or any keys are

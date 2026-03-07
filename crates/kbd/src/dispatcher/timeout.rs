@@ -11,10 +11,9 @@ use crate::policy::RepeatPolicy;
 
 /// A timeout that fired but hasn't been matched to an action yet.
 ///
-/// This is the first half of a two-phase pattern (same approach as
-/// `TapHoldDecision` in `process()`): collect pending timeouts first
-/// (mutating state), then match each to a [`MatchResult`] via
-/// [`Dispatcher::match_pending_timeout`].
+/// This is the first half of a two-phase pattern: collect pending
+/// timeouts first (mutating state), then match each to a
+/// [`MatchResult`] via [`Dispatcher::match_pending_timeout`].
 ///
 /// This type is opaque — callers receive it from
 /// [`pending_timeouts`](Dispatcher::pending_timeouts)
@@ -27,7 +26,7 @@ impl PendingTimeout {
     /// Returns the key associated with this timeout, if it's a tap-hold hold resolution.
     ///
     /// The engine uses this to update the press cache after a hold resolves
-    /// by timeout, enabling correct repeat and release handling.
+    /// (by timeout or interrupt), enabling correct repeat and release handling.
     #[must_use]
     pub fn tap_hold_key(&self) -> Option<Key> {
         match &self.kind {
