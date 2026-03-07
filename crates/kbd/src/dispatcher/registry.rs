@@ -18,7 +18,7 @@ use crate::sequence::SequenceOptions;
 /// bindings share the same hotkey. Variants are ordered by priority:
 /// `Default` < `Standard` < `User`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum BindingSourceTier {
+pub(crate) enum PrecedenceTier {
     Default,
     Standard,
     User,
@@ -26,16 +26,14 @@ pub(crate) enum BindingSourceTier {
 
 /// Derive the precedence tier from a binding's source label.
 ///
-/// - `"default"` (case-insensitive) → [`BindingSourceTier::Default`]
-/// - `"user"` (case-insensitive) → [`BindingSourceTier::User`]
-/// - anything else or no source → [`BindingSourceTier::Standard`]
-pub(crate) fn precedence_tier(options: &BindingOptions) -> BindingSourceTier {
+/// - `"default"` (case-insensitive) → [`PrecedenceTier::Default`]
+/// - `"user"` (case-insensitive) → [`PrecedenceTier::User`]
+/// - anything else or no source → [`PrecedenceTier::Standard`]
+pub(crate) fn precedence_tier(options: &BindingOptions) -> PrecedenceTier {
     match options.source() {
-        Some(source) if source.as_str().eq_ignore_ascii_case("default") => {
-            BindingSourceTier::Default
-        }
-        Some(source) if source.as_str().eq_ignore_ascii_case("user") => BindingSourceTier::User,
-        _ => BindingSourceTier::Standard,
+        Some(source) if source.as_str().eq_ignore_ascii_case("default") => PrecedenceTier::Default,
+        Some(source) if source.as_str().eq_ignore_ascii_case("user") => PrecedenceTier::User,
+        _ => PrecedenceTier::Standard,
     }
 }
 
@@ -255,7 +253,7 @@ impl Dispatcher {
 #[cfg(test)]
 mod tests {
     use super::super::Dispatcher;
-    use super::BindingSourceTier;
+    use super::PrecedenceTier;
     use super::precedence_tier;
     use crate::action::Action;
     use crate::binding::BindingId;
@@ -270,25 +268,25 @@ mod tests {
     #[test]
     fn precedence_tier_from_source_labels() {
         let default = BindingOptions::default().with_source("default");
-        assert_eq!(precedence_tier(&default), BindingSourceTier::Default);
+        assert_eq!(precedence_tier(&default), PrecedenceTier::Default);
 
         let user = BindingOptions::default().with_source("user");
-        assert_eq!(precedence_tier(&user), BindingSourceTier::User);
+        assert_eq!(precedence_tier(&user), PrecedenceTier::User);
 
         let plugin = BindingOptions::default().with_source("plugin");
-        assert_eq!(precedence_tier(&plugin), BindingSourceTier::Standard);
+        assert_eq!(precedence_tier(&plugin), PrecedenceTier::Standard);
 
         let no_source = BindingOptions::default();
-        assert_eq!(precedence_tier(&no_source), BindingSourceTier::Standard);
+        assert_eq!(precedence_tier(&no_source), PrecedenceTier::Standard);
     }
 
     #[test]
     fn precedence_tier_is_case_insensitive() {
         let default = BindingOptions::default().with_source("DEFAULT");
-        assert_eq!(precedence_tier(&default), BindingSourceTier::Default);
+        assert_eq!(precedence_tier(&default), PrecedenceTier::Default);
 
         let user = BindingOptions::default().with_source("UsEr");
-        assert_eq!(precedence_tier(&user), BindingSourceTier::User);
+        assert_eq!(precedence_tier(&user), PrecedenceTier::User);
     }
 
     #[test]
