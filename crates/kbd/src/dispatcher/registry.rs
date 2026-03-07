@@ -18,10 +18,9 @@ use crate::sequence::SequenceOptions;
 /// The registry uses this to resolve conflicts when multiple global
 /// bindings share the same hotkey. Variants are ordered:
 /// `Default` < `Standard` < `User`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum SourcePriority {
     Default,
-    #[default]
     Standard,
     User,
 }
@@ -33,6 +32,13 @@ impl From<&BindingSource> for SourcePriority {
             BindingSource::User => Self::User,
             BindingSource::Custom(_) => Self::Standard,
         }
+    }
+}
+
+impl From<&BindingOptions> for SourcePriority {
+    /// Bindings with no source are treated as [`SourcePriority::Standard`].
+    fn from(options: &BindingOptions) -> Self {
+        options.source().map_or(Self::Standard, Self::from)
     }
 }
 
@@ -150,11 +156,7 @@ impl Dispatcher {
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
-        let new_priority = binding
-            .options()
-            .source()
-            .map(SourcePriority::from)
-            .unwrap_or_default();
+        let new_priority = SourcePriority::from(binding.options());
         let new_device = binding.options().device();
 
         if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
@@ -166,12 +168,7 @@ impl Dispatcher {
             self.bindings_by_id
                 .get(existing_id)
                 .is_some_and(|existing| {
-                    existing
-                        .options()
-                        .source()
-                        .map(SourcePriority::from)
-                        .unwrap_or_default()
-                        == new_priority
+                    SourcePriority::from(existing.options()) == new_priority
                         && existing.options().device() == new_device
                 })
         }) {
@@ -183,14 +180,7 @@ impl Dispatcher {
             .position(|existing_id| {
                 self.bindings_by_id
                     .get(existing_id)
-                    .is_some_and(|existing| {
-                        existing
-                            .options()
-                            .source()
-                            .map(SourcePriority::from)
-                            .unwrap_or_default()
-                            > new_priority
-                    })
+                    .is_some_and(|existing| SourcePriority::from(existing.options()) > new_priority)
             })
             .unwrap_or(ids_for_hotkey.len());
 
@@ -293,11 +283,6 @@ mod tests {
             SourcePriority::from(&BindingSource::new("plugin")),
             SourcePriority::Standard,
         );
-    }
-
-    #[test]
-    fn source_priority_default_is_standard() {
-        assert_eq!(SourcePriority::default(), SourcePriority::Standard);
     }
 
     #[test]
