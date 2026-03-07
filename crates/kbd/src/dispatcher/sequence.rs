@@ -5,7 +5,7 @@ use super::Dispatcher;
 use super::InternalOutcome;
 use super::MatchedBindingRef;
 use super::layers::LayerEffect;
-use super::timeout::TimeoutResolution;
+use super::timeout::PendingTimeout;
 use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -221,7 +221,7 @@ impl Dispatcher {
         )
     }
 
-    pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Vec<TimeoutResolution> {
+    pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Vec<PendingTimeout> {
         if self.active_sequences.is_empty() {
             return Vec::new();
         }
@@ -233,7 +233,7 @@ impl Dispatcher {
         if expired > 0 && self.active_sequences.is_empty() {
             if let Some(standalone) = self.pending_standalone.take() {
                 self.apply_layer_effect(&standalone.layer_effect);
-                return vec![TimeoutResolution::standalone(
+                return vec![PendingTimeout::standalone(
                     standalone.binding_ref,
                     standalone.propagation,
                     standalone.repeat_policy,
@@ -447,8 +447,8 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for resolution in &dispatcher.check_timeouts() {
-            if let Some(result) = dispatcher.resolve_timeout(resolution) {
+        for pending in &dispatcher.pending_timeouts() {
+            if let Some(result) = dispatcher.match_pending_timeout(pending) {
                 execute_callback(&result);
             }
         }
@@ -558,8 +558,8 @@ mod tests {
         assert!(matches!(pending, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for resolution in &dispatcher.check_timeouts() {
-            if let Some(result) = dispatcher.resolve_timeout(resolution) {
+        for pending in &dispatcher.pending_timeouts() {
+            if let Some(result) = dispatcher.match_pending_timeout(pending) {
                 execute_callback(&result);
             }
         }
@@ -599,8 +599,8 @@ mod tests {
         assert!(matches!(second, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for resolution in &dispatcher.check_timeouts() {
-            if let Some(result) = dispatcher.resolve_timeout(resolution) {
+        for pending in &dispatcher.pending_timeouts() {
+            if let Some(result) = dispatcher.match_pending_timeout(pending) {
                 execute_callback(&result);
             }
         }
@@ -674,7 +674,7 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        let _ = dispatcher.check_timeouts();
+        let _ = dispatcher.pending_timeouts();
 
         assert!(dispatcher.pending_sequence().is_none());
     }
@@ -741,8 +741,8 @@ mod tests {
         dispatcher.unregister(standalone_id);
 
         std::thread::sleep(Duration::from_millis(20));
-        let timeout_results = dispatcher.check_timeouts();
-        assert!(timeout_results.is_empty());
+        let pending = dispatcher.pending_timeouts();
+        assert!(pending.is_empty());
     }
 
     #[test]
@@ -781,8 +781,8 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for resolution in &dispatcher.check_timeouts() {
-            if let Some(result) = dispatcher.resolve_timeout(resolution) {
+        for pending in &dispatcher.pending_timeouts() {
+            if let Some(result) = dispatcher.match_pending_timeout(pending) {
                 execute_callback(&result);
             }
         }

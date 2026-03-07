@@ -8,16 +8,17 @@ use crate::binding::BindingId;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 
-/// Borrow-free result of a timeout check, used to decouple state mutation
-/// from action resolution. Same pattern as `TapHoldDecision` in `process()`.
+/// A timeout that fired but hasn't been matched to an action yet.
 ///
-/// The caller collects all resolutions first (mutating state), then resolves
-/// each to a [`MatchResult`] via [`Dispatcher::resolve_timeout`].
+/// This is the first half of a two-phase pattern (same approach as
+/// `TapHoldDecision` in `process()`): collect pending timeouts first
+/// (mutating state), then match each to a [`MatchResult`] via
+/// [`Dispatcher::match_pending_timeout`].
 ///
 /// This type is opaque — callers receive it from
-/// [`check_timeouts`](Dispatcher::check_timeouts)
-/// and pass it back to [`resolve_timeout`](Dispatcher::resolve_timeout).
-pub struct TimeoutResolution {
+/// [`pending_timeouts`](Dispatcher::pending_timeouts)
+/// and pass it back to [`match_pending_timeout`](Dispatcher::match_pending_timeout).
+pub struct PendingTimeout {
     kind: TimeoutKind,
 }
 
@@ -32,7 +33,7 @@ enum TimeoutKind {
     },
 }
 
-impl TimeoutResolution {
+impl PendingTimeout {
     pub(super) fn standalone(
         binding_ref: MatchedBindingRef,
         propagation: KeyPropagation,
@@ -90,12 +91,12 @@ impl Dispatcher {
         min_remaining
     }
 
-    /// Check all timeout-driven state transitions and return resolutions.
+    /// Process all timeout-driven state transitions and return any that fired.
     ///
     /// Handles layer auto-pop, sequence step timeouts, and tap-hold hold
-    /// resolution. Returns borrow-free [`TimeoutResolution`] values that
-    /// can be resolved to [`MatchResult`] via [`resolve_timeout`](Self::resolve_timeout).
-    pub fn check_timeouts(&mut self) -> Vec<TimeoutResolution> {
+    /// resolution. Returns [`PendingTimeout`] values that can be matched
+    /// to actions via [`match_pending_timeout`](Self::match_pending_timeout).
+    pub fn pending_timeouts(&mut self) -> Vec<PendingTimeout> {
         let now = Instant::now();
 
         let mut timed_out_layers = Vec::new();
@@ -114,23 +115,23 @@ impl Dispatcher {
             self.clear_sequences_for_layer_if_inactive(&layer_name);
         }
 
-        let mut resolutions = self.check_sequence_timeouts(now);
+        let mut pending = self.check_sequence_timeouts(now);
 
         for id in self.tap_hold.check_timeouts(now) {
-            resolutions.push(TimeoutResolution::tap_hold_hold(id));
+            pending.push(PendingTimeout::tap_hold_hold(id));
         }
 
-        resolutions
+        pending
     }
 
-    /// Resolve a [`TimeoutResolution`] to a [`MatchResult`].
+    /// Match a [`PendingTimeout`] to its action, returning a [`MatchResult`].
     ///
     /// This is the second step of the two-phase timeout pattern: first
-    /// collect resolutions (which mutate state), then resolve each to
+    /// collect pending timeouts (which mutate state), then match each to
     /// an action reference.
     #[must_use]
-    pub fn resolve_timeout(&self, resolution: &TimeoutResolution) -> Option<MatchResult<'_>> {
-        match &resolution.kind {
+    pub fn match_pending_timeout(&self, pending: &PendingTimeout) -> Option<MatchResult<'_>> {
+        match &pending.kind {
             TimeoutKind::Standalone {
                 binding_ref,
                 propagation,

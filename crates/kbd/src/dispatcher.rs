@@ -1461,14 +1461,14 @@ mod tests {
         dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
         std::thread::sleep(Duration::from_millis(60));
 
-        let resolutions = dispatcher.check_timeouts();
-        assert!(!resolutions.is_empty());
+        let pending = dispatcher.pending_timeouts();
+        assert!(!pending.is_empty());
         let mut found_match = false;
-        for resolution in &resolutions {
+        for p in &pending {
             if let Some(MatchResult::Matched {
                 action: Action::Callback(cb),
                 ..
-            }) = dispatcher.resolve_timeout(resolution)
+            }) = dispatcher.match_pending_timeout(p)
             {
                 cb();
                 found_match = true;

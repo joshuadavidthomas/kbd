@@ -592,10 +592,10 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
         }
 
         engine.process_polled_events(&poll_fds);
-        let resolutions = engine.dispatcher.check_timeouts();
-        for resolution in &resolutions {
+        let pending = engine.dispatcher.pending_timeouts();
+        for pending in &pending {
             if let Some(MatchResult::Matched { action, .. }) =
-                engine.dispatcher.resolve_timeout(resolution)
+                engine.dispatcher.match_pending_timeout(pending)
             {
                 execute_action(action);
             }
@@ -1270,7 +1270,7 @@ mod tests {
         let _ = press_key(&mut engine, Key::K, 10);
 
         std::thread::sleep(Duration::from_millis(20));
-        let _ = engine.dispatcher.check_timeouts();
+        let _ = engine.dispatcher.pending_timeouts();
         assert!(engine.dispatcher.pending_sequence().is_none());
     }
 
@@ -2089,7 +2089,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(80));
 
         // Check timeouts (simulating the engine loop check)
-        let _ = engine.dispatcher.check_timeouts();
+        let _ = engine.dispatcher.pending_timeouts();
 
         // Layer should be gone — H no longer matches
         press_key(&mut engine, Key::H, 10);
@@ -2125,7 +2125,7 @@ mod tests {
 
         // Wait a bit more but not enough from last activity
         std::thread::sleep(Duration::from_millis(50));
-        let _ = engine.dispatcher.check_timeouts();
+        let _ = engine.dispatcher.pending_timeouts();
 
         // Layer should still be active
         press_key(&mut engine, Key::H, 10);
@@ -2134,7 +2134,7 @@ mod tests {
 
         // Now wait for full timeout from last activity
         std::thread::sleep(Duration::from_millis(120));
-        let _ = engine.dispatcher.check_timeouts();
+        let _ = engine.dispatcher.pending_timeouts();
 
         // Layer should be gone
         press_key(&mut engine, Key::H, 10);

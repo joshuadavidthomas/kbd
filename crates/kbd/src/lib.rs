@@ -91,7 +91,7 @@ pub mod prelude {
     pub use crate::device::DeviceInfo;
     pub use crate::dispatcher::Dispatcher;
     pub use crate::dispatcher::MatchResult;
-    pub use crate::dispatcher::timeout::TimeoutResolution;
+    pub use crate::dispatcher::timeout::PendingTimeout;
     pub use crate::hotkey::Hotkey;
     pub use crate::hotkey::HotkeyInput;
     pub use crate::hotkey::HotkeySequence;
