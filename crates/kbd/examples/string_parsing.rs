@@ -18,7 +18,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hotkey: Hotkey = "Ctrl+Shift+A".parse()?;
     println!("Parsed: {hotkey}");
     println!("  Key: {:?}", hotkey.key());
-    println!("  Modifiers: {:?}", hotkey.modifiers());
+    let mods: Vec<_> = hotkey.modifiers().collect();
+    println!("  Modifiers: {mods:?}");
     println!();
 
     // Various accepted formats

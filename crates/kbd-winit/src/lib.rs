@@ -20,7 +20,7 @@
 //! - [`WinitKeyExt`] — converts a winit [`PhysicalKey`] or [`KeyCode`] to
 //!   a [`kbd::key::Key`].
 //! - [`WinitModifiersExt`] — converts winit [`ModifiersState`] to a
-//!   [`Modifiers`].
+//!   [`ModifierSet`].
 //! - [`WinitEventExt`] — converts a winit [`KeyEvent`] plus
 //!   [`ModifiersState`] to a [`kbd::hotkey::Hotkey`].
 //!
@@ -114,12 +114,13 @@
 //!
 //! // Modifier conversion
 //! let mods = ModifiersState::CONTROL.to_modifiers();
-//! assert_eq!(mods, Modifiers::CTRL);
+//! assert!(mods.contains(Modifier::Ctrl));
+//! assert_eq!(mods.len(), 1);
 //! ```
 
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
-use kbd::hotkey::Modifiers;
+use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
 use winit::event::KeyEvent;
 use winit::keyboard::KeyCode;
@@ -302,7 +303,7 @@ impl WinitKeyExt for KeyCode {
             KeyCode::NumpadParenRight => Some(Key::NUMPAD_PAREN_RIGHT),
             KeyCode::NumpadStar => Some(Key::NUMPAD_STAR),
 
-            // Modifiers — winit uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight.
+            // ModifierSet — winit uses SuperLeft/SuperRight where W3C uses MetaLeft/MetaRight.
             // Meta is winit's legacy alias for the Super key (no left/right distinction).
             KeyCode::ControlLeft => Some(Key::CONTROL_LEFT),
             KeyCode::ControlRight => Some(Key::CONTROL_RIGHT),
@@ -398,11 +399,11 @@ impl WinitKeyExt for PhysicalKey {
     }
 }
 
-/// Convert winit [`ModifiersState`] bitflags to a [`Modifiers`].
+/// Convert winit [`ModifiersState`] bitflags to a [`ModifierSet`].
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait WinitModifiersExt: private::Sealed {
-    /// Convert these winit modifier flags to a [`Modifiers`].
+    /// Convert these winit modifier flags to a [`ModifierSet`].
     ///
     /// # Examples
     ///
@@ -412,14 +413,15 @@ pub trait WinitModifiersExt: private::Sealed {
     /// use winit::keyboard::ModifiersState;
     ///
     /// let mods = (ModifiersState::CONTROL | ModifiersState::SHIFT).to_modifiers();
-    /// assert_eq!(mods, Modifiers::CTRL.with(Modifier::Shift));
+    /// assert!(mods.contains(Modifier::Ctrl));
+    /// assert!(mods.contains(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> Modifiers;
+    fn to_modifiers(&self) -> ModifierSet;
 }
 
 impl WinitModifiersExt for ModifiersState {
-    fn to_modifiers(&self) -> Modifiers {
+    fn to_modifiers(&self) -> ModifierSet {
         Modifier::collect_active([
             (self.control_key(), Modifier::Ctrl),
             (self.shift_key(), Modifier::Shift),
@@ -670,21 +672,21 @@ mod tests {
 
     #[test]
     fn empty_modifiers() {
-        assert_eq!(ModifiersState::empty().to_modifiers(), Modifiers::NONE);
+        assert_eq!(ModifiersState::empty().to_modifiers(), ModifierSet::NONE);
     }
 
     #[test]
     fn single_modifiers() {
-        assert_eq!(ModifiersState::CONTROL.to_modifiers(), Modifiers::CTRL);
-        assert_eq!(ModifiersState::SHIFT.to_modifiers(), Modifiers::SHIFT);
-        assert_eq!(ModifiersState::ALT.to_modifiers(), Modifiers::ALT);
-        assert_eq!(ModifiersState::SUPER.to_modifiers(), Modifiers::SUPER);
+        assert_eq!(ModifiersState::CONTROL.to_modifiers(), ModifierSet::CTRL);
+        assert_eq!(ModifiersState::SHIFT.to_modifiers(), ModifierSet::SHIFT);
+        assert_eq!(ModifiersState::ALT.to_modifiers(), ModifierSet::ALT);
+        assert_eq!(ModifiersState::SUPER.to_modifiers(), ModifierSet::SUPER);
     }
 
     #[test]
     fn combined_modifiers() {
         let mods = ModifiersState::CONTROL | ModifiersState::SHIFT;
-        assert_eq!(mods.to_modifiers(), Modifiers::CTRL.with(Modifier::Shift));
+        assert_eq!(mods.to_modifiers(), ModifierSet::CTRL.with(Modifier::Shift));
     }
 
     #[test]
@@ -695,7 +697,7 @@ mod tests {
             | ModifiersState::SUPER;
         assert_eq!(
             mods.to_modifiers(),
-            Modifiers::NONE
+            ModifierSet::NONE
                 .with(Modifier::Ctrl)
                 .with(Modifier::Shift)
                 .with(Modifier::Alt)

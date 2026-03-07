@@ -432,7 +432,6 @@ mod tests {
     use crate::binding::OverlayVisibility;
     use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
-    use crate::hotkey::Modifiers;
     use crate::key::Key;
 
     #[test]
@@ -484,7 +483,8 @@ mod tests {
         let (_, bindings, _, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].hotkey.key(), Key::H);
-        assert_eq!(bindings[0].hotkey.modifiers(), Modifiers::CTRL);
+        assert!(bindings[0].hotkey.has_modifier(Modifier::Ctrl));
+        assert_eq!(bindings[0].hotkey.modifier_count(), 1);
     }
 
     #[test]

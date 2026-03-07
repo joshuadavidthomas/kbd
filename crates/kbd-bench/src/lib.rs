@@ -4,7 +4,7 @@ use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
-use kbd::hotkey::Modifiers;
+use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
 use kbd::layer::Layer;
 
@@ -80,7 +80,7 @@ pub fn generate_hotkeys(n: usize) -> Vec<Hotkey> {
     for i in 0..n {
         let key = KEYS[i % KEYS.len()];
         let mods = MODIFIER_SETS[i / KEYS.len() % MODIFIER_SETS.len()];
-        let modifiers: Modifiers = mods.iter().copied().collect();
+        let modifiers: ModifierSet = mods.iter().copied().collect();
         hotkeys.push(Hotkey::with_modifiers(key, modifiers));
     }
     hotkeys

@@ -19,7 +19,7 @@
 //!
 //! - [`EguiKeyExt`] — converts an [`egui::Key`] to a [`kbd::key::Key`].
 //! - [`EguiModifiersExt`] — converts [`egui::Modifiers`] to a
-//!   [`Modifiers`].
+//!   [`ModifierSet`](kbd::hotkey::ModifierSet).
 //! - [`EguiEventExt`] — converts a full [`egui::Event`] keyboard event
 //!   to a [`kbd::hotkey::Hotkey`].
 //!
@@ -57,7 +57,8 @@
 //!
 //! // Modifier conversion
 //! let mods = Modifiers::CTRL.to_modifiers();
-//! assert_eq!(mods, kbd::hotkey::Modifiers::CTRL);
+//! assert!(mods.contains(Modifier::Ctrl));
+//! assert_eq!(mods.len(), 1);
 //!
 //! // Full event conversion
 //! let event = egui::Event::Key {
@@ -259,7 +260,7 @@ impl EguiKeyExt for EguiKey {
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait EguiModifiersExt: private::Sealed {
-    /// Convert these egui modifiers to kbd [`Modifiers`](kbd::hotkey::Modifiers).
+    /// Convert these egui modifiers to a kbd [`ModifierSet`](kbd::hotkey::ModifierSet).
     ///
     /// # Examples
     ///
@@ -272,14 +273,15 @@ pub trait EguiModifiersExt: private::Sealed {
     ///     alt: false, ctrl: true, shift: true,
     ///     mac_cmd: false, command: false,
     /// };
-    /// assert_eq!(mods.to_modifiers(), kbd::hotkey::Modifiers::CTRL.with(Modifier::Shift));
+    /// assert!(mods.to_modifiers().contains(Modifier::Ctrl));
+    /// assert!(mods.to_modifiers().contains(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> kbd::hotkey::Modifiers;
+    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet;
 }
 
 impl EguiModifiersExt for Modifiers {
-    fn to_modifiers(&self) -> kbd::hotkey::Modifiers {
+    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet {
         Modifier::collect_active([
             (self.ctrl, Modifier::Ctrl),
             (self.shift, Modifier::Shift),
@@ -342,7 +344,7 @@ mod tests {
     use egui::Modifiers;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
-    use kbd::hotkey::Modifiers as KbdModifiers;
+    use kbd::hotkey::ModifierSet as KbdModifiers;
     use kbd::key::Key;
 
     use super::*;

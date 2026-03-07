@@ -11,7 +11,7 @@ use kbd::binding::BindingId;
 use kbd::binding::RegisteredBinding;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeySequence;
-use kbd::hotkey::Modifiers;
+use kbd::hotkey::ModifierSet;
 use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
 use kbd::introspection::ConflictInfo;
@@ -65,7 +65,7 @@ pub(crate) enum Command {
         reply: mpsc::Sender<bool>,
     },
     ActiveModifiers {
-        reply: mpsc::Sender<Modifiers>,
+        reply: mpsc::Sender<ModifierSet>,
     },
     ListBindings {
         reply: mpsc::Sender<Vec<BindingInfo>>,

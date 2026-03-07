@@ -15,7 +15,6 @@ use kbd::device::DeviceInfo;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
-use kbd::hotkey::Modifiers;
 use kbd::key::Key;
 use kbd::key_state::KeyTransition;
 use kbd::layer::LayerName;
@@ -102,7 +101,8 @@ fn hotkey_serializes_as_string() {
 fn hotkey_deserializes_from_string() {
     let hotkey: Hotkey = serde_json::from_str(r#""Ctrl+A""#).unwrap();
     assert_eq!(hotkey.key(), Key::A);
-    assert_eq!(hotkey.modifiers(), Modifiers::CTRL);
+    assert!(hotkey.has_modifier(Modifier::Ctrl));
+    assert_eq!(hotkey.modifier_count(), 1);
 }
 
 #[test]

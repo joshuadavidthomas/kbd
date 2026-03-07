@@ -20,7 +20,7 @@
 //! - [`IcedKeyExt`] — converts an iced [`key::Code`] or [`key::Physical`]
 //!   to a [`kbd::key::Key`].
 //! - [`IcedModifiersExt`] — converts iced [`Modifiers`] to a
-//!   [`Modifiers`].
+//!   [`ModifierSet`](kbd::hotkey::ModifierSet).
 //! - [`IcedEventExt`] — converts an iced keyboard [`Event`] to a
 //!   [`kbd::hotkey::Hotkey`].
 //!
@@ -62,7 +62,8 @@
 //!
 //! // Modifier conversion
 //! let mods = Modifiers::CTRL.to_modifiers();
-//! assert_eq!(mods, kbd::hotkey::Modifiers::CTRL);
+//! assert!(mods.contains(Modifier::Ctrl));
+//! assert_eq!(mods.len(), 1);
 //! ```
 
 use iced_core::keyboard::Event;
@@ -346,14 +347,14 @@ impl IcedKeyExt for key::Physical {
     }
 }
 
-/// Convert iced [`Modifiers`] bitflags to kbd [`Modifiers`](kbd::hotkey::Modifiers).
+/// Convert iced [`Modifiers`] bitflags to a kbd [`ModifierSet`](kbd::hotkey::ModifierSet).
 ///
 /// Iced uses `LOGO` for the Super/Meta/Windows key. This maps to
 /// `Modifier::Super` in `kbd`.
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait IcedModifiersExt: private::Sealed {
-    /// Convert these iced modifier flags to kbd [`Modifiers`](kbd::hotkey::Modifiers).
+    /// Convert these iced modifier flags to a kbd [`ModifierSet`](kbd::hotkey::ModifierSet).
     ///
     /// # Examples
     ///
@@ -363,14 +364,15 @@ pub trait IcedModifiersExt: private::Sealed {
     /// use kbd_iced::IcedModifiersExt;
     ///
     /// let mods = (Modifiers::CTRL | Modifiers::SHIFT).to_modifiers();
-    /// assert_eq!(mods, kbd::hotkey::Modifiers::CTRL.with(Modifier::Shift));
+    /// assert!(mods.contains(Modifier::Ctrl));
+    /// assert!(mods.contains(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> kbd::hotkey::Modifiers;
+    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet;
 }
 
 impl IcedModifiersExt for Modifiers {
-    fn to_modifiers(&self) -> kbd::hotkey::Modifiers {
+    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet {
         Modifier::collect_active([
             (self.control(), Modifier::Ctrl),
             (self.shift(), Modifier::Shift),
@@ -455,7 +457,7 @@ mod tests {
     use iced_core::keyboard::key;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
-    use kbd::hotkey::Modifiers as KbdModifiers;
+    use kbd::hotkey::ModifierSet as KbdModifiers;
     use kbd::key::Key;
 
     use super::*;

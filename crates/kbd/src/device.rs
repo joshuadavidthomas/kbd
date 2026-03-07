@@ -5,7 +5,7 @@
 //! based on that metadata. [`DeviceContext`] carries device identity and
 //! per-device modifier state for device-aware dispatch.
 
-use crate::hotkey::Modifiers;
+use crate::hotkey::ModifierSet;
 
 /// Metadata for an input device.
 ///
@@ -149,21 +149,21 @@ impl DeviceFilter {
 ///
 /// ```
 /// use kbd::device::{DeviceContext, DeviceInfo};
-/// use kbd::hotkey::{Modifier, Modifiers};
+/// use kbd::hotkey::{Modifier, ModifierSet};
 ///
 /// let info = DeviceInfo::new("StreamDeck XL", 0x0fd9, 0x006c);
 /// let ctx = DeviceContext::new(10, &info)
-///     .with_device_modifiers(Modifiers::CTRL);
+///     .with_device_modifiers(ModifierSet::CTRL);
 ///
 /// assert_eq!(ctx.device_id(), 10);
 /// assert_eq!(ctx.info().name(), "StreamDeck XL");
-/// assert_eq!(ctx.device_modifiers(), Some(Modifiers::CTRL));
+/// assert_eq!(ctx.device_modifiers(), Some(ModifierSet::CTRL));
 /// ```
 #[derive(Debug)]
 pub struct DeviceContext<'a> {
     device_id: i32,
     info: &'a DeviceInfo,
-    device_modifiers: Option<Modifiers>,
+    device_modifiers: Option<ModifierSet>,
 }
 
 impl<'a> DeviceContext<'a> {
@@ -187,7 +187,7 @@ impl<'a> DeviceContext<'a> {
     /// these modifiers instead of the aggregate modifiers from the
     /// `Hotkey` argument.
     #[must_use]
-    pub fn with_device_modifiers(mut self, modifiers: Modifiers) -> Self {
+    pub fn with_device_modifiers(mut self, modifiers: ModifierSet) -> Self {
         self.device_modifiers = Some(modifiers);
         self
     }
@@ -206,7 +206,7 @@ impl<'a> DeviceContext<'a> {
 
     /// Per-device modifier state, if set.
     #[must_use]
-    pub const fn device_modifiers(&self) -> Option<Modifiers> {
+    pub const fn device_modifiers(&self) -> Option<ModifierSet> {
         self.device_modifiers
     }
 }
