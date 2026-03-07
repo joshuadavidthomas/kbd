@@ -5,6 +5,7 @@ use super::sequence::SequenceBindingRef;
 use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
+use crate::binding::BindingSource;
 use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
@@ -24,16 +25,18 @@ pub(crate) enum SourcePriority {
     User,
 }
 
-/// Derive the priority level from a binding's source label.
-///
-/// - `"default"` (case-insensitive) → [`SourcePriority::Default`]
-/// - `"user"` (case-insensitive) → [`SourcePriority::User`]
-/// - anything else or no source → [`SourcePriority::Standard`]
-pub(crate) fn source_priority(options: &BindingOptions) -> SourcePriority {
-    match options.source() {
-        Some(source) if source.as_str().eq_ignore_ascii_case("default") => SourcePriority::Default,
-        Some(source) if source.as_str().eq_ignore_ascii_case("user") => SourcePriority::User,
-        _ => SourcePriority::Standard,
+impl From<Option<&BindingSource>> for SourcePriority {
+    /// Derive the priority level from a binding's source label.
+    ///
+    /// - `"default"` (case-insensitive) → [`SourcePriority::Default`]
+    /// - `"user"` (case-insensitive) → [`SourcePriority::User`]
+    /// - anything else or `None` → [`SourcePriority::Standard`]
+    fn from(source: Option<&BindingSource>) -> Self {
+        match source {
+            Some(s) if s.as_str().eq_ignore_ascii_case("default") => Self::Default,
+            Some(s) if s.as_str().eq_ignore_ascii_case("user") => Self::User,
+            _ => Self::Standard,
+        }
     }
 }
 
@@ -151,7 +154,7 @@ impl Dispatcher {
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
         let hotkey = binding.hotkey().clone();
-        let new_priority = source_priority(binding.options());
+        let new_priority = SourcePriority::from(binding.options().source());
         let new_device = binding.options().device();
 
         if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
@@ -163,7 +166,7 @@ impl Dispatcher {
             self.bindings_by_id
                 .get(existing_id)
                 .is_some_and(|existing| {
-                    source_priority(existing.options()) == new_priority
+                    SourcePriority::from(existing.options().source()) == new_priority
                         && existing.options().device() == new_device
                 })
         }) {
@@ -175,7 +178,9 @@ impl Dispatcher {
             .position(|existing_id| {
                 self.bindings_by_id
                     .get(existing_id)
-                    .is_some_and(|existing| source_priority(existing.options()) > new_priority)
+                    .is_some_and(|existing| {
+                        SourcePriority::from(existing.options().source()) > new_priority
+                    })
             })
             .unwrap_or(ids_for_hotkey.len());
 
@@ -254,10 +259,9 @@ impl Dispatcher {
 mod tests {
     use super::super::Dispatcher;
     use super::SourcePriority;
-    use super::source_priority;
     use crate::action::Action;
     use crate::binding::BindingId;
-    use crate::binding::BindingOptions;
+    use crate::binding::BindingSource;
     use crate::binding::RegisteredBinding;
     use crate::hotkey::Hotkey;
     use crate::hotkey::HotkeySequence;
@@ -267,26 +271,31 @@ mod tests {
 
     #[test]
     fn source_priority_from_source_labels() {
-        let default = BindingOptions::default().with_source("default");
-        assert_eq!(source_priority(&default), SourcePriority::Default);
-
-        let user = BindingOptions::default().with_source("user");
-        assert_eq!(source_priority(&user), SourcePriority::User);
-
-        let plugin = BindingOptions::default().with_source("plugin");
-        assert_eq!(source_priority(&plugin), SourcePriority::Standard);
-
-        let no_source = BindingOptions::default();
-        assert_eq!(source_priority(&no_source), SourcePriority::Standard);
+        assert_eq!(
+            SourcePriority::from(Some(&BindingSource::new("default"))),
+            SourcePriority::Default,
+        );
+        assert_eq!(
+            SourcePriority::from(Some(&BindingSource::new("user"))),
+            SourcePriority::User,
+        );
+        assert_eq!(
+            SourcePriority::from(Some(&BindingSource::new("plugin"))),
+            SourcePriority::Standard,
+        );
+        assert_eq!(SourcePriority::from(None), SourcePriority::Standard);
     }
 
     #[test]
     fn source_priority_is_case_insensitive() {
-        let default = BindingOptions::default().with_source("DEFAULT");
-        assert_eq!(source_priority(&default), SourcePriority::Default);
-
-        let user = BindingOptions::default().with_source("UsEr");
-        assert_eq!(source_priority(&user), SourcePriority::User);
+        assert_eq!(
+            SourcePriority::from(Some(&BindingSource::new("DEFAULT"))),
+            SourcePriority::Default,
+        );
+        assert_eq!(
+            SourcePriority::from(Some(&BindingSource::new("UsEr"))),
+            SourcePriority::User,
+        );
     }
 
     #[test]
