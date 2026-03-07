@@ -338,8 +338,8 @@ impl BindingOptions {
 
     /// The rate limit for this binding, if set.
     #[must_use]
-    pub const fn rate_limit(&self) -> Option<&RateLimit> {
-        self.rate_limit.as_ref()
+    pub const fn rate_limit(&self) -> Option<RateLimit> {
+        self.rate_limit
     }
 
     /// Set a rate limit — cap how many times the action fires within a

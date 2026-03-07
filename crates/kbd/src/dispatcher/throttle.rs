@@ -97,7 +97,7 @@ impl Dispatcher {
         // Copy throttle options out before any mutable borrows on self.
         let options = self.binding_options(binding_ref);
         let debounce = options.debounce();
-        let rate_limit = options.rate_limit().copied();
+        let rate_limit = options.rate_limit();
 
         // No throttle policy configured — skip all tracking.
         if debounce.is_none() && rate_limit.is_none() {
