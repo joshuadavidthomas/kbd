@@ -38,9 +38,11 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
+use std::time::Instant;
 
 use kbd::action::Action;
 use kbd::binding::KeyPropagation;
+use kbd::binding::RepeatPolicy;
 use kbd::device::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
@@ -291,7 +293,7 @@ impl Engine {
 
     /// Handle a repeat event using the press cache and repeat policy.
     fn handle_repeat_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let now = std::time::Instant::now();
+        let now = Instant::now();
 
         let Some(cached) = self.press_cache.get(&event.key) else {
             // No cache entry — modifier key or key pressed before cache.
@@ -303,9 +305,9 @@ impl Engine {
         let should_fire = match &cached.repeat_info {
             None => false,
             Some(info) => match info.policy {
-                kbd::binding::RepeatPolicy::Suppress => false,
-                kbd::binding::RepeatPolicy::Allow => true,
-                kbd::binding::RepeatPolicy::Custom { delay, rate } => {
+                RepeatPolicy::Suppress => false,
+                RepeatPolicy::Allow => true,
+                RepeatPolicy::Custom { delay, rate } => {
                     let since_press = now.duration_since(info.press_time);
 
                     if since_press < delay {
@@ -377,7 +379,7 @@ impl Engine {
         let device_info = self.devices.device_info(event.device_fd);
 
         // Process through the Dispatcher.
-        let now = std::time::Instant::now();
+        let now = Instant::now();
         let (outcome, repeat_info) = {
             let result = if let Some(info) = device_info {
                 let ctx = DeviceContext::new(event.device_fd, info)

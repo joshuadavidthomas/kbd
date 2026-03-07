@@ -312,7 +312,7 @@ impl Dispatcher {
                     layer_effect: LayerEffect::Push(_) | LayerEffect::Pop | LayerEffect::Toggle(_),
                     ..
                 } | InternalOutcome::Pending { .. }
-                  | InternalOutcome::Throttled { .. }
+                    | InternalOutcome::Throttled { .. }
             ) {
                 self.tick_oneshot_layers();
             }
