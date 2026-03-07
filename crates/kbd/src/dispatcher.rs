@@ -1599,4 +1599,112 @@ mod tests {
         assert!(deadline.is_some());
         assert!(deadline.unwrap() <= Duration::from_millis(201));
     }
+
+    #[test]
+    fn tap_hold_duplicate_registration_rejected() {
+        let mut dispatcher = Dispatcher::new();
+
+        dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::Suppress,
+                Action::Suppress,
+                TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        let result = dispatcher.register_tap_hold(
+            Key::CAPS_LOCK,
+            Action::Suppress,
+            Action::Suppress,
+            TapHoldOptions::default(),
+        );
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::AlreadyRegistered)
+        ));
+    }
+
+    #[test]
+    fn tap_hold_unregister_stops_tap_hold_behavior() {
+        let mut dispatcher = Dispatcher::new();
+        let tap_counter = Arc::new(AtomicUsize::new(0));
+        let tc = Arc::clone(&tap_counter);
+
+        let id = dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::from(move || {
+                    tc.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::Suppress,
+                TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        // Tap works before unregister
+        dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
+        assert!(matches!(result, MatchResult::Matched { .. }));
+
+        // Unregister
+        dispatcher.unregister(id);
+
+        // Key should pass through now
+        let result = dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        assert!(matches!(result, MatchResult::NoMatch));
+    }
+
+    #[test]
+    fn tap_hold_unregister_clears_active_state() {
+        let mut dispatcher = Dispatcher::new();
+
+        let id = dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::Suppress,
+                Action::Suppress,
+                TapHoldOptions::new().with_threshold(Duration::from_millis(200)),
+            )
+            .unwrap();
+
+        // Press to create active state
+        dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        assert!(dispatcher.next_timeout_deadline().is_some());
+
+        // Unregister while key is active
+        dispatcher.unregister(id);
+
+        // No more pending deadlines
+        assert!(dispatcher.next_timeout_deadline().is_none());
+
+        // Release should pass through (no active tap-hold state)
+        let result = dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
+        assert!(matches!(result, MatchResult::Ignored));
+    }
+
+    #[test]
+    fn tap_hold_can_reregister_after_unregister() {
+        let mut dispatcher = Dispatcher::new();
+
+        let id = dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::Suppress,
+                Action::Suppress,
+                TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        dispatcher.unregister(id);
+
+        // Should be able to re-register the same key
+        let result = dispatcher.register_tap_hold(
+            Key::CAPS_LOCK,
+            Action::Suppress,
+            Action::Suppress,
+            TapHoldOptions::default(),
+        );
+        assert!(result.is_ok());
+    }
 }

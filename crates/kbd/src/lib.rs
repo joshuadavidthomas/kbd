@@ -106,4 +106,5 @@ pub mod prelude {
     pub use crate::sequence::PendingSequenceInfo;
     pub use crate::sequence::SequenceInput;
     pub use crate::sequence::SequenceOptions;
+    pub use crate::tap_hold::TapHoldOptions;
 }
