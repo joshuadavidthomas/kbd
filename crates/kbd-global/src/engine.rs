@@ -393,7 +393,7 @@ impl Engine {
 
         // Process through the Dispatcher.
         let now = Instant::now();
-        let (outcome, repeat_info) = {
+        let (match_outcome, repeat_info) = {
             let result = if let Some(info) = device_info {
                 let ctx = DeviceContext::new(event.device_fd, info)
                     .with_device_modifiers(device_modifiers);
@@ -439,43 +439,20 @@ impl Engine {
             }
         };
 
-        // Determine event disposition based on match outcome and grab state
-        let disposition = match outcome {
-            MatchOutcome::Matched { propagation } => match propagation {
-                KeyPropagation::Continue
-                    if matches!(self.grab_state, GrabState::Enabled { .. }) =>
-                {
-                    self.forward_event(event.key, event.transition);
-                    KeyEventOutcome::MatchedForwarded
-                }
-                KeyPropagation::Continue | KeyPropagation::Stop => KeyEventOutcome::MatchedConsumed,
-                // KeyPropagation is #[non_exhaustive]
-                #[allow(clippy::match_same_arms)]
-                _ => KeyEventOutcome::MatchedConsumed,
-            },
-            MatchOutcome::Consumed => KeyEventOutcome::MatchedConsumed,
-            MatchOutcome::Unmatched => {
-                if matches!(self.grab_state, GrabState::Enabled { .. }) {
-                    self.forward_event(event.key, event.transition);
-                    KeyEventOutcome::UnmatchedForwarded
-                } else {
-                    KeyEventOutcome::Ignored
-                }
-            }
-        };
+        let outcome = self.resolve_outcome(match_outcome, event.key, event.transition);
 
-        // Cache the disposition for non-modifier key presses.
+        // Cache the outcome for non-modifier key presses.
         if kbd::hotkey::Modifier::from_key(event.key).is_none() {
             self.press_cache.insert(
                 event.key,
                 PressCacheEntry {
-                    outcome: disposition,
+                    outcome,
                     repeat_info,
                 },
             );
         }
 
-        disposition
+        outcome
     }
 
     /// Process a release event for a tap-hold key through the Dispatcher.
@@ -484,6 +461,10 @@ impl Engine {
     /// action resolves on release. The Dispatcher's `process_tap_hold`
     /// determines whether this is a tap (released before threshold) or a
     /// hold cleanup (hold already resolved by timeout or interrupt).
+    ///
+    /// The result flows through the same `MatchResult → MatchOutcome →
+    /// KeyEventOutcome` reduction as normal presses, so the propagation
+    /// policy is determined solely by the dispatcher.
     fn process_tap_hold_release(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
         let active_modifiers = self.key_state.active_modifiers();
         let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
@@ -500,12 +481,58 @@ impl Engine {
             self.dispatcher.process(candidate, event.transition)
         };
 
-        if let MatchResult::Matched { action, .. } = result {
-            execute_action(action);
-        }
+        let outcome = match result {
+            MatchResult::Matched {
+                action,
+                propagation,
+                ..
+            } => {
+                execute_action(action);
+                MatchOutcome::Matched { propagation }
+            }
+            MatchResult::Pending { .. } | MatchResult::Suppressed => MatchOutcome::Consumed,
+            MatchResult::NoMatch | MatchResult::Ignored | MatchResult::Throttled { .. } => {
+                MatchOutcome::Unmatched
+            }
+            // MatchResult is #[non_exhaustive]
+            #[allow(clippy::match_same_arms)]
+            _ => MatchOutcome::Unmatched,
+        };
 
-        // Tap-hold keys are always consumed (they require grab mode).
-        KeyEventOutcome::MatchedConsumed
+        self.resolve_outcome(outcome, event.key, event.transition)
+    }
+
+    /// Map a [`MatchOutcome`] to a [`KeyEventOutcome`], forwarding the
+    /// event through the virtual device when appropriate.
+    fn resolve_outcome(
+        &mut self,
+        outcome: MatchOutcome,
+        key: Key,
+        transition: KeyTransition,
+    ) -> KeyEventOutcome {
+        match outcome {
+            MatchOutcome::Matched { propagation } => match propagation {
+                KeyPropagation::Continue
+                    if matches!(self.grab_state, GrabState::Enabled { .. }) =>
+                {
+                    self.forward_event(key, transition);
+                    KeyEventOutcome::MatchedForwarded
+                }
+                KeyPropagation::Continue | KeyPropagation::Stop => KeyEventOutcome::MatchedConsumed,
+                // KeyPropagation is #[non_exhaustive]
+                #[allow(clippy::match_same_arms)]
+                _ => KeyEventOutcome::MatchedConsumed,
+            },
+            MatchOutcome::Consumed => KeyEventOutcome::MatchedConsumed,
+            MatchOutcome::Unmatched => {
+                if matches!(self.grab_state, GrabState::Enabled { .. }) {
+                    self.forward_event(key, transition);
+                    KeyEventOutcome::UnmatchedForwarded
+                } else {
+                    KeyEventOutcome::Ignored
+                }
+            }
+        }
     }
 
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {
