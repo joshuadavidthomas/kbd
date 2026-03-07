@@ -247,7 +247,6 @@ impl Dispatcher {
             self.pending_standalone = None;
         }
 
-        // Also remove from tap-hold bindings.
         self.tap_hold.unregister(id);
     }
 
