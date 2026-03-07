@@ -1,4 +1,4 @@
-//! Hotkey composition types: [`Modifier`], [`Hotkey`], [`HotkeySequence`].
+//! Hotkey composition types: [`Modifier`], [`ModifierSet`], [`Hotkey`], [`HotkeySequence`].
 //!
 //! These types build on [`Key`] to express key combinations.
 //! Parse from human-readable strings (`"Ctrl+Shift+A"`) or build
@@ -7,11 +7,12 @@
 //! # Parsing
 //!
 //! ```
-//! use kbd::hotkey::{Hotkey, Modifier, HotkeySequence};
+//! use kbd::hotkey::{Hotkey, Modifier, ModifierSet, HotkeySequence};
 //!
 //! # fn main() -> Result<(), kbd::error::ParseHotkeyError> {
 //! let hotkey: Hotkey = "Ctrl+Shift+A".parse()?;
-//! assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Shift]);
+//! let expected = ModifierSet::EMPTY.with(Modifier::Ctrl).with(Modifier::Shift);
+//! assert_eq!(hotkey.modifiers(), expected);
 //!
 //! let seq: HotkeySequence = "Ctrl+K, Ctrl+C".parse()?;
 //! assert_eq!(seq.steps().len(), 2);
@@ -86,12 +87,12 @@ impl Modifier {
     ///
     /// Bridge crates all perform the same conversion: check each
     /// framework-specific modifier flag and collect the active ones into
-    /// a `Vec<Modifier>`. This helper centralizes that logic.
+    /// a [`ModifierSet`]. This helper centralizes that logic.
     ///
     /// # Examples
     ///
     /// ```
-    /// use kbd::hotkey::Modifier;
+    /// use kbd::hotkey::{Modifier, ModifierSet};
     ///
     /// let modifiers = Modifier::collect_active([
     ///     (true, Modifier::Ctrl),
@@ -99,17 +100,29 @@ impl Modifier {
     ///     (false, Modifier::Alt),
     ///     (false, Modifier::Super),
     /// ]);
-    /// assert_eq!(modifiers, vec![Modifier::Ctrl, Modifier::Shift]);
+    /// let expected = ModifierSet::EMPTY.with(Modifier::Ctrl).with(Modifier::Shift);
+    /// assert_eq!(modifiers, expected);
     /// ```
     #[must_use]
-    pub fn collect_active<const N: usize>(flags: [(bool, Modifier); N]) -> Vec<Modifier> {
-        let mut modifiers = Vec::with_capacity(N);
+    pub fn collect_active<const N: usize>(flags: [(bool, Modifier); N]) -> ModifierSet {
+        let mut set = ModifierSet::EMPTY;
         for (active, modifier) in flags {
             if active {
-                modifiers.push(modifier);
+                set = set.with(modifier);
             }
         }
-        modifiers
+        set
+    }
+
+    /// Return the bitmask value for this modifier.
+    #[must_use]
+    const fn bit(self) -> u8 {
+        match self {
+            Self::Ctrl => 0b0001,
+            Self::Shift => 0b0010,
+            Self::Alt => 0b0100,
+            Self::Super => 0b1000,
+        }
     }
 }
 
@@ -158,6 +171,228 @@ impl From<Modifier> for Key {
     }
 }
 
+/// A set of modifier keys represented as a bitmask.
+///
+/// This is a `Copy` type that stores up to 4 modifiers (Ctrl, Shift, Alt,
+/// Super) in a single `u8`. Equality, hashing, and comparison are integer
+/// operations — no heap allocation, no pointer chasing.
+///
+/// # Examples
+///
+/// ```
+/// use kbd::hotkey::{Modifier, ModifierSet};
+///
+/// let mods = ModifierSet::EMPTY
+///     .with(Modifier::Ctrl)
+///     .with(Modifier::Shift);
+///
+/// assert!(mods.contains(Modifier::Ctrl));
+/// assert!(mods.contains(Modifier::Shift));
+/// assert!(!mods.contains(Modifier::Alt));
+/// assert_eq!(mods.len(), 2);
+///
+/// // Iteration yields modifiers in canonical order
+/// let collected: Vec<_> = mods.iter().collect();
+/// assert_eq!(collected, vec![Modifier::Ctrl, Modifier::Shift]);
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct ModifierSet(u8);
+
+impl ModifierSet {
+    /// The empty modifier set.
+    pub const EMPTY: Self = Self(0);
+
+    /// A modifier set containing only Ctrl.
+    pub const CTRL: Self = Self(Modifier::Ctrl.bit());
+    /// A modifier set containing only Shift.
+    pub const SHIFT: Self = Self(Modifier::Shift.bit());
+    /// A modifier set containing only Alt.
+    pub const ALT: Self = Self(Modifier::Alt.bit());
+    /// A modifier set containing only Super.
+    pub const SUPER: Self = Self(Modifier::Super.bit());
+
+    /// All canonical modifiers in order, for iteration.
+    const ALL: [Modifier; 4] = [
+        Modifier::Ctrl,
+        Modifier::Shift,
+        Modifier::Alt,
+        Modifier::Super,
+    ];
+
+    /// Create a modifier set from a raw bitmask.
+    ///
+    /// Only the lower 4 bits are meaningful. Higher bits are masked off.
+    #[must_use]
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits & 0b1111)
+    }
+
+    /// Return the raw bitmask.
+    #[must_use]
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    /// Whether this set contains the given modifier.
+    #[must_use]
+    pub const fn contains(self, modifier: Modifier) -> bool {
+        self.0 & modifier.bit() != 0
+    }
+
+    /// Return a new set with the given modifier added.
+    #[must_use]
+    pub const fn with(self, modifier: Modifier) -> Self {
+        Self(self.0 | modifier.bit())
+    }
+
+    /// Return a new set with the given modifier removed.
+    #[must_use]
+    pub const fn without(self, modifier: Modifier) -> Self {
+        Self(self.0 & !modifier.bit())
+    }
+
+    /// Whether the set is empty (no modifiers).
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// The number of modifiers in this set.
+    #[must_use]
+    pub const fn len(self) -> usize {
+        self.0.count_ones() as usize
+    }
+
+    /// Iterate over the modifiers in this set in canonical order
+    /// (Ctrl, Shift, Alt, Super).
+    pub fn iter(self) -> impl Iterator<Item = Modifier> {
+        let bits = self.0;
+        Self::ALL
+            .iter()
+            .copied()
+            .filter(move |m| bits & m.bit() != 0)
+    }
+
+    /// Union of two modifier sets.
+    #[must_use]
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    /// Intersection of two modifier sets.
+    #[must_use]
+    pub const fn intersection(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+}
+
+impl fmt::Debug for ModifierSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set().entries(self.iter()).finish()
+    }
+}
+
+impl fmt::Display for ModifierSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for modifier in self.iter() {
+            if !first {
+                f.write_str("+")?;
+            }
+            write!(f, "{modifier}")?;
+            first = false;
+        }
+        Ok(())
+    }
+}
+
+impl From<Modifier> for ModifierSet {
+    fn from(modifier: Modifier) -> Self {
+        Self(modifier.bit())
+    }
+}
+
+impl FromIterator<Modifier> for ModifierSet {
+    fn from_iter<T: IntoIterator<Item = Modifier>>(iter: T) -> Self {
+        let mut set = Self::EMPTY;
+        for modifier in iter {
+            set = set.with(modifier);
+        }
+        set
+    }
+}
+
+impl<'a> FromIterator<&'a Modifier> for ModifierSet {
+    fn from_iter<T: IntoIterator<Item = &'a Modifier>>(iter: T) -> Self {
+        let mut set = Self::EMPTY;
+        for modifier in iter {
+            set = set.with(*modifier);
+        }
+        set
+    }
+}
+
+impl From<Vec<Modifier>> for ModifierSet {
+    fn from(modifiers: Vec<Modifier>) -> Self {
+        modifiers.iter().collect()
+    }
+}
+
+impl From<&[Modifier]> for ModifierSet {
+    fn from(modifiers: &[Modifier]) -> Self {
+        modifiers.iter().collect()
+    }
+}
+
+impl<const N: usize> From<[Modifier; N]> for ModifierSet {
+    fn from(modifiers: [Modifier; N]) -> Self {
+        modifiers.iter().collect()
+    }
+}
+
+impl IntoIterator for ModifierSet {
+    type Item = Modifier;
+    type IntoIter = ModifierSetIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ModifierSetIter {
+            bits: self.0,
+            index: 0,
+        }
+    }
+}
+
+/// Iterator over the modifiers in a [`ModifierSet`].
+#[derive(Debug, Clone)]
+pub struct ModifierSetIter {
+    bits: u8,
+    index: usize,
+}
+
+impl Iterator for ModifierSetIter {
+    type Item = Modifier;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.index < ModifierSet::ALL.len() {
+            let modifier = ModifierSet::ALL[self.index];
+            self.index += 1;
+            if self.bits & modifier.bit() != 0 {
+                return Some(modifier);
+            }
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = (self.bits >> self.index).count_ones() as usize;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for ModifierSetIter {}
+
 /// A key combined with zero or more modifiers.
 ///
 /// Hotkeys are the matching unit — `"Ctrl+C"`, `"Shift+F5"`, or just `"Escape"`.
@@ -177,55 +412,51 @@ impl From<Modifier> for Key {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Hotkey {
     key: Key,
-    modifiers: Vec<Modifier>,
+    modifiers: ModifierSet,
 }
 
 impl Hotkey {
     /// Create a hotkey for a single key with no modifiers.
     #[must_use]
-    pub fn new(key: Key) -> Self {
+    pub const fn new(key: Key) -> Self {
         Self {
             key,
-            modifiers: Vec::new(),
+            modifiers: ModifierSet::EMPTY,
         }
     }
 
-    /// Create a hotkey from a key and a list of modifiers. Modifiers are
-    /// sorted and deduplicated.
+    /// Create a hotkey from a key and a modifier set.
     ///
-    /// Accepts anything convertible to a `Vec<Modifier>` — a `Vec`, a slice,
-    /// an array, etc.
+    /// Accepts anything convertible to a [`ModifierSet`] — a `ModifierSet`,
+    /// a single `Modifier`, a `Vec<Modifier>`, a slice, an array, etc.
     #[must_use]
-    pub fn with_modifiers(key: Key, modifiers: impl Into<Vec<Modifier>>) -> Self {
-        let mut modifiers = modifiers.into();
-        modifiers.sort();
-        modifiers.dedup();
-        Self { key, modifiers }
+    pub fn with_modifiers(key: Key, modifiers: impl Into<ModifierSet>) -> Self {
+        Self {
+            key,
+            modifiers: modifiers.into(),
+        }
     }
 
     /// Add a modifier to this hotkey.
     #[must_use]
-    pub fn modifier(mut self, modifier: Modifier) -> Self {
-        if !self.modifiers.contains(&modifier) {
-            self.modifiers.push(modifier);
-            self.modifiers.sort();
-        }
+    pub const fn modifier(mut self, modifier: Modifier) -> Self {
+        self.modifiers = self.modifiers.with(modifier);
         self
     }
 
     /// The non-modifier key in this hotkey.
     #[must_use]
-    pub fn key(&self) -> Key {
+    pub const fn key(&self) -> Key {
         self.key
     }
 
-    /// The modifiers required for this hotkey (sorted, deduplicated).
+    /// The modifier set required for this hotkey.
     #[must_use]
-    pub fn modifiers(&self) -> &[Modifier] {
-        &self.modifiers
+    pub const fn modifiers(&self) -> ModifierSet {
+        self.modifiers
     }
 }
 
@@ -245,8 +476,9 @@ impl FromStr for Hotkey {
         }
 
         let mut key = None;
-        let mut modifiers = Vec::new();
+        let mut modifiers = ModifierSet::EMPTY;
         let mut last_modifier_key = None;
+        let mut last_modifier = None;
 
         for segment in trimmed.split('+') {
             let token = segment.trim();
@@ -259,8 +491,9 @@ impl FromStr for Hotkey {
                 .map_err(|_| ParseHotkeyError::UnknownToken(token.to_string()))?;
 
             if let Some(modifier) = Modifier::from_key(parsed_key) {
-                modifiers.push(modifier);
+                modifiers = modifiers.with(modifier);
                 last_modifier_key = Some(parsed_key);
+                last_modifier = Some(modifier);
                 continue;
             }
 
@@ -273,7 +506,9 @@ impl FromStr for Hotkey {
             key
         } else {
             let key = last_modifier_key.ok_or(ParseHotkeyError::MissingKey)?;
-            modifiers.pop();
+            if let Some(modifier) = last_modifier {
+                modifiers = modifiers.without(modifier);
+            }
             key
         };
 
@@ -283,7 +518,7 @@ impl FromStr for Hotkey {
 
 impl fmt::Display for Hotkey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for modifier in &self.modifiers {
+        for modifier in self.modifiers {
             write!(f, "{modifier}+")?;
         }
 
@@ -469,14 +704,18 @@ mod tests {
     fn parses_aliases_case_insensitive() {
         let hotkey = "ctrl+Win+return".parse::<Hotkey>().unwrap();
         assert_eq!(hotkey.key(), Key::ENTER);
-        assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Super]);
+        let expected = ModifierSet::EMPTY
+            .with(Modifier::Ctrl)
+            .with(Modifier::Super);
+        assert_eq!(hotkey.modifiers(), expected);
     }
 
     #[test]
-    fn hotkey_new_sorts_and_dedups_modifiers() {
+    fn hotkey_new_dedups_modifiers() {
         let hotkey =
             Hotkey::with_modifiers(Key::A, vec![Modifier::Alt, Modifier::Ctrl, Modifier::Alt]);
-        assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl, Modifier::Alt]);
+        let expected = ModifierSet::EMPTY.with(Modifier::Ctrl).with(Modifier::Alt);
+        assert_eq!(hotkey.modifiers(), expected);
     }
 
     #[test]
@@ -503,7 +742,7 @@ mod tests {
     fn parses_all_modifier_combo_with_last_modifier_as_trigger() {
         let hotkey = "Ctrl+Shift".parse::<Hotkey>().unwrap();
         assert_eq!(hotkey.key(), Key::SHIFT_LEFT);
-        assert_eq!(hotkey.modifiers(), &[Modifier::Ctrl]);
+        assert_eq!(hotkey.modifiers(), ModifierSet::CTRL);
     }
 
     #[test]
@@ -514,7 +753,8 @@ mod tests {
             (true, Modifier::Alt),
             (false, Modifier::Super),
         ]);
-        assert_eq!(modifiers, vec![Modifier::Ctrl, Modifier::Alt]);
+        let expected = ModifierSet::EMPTY.with(Modifier::Ctrl).with(Modifier::Alt);
+        assert_eq!(modifiers, expected);
     }
 
     #[test]
@@ -525,15 +765,12 @@ mod tests {
             (true, Modifier::Alt),
             (true, Modifier::Super),
         ]);
-        assert_eq!(
-            modifiers,
-            vec![
-                Modifier::Ctrl,
-                Modifier::Shift,
-                Modifier::Alt,
-                Modifier::Super,
-            ]
-        );
+        let expected = ModifierSet::EMPTY
+            .with(Modifier::Ctrl)
+            .with(Modifier::Shift)
+            .with(Modifier::Alt)
+            .with(Modifier::Super);
+        assert_eq!(modifiers, expected);
     }
 
     #[test]
@@ -550,7 +787,7 @@ mod tests {
     #[test]
     fn collect_active_single() {
         let modifiers = Modifier::collect_active([(true, Modifier::Shift)]);
-        assert_eq!(modifiers, vec![Modifier::Shift]);
+        assert_eq!(modifiers, ModifierSet::SHIFT);
     }
 
     #[test]

@@ -155,7 +155,7 @@ impl Dispatcher {
         binding: RegisteredBinding,
     ) -> Result<(), crate::error::Error> {
         let id = binding.id();
-        let hotkey = binding.hotkey().clone();
+        let hotkey = binding.hotkey();
         let new_priority = SourcePriority::from(binding.options());
         let new_device = binding.options().device();
 
@@ -212,7 +212,7 @@ impl Dispatcher {
     pub fn unregister(&mut self, id: BindingId) {
         self.throttle_tracker.remove_global(id);
         if let Some(binding) = self.bindings_by_id.remove(&id) {
-            let hotkey = binding.hotkey().clone();
+            let hotkey = binding.hotkey();
             let remove_hotkey_entry =
                 if let Some(ids_for_hotkey) = self.binding_ids_by_hotkey.get_mut(&hotkey) {
                     ids_for_hotkey.retain(|existing_id| *existing_id != id);
@@ -250,8 +250,8 @@ impl Dispatcher {
 
     /// Check whether a hotkey has a registered global binding.
     #[must_use]
-    pub fn is_registered(&self, hotkey: &Hotkey) -> bool {
-        self.binding_ids_by_hotkey.contains_key(hotkey)
+    pub fn is_registered(&self, hotkey: Hotkey) -> bool {
+        self.binding_ids_by_hotkey.contains_key(&hotkey)
     }
 }
 
@@ -313,12 +313,10 @@ mod tests {
     fn is_registered_reflects_state() {
         let mut dispatcher = Dispatcher::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-        assert!(!dispatcher.is_registered(&hotkey));
+        assert!(!dispatcher.is_registered(hotkey));
 
-        dispatcher
-            .register(hotkey.clone(), Action::Suppress)
-            .unwrap();
-        assert!(dispatcher.is_registered(&hotkey));
+        dispatcher.register(hotkey, Action::Suppress).unwrap();
+        assert!(dispatcher.is_registered(hotkey));
     }
 
     #[test]
@@ -429,7 +427,7 @@ mod tests {
     fn register_accepts_string_input() {
         let mut dispatcher = Dispatcher::new();
         let id = dispatcher.register("Ctrl+A", Action::Suppress).unwrap();
-        assert!(dispatcher.is_registered(&Hotkey::new(Key::A).modifier(Modifier::Ctrl)));
+        assert!(dispatcher.is_registered(Hotkey::new(Key::A).modifier(Modifier::Ctrl)));
         dispatcher.unregister(id);
     }
 
@@ -437,7 +435,7 @@ mod tests {
     fn register_accepts_key_input() {
         let mut dispatcher = Dispatcher::new();
         let id = dispatcher.register(Key::ESCAPE, Action::Suppress).unwrap();
-        assert!(dispatcher.is_registered(&Hotkey::new(Key::ESCAPE)));
+        assert!(dispatcher.is_registered(Hotkey::new(Key::ESCAPE)));
         dispatcher.unregister(id);
     }
 
@@ -455,7 +453,7 @@ mod tests {
             .unwrap();
 
         let binding = dispatcher
-            .bindings_for_key(&Hotkey::new(Key::C))
+            .bindings_for_key(Hotkey::new(Key::C))
             .expect("binding should be queryable after registration");
         assert_eq!(binding.description.as_deref(), Some("Copy"));
         assert_eq!(
@@ -467,7 +465,7 @@ mod tests {
         );
 
         dispatcher.unregister(id);
-        assert!(!dispatcher.is_registered(&Hotkey::new(Key::C)));
+        assert!(!dispatcher.is_registered(Hotkey::new(Key::C)));
     }
 
     #[test]

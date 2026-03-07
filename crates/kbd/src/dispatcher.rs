@@ -121,7 +121,7 @@ pub enum MatchResult<'a> {
 /// )?;
 ///
 /// let result = dispatcher.process(
-///     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 ///     KeyTransition::Press,
 /// );
 /// assert!(matches!(result, MatchResult::Matched { .. }));
@@ -156,14 +156,14 @@ pub enum MatchResult<'a> {
 /// dispatcher.push_layer("nav")?;
 ///
 /// // H matches in the nav layer
-/// let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+/// let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
 /// assert!(matches!(result, MatchResult::Matched { .. }));
 ///
 /// // Escape pops the layer via Action::PopLayer
-/// dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
+/// dispatcher.process(Hotkey::new(Key::ESCAPE), KeyTransition::Press);
 ///
 /// // H no longer matches
-/// let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+/// let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
 /// assert!(matches!(result, MatchResult::NoMatch));
 /// # Ok(())
 /// # }
@@ -257,7 +257,7 @@ impl Dispatcher {
     /// Only key press events trigger matching — release and repeat events
     /// return `MatchResult::Ignored`. Modifier-only presses also return
     /// `MatchResult::Ignored`.
-    pub fn process(&mut self, hotkey: &Hotkey, transition: KeyTransition) -> MatchResult<'_> {
+    pub fn process(&mut self, hotkey: Hotkey, transition: KeyTransition) -> MatchResult<'_> {
         self.process_internal(hotkey, transition, None)
     }
 
@@ -277,7 +277,7 @@ impl Dispatcher {
     /// against the aggregate hotkey as usual.
     pub fn process_with_device(
         &mut self,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
         transition: KeyTransition,
         device: &DeviceContext<'_>,
     ) -> MatchResult<'_> {
@@ -286,7 +286,7 @@ impl Dispatcher {
 
     fn process_internal(
         &mut self,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
         transition: KeyTransition,
         device: Option<&DeviceContext<'_>>,
     ) -> MatchResult<'_> {
@@ -348,7 +348,7 @@ impl Dispatcher {
 
     fn match_extract(
         &mut self,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
         transition: KeyTransition,
         device: Option<&DeviceContext<'_>>,
     ) -> InternalOutcome {
@@ -376,7 +376,7 @@ impl Dispatcher {
 
     fn match_layers(
         &mut self,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
         now: Instant,
         next_priority: &mut usize,
         device: Option<&DeviceContext<'_>>,
@@ -480,7 +480,7 @@ impl Dispatcher {
 
     fn match_globals(
         &mut self,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
         now: Instant,
         mut next_priority: usize,
         device: Option<&DeviceContext<'_>>,
@@ -544,8 +544,8 @@ impl Dispatcher {
     /// Used exclusively by the introspection/query path (not the runtime
     /// matching path). Device-filtered bindings are skipped because without
     /// a [`DeviceContext`] we cannot determine whether they would fire.
-    fn active_global_binding_id(&self, hotkey: &Hotkey) -> Option<BindingId> {
-        self.binding_ids_by_hotkey.get(hotkey).and_then(|ids| {
+    fn active_global_binding_id(&self, hotkey: Hotkey) -> Option<BindingId> {
+        self.binding_ids_by_hotkey.get(&hotkey).and_then(|ids| {
             ids.iter()
                 .rev()
                 .find(|id| {
@@ -559,7 +559,7 @@ impl Dispatcher {
 
     fn match_global_hotkey(
         &self,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
         device: Option<&DeviceContext<'_>>,
     ) -> Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)> {
         // First, try device-filtered bindings if we have device context.
@@ -573,7 +573,7 @@ impl Dispatcher {
         // Fall through to non-device-filtered bindings (aggregate modifiers).
         // Walk from highest precedence to lowest, skipping device-filtered
         // bindings — they were already checked above with modifier isolation.
-        let ids = self.binding_ids_by_hotkey.get(hotkey)?;
+        let ids = self.binding_ids_by_hotkey.get(&hotkey)?;
         for id in ids.iter().rev() {
             if let Some(binding) = self.bindings_by_id.get(id) {
                 if binding.options().device().is_none() {
@@ -591,23 +591,20 @@ impl Dispatcher {
     /// Match device-filtered global bindings using per-device modifier isolation.
     fn match_device_filtered_global(
         &self,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
         device: &DeviceContext<'_>,
     ) -> Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)> {
         // Build the device-specific candidate hotkey for modifier isolation.
-        // Use a conditional reference to avoid cloning the aggregate hotkey
-        // when no per-device modifiers are set.
-        let owned_hotkey;
+        // Hotkey is Copy, so no allocation needed.
         let lookup_key = if let Some(device_mods) = device.device_modifiers() {
-            owned_hotkey = Hotkey::with_modifiers(hotkey.key(), device_mods.to_vec());
-            &owned_hotkey
+            Hotkey::with_modifiers(hotkey.key(), device_mods)
         } else {
             hotkey
         };
 
         // Look up bindings registered for the device-specific hotkey.
         // Walk from highest precedence to lowest for deterministic ordering.
-        let ids = self.binding_ids_by_hotkey.get(lookup_key)?;
+        let ids = self.binding_ids_by_hotkey.get(&lookup_key)?;
         for id in ids.iter().rev() {
             if let Some(binding) = self.bindings_by_id.get(id) {
                 if let Some(filter) = binding.options().device() {
@@ -649,6 +646,7 @@ mod tests {
     use crate::binding::BindingOptions;
     use crate::device::DeviceFilter;
     use crate::device::DeviceInfo;
+    use crate::hotkey::ModifierSet;
     use crate::key::Key;
     use crate::layer::Layer;
     use crate::policy::RateLimit;
@@ -669,12 +667,12 @@ mod tests {
 
         let ctx_a = DeviceContext::new(10, &device_a);
         let result =
-            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx_a);
+            dispatcher.process_with_device(Hotkey::new(Key::A), KeyTransition::Press, &ctx_a);
         assert!(matches!(result, MatchResult::Matched { .. }));
 
         let ctx_b = DeviceContext::new(11, &device_b);
         let result =
-            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx_b);
+            dispatcher.process_with_device(Hotkey::new(Key::A), KeyTransition::Press, &ctx_b);
         assert!(matches!(result, MatchResult::NoMatch));
     }
 
@@ -693,7 +691,7 @@ mod tests {
 
         let ctx = DeviceContext::new(10, &wrong_device);
         let result =
-            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx);
+            dispatcher.process_with_device(Hotkey::new(Key::A), KeyTransition::Press, &ctx);
         assert!(matches!(result, MatchResult::NoMatch));
     }
 
@@ -710,10 +708,10 @@ mod tests {
             )
             .unwrap();
 
-        let ctx_b = DeviceContext::new(11, &device_b).with_device_modifiers(vec![]);
+        let ctx_b = DeviceContext::new(11, &device_b).with_device_modifiers(ModifierSet::EMPTY);
 
         let candidate = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
-        let result = dispatcher.process_with_device(&candidate, KeyTransition::Press, &ctx_b);
+        let result = dispatcher.process_with_device(candidate, KeyTransition::Press, &ctx_b);
         assert!(matches!(result, MatchResult::NoMatch));
     }
 
@@ -731,7 +729,7 @@ mod tests {
 
         let ctx = DeviceContext::new(11, &device_b);
         let candidate = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
-        let result = dispatcher.process_with_device(&candidate, KeyTransition::Press, &ctx);
+        let result = dispatcher.process_with_device(candidate, KeyTransition::Press, &ctx);
         assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
@@ -748,10 +746,10 @@ mod tests {
             )
             .unwrap();
 
-        let ctx = DeviceContext::new(10, &streamdeck).with_device_modifiers(vec![Modifier::Ctrl]);
+        let ctx = DeviceContext::new(10, &streamdeck).with_device_modifiers(ModifierSet::CTRL);
 
         let candidate = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
-        let result = dispatcher.process_with_device(&candidate, KeyTransition::Press, &ctx);
+        let result = dispatcher.process_with_device(candidate, KeyTransition::Press, &ctx);
         assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
@@ -766,12 +764,12 @@ mod tests {
             .unwrap();
 
         // Missing modifier
-        let result = dispatcher.process(&Hotkey::new(Key::C), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::C), KeyTransition::Press);
         assert!(matches!(result, MatchResult::NoMatch));
 
         // Extra modifier
         let result = dispatcher.process(
-            &Hotkey::new(Key::C)
+            Hotkey::new(Key::C)
                 .modifier(Modifier::Ctrl)
                 .modifier(Modifier::Shift),
             KeyTransition::Press,
@@ -786,7 +784,7 @@ mod tests {
             .register(Hotkey::new(Key::CONTROL_LEFT), Action::Suppress)
             .unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::CONTROL_LEFT), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::CONTROL_LEFT), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Ignored));
     }
 
@@ -806,7 +804,7 @@ mod tests {
             .unwrap();
         dispatcher.push_layer("nav").unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::X), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::X), KeyTransition::Press);
         if let MatchResult::Matched {
             action: Action::Callback(cb),
             ..
@@ -843,10 +841,10 @@ mod tests {
             .unwrap();
 
         // Press F1 → pushes nav layer
-        dispatcher.process(&Hotkey::new(Key::F1), KeyTransition::Press);
+        dispatcher.process(Hotkey::new(Key::F1), KeyTransition::Press);
 
         // Now H should match in nav layer
-        let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
         if let MatchResult::Matched {
             action: Action::Callback(cb),
             ..
@@ -907,15 +905,15 @@ mod tests {
             .unwrap();
 
         // From the StreamDeck: device-filtered binding should match
-        let ctx_sd = DeviceContext::new(10, &streamdeck).with_device_modifiers(vec![]);
+        let ctx_sd = DeviceContext::new(10, &streamdeck).with_device_modifiers(ModifierSet::EMPTY);
         let result =
-            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx_sd);
+            dispatcher.process_with_device(Hotkey::new(Key::A), KeyTransition::Press, &ctx_sd);
         assert!(matches!(result, MatchResult::Matched { .. }));
 
         // From the keyboard: device filter doesn't match, should fall through to global
-        let ctx_kb = DeviceContext::new(11, &keyboard).with_device_modifiers(vec![]);
+        let ctx_kb = DeviceContext::new(11, &keyboard).with_device_modifiers(ModifierSet::EMPTY);
         let result =
-            dispatcher.process_with_device(&Hotkey::new(Key::A), KeyTransition::Press, &ctx_kb);
+            dispatcher.process_with_device(Hotkey::new(Key::A), KeyTransition::Press, &ctx_kb);
         if let MatchResult::Matched {
             action: Action::Callback(cb),
             ..
@@ -987,7 +985,7 @@ mod tests {
 
         // Using process() without device context should skip device-filtered
         // and match the global binding
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         if let MatchResult::Matched {
             action: Action::Callback(cb),
             ..
@@ -1011,7 +1009,7 @@ mod tests {
             )
             .unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
@@ -1026,10 +1024,10 @@ mod tests {
             )
             .unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Throttled { .. }));
     }
 
@@ -1044,12 +1042,12 @@ mod tests {
             )
             .unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
 
         std::thread::sleep(Duration::from_millis(15));
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
@@ -1067,13 +1065,13 @@ mod tests {
             .register(Hotkey::new(Key::B), Action::Suppress)
             .unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Throttled { .. }));
 
-        let result = dispatcher.process(&Hotkey::new(Key::B), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::B), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
@@ -1092,11 +1090,11 @@ mod tests {
             .unwrap();
 
         for _ in 0..3 {
-            let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+            let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
             assert!(matches!(result, MatchResult::Matched { .. }));
         }
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Throttled { .. }));
     }
 
@@ -1113,16 +1111,16 @@ mod tests {
             .unwrap();
 
         for _ in 0..2 {
-            let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+            let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
             assert!(matches!(result, MatchResult::Matched { .. }));
         }
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Throttled { .. }));
 
         std::thread::sleep(Duration::from_millis(15));
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
     }
 
@@ -1139,7 +1137,7 @@ mod tests {
             )
             .unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         match result {
             MatchResult::Matched { repeat_policy, .. } => {
                 assert!(matches!(repeat_policy, RepeatPolicy::Allow));
@@ -1155,7 +1153,7 @@ mod tests {
             .register(Hotkey::new(Key::A), Action::Suppress)
             .unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         match result {
             MatchResult::Matched { repeat_policy, .. } => {
                 assert!(matches!(repeat_policy, RepeatPolicy::Suppress));
@@ -1179,10 +1177,10 @@ mod tests {
             )
             .unwrap();
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         assert!(matches!(result, MatchResult::Matched { .. }));
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Repeat);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Repeat);
         assert!(matches!(result, MatchResult::Ignored));
     }
 
@@ -1201,9 +1199,9 @@ mod tests {
             )
             .unwrap();
 
-        dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
 
-        let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+        let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
         match result {
             MatchResult::Throttled { propagation } => {
                 assert_eq!(propagation, KeyPropagation::Continue);

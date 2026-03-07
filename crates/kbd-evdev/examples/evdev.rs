@@ -89,7 +89,7 @@ fn main() {
             match event.transition {
                 KeyTransition::Press => {
                     print!("{hotkey}: ");
-                    match dispatcher.process(&hotkey, event.transition) {
+                    match dispatcher.process(hotkey, event.transition) {
                         MatchResult::Matched { action, .. } => {
                             if let Action::Callback(cb) = action {
                                 cb();
@@ -106,7 +106,7 @@ fn main() {
                     }
                 }
                 KeyTransition::Release | KeyTransition::Repeat => {
-                    dispatcher.process(&hotkey, event.transition);
+                    dispatcher.process(hotkey, event.transition);
                 }
                 _ => {}
             }

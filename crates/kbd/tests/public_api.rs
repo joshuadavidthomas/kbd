@@ -46,7 +46,7 @@ fn register_and_fire_callback() {
         .unwrap();
 
     let result = dispatcher.process(
-        &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+        Hotkey::new(Key::S).modifier(Modifier::Ctrl),
         KeyTransition::Press,
     );
     if let MatchResult::Matched {
@@ -65,18 +65,16 @@ fn string_parsed_hotkey_matches() {
     let mut dispatcher = Dispatcher::new();
     let hotkey: Hotkey = "Ctrl+Shift+A".parse().unwrap();
 
-    dispatcher
-        .register(hotkey.clone(), Action::Suppress)
-        .unwrap();
+    dispatcher.register(hotkey, Action::Suppress).unwrap();
 
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 
     // Same hotkey built programmatically
     let built = Hotkey::new(Key::A)
         .modifier(Modifier::Ctrl)
         .modifier(Modifier::Shift);
-    let result = dispatcher.process(&built, KeyTransition::Press);
+    let result = dispatcher.process(built, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -103,19 +101,19 @@ fn layer_lifecycle() {
         .unwrap();
 
     // Not active yet
-    let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
     assert!(matches!(result, MatchResult::NoMatch));
 
     // Push and match
     dispatcher.push_layer("vim-normal").unwrap();
-    let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 
     // Pop via action
-    dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
+    dispatcher.process(Hotkey::new(Key::ESCAPE), KeyTransition::Press);
 
     // No longer active
-    let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
     assert!(matches!(result, MatchResult::NoMatch));
 }
 
@@ -157,7 +155,7 @@ fn layer_shadows_global_and_falls_through() {
 
     // Ctrl+C fires layer version, not global
     let result = dispatcher.process(
-        &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+        Hotkey::new(Key::C).modifier(Modifier::Ctrl),
         KeyTransition::Press,
     );
     if let MatchResult::Matched {
@@ -190,11 +188,11 @@ fn swallow_layer_blocks_globals() {
     dispatcher.push_layer("modal").unwrap();
 
     // H matches in the swallow layer
-    let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 
     // X is blocked (suppressed) — doesn't fall through to global
-    let result = dispatcher.process(&Hotkey::new(Key::X), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::X), KeyTransition::Press);
     assert!(matches!(result, MatchResult::Suppressed));
 }
 
@@ -210,7 +208,7 @@ fn propagation_continue_returned_in_match() {
         )
         .unwrap();
 
-    let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
     match result {
         MatchResult::Matched { propagation, .. } => {
             assert_eq!(propagation, KeyPropagation::Continue);
@@ -235,11 +233,11 @@ fn toggle_layer_via_action() {
         .unwrap();
 
     // Toggle on
-    dispatcher.process(&Hotkey::new(Key::F2), KeyTransition::Press);
+    dispatcher.process(Hotkey::new(Key::F2), KeyTransition::Press);
     assert_eq!(dispatcher.active_layers().len(), 1);
 
     // Toggle off
-    dispatcher.process(&Hotkey::new(Key::F2), KeyTransition::Press);
+    dispatcher.process(Hotkey::new(Key::F2), KeyTransition::Press);
     assert!(dispatcher.active_layers().is_empty());
 }
 
@@ -262,11 +260,11 @@ fn oneshot_auto_pops() {
     assert_eq!(dispatcher.active_layers().len(), 1);
 
     // First keypress — still active
-    dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+    dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
     assert_eq!(dispatcher.active_layers().len(), 1);
 
     // Second keypress — auto-pops
-    dispatcher.process(&Hotkey::new(Key::J), KeyTransition::Press);
+    dispatcher.process(Hotkey::new(Key::J), KeyTransition::Press);
     assert!(dispatcher.active_layers().is_empty());
 }
 
@@ -353,14 +351,14 @@ fn introspection_full_picture() {
 
     // bindings_for_key resolves through layer stack
     let info = dispatcher
-        .bindings_for_key(&Hotkey::new(Key::C).modifier(Modifier::Ctrl))
+        .bindings_for_key(Hotkey::new(Key::C).modifier(Modifier::Ctrl))
         .unwrap();
     assert_eq!(
         info.location,
         BindingLocation::Layer(LayerName::from("nav"))
     );
 
-    let layer_info = dispatcher.bindings_for_key(&Hotkey::new(Key::H)).unwrap();
+    let layer_info = dispatcher.bindings_for_key(Hotkey::new(Key::H)).unwrap();
     assert_eq!(
         layer_info.source.as_ref().map(BindingSource::as_str),
         Some("plugin")
@@ -406,7 +404,7 @@ fn key_state_feeds_dispatcher() {
     let modifiers = key_state.active_modifiers();
     let hotkey = Hotkey::with_modifiers(Key::S, modifiers);
 
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     if let MatchResult::Matched {
         action: Action::Callback(cb),
         ..
@@ -507,13 +505,13 @@ fn unregister_stops_matching() {
         .unwrap();
 
     // Matches before unregister
-    let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 
     dispatcher.unregister(id);
 
     // No longer matches
-    let result = dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
     assert!(matches!(result, MatchResult::NoMatch));
 
     // Introspection also reflects removal
@@ -538,11 +536,11 @@ fn release_and_repeat_ignored() {
         .unwrap();
 
     assert!(matches!(
-        dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Release),
+        dispatcher.process(Hotkey::new(Key::A), KeyTransition::Release),
         MatchResult::Ignored
     ));
     assert!(matches!(
-        dispatcher.process(&Hotkey::new(Key::A), KeyTransition::Repeat),
+        dispatcher.process(Hotkey::new(Key::A), KeyTransition::Repeat),
         MatchResult::Ignored
     ));
 }
@@ -584,7 +582,7 @@ fn topmost_layer_wins() {
     dispatcher.push_layer("bottom").unwrap();
     dispatcher.push_layer("top").unwrap();
 
-    let result = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+    let result = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
     if let MatchResult::Matched {
         action: Action::Callback(cb),
         ..
@@ -618,7 +616,7 @@ fn collect_active_builds_dispatchable_hotkey() {
     ]);
     let hotkey = Hotkey::with_modifiers(Key::S, mods);
 
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -631,7 +629,7 @@ fn register_binding_duplicate_returns_error() {
     dispatcher
         .register_binding(RegisteredBinding::new(
             BindingId::new(),
-            hotkey.clone(),
+            hotkey,
             Action::Suppress,
         ))
         .unwrap();
@@ -651,7 +649,7 @@ fn register_with_options_standard_tier_sources_still_conflict() {
 
     dispatcher
         .register_with_options(
-            hotkey.clone(),
+            hotkey,
             Action::Suppress,
             BindingOptions::default().with_source("plugin"),
         )

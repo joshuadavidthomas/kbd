@@ -114,7 +114,7 @@ impl Dispatcher {
                 };
 
                 results.push(BindingInfo {
-                    hotkey: binding.hotkey().clone(),
+                    hotkey: binding.hotkey(),
                     description: binding.options().description().map(Box::from),
                     source: binding.options().source().cloned(),
                     location: BindingLocation::Global,
@@ -129,7 +129,7 @@ impl Dispatcher {
 
     fn global_claim(
         &self,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
         global_sequences: &[&super::sequence::RegisteredSequenceBinding],
     ) -> Option<HotkeyClaim> {
         match resolve::classify_sequence_prefixes(
@@ -166,7 +166,7 @@ impl Dispatcher {
 
             for (index, binding) in stored.bindings.iter().enumerate() {
                 let shadowed = if is_active {
-                    match self.active_layer_claim(&binding.hotkey) {
+                    match self.active_layer_claim(binding.hotkey) {
                         Some(HotkeyClaim::LayerImmediate {
                             layer,
                             index: active_index,
@@ -192,7 +192,7 @@ impl Dispatcher {
                 };
 
                 results.push(BindingInfo {
-                    hotkey: binding.hotkey.clone(),
+                    hotkey: binding.hotkey,
                     description: binding.options.description().map(Box::from),
                     source: binding.options.source().cloned(),
                     location: BindingLocation::Layer(layer_name.clone()),
@@ -205,7 +205,7 @@ impl Dispatcher {
         results
     }
 
-    fn active_layer_claim(&self, hotkey: &Hotkey) -> Option<HotkeyClaim> {
+    fn active_layer_claim(&self, hotkey: Hotkey) -> Option<HotkeyClaim> {
         for entry in self.layer_stack.iter().rev() {
             let Some(stored) = self.layers.get(&entry.name) else {
                 continue;
@@ -243,7 +243,7 @@ impl Dispatcher {
     /// would match (including swallow-layer suppression and multi-step
     /// sequence prefixes that would enter a pending state).
     #[must_use]
-    pub fn bindings_for_key(&self, hotkey: &Hotkey) -> Option<BindingInfo> {
+    pub fn bindings_for_key(&self, hotkey: Hotkey) -> Option<BindingInfo> {
         // Modifier-only keys never fire bindings in the real dispatcher,
         // so they can't match here either.
         if Modifier::from_key(hotkey.key()).is_some() {
@@ -259,7 +259,7 @@ impl Dispatcher {
                     LayerMatch::SingleStepSequence { index } => {
                         let sb = &stored.sequence_bindings[index];
                         return Some(BindingInfo {
-                            hotkey: sb.sequence.steps()[0].clone(),
+                            hotkey: sb.sequence.steps()[0],
                             description: None,
                             source: None,
                             location: BindingLocation::Layer(entry.name.clone()),
@@ -273,7 +273,7 @@ impl Dispatcher {
                     LayerMatch::Immediate { index } => {
                         let lb = &stored.bindings[index];
                         return Some(BindingInfo {
-                            hotkey: lb.hotkey.clone(),
+                            hotkey: lb.hotkey,
                             description: lb.options.description().map(Box::from),
                             source: lb.options.source().cloned(),
                             location: BindingLocation::Layer(entry.name.clone()),
@@ -301,7 +301,7 @@ impl Dispatcher {
             SequencePrefixMatch::SingleStep { index } => {
                 let binding = global_seqs[index];
                 return Some(BindingInfo {
-                    hotkey: binding.sequence.steps()[0].clone(),
+                    hotkey: binding.sequence.steps()[0],
                     description: None,
                     source: None,
                     location: BindingLocation::Global,
@@ -320,7 +320,7 @@ impl Dispatcher {
             && let Some(binding) = self.bindings_by_id.get(&id)
         {
             return Some(BindingInfo {
-                hotkey: binding.hotkey().clone(),
+                hotkey: binding.hotkey(),
                 description: binding.options().description().map(Box::from),
                 source: binding.options().source().cloned(),
                 location: BindingLocation::Global,
@@ -371,7 +371,7 @@ impl Dispatcher {
                     })
                     .cloned(),
                 ShadowedStatus::ShadowedBySequence(location) => Some(BindingInfo {
-                    hotkey: shadowed.hotkey.clone(),
+                    hotkey: shadowed.hotkey,
                     description: None,
                     source: None,
                     location: location.clone(),
@@ -385,7 +385,7 @@ impl Dispatcher {
 
             if let Some(shadowing) = shadowing {
                 conflicts.push(ConflictInfo {
-                    hotkey: shadowed.hotkey.clone(),
+                    hotkey: shadowed.hotkey,
                     shadowed_binding: shadowed.clone(),
                     shadowing_binding: shadowing,
                 });
@@ -434,7 +434,7 @@ mod tests {
             )
             .unwrap();
 
-        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::V).modifier(Modifier::Ctrl));
+        let result = dispatcher.bindings_for_key(Hotkey::new(Key::V).modifier(Modifier::Ctrl));
         assert!(result.is_none());
     }
 
@@ -470,7 +470,7 @@ mod tests {
         assert_eq!(listed.overlay_visibility, OverlayVisibility::Hidden);
 
         let resolved = dispatcher
-            .bindings_for_key(&Hotkey::new(Key::H))
+            .bindings_for_key(Hotkey::new(Key::H))
             .expect("layer binding should be queryable");
         assert_eq!(resolved.description.as_deref(), Some("Move left"));
         assert_eq!(
@@ -498,7 +498,7 @@ mod tests {
 
         // Real dispatch enters sequence pending state here, so no immediate
         // binding action would fire.
-        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::K).modifier(Modifier::Ctrl));
+        let result = dispatcher.bindings_for_key(Hotkey::new(Key::K).modifier(Modifier::Ctrl));
         assert!(result.is_none());
     }
 
@@ -513,7 +513,7 @@ mod tests {
             .unwrap();
 
         let result = dispatcher
-            .bindings_for_key(&Hotkey::new(Key::K).modifier(Modifier::Ctrl))
+            .bindings_for_key(Hotkey::new(Key::K).modifier(Modifier::Ctrl))
             .expect("single-step sequence should match immediately");
 
         assert_eq!(result.hotkey, Hotkey::new(Key::K).modifier(Modifier::Ctrl));
@@ -537,7 +537,7 @@ mod tests {
         dispatcher.push_layer("modal").unwrap();
 
         // X not in swallow layer → blocked from reaching global
-        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::X));
+        let result = dispatcher.bindings_for_key(Hotkey::new(Key::X));
         assert!(result.is_none());
     }
 
@@ -607,7 +607,7 @@ mod tests {
             .register(Hotkey::new(Key::CONTROL_LEFT), Action::Suppress)
             .unwrap();
 
-        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::CONTROL_LEFT));
+        let result = dispatcher.bindings_for_key(Hotkey::new(Key::CONTROL_LEFT));
         assert!(result.is_none());
     }
 
@@ -642,9 +642,7 @@ mod tests {
         let mut dispatcher = Dispatcher::new();
         let hotkey = Hotkey::new(Key::K).modifier(Modifier::Ctrl);
 
-        dispatcher
-            .register(hotkey.clone(), Action::Suppress)
-            .unwrap();
+        dispatcher.register(hotkey, Action::Suppress).unwrap();
         dispatcher
             .register_sequence(
                 "Ctrl+K, Ctrl+C".parse::<HotkeySequence>().unwrap(),
@@ -658,7 +656,7 @@ mod tests {
             bindings[0].shadowed,
             ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
         );
-        assert!(dispatcher.bindings_for_key(&hotkey).is_none());
+        assert!(dispatcher.bindings_for_key(hotkey).is_none());
 
         let conflicts = dispatcher.conflicts();
         assert_eq!(conflicts.len(), 1);
@@ -674,9 +672,7 @@ mod tests {
         let mut dispatcher = Dispatcher::new();
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
 
-        dispatcher
-            .register(hotkey.clone(), Action::Suppress)
-            .unwrap();
+        dispatcher.register(hotkey, Action::Suppress).unwrap();
         dispatcher
             .define_layer(
                 Layer::new("nav")
@@ -694,7 +690,7 @@ mod tests {
                 crate::layer::LayerName::from("nav"),
             ))
         );
-        assert!(dispatcher.bindings_for_key(&hotkey).is_none());
+        assert!(dispatcher.bindings_for_key(hotkey).is_none());
 
         let conflicts = dispatcher.conflicts();
         assert_eq!(conflicts.len(), 1);
@@ -746,7 +742,7 @@ mod tests {
             .register_binding(
                 crate::binding::RegisteredBinding::new(
                     crate::binding::BindingId::new(),
-                    hotkey.clone(),
+                    hotkey,
                     Action::Suppress,
                 )
                 .with_options(crate::binding::BindingOptions::default().with_source("default")),
@@ -757,7 +753,7 @@ mod tests {
             .register_binding(
                 crate::binding::RegisteredBinding::new(
                     crate::binding::BindingId::new(),
-                    hotkey.clone(),
+                    hotkey,
                     Action::Suppress,
                 )
                 .with_options(crate::binding::BindingOptions::default().with_source("user")),
@@ -765,7 +761,7 @@ mod tests {
             .unwrap();
 
         let active = dispatcher
-            .bindings_for_key(&hotkey)
+            .bindings_for_key(hotkey)
             .expect("winning binding should be queryable");
         assert_eq!(active.location, BindingLocation::Global);
         assert_eq!(
@@ -823,19 +819,15 @@ mod tests {
         let default_id = crate::binding::BindingId::new();
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(
-                    default_id,
-                    hotkey.clone(),
-                    Action::Suppress,
-                )
-                .with_options(crate::binding::BindingOptions::default().with_source("DEFAULT")),
+                crate::binding::RegisteredBinding::new(default_id, hotkey, Action::Suppress)
+                    .with_options(crate::binding::BindingOptions::default().with_source("DEFAULT")),
             )
             .unwrap();
 
         let plugin_id = crate::binding::BindingId::new();
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(plugin_id, hotkey.clone(), Action::Suppress)
+                crate::binding::RegisteredBinding::new(plugin_id, hotkey, Action::Suppress)
                     .with_options(crate::binding::BindingOptions::default().with_source("plugin")),
             )
             .unwrap();
@@ -843,13 +835,13 @@ mod tests {
         let user_id = crate::binding::BindingId::new();
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(user_id, hotkey.clone(), Action::Suppress)
+                crate::binding::RegisteredBinding::new(user_id, hotkey, Action::Suppress)
                     .with_options(crate::binding::BindingOptions::default().with_source("user")),
             )
             .unwrap();
 
         let active = dispatcher
-            .bindings_for_key(&hotkey)
+            .bindings_for_key(hotkey)
             .expect("user binding should win over standard and default tiers");
         assert_eq!(
             active
@@ -863,7 +855,7 @@ mod tests {
         dispatcher.unregister(user_id);
 
         let promoted = dispatcher
-            .bindings_for_key(&hotkey)
+            .bindings_for_key(hotkey)
             .expect("standard-tier binding should be promoted after user removal");
         assert_eq!(
             promoted
@@ -877,7 +869,7 @@ mod tests {
         dispatcher.unregister(plugin_id);
 
         let restored = dispatcher
-            .bindings_for_key(&hotkey)
+            .bindings_for_key(hotkey)
             .expect("default-tier binding should be restored last");
         assert_eq!(
             restored
@@ -889,7 +881,7 @@ mod tests {
         assert!(dispatcher.conflicts().is_empty());
 
         dispatcher.unregister(default_id);
-        assert!(dispatcher.bindings_for_key(&hotkey).is_none());
+        assert!(dispatcher.bindings_for_key(hotkey).is_none());
     }
 
     #[test]
@@ -1026,7 +1018,7 @@ mod tests {
 
         // Without device context, should return the non-device-filtered binding
         let result = dispatcher
-            .bindings_for_key(&Hotkey::new(Key::A))
+            .bindings_for_key(Hotkey::new(Key::A))
             .expect("non-device-filtered binding should be queryable");
         assert_eq!(
             result
@@ -1093,7 +1085,7 @@ mod tests {
             .unwrap();
 
         // No non-device-filtered binding → should return None
-        let result = dispatcher.bindings_for_key(&Hotkey::new(Key::A));
+        let result = dispatcher.bindings_for_key(Hotkey::new(Key::A));
         assert!(result.is_none());
     }
 }

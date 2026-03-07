@@ -28,27 +28,27 @@ fn main() {
 
     // Without any layers, global bindings fire
     println!("1. Global bindings (no layers active):");
-    process(&mut dispatcher, "H", &Hotkey::new(Key::H));
+    process(&mut dispatcher, "H", Hotkey::new(Key::H));
     process(
         &mut dispatcher,
         "Ctrl+Q",
-        &Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
+        Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
     );
     println!();
 
     // Push nav layer — H now fires nav binding instead of global
     println!("2. Push 'nav' layer — H is shadowed:");
     dispatcher.push_layer("nav").expect("push nav");
-    process(&mut dispatcher, "H", &Hotkey::new(Key::H));
-    process(&mut dispatcher, "J", &Hotkey::new(Key::J));
+    process(&mut dispatcher, "H", Hotkey::new(Key::H));
+    process(&mut dispatcher, "J", Hotkey::new(Key::J));
     // Ctrl+Q falls through to global
     process(
         &mut dispatcher,
         "Ctrl+Q",
-        &Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
+        Hotkey::new(Key::Q).modifier(Modifier::Ctrl),
     );
     // X has no binding in nav → falls through to global → no match
-    process(&mut dispatcher, "X", &Hotkey::new(Key::X));
+    process(&mut dispatcher, "X", Hotkey::new(Key::X));
     dispatcher.pop_layer().expect("pop nav");
     println!();
 
@@ -56,7 +56,7 @@ fn main() {
     println!("3. Oneshot 'launcher' layer — pops after one key:");
     dispatcher.push_layer("launcher").expect("push launcher");
     println!("  Active layers: {:?}", layer_names(&dispatcher));
-    process(&mut dispatcher, "F", &Hotkey::new(Key::F));
+    process(&mut dispatcher, "F", Hotkey::new(Key::F));
     println!(
         "  Active layers after keypress: {:?}",
         layer_names(&dispatcher),
@@ -66,10 +66,10 @@ fn main() {
     // Swallow layer — unmatched keys are consumed
     println!("4. Swallow 'confirm' layer — unmatched keys consumed:");
     dispatcher.push_layer("confirm").expect("push confirm");
-    process(&mut dispatcher, "Y", &Hotkey::new(Key::Y));
-    process(&mut dispatcher, "X", &Hotkey::new(Key::X));
+    process(&mut dispatcher, "Y", Hotkey::new(Key::Y));
+    process(&mut dispatcher, "X", Hotkey::new(Key::X));
     // Escape pops via Action::PopLayer
-    process(&mut dispatcher, "Escape", &Hotkey::new(Key::ESCAPE));
+    process(&mut dispatcher, "Escape", Hotkey::new(Key::ESCAPE));
     println!(
         "  Active layers after Escape: {:?}",
         layer_names(&dispatcher),
@@ -85,7 +85,7 @@ fn main() {
     println!("  After toggle off: {:?}", layer_names(&dispatcher));
 }
 
-fn process(dispatcher: &mut Dispatcher, label: &str, hotkey: &Hotkey) {
+fn process(dispatcher: &mut Dispatcher, label: &str, hotkey: Hotkey) {
     print!("  {label}: ");
     match dispatcher.process(hotkey, KeyTransition::Press) {
         MatchResult::Matched { action, .. } => {

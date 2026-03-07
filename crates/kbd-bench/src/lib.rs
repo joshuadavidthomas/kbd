@@ -126,7 +126,7 @@ pub fn dispatcher_with_layers(n_per_layer: usize, layer_count: usize) -> Dispatc
         let mut layer = Layer::new(&*name);
         for hotkey in &all_hotkeys[start..end] {
             layer = layer
-                .bind(hotkey.clone(), Action::Suppress)
+                .bind(*hotkey, Action::Suppress)
                 .expect("unique hotkeys");
         }
         dispatcher.define_layer(layer).expect("unique layer name");
@@ -149,7 +149,7 @@ pub fn dispatcher_with_sequences(n: usize) -> Dispatcher {
         let second_key = KEYS[(i + 1) % KEYS.len()];
         let second = Hotkey::new(second_key);
         dispatcher
-            .register_sequence(vec![first.clone(), second], Action::Suppress)
+            .register_sequence(vec![*first, second], Action::Suppress)
             .expect("unique sequences");
     }
     dispatcher

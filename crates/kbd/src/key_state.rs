@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::hotkey::Modifier;
+use crate::hotkey::ModifierSet;
 use crate::key::Key;
 
 /// Whether a key was pressed, released, or repeated.
@@ -80,7 +81,7 @@ impl KeyState {
     ///
     /// Aggregates across all devices.
     #[must_use]
-    pub fn active_modifiers(&self) -> Vec<Modifier> {
+    pub fn active_modifiers(&self) -> ModifierSet {
         Self::modifiers_from_pressed(|key| self.is_pressed(key))
     }
 
@@ -97,13 +98,13 @@ impl KeyState {
     /// Same canonicalization as [`active_modifiers`](Self::active_modifiers),
     /// but scoped to a single device.
     #[must_use]
-    pub fn active_modifiers_for_device(&self, device_id: i32) -> Vec<Modifier> {
+    pub fn active_modifiers_for_device(&self, device_id: i32) -> ModifierSet {
         Self::modifiers_from_pressed(|key| self.is_pressed_on_device(device_id, key))
     }
 
     /// Shared implementation for deriving active modifiers from a key-pressed predicate.
-    fn modifiers_from_pressed(is_pressed: impl Fn(Key) -> bool) -> Vec<Modifier> {
-        let mut modifiers = Vec::new();
+    fn modifiers_from_pressed(is_pressed: impl Fn(Key) -> bool) -> ModifierSet {
+        let mut set = ModifierSet::EMPTY;
 
         for &modifier in &[
             Modifier::Ctrl,
@@ -113,11 +114,11 @@ impl KeyState {
         ] {
             let (left, right) = modifier.keys();
             if is_pressed(left) || is_pressed(right) {
-                modifiers.push(modifier);
+                set = set.with(modifier);
             }
         }
 
-        modifiers
+        set
     }
 }
 
@@ -126,6 +127,7 @@ mod tests {
     use super::KeyState;
     use super::KeyTransition;
     use crate::hotkey::Modifier;
+    use crate::hotkey::ModifierSet;
     use crate::key::Key;
 
     #[test]
@@ -171,16 +173,16 @@ mod tests {
         assert!(key_state.active_modifiers().is_empty());
 
         key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
-        assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
+        assert_eq!(key_state.active_modifiers(), ModifierSet::CTRL);
 
         key_state.apply_device_event(10, Key::SHIFT_LEFT, KeyTransition::Press);
         assert_eq!(
             key_state.active_modifiers(),
-            vec![Modifier::Ctrl, Modifier::Shift]
+            ModifierSet::CTRL.with(Modifier::Shift)
         );
 
         key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Release);
-        assert_eq!(key_state.active_modifiers(), vec![Modifier::Shift]);
+        assert_eq!(key_state.active_modifiers(), ModifierSet::SHIFT);
     }
 
     #[test]
@@ -188,15 +190,15 @@ mod tests {
         let mut key_state = KeyState::default();
 
         key_state.apply_device_event(10, Key::CONTROL_RIGHT, KeyTransition::Press);
-        assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
+        assert_eq!(key_state.active_modifiers(), ModifierSet::CTRL);
 
         // Both left and right held still yields one modifier
         key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
-        assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
+        assert_eq!(key_state.active_modifiers(), ModifierSet::CTRL);
 
         // Releasing one side keeps the modifier active
         key_state.apply_device_event(10, Key::CONTROL_RIGHT, KeyTransition::Release);
-        assert_eq!(key_state.active_modifiers(), vec![Modifier::Ctrl]);
+        assert_eq!(key_state.active_modifiers(), ModifierSet::CTRL);
     }
 
     #[test]
@@ -208,7 +210,7 @@ mod tests {
 
         assert_eq!(
             key_state.active_modifiers(),
-            vec![Modifier::Ctrl, Modifier::Shift]
+            ModifierSet::CTRL.with(Modifier::Shift)
         );
     }
 
@@ -238,13 +240,10 @@ mod tests {
         key_state.apply_device_event(10, Key::CONTROL_LEFT, KeyTransition::Press);
         key_state.apply_device_event(11, Key::SHIFT_LEFT, KeyTransition::Press);
 
-        assert_eq!(
-            key_state.active_modifiers_for_device(10),
-            vec![Modifier::Ctrl]
-        );
+        assert_eq!(key_state.active_modifiers_for_device(10), ModifierSet::CTRL);
         assert_eq!(
             key_state.active_modifiers_for_device(11),
-            vec![Modifier::Shift]
+            ModifierSet::SHIFT
         );
         assert!(key_state.active_modifiers_for_device(99).is_empty());
     }
@@ -260,13 +259,10 @@ mod tests {
         key_state.disconnect_device(10);
 
         // Global modifiers should only reflect device 11
-        assert_eq!(key_state.active_modifiers(), vec![Modifier::Alt]);
+        assert_eq!(key_state.active_modifiers(), ModifierSet::ALT);
         // Device 10's modifiers are gone
         assert!(key_state.active_modifiers_for_device(10).is_empty());
         // Device 11's modifiers are intact
-        assert_eq!(
-            key_state.active_modifiers_for_device(11),
-            vec![Modifier::Alt]
-        );
+        assert_eq!(key_state.active_modifiers_for_device(11), ModifierSet::ALT);
     }
 }

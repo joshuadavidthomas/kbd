@@ -16,11 +16,11 @@ enum SequencePrefixKind {
 }
 
 /// Classify whether a sequence's first step matches a given hotkey.
-fn classify_sequence_prefix(sequence: &HotkeySequence, hotkey: &Hotkey) -> SequencePrefixKind {
+fn classify_sequence_prefix(sequence: &HotkeySequence, hotkey: Hotkey) -> SequencePrefixKind {
     if !sequence
         .steps()
         .first()
-        .is_some_and(|first_step| first_step == hotkey)
+        .is_some_and(|first_step| *first_step == hotkey)
     {
         return SequencePrefixKind::None;
     }
@@ -88,7 +88,7 @@ pub(super) enum LayerMatch {
 /// collected so the runtime can start them as active sequences.
 pub(super) fn classify_sequence_prefixes<'a>(
     sequences: impl Iterator<Item = &'a HotkeySequence>,
-    hotkey: &Hotkey,
+    hotkey: Hotkey,
 ) -> SequencePrefixMatch {
     let mut single_step_index: Option<usize> = None;
     let mut multi_step_indices: Vec<usize> = Vec::new();
@@ -130,7 +130,7 @@ pub(super) fn classify_sequence_prefixes<'a>(
 /// to handle it.
 pub(super) fn classify_layer(
     stored: &StoredLayer,
-    hotkey: &Hotkey,
+    hotkey: Hotkey,
     device: Option<&DeviceContext<'_>>,
 ) -> LayerMatch {
     let seq_match =
@@ -161,7 +161,7 @@ pub(super) fn classify_layer(
 /// Returns the index into `stored.bindings`.
 fn find_immediate_in_layer(
     stored: &StoredLayer,
-    hotkey: &Hotkey,
+    hotkey: Hotkey,
     device: Option<&DeviceContext<'_>>,
 ) -> Option<usize> {
     stored
@@ -173,12 +173,12 @@ fn find_immediate_in_layer(
 /// Check whether a layer binding matches a hotkey, respecting device filters.
 fn binding_matches_hotkey(
     binding: &crate::layer::LayerBinding,
-    hotkey: &Hotkey,
+    hotkey: Hotkey,
     device: Option<&DeviceContext<'_>>,
 ) -> bool {
     let Some(filter) = binding.options.device() else {
         // No device filter — match against aggregate hotkey
-        return binding.hotkey == *hotkey;
+        return binding.hotkey == hotkey;
     };
 
     // Binding has a device filter — need device context
@@ -193,11 +193,11 @@ fn binding_matches_hotkey(
 
     // Build device-specific hotkey for modifier isolation
     if let Some(device_mods) = ctx.device_modifiers() {
-        let device_hotkey = Hotkey::with_modifiers(hotkey.key(), device_mods.to_vec());
+        let device_hotkey = Hotkey::with_modifiers(hotkey.key(), device_mods);
         binding.hotkey == device_hotkey
     } else {
         // No device modifiers — use aggregate
-        binding.hotkey == *hotkey
+        binding.hotkey == hotkey
     }
 }
 
@@ -273,21 +273,21 @@ mod tests {
     #[test]
     fn prefixes_empty_sequences_returns_none() {
         let seqs: Vec<HotkeySequence> = vec![];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), Hotkey::new(Key::A));
         assert_eq!(result, SequencePrefixMatch::None);
     }
 
     #[test]
     fn prefixes_no_match_returns_none() {
         let seqs = [single_step(Key::B)];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), Hotkey::new(Key::A));
         assert_eq!(result, SequencePrefixMatch::None);
     }
 
     #[test]
     fn prefixes_single_step_match() {
         let seqs = [single_step(Key::A)];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), Hotkey::new(Key::A));
         assert_eq!(result, SequencePrefixMatch::SingleStep { index: 0 });
     }
 
@@ -295,14 +295,14 @@ mod tests {
     fn prefixes_single_step_returns_first_match_index() {
         // Non-matching sequence at index 0, matching at index 1
         let seqs = [single_step(Key::B), single_step(Key::A)];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), Hotkey::new(Key::A));
         assert_eq!(result, SequencePrefixMatch::SingleStep { index: 1 });
     }
 
     #[test]
     fn prefixes_multi_step_match() {
         let seqs = [two_step(Key::A, Key::B)];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), Hotkey::new(Key::A));
         assert_eq!(result, SequencePrefixMatch::MultiStep { indices: vec![0] });
     }
 
@@ -313,7 +313,7 @@ mod tests {
             two_step(Key::A, Key::C),
             two_step(Key::X, Key::Y), // non-matching
         ];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), Hotkey::new(Key::A));
         assert_eq!(
             result,
             SequencePrefixMatch::MultiStep {
@@ -329,7 +329,7 @@ mod tests {
             single_step(Key::A),                // single-step at index 1
             three_step(Key::A, Key::C, Key::D), // multi-step at index 2
         ];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), Hotkey::new(Key::A));
         assert_eq!(result, SequencePrefixMatch::SingleStep { index: 1 });
     }
 
@@ -339,7 +339,7 @@ mod tests {
             single_step(Key::A), // index 0
             single_step(Key::A), // index 1 (duplicate, ignored)
         ];
-        let result = classify_sequence_prefixes(seqs.iter(), &Hotkey::new(Key::A));
+        let result = classify_sequence_prefixes(seqs.iter(), Hotkey::new(Key::A));
         assert_eq!(result, SequencePrefixMatch::SingleStep { index: 0 });
     }
 
@@ -348,35 +348,35 @@ mod tests {
     #[test]
     fn layer_no_bindings_returns_none() {
         let stored = layer(vec![], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::None);
     }
 
     #[test]
     fn layer_no_match_returns_none() {
         let stored = layer(vec![immediate(Key::B)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::None);
     }
 
     #[test]
     fn layer_immediate_only() {
         let stored = layer(vec![immediate(Key::A)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::Immediate { index: 0 });
     }
 
     #[test]
     fn layer_immediate_returns_first_match_index() {
         let stored = layer(vec![immediate(Key::B), immediate(Key::A)], vec![]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::Immediate { index: 1 });
     }
 
     #[test]
     fn layer_single_step_sequence() {
         let stored = layer(vec![], vec![seq_binding(single_step(Key::A))]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 0 });
     }
 
@@ -386,14 +386,14 @@ mod tests {
             vec![immediate(Key::A)],
             vec![seq_binding(single_step(Key::A))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 0 });
     }
 
     #[test]
     fn layer_multi_step_without_immediate() {
         let stored = layer(vec![], vec![seq_binding(two_step(Key::A, Key::B))]);
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -409,7 +409,7 @@ mod tests {
             vec![immediate(Key::A)],
             vec![seq_binding(two_step(Key::A, Key::B))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -426,7 +426,7 @@ mod tests {
             vec![immediate(Key::X), immediate(Key::A)],
             vec![seq_binding(two_step(Key::A, Key::B))],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(
             result,
             LayerMatch::MultiStepSequences {
@@ -445,7 +445,7 @@ mod tests {
                 seq_binding(single_step(Key::A)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 1 });
     }
 
@@ -458,7 +458,7 @@ mod tests {
                 seq_binding(single_step(Key::A)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::SingleStepSequence { index: 1 });
     }
 
@@ -471,7 +471,7 @@ mod tests {
                 seq_binding(single_step(Key::Z)),
             ],
         );
-        let result = classify_layer(&stored, &Hotkey::new(Key::A), None);
+        let result = classify_layer(&stored, Hotkey::new(Key::A), None);
         assert_eq!(result, LayerMatch::None);
     }
 }

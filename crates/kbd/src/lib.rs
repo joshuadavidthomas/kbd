@@ -26,7 +26,7 @@
 //!
 //! // Simulate a key press
 //! let result = dispatcher.process(
-//!     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+//!     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 //!     KeyTransition::Press,
 //! );
 //! assert!(matches!(result, MatchResult::Matched { .. }));
@@ -73,7 +73,7 @@ pub mod sequence;
 /// )?;
 ///
 /// let result = dispatcher.process(
-///     &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 ///     KeyTransition::Press,
 /// );
 /// assert!(matches!(result, MatchResult::Matched { .. }));
@@ -94,6 +94,7 @@ pub mod prelude {
     pub use crate::hotkey::HotkeyInput;
     pub use crate::hotkey::HotkeySequence;
     pub use crate::hotkey::Modifier;
+    pub use crate::hotkey::ModifierSet;
     pub use crate::key::Key;
     pub use crate::key_state::KeyTransition;
     pub use crate::layer::Layer;

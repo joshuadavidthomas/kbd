@@ -72,7 +72,7 @@ fn main() {
                     };
 
                     // Process through the dispatcher
-                    match dispatcher.process(&hotkey, KeyTransition::Press) {
+                    match dispatcher.process(hotkey, KeyTransition::Press) {
                         MatchResult::Matched { action, .. } => {
                             println!("{hotkey} → matched!");
                             if let Action::Callback(cb) = action {

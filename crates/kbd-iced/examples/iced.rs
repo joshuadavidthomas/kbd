@@ -83,7 +83,7 @@ impl App {
                     return iced::exit();
                 }
 
-                let line = match self.dispatcher.process(&hotkey, KeyTransition::Press) {
+                let line = match self.dispatcher.process(hotkey, KeyTransition::Press) {
                     MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                     MatchResult::NoMatch => format!("{hotkey} → no match"),
                     _ => return Task::none(),

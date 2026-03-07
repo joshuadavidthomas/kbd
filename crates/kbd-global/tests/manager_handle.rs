@@ -12,14 +12,10 @@ fn register_and_drop_handle_unregisters_hotkey() {
     let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
 
     let handle = manager
-        .register(hotkey.clone(), || {})
+        .register(hotkey, || {})
         .expect("register should succeed");
 
-    assert!(
-        manager
-            .is_registered(hotkey.clone())
-            .expect("query should succeed")
-    );
+    assert!(manager.is_registered(hotkey).expect("query should succeed"));
 
     drop(handle);
 
@@ -34,7 +30,7 @@ fn duplicate_hotkey_registration_returns_conflict_error() {
     let hotkey = Hotkey::new(Key::A).modifier(Modifier::Ctrl);
 
     let _first = manager
-        .register(hotkey.clone(), || {})
+        .register(hotkey, || {})
         .expect("first registration should succeed");
 
     let duplicate = manager.register(hotkey, || {});

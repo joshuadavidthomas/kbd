@@ -89,7 +89,7 @@ impl eframe::App for App {
                 continue;
             }
 
-            let line = match self.dispatcher.process(&hotkey, KeyTransition::Press) {
+            let line = match self.dispatcher.process(hotkey, KeyTransition::Press) {
                 MatchResult::Matched { .. } => format!("{hotkey} → matched!"),
                 MatchResult::NoMatch => format!("{hotkey} → no match"),
                 _ => continue,

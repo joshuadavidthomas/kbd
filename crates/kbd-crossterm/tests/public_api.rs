@@ -32,7 +32,7 @@ fn convert_and_dispatch_simple_hotkey() {
 
     let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -54,7 +54,7 @@ fn convert_and_dispatch_multi_modifier_hotkey() {
         KeyModifiers::CONTROL | KeyModifiers::SHIFT,
     );
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 
@@ -70,7 +70,7 @@ fn unregistered_hotkey_does_not_match() {
 
     let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::NoMatch));
 }
 
@@ -150,7 +150,7 @@ fn function_key_with_modifiers_roundtrip() {
 
     let event = KeyEvent::new(KeyCode::F(5), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
     let hotkey = event.to_hotkey().unwrap();
-    let result = dispatcher.process(&hotkey, KeyTransition::Press);
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
 

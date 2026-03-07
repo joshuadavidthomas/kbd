@@ -70,7 +70,7 @@ fn main() {
     println!("Processing events:");
     for (label, hotkey) in &test_events {
         print!("  {label}: ");
-        match dispatcher.process(hotkey, KeyTransition::Press) {
+        match dispatcher.process(*hotkey, KeyTransition::Press) {
             MatchResult::Matched {
                 action: Action::Callback(cb),
                 ..

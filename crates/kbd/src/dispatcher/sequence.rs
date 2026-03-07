@@ -73,7 +73,7 @@ pub(super) enum SequenceStartCandidate {
 }
 
 impl Dispatcher {
-    pub(super) fn match_active_sequences(&mut self, hotkey: &Hotkey) -> Option<InternalOutcome> {
+    pub(super) fn match_active_sequences(&mut self, hotkey: Hotkey) -> Option<InternalOutcome> {
         if self.active_sequences.is_empty() {
             return None;
         }
@@ -264,20 +264,20 @@ impl Dispatcher {
         &self,
         binding_ref: &SequenceBindingRef,
         step_index: usize,
-        hotkey: &Hotkey,
+        hotkey: Hotkey,
     ) -> bool {
         match binding_ref {
             SequenceBindingRef::Global(id) => self.sequence_bindings_by_id[id]
                 .sequence
                 .steps()
                 .get(step_index)
-                .is_some_and(|step| step == hotkey),
+                .is_some_and(|step| *step == hotkey),
             SequenceBindingRef::Layer { name, index } => self.layers[name].sequence_bindings
                 [*index]
                 .sequence
                 .steps()
                 .get(step_index)
-                .is_some_and(|step| step == hotkey),
+                .is_some_and(|step| *step == hotkey),
         }
     }
 
@@ -408,13 +408,13 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         let second = dispatcher.process(
-            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         execute_callback(&second);
@@ -442,7 +442,7 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
@@ -471,13 +471,13 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         let wrong = dispatcher.process(
-            &Hotkey::new(Key::X).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::X).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         execute_callback(&wrong);
@@ -494,12 +494,12 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
 
-        let aborted = dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
+        let aborted = dispatcher.process(Hotkey::new(Key::ESCAPE), KeyTransition::Press);
         assert!(matches!(aborted, MatchResult::NoMatch));
         assert!(dispatcher.pending_sequence().is_none());
     }
@@ -520,12 +520,12 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
 
-        let second = dispatcher.process(&Hotkey::new(Key::ESCAPE), KeyTransition::Press);
+        let second = dispatcher.process(Hotkey::new(Key::ESCAPE), KeyTransition::Press);
         execute_callback(&second);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
@@ -551,7 +551,7 @@ mod tests {
             .unwrap();
 
         let pending = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(pending, MatchResult::Pending { .. }));
@@ -584,13 +584,13 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         let second = dispatcher.process(
-            &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::S).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(second, MatchResult::Pending { .. }));
@@ -629,18 +629,18 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
         let second = dispatcher.process(
-            &Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::S).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(second, MatchResult::Pending { .. }));
 
         let third = dispatcher.process(
-            &Hotkey::new(Key::D).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::D).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         execute_callback(&third);
@@ -663,7 +663,7 @@ mod tests {
         dispatcher.push_layer("timed").unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
@@ -689,7 +689,7 @@ mod tests {
         dispatcher.push_layer("nav").unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
@@ -703,7 +703,7 @@ mod tests {
         assert_eq!(pending.steps_remaining, 1);
 
         let second = dispatcher.process(
-            &Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::C).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(second, MatchResult::Matched { .. }));
@@ -728,7 +728,7 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
@@ -770,7 +770,7 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));
@@ -780,7 +780,7 @@ mod tests {
             execute_callback(&timeout_result);
         }
 
-        let h = dispatcher.process(&Hotkey::new(Key::H), KeyTransition::Press);
+        let h = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
         execute_callback(&h);
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
@@ -794,7 +794,7 @@ mod tests {
             .unwrap();
 
         let first = dispatcher.process(
-            &Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+            Hotkey::new(Key::K).modifier(Modifier::Ctrl),
             KeyTransition::Press,
         );
         assert!(matches!(first, MatchResult::Pending { .. }));

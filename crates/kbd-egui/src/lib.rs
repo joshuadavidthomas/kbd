@@ -19,7 +19,7 @@
 //!
 //! - [`EguiKeyExt`] — converts an [`egui::Key`] to a [`kbd::key::Key`].
 //! - [`EguiModifiersExt`] — converts [`egui::Modifiers`] to a
-//!   `Vec<Modifier>`.
+//!   [`ModifierSet`].
 //! - [`EguiEventExt`] — converts a full [`egui::Event`] keyboard event
 //!   to a [`kbd::hotkey::Hotkey`].
 //!
@@ -57,7 +57,7 @@
 //!
 //! // Modifier conversion
 //! let mods = Modifiers::CTRL.to_modifiers();
-//! assert_eq!(mods, vec![Modifier::Ctrl]);
+//! assert_eq!(mods, ModifierSet::CTRL);
 //!
 //! // Full event conversion
 //! let event = egui::Event::Key {
@@ -75,6 +75,7 @@ use egui::Key as EguiKey;
 use egui::Modifiers;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
+use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
 
 mod private {
@@ -242,7 +243,7 @@ impl EguiKeyExt for EguiKey {
     }
 }
 
-/// Convert [`egui::Modifiers`] to a sorted `Vec<Modifier>`.
+/// Convert [`egui::Modifiers`] to a [`ModifierSet`].
 ///
 /// Egui's `mac_cmd` and `command` fields are platform-dependent
 /// abstractions. On non-macOS platforms, `command` mirrors `ctrl`.
@@ -259,7 +260,7 @@ impl EguiKeyExt for EguiKey {
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait EguiModifiersExt: private::Sealed {
-    /// Convert these egui modifiers to a `Vec<Modifier>`.
+    /// Convert these egui modifiers to a [`ModifierSet`].
     ///
     /// # Examples
     ///
@@ -272,14 +273,14 @@ pub trait EguiModifiersExt: private::Sealed {
     ///     alt: false, ctrl: true, shift: true,
     ///     mac_cmd: false, command: false,
     /// };
-    /// assert_eq!(mods.to_modifiers(), vec![Modifier::Ctrl, Modifier::Shift]);
+    /// assert_eq!(mods.to_modifiers(), ModifierSet::CTRL.with(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> Vec<Modifier>;
+    fn to_modifiers(&self) -> ModifierSet;
 }
 
 impl EguiModifiersExt for Modifiers {
-    fn to_modifiers(&self) -> Vec<Modifier> {
+    fn to_modifiers(&self) -> ModifierSet {
         Modifier::collect_active([
             (self.ctrl, Modifier::Ctrl),
             (self.shift, Modifier::Shift),
@@ -438,22 +439,22 @@ mod tests {
 
     #[test]
     fn empty_modifiers() {
-        assert_eq!(Modifiers::NONE.to_modifiers(), Vec::<Modifier>::new());
+        assert_eq!(Modifiers::NONE.to_modifiers(), ModifierSet::EMPTY);
     }
 
     #[test]
     fn single_ctrl_modifier() {
-        assert_eq!(Modifiers::CTRL.to_modifiers(), vec![Modifier::Ctrl]);
+        assert_eq!(Modifiers::CTRL.to_modifiers(), ModifierSet::CTRL);
     }
 
     #[test]
     fn single_shift_modifier() {
-        assert_eq!(Modifiers::SHIFT.to_modifiers(), vec![Modifier::Shift]);
+        assert_eq!(Modifiers::SHIFT.to_modifiers(), ModifierSet::SHIFT);
     }
 
     #[test]
     fn single_alt_modifier() {
-        assert_eq!(Modifiers::ALT.to_modifiers(), vec![Modifier::Alt]);
+        assert_eq!(Modifiers::ALT.to_modifiers(), ModifierSet::ALT);
     }
 
     #[test]
@@ -465,7 +466,7 @@ mod tests {
             mac_cmd: true,
             command: true,
         };
-        assert_eq!(mods.to_modifiers(), vec![Modifier::Super]);
+        assert_eq!(mods.to_modifiers(), ModifierSet::SUPER);
     }
 
     #[test]
@@ -477,7 +478,7 @@ mod tests {
             mac_cmd: false,
             command: false,
         };
-        assert_eq!(mods.to_modifiers(), vec![Modifier::Ctrl, Modifier::Shift]);
+        assert_eq!(mods.to_modifiers(), ModifierSet::CTRL.with(Modifier::Shift));
     }
 
     #[test]
@@ -491,12 +492,11 @@ mod tests {
         };
         assert_eq!(
             mods.to_modifiers(),
-            vec![
-                Modifier::Ctrl,
-                Modifier::Shift,
-                Modifier::Alt,
-                Modifier::Super,
-            ]
+            ModifierSet::EMPTY
+                .with(Modifier::Ctrl)
+                .with(Modifier::Shift)
+                .with(Modifier::Alt)
+                .with(Modifier::Super)
         );
     }
 
