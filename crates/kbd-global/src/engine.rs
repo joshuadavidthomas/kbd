@@ -385,44 +385,42 @@ impl Engine {
 
     /// Process a key press event through the Dispatcher.
     fn process_press_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let (match_outcome, repeat_info) = {
-            let result = self.dispatch(event);
-            match result {
-                MatchResult::Matched {
-                    action,
-                    propagation,
-                    repeat_policy,
-                } => {
-                    // Capture press_time before executing the action so
-                    // Custom repeat delay is measured from the key event,
-                    // not from after callback completion.
-                    let press_time = Instant::now();
-                    execute_action(action);
-                    let callback = match action {
-                        Action::Callback(cb) => Some(Arc::clone(cb)),
-                        _ => None,
-                    };
-                    let repeat_info = Some(RepeatInfo {
-                        callback,
-                        policy: repeat_policy,
-                        press_time,
-                        last_repeat_fire: None,
-                    });
-                    (MatchOutcome::Matched { propagation }, repeat_info)
-                }
-                MatchResult::Throttled { propagation } => {
-                    // Throttled: action doesn't fire, but key forwarding
-                    // still respects the binding's propagation setting.
-                    (MatchOutcome::Matched { propagation }, None)
-                }
-                MatchResult::Pending { .. } | MatchResult::Suppressed => {
-                    (MatchOutcome::Consumed, None)
-                }
-                MatchResult::NoMatch | MatchResult::Ignored => (MatchOutcome::Unmatched, None),
-                // MatchResult is #[non_exhaustive]
-                #[allow(clippy::match_same_arms)]
-                _ => (MatchOutcome::Unmatched, None),
+        let result = self.dispatch(event);
+        let (match_outcome, repeat_info) = match result {
+            MatchResult::Matched {
+                action,
+                propagation,
+                repeat_policy,
+            } => {
+                // Capture press_time before executing the action so
+                // Custom repeat delay is measured from the key event,
+                // not from after callback completion.
+                let press_time = Instant::now();
+                execute_action(action);
+                let callback = match action {
+                    Action::Callback(cb) => Some(Arc::clone(cb)),
+                    _ => None,
+                };
+                let repeat_info = Some(RepeatInfo {
+                    callback,
+                    policy: repeat_policy,
+                    press_time,
+                    last_repeat_fire: None,
+                });
+                (MatchOutcome::Matched { propagation }, repeat_info)
             }
+            MatchResult::Throttled { propagation } => {
+                // Throttled: action doesn't fire, but key forwarding
+                // still respects the binding's propagation setting.
+                (MatchOutcome::Matched { propagation }, None)
+            }
+            MatchResult::Pending { .. } | MatchResult::Suppressed => {
+                (MatchOutcome::Consumed, None)
+            }
+            MatchResult::NoMatch | MatchResult::Ignored => (MatchOutcome::Unmatched, None),
+            // MatchResult is #[non_exhaustive]
+            #[allow(clippy::match_same_arms)]
+            _ => (MatchOutcome::Unmatched, None),
         };
 
         let outcome = self.resolve_outcome(match_outcome, event.key, event.transition);
