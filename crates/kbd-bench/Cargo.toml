@@ -1,0 +1,20 @@
+[package]
+name = "kbd-bench"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+
+[dependencies]
+kbd = { workspace = true }
+divan = { workspace = true }
+
+[[bench]]
+name = "dispatch"
+harness = false
+
+[[bench]]
+name = "hotkey"
+harness = false
+
+[lints]
+workspace = true

@@ -19,3 +19,6 @@ Cargo.lock
 
 # End of https://www.toptal.com/developers/gitignore/api/rust
 *.rlib
+
+# Profiling output
+profiles/
