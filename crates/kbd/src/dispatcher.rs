@@ -201,7 +201,7 @@ pub(crate) enum MatchedBindingRef {
 }
 
 /// Internal match outcome that carries binding refs and layer effects.
-enum InternalOutcome {
+enum BindingMatch {
     Matched {
         binding_ref: MatchedBindingRef,
         layer_effect: LayerEffect,
@@ -342,7 +342,7 @@ impl Dispatcher {
     ) -> MatchResult<'_> {
         // Fast path: non-Press events (Release, Repeat) with no active
         // tap-hold state are always Ignored. This skips tap-hold processing,
-        // match_extract, throttle checks, and the final outcome match —
+        // match_binding, throttle checks, and the final outcome match —
         // keeping the common case for release/repeat events near-zero cost.
         if !matches!(transition, KeyTransition::Press) && !self.tap_hold.has_state() {
             return MatchResult::Ignored;
@@ -376,21 +376,21 @@ impl Dispatcher {
             }
         }
 
-        let outcome = self.match_extract(hotkey, transition, device);
+        let outcome = self.match_binding(hotkey, transition, device);
 
         // Check debounce/rate-limit for matched bindings.
         // Throttled matches do NOT apply layer effects — if a PushLayer
         // action is throttled, the layer is not pushed.
         let outcome = self.check_throttle(outcome);
 
-        if let InternalOutcome::Matched {
+        if let BindingMatch::Matched {
             ref layer_effect, ..
         } = outcome
         {
             self.apply_layer_effect(layer_effect);
         }
 
-        if !matches!(outcome, InternalOutcome::Ignored) {
+        if !matches!(outcome, BindingMatch::Ignored) {
             // Reset layer inactivity timeouts so layers remain alive
             // while the user is actively typing.
             let now = Instant::now();
@@ -401,11 +401,11 @@ impl Dispatcher {
             }
             if !matches!(
                 outcome,
-                InternalOutcome::Matched {
+                BindingMatch::Matched {
                     layer_effect: LayerEffect::Push(_) | LayerEffect::Pop | LayerEffect::Toggle(_),
                     ..
-                } | InternalOutcome::Pending { .. }
-                    | InternalOutcome::Throttled { .. }
+                } | BindingMatch::Pending { .. }
+                    | BindingMatch::Throttled { .. }
             ) {
                 // Tick the topmost oneshot layer, popping it when its
                 // count reaches zero. Only one oneshot layer is ticked
@@ -428,7 +428,7 @@ impl Dispatcher {
         }
 
         match outcome {
-            InternalOutcome::Matched {
+            BindingMatch::Matched {
                 binding_ref,
                 propagation,
                 repeat_policy,
@@ -441,17 +441,17 @@ impl Dispatcher {
                     repeat_policy,
                 }
             }
-            InternalOutcome::Throttled { propagation } => MatchResult::Throttled { propagation },
-            InternalOutcome::Pending {
+            BindingMatch::Throttled { propagation } => MatchResult::Throttled { propagation },
+            BindingMatch::Pending {
                 steps_matched,
                 steps_remaining,
             } => MatchResult::Pending {
                 steps_matched,
                 steps_remaining,
             },
-            InternalOutcome::Suppressed => MatchResult::Suppressed,
-            InternalOutcome::NoMatch => MatchResult::NoMatch,
-            InternalOutcome::Ignored => MatchResult::Ignored,
+            BindingMatch::Suppressed => MatchResult::Suppressed,
+            BindingMatch::NoMatch => MatchResult::NoMatch,
+            BindingMatch::Ignored => MatchResult::Ignored,
         }
     }
 
@@ -480,18 +480,18 @@ impl Dispatcher {
         }
     }
 
-    fn match_extract(
+    fn match_binding(
         &mut self,
         hotkey: Hotkey,
         transition: KeyTransition,
         device: Option<&DeviceContext<'_>>,
-    ) -> InternalOutcome {
+    ) -> BindingMatch {
         if !matches!(transition, KeyTransition::Press) {
-            return InternalOutcome::Ignored;
+            return BindingMatch::Ignored;
         }
 
         if Modifier::from_key(hotkey.key()).is_some() {
-            return InternalOutcome::Ignored;
+            return BindingMatch::Ignored;
         }
 
         if let Some(outcome) = self.match_active_sequences(hotkey) {
@@ -514,7 +514,7 @@ impl Dispatcher {
         now: Instant,
         next_priority: &mut usize,
         device: Option<&DeviceContext<'_>>,
-    ) -> Option<InternalOutcome> {
+    ) -> Option<BindingMatch> {
         let layer_names: Vec<_> = self
             .layer_stack
             .iter()
@@ -593,7 +593,7 @@ impl Dispatcher {
                     let propagation = lb.options.propagation();
                     let repeat_policy = lb.options.repeat_policy();
                     let layer_effect = LayerEffect::from_action(&lb.action);
-                    return Some(InternalOutcome::Matched {
+                    return Some(BindingMatch::Matched {
                         layer_effect,
                         binding_ref: MatchedBindingRef::Layer {
                             name: layer_name,
@@ -605,7 +605,7 @@ impl Dispatcher {
                 }
                 LayerMatch::None => {
                     if swallow_unmatched {
-                        return Some(InternalOutcome::Suppressed);
+                        return Some(BindingMatch::Suppressed);
                     }
                 }
             }
@@ -620,7 +620,7 @@ impl Dispatcher {
         now: Instant,
         mut next_priority: usize,
         device: Option<&DeviceContext<'_>>,
-    ) -> InternalOutcome {
+    ) -> BindingMatch {
         let candidates: Vec<SequenceStartCandidate> = {
             let global_seqs = self.sorted_global_sequences();
             let prefix_match = resolve::classify_sequence_prefixes(
@@ -664,7 +664,7 @@ impl Dispatcher {
         if let Some((binding_ref, propagation, repeat_policy)) =
             self.match_global_hotkey(hotkey, device)
         {
-            return InternalOutcome::Matched {
+            return BindingMatch::Matched {
                 layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
                 binding_ref,
                 propagation,
@@ -672,7 +672,7 @@ impl Dispatcher {
             };
         }
 
-        InternalOutcome::NoMatch
+        BindingMatch::NoMatch
     }
 
     /// Return the highest-precedence non-device-filtered binding ID for a hotkey.

@@ -1,8 +1,8 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use super::BindingMatch;
 use super::Dispatcher;
-use super::InternalOutcome;
 use super::MatchedBindingRef;
 use super::layers::LayerEffect;
 use super::timeout::PendingTimeout;
@@ -87,7 +87,7 @@ pub(super) enum SequenceStartCandidate {
 }
 
 impl Dispatcher {
-    pub(super) fn match_active_sequences(&mut self, hotkey: Hotkey) -> Option<InternalOutcome> {
+    pub(super) fn match_active_sequences(&mut self, hotkey: Hotkey) -> Option<BindingMatch> {
         if self.active_sequences.is_empty() {
             return None;
         }
@@ -137,23 +137,23 @@ impl Dispatcher {
             // that first-step standalone action.
             self.pending_standalone = None;
             if let Some(pending) = self.pending_sequence_snapshot() {
-                return Some(InternalOutcome::Pending {
+                return Some(BindingMatch::Pending {
                     steps_matched: pending.steps_matched,
                     steps_remaining: pending.steps_remaining,
                 });
             }
-            return Some(InternalOutcome::NoMatch);
+            return Some(BindingMatch::NoMatch);
         }
 
         self.active_sequences.clear();
 
         if aborted {
             self.pending_standalone = None;
-            return Some(InternalOutcome::NoMatch);
+            return Some(BindingMatch::NoMatch);
         }
 
         if expired && let Some(standalone) = self.pending_standalone.take() {
-            return Some(InternalOutcome::Matched {
+            return Some(BindingMatch::Matched {
                 binding_ref: standalone.inner.binding_ref,
                 layer_effect: standalone.layer_effect,
                 propagation: standalone.inner.propagation,
@@ -171,7 +171,7 @@ impl Dispatcher {
         now: Instant,
         next_priority: &mut usize,
         pending_standalone: Option<PendingStandalone>,
-    ) -> Option<InternalOutcome> {
+    ) -> Option<BindingMatch> {
         if candidates.is_empty() {
             return None;
         }
@@ -186,7 +186,7 @@ impl Dispatcher {
                 } => {
                     self.active_sequences.clear();
                     self.pending_standalone = None;
-                    return Some(InternalOutcome::Matched {
+                    return Some(BindingMatch::Matched {
                         binding_ref,
                         layer_effect,
                         propagation,
@@ -212,13 +212,13 @@ impl Dispatcher {
         self.pending_standalone = pending_standalone;
 
         if let Some(pending) = self.pending_sequence_snapshot() {
-            return Some(InternalOutcome::Pending {
+            return Some(BindingMatch::Pending {
                 steps_matched: pending.steps_matched,
                 steps_remaining: pending.steps_remaining,
             });
         }
 
-        Some(InternalOutcome::NoMatch)
+        Some(BindingMatch::NoMatch)
     }
 
     pub(super) fn pending_standalone_from_match(
@@ -304,11 +304,11 @@ impl Dispatcher {
         }
     }
 
-    fn matched_outcome_for_sequence(&self, sequence_ref: SequenceBindingRef) -> InternalOutcome {
+    fn matched_outcome_for_sequence(&self, sequence_ref: SequenceBindingRef) -> BindingMatch {
         match sequence_ref {
             SequenceBindingRef::Global(id) => {
                 let binding = &self.sequence_bindings_by_id[&id];
-                InternalOutcome::Matched {
+                BindingMatch::Matched {
                     binding_ref: MatchedBindingRef::SequenceGlobal(id),
                     layer_effect: LayerEffect::from_action(&binding.action),
                     propagation: binding.propagation,
@@ -317,7 +317,7 @@ impl Dispatcher {
             }
             SequenceBindingRef::Layer { name, index } => {
                 let binding = &self.layers[&name].sequence_bindings[index];
-                InternalOutcome::Matched {
+                BindingMatch::Matched {
                     binding_ref: MatchedBindingRef::SequenceLayer { name, index },
                     layer_effect: LayerEffect::from_action(&binding.action),
                     propagation: binding.propagation,

@@ -3,8 +3,8 @@ use std::collections::VecDeque;
 use std::time::Duration;
 use std::time::Instant;
 
+use super::BindingMatch;
 use super::Dispatcher;
-use super::InternalOutcome;
 use super::MatchedBindingRef;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
@@ -84,8 +84,8 @@ impl Dispatcher {
     /// Check if a matched binding should be throttled by debounce or
     /// rate limit. If throttled, converts the outcome to `Throttled`.
     /// If not, records the fire time and returns the outcome unchanged.
-    pub(super) fn check_throttle(&mut self, outcome: InternalOutcome) -> InternalOutcome {
-        let InternalOutcome::Matched {
+    pub(super) fn check_throttle(&mut self, outcome: BindingMatch) -> BindingMatch {
+        let BindingMatch::Matched {
             ref binding_ref,
             propagation,
             ..
@@ -120,7 +120,7 @@ impl Dispatcher {
                 .throttle_tracker
                 .is_debounced(&binding_ref, debounce, now)
             {
-                return InternalOutcome::Throttled { propagation };
+                return BindingMatch::Throttled { propagation };
             }
         }
 
@@ -132,7 +132,7 @@ impl Dispatcher {
                 rate_limit.window(),
                 now,
             ) {
-                return InternalOutcome::Throttled { propagation };
+                return BindingMatch::Throttled { propagation };
             }
         }
 
