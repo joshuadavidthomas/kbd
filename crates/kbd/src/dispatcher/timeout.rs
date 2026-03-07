@@ -1,11 +1,58 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use super::Dispatcher;
+use super::MatchResult;
+use super::MatchedBindingRef;
+use crate::binding::BindingId;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 
-use super::Dispatcher;
-use super::MatchResult;
+/// Borrow-free result of a timeout check, used to decouple state mutation
+/// from action resolution. Same pattern as `TapHoldDecision` in `process()`.
+///
+/// The caller collects all resolutions first (mutating state), then resolves
+/// each to a [`MatchResult`] via [`Dispatcher::resolve_timeout`].
+///
+/// This type is opaque — callers receive it from
+/// [`check_timeouts`](Dispatcher::check_timeouts)
+/// and pass it back to [`resolve_timeout`](Dispatcher::resolve_timeout).
+pub struct TimeoutResolution {
+    kind: TimeoutKind,
+}
+
+enum TimeoutKind {
+    Standalone {
+        binding_ref: MatchedBindingRef,
+        propagation: KeyPropagation,
+        repeat_policy: RepeatPolicy,
+    },
+    TapHoldHold {
+        binding_id: BindingId,
+    },
+}
+
+impl TimeoutResolution {
+    pub(super) fn standalone(
+        binding_ref: MatchedBindingRef,
+        propagation: KeyPropagation,
+        repeat_policy: RepeatPolicy,
+    ) -> Self {
+        Self {
+            kind: TimeoutKind::Standalone {
+                binding_ref,
+                propagation,
+                repeat_policy,
+            },
+        }
+    }
+
+    pub(super) fn tap_hold_hold(binding_id: BindingId) -> Self {
+        Self {
+            kind: TimeoutKind::TapHoldHold { binding_id },
+        }
+    }
+}
 
 impl Dispatcher {
     /// Return the nearest layer, sequence, or tap-hold timeout deadline, if any.
@@ -43,23 +90,12 @@ impl Dispatcher {
         min_remaining
     }
 
-    /// Check timeout-driven state transitions.
+    /// Check all timeout-driven state transitions and return resolutions.
     ///
-    /// This includes layer auto-pop timeouts and sequence step timeouts.
-    /// Use [`check_timeouts_with_results`](Self::check_timeouts_with_results)
-    /// when you need timeout-triggered match results (e.g. standalone fallback
-    /// actions for sequence prefixes).
-    pub fn check_timeouts(&mut self) {
-        let _ = self.check_timeouts_with_results();
-    }
-
-    /// Check timeout-driven state transitions and return any timeout matches.
-    ///
-    /// Includes layer auto-pop timeouts and sequence step timeouts.
-    /// For tap-hold timeouts, use [`check_tap_hold_timeouts`](Self::check_tap_hold_timeouts)
-    /// separately — the two must be called independently due to lifetime constraints
-    /// on `MatchResult`.
-    pub fn check_timeouts_with_results(&mut self) -> Vec<MatchResult<'_>> {
+    /// Handles layer auto-pop, sequence step timeouts, and tap-hold hold
+    /// resolution. Returns borrow-free [`TimeoutResolution`] values that
+    /// can be resolved to [`MatchResult`] via [`resolve_timeout`](Self::resolve_timeout).
+    pub fn check_timeouts(&mut self) -> Vec<TimeoutResolution> {
         let now = Instant::now();
 
         let mut timed_out_layers = Vec::new();
@@ -78,30 +114,42 @@ impl Dispatcher {
             self.clear_sequences_for_layer_if_inactive(&layer_name);
         }
 
-        self.check_sequence_timeouts(now)
+        let mut resolutions = self.check_sequence_timeouts(now);
+
+        for id in self.tap_hold.check_timeouts(now) {
+            resolutions.push(TimeoutResolution::tap_hold_hold(id));
+        }
+
+        resolutions
     }
 
-    /// Check tap-hold timeouts — resolve pending holds past their threshold.
+    /// Resolve a [`TimeoutResolution`] to a [`MatchResult`].
     ///
-    /// Returns `MatchResult::Matched` for each hold action that resolved.
-    /// Called separately from [`check_timeouts_with_results`](Self::check_timeouts_with_results)
-    /// because both return `MatchResult` references into different parts of
-    /// the dispatcher, and Rust's borrow checker requires them to be separate calls.
-    pub fn check_tap_hold_timeouts(&mut self) -> Vec<MatchResult<'_>> {
-        let now = Instant::now();
-        let resolved_ids = self.tap_hold.check_timeouts(now);
-
-        let mut results = Vec::new();
-        for id in resolved_ids {
-            if let Some(action) = self.tap_hold.hold_action(id) {
-                results.push(MatchResult::Matched {
-                    action,
-                    propagation: KeyPropagation::Stop,
-                    repeat_policy: RepeatPolicy::Suppress,
-                });
+    /// This is the second step of the two-phase timeout pattern: first
+    /// collect resolutions (which mutate state), then resolve each to
+    /// an action reference.
+    #[must_use]
+    pub fn resolve_timeout(&self, resolution: &TimeoutResolution) -> Option<MatchResult<'_>> {
+        match &resolution.kind {
+            TimeoutKind::Standalone {
+                binding_ref,
+                propagation,
+                repeat_policy,
+            } => Some(MatchResult::Matched {
+                action: self.resolve_binding(binding_ref),
+                propagation: *propagation,
+                repeat_policy: *repeat_policy,
+            }),
+            TimeoutKind::TapHoldHold { binding_id } => {
+                self.tap_hold
+                    .hold_action(*binding_id)
+                    .map(|action| MatchResult::Matched {
+                        action,
+                        propagation: KeyPropagation::Stop,
+                        repeat_policy: RepeatPolicy::Suppress,
+                    })
             }
         }
-        results
     }
 
     /// Reset all layer inactivity timeouts to `now`.

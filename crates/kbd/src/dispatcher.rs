@@ -15,7 +15,8 @@ mod resolve;
 mod sequence;
 pub(crate) mod tap_hold;
 mod throttle;
-mod timeout;
+/// Timeout-driven state transitions and resolution.
+pub mod timeout;
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -191,7 +192,7 @@ pub struct Dispatcher {
 /// Internal reference to a matched binding, used to re-find the action
 /// after layer mutations are applied.
 #[derive(Clone, Hash, PartialEq, Eq)]
-enum MatchedBindingRef {
+pub(crate) enum MatchedBindingRef {
     Global(BindingId),
     Layer { name: LayerName, index: usize },
     SequenceGlobal(BindingId),
@@ -1460,21 +1461,20 @@ mod tests {
         dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
         std::thread::sleep(Duration::from_millis(60));
 
-        let timeout_results = dispatcher.check_tap_hold_timeouts();
-        assert!(
-            timeout_results
-                .iter()
-                .any(|r| matches!(r, MatchResult::Matched { .. }))
-        );
-        for result in &timeout_results {
-            if let MatchResult::Matched {
+        let resolutions = dispatcher.check_timeouts();
+        assert!(!resolutions.is_empty());
+        let mut found_match = false;
+        for resolution in &resolutions {
+            if let Some(MatchResult::Matched {
                 action: Action::Callback(cb),
                 ..
-            } = result
+            }) = dispatcher.resolve_timeout(resolution)
             {
                 cb();
+                found_match = true;
             }
         }
+        assert!(found_match);
         assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
         assert_eq!(hold_counter.load(Ordering::Relaxed), 1);
     }

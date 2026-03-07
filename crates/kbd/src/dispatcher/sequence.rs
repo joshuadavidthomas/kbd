@@ -3,9 +3,9 @@ use std::time::Instant;
 
 use super::Dispatcher;
 use super::InternalOutcome;
-use super::MatchResult;
 use super::MatchedBindingRef;
 use super::layers::LayerEffect;
+use super::timeout::TimeoutResolution;
 use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -221,7 +221,7 @@ impl Dispatcher {
         )
     }
 
-    pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Vec<MatchResult<'_>> {
+    pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Vec<TimeoutResolution> {
         if self.active_sequences.is_empty() {
             return Vec::new();
         }
@@ -233,12 +233,11 @@ impl Dispatcher {
         if expired > 0 && self.active_sequences.is_empty() {
             if let Some(standalone) = self.pending_standalone.take() {
                 self.apply_layer_effect(&standalone.layer_effect);
-                let action = self.resolve_binding(&standalone.binding_ref);
-                return vec![MatchResult::Matched {
-                    action,
-                    propagation: standalone.propagation,
-                    repeat_policy: standalone.repeat_policy,
-                }];
+                return vec![TimeoutResolution::standalone(
+                    standalone.binding_ref,
+                    standalone.propagation,
+                    standalone.repeat_policy,
+                )];
             }
 
             self.pending_standalone = None;
@@ -448,8 +447,10 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for timeout_result in dispatcher.check_timeouts_with_results() {
-            execute_callback(&timeout_result);
+        for resolution in &dispatcher.check_timeouts() {
+            if let Some(result) = dispatcher.resolve_timeout(resolution) {
+                execute_callback(&result);
+            }
         }
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
@@ -557,8 +558,10 @@ mod tests {
         assert!(matches!(pending, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for timeout_result in dispatcher.check_timeouts_with_results() {
-            execute_callback(&timeout_result);
+        for resolution in &dispatcher.check_timeouts() {
+            if let Some(result) = dispatcher.resolve_timeout(resolution) {
+                execute_callback(&result);
+            }
         }
 
         assert_eq!(counter.load(Ordering::Relaxed), 1);
@@ -596,8 +599,10 @@ mod tests {
         assert!(matches!(second, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for timeout_result in dispatcher.check_timeouts_with_results() {
-            execute_callback(&timeout_result);
+        for resolution in &dispatcher.check_timeouts() {
+            if let Some(result) = dispatcher.resolve_timeout(resolution) {
+                execute_callback(&result);
+            }
         }
 
         assert_eq!(counter.load(Ordering::Relaxed), 0);
@@ -669,7 +674,7 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        dispatcher.check_timeouts();
+        let _ = dispatcher.check_timeouts();
 
         assert!(dispatcher.pending_sequence().is_none());
     }
@@ -736,7 +741,7 @@ mod tests {
         dispatcher.unregister(standalone_id);
 
         std::thread::sleep(Duration::from_millis(20));
-        let timeout_results = dispatcher.check_timeouts_with_results();
+        let timeout_results = dispatcher.check_timeouts();
         assert!(timeout_results.is_empty());
     }
 
@@ -776,8 +781,10 @@ mod tests {
         assert!(matches!(first, MatchResult::Pending { .. }));
 
         std::thread::sleep(Duration::from_millis(20));
-        for timeout_result in dispatcher.check_timeouts_with_results() {
-            execute_callback(&timeout_result);
+        for resolution in &dispatcher.check_timeouts() {
+            if let Some(result) = dispatcher.resolve_timeout(resolution) {
+                execute_callback(&result);
+            }
         }
 
         let h = dispatcher.process(Hotkey::new(Key::H), KeyTransition::Press);
