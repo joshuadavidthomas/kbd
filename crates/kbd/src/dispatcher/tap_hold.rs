@@ -7,7 +7,8 @@
 //! - Interrupting keypress → hold (keyd model)
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use crate::action::Action;
 use crate::binding::BindingId;

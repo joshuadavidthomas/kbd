@@ -276,6 +276,16 @@ impl Dispatcher {
         Ok(id)
     }
 
+    /// Check if a key has a tap-hold binding registered.
+    ///
+    /// Used by the engine to route release events for tap-hold keys
+    /// through the dispatcher (for tap resolution) instead of the press
+    /// cache.
+    #[must_use]
+    pub fn is_tap_hold_key(&self, key: Key) -> bool {
+        self.tap_hold.is_registered(key)
+    }
+
     /// Define a named layer. The layer is not active until pushed.
     ///
     /// # Errors
@@ -351,7 +361,7 @@ impl Dispatcher {
         let tap_hold_decision = self.process_tap_hold(hotkey.key(), transition);
 
         match tap_hold_decision {
-            TapHoldDecision::Consumed => {
+            TapHoldDecision::Consumed | TapHoldDecision::HoldResolvedThenConsumed => {
                 return MatchResult::Matched {
                     action: &Action::Suppress,
                     propagation: KeyPropagation::Stop,
@@ -367,13 +377,6 @@ impl Dispatcher {
                         repeat_policy: RepeatPolicy::Suppress,
                     },
                     None => MatchResult::Ignored,
-                };
-            }
-            TapHoldDecision::HoldResolvedThenConsumed => {
-                return MatchResult::Matched {
-                    action: &Action::Suppress,
-                    propagation: KeyPropagation::Stop,
-                    repeat_policy: RepeatPolicy::Suppress,
                 };
             }
             TapHoldDecision::PassThrough => {
@@ -439,6 +442,12 @@ impl Dispatcher {
 
     /// Process tap-hold events, returning a decision enum with no borrows
     /// on self. Hold-resolved-by-interrupt actions are executed inline.
+    ///
+    /// NOTE: Executing callbacks here (in the Dispatcher) is architecturally
+    /// imperfect — the engine should own action execution for panic isolation
+    /// and consistent handling of non-callback actions. This is mitigated by
+    /// wrapping calls in `catch_unwind`. A future refactor could buffer
+    /// resolved hold IDs and let the engine drain/execute them.
     fn process_tap_hold(&mut self, key: Key, transition: KeyTransition) -> TapHoldDecision {
         let now = Instant::now();
 
@@ -448,14 +457,15 @@ impl Dispatcher {
                 match outcome {
                     TapHoldOutcome::Consumed => TapHoldDecision::Consumed,
                     TapHoldOutcome::HoldResolved { binding_ids } => {
-                        // Execute hold actions inline — the engine will also
-                        // see the actions via check_timeouts if needed, but
-                        // interrupt resolution is immediate.
+                        // Execute hold actions inline — interrupt resolution
+                        // is immediate. Only callbacks are executed; layer
+                        // actions would need apply_layer_effect (a future
+                        // refactor to buffer+drain resolved IDs would fix
+                        // this and the panic isolation concern together).
                         for &id in &binding_ids {
-                            if let Some(action) = self.tap_hold.hold_action(id) {
-                                if let Action::Callback(cb) = action {
-                                    cb();
-                                }
+                            if let Some(Action::Callback(cb)) = self.tap_hold.hold_action(id) {
+                                let _ =
+                                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cb()));
                             }
                         }
 
@@ -466,7 +476,10 @@ impl Dispatcher {
                         }
                     }
                     TapHoldOutcome::PassThrough => TapHoldDecision::PassThrough,
-                    _ => TapHoldDecision::PassThrough,
+                    // TapResolved and RepeatConsumed cannot occur on Press.
+                    TapHoldOutcome::TapResolved { .. } | TapHoldOutcome::RepeatConsumed => {
+                        TapHoldDecision::PassThrough
+                    }
                 }
             }
             KeyTransition::Release => {
@@ -475,14 +488,22 @@ impl Dispatcher {
                     TapHoldOutcome::TapResolved { binding_id } => {
                         TapHoldDecision::TapResolved { binding_id }
                     }
-                    _ => TapHoldDecision::PassThrough,
+                    // PassThrough is expected; other variants cannot occur on Release.
+                    TapHoldOutcome::PassThrough
+                    | TapHoldOutcome::Consumed
+                    | TapHoldOutcome::HoldResolved { .. }
+                    | TapHoldOutcome::RepeatConsumed => TapHoldDecision::PassThrough,
                 }
             }
             KeyTransition::Repeat => {
                 let outcome = self.tap_hold.on_repeat(key);
                 match outcome {
                     TapHoldOutcome::RepeatConsumed => TapHoldDecision::Consumed,
-                    _ => TapHoldDecision::PassThrough,
+                    // PassThrough is expected; other variants cannot occur on Repeat.
+                    TapHoldOutcome::PassThrough
+                    | TapHoldOutcome::Consumed
+                    | TapHoldOutcome::TapResolved { .. }
+                    | TapHoldOutcome::HoldResolved { .. } => TapHoldDecision::PassThrough,
                 }
             }
             // KeyTransition is #[non_exhaustive]; future variants pass through.
@@ -1380,8 +1401,7 @@ mod tests {
             .unwrap();
 
         // Press CapsLock — consumed (buffered)
-        let press_result =
-            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
+        let press_result = dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
         assert!(matches!(press_result, MatchResult::Matched { .. }));
         assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
         assert_eq!(hold_counter.load(Ordering::Relaxed), 0);
@@ -1390,10 +1410,12 @@ mod tests {
         let release_result =
             dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
         assert!(matches!(release_result, MatchResult::Matched { .. }));
-        if let MatchResult::Matched { action, .. } = release_result {
-            if let Action::Callback(cb) = action {
-                cb();
-            }
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = release_result
+        {
+            cb();
         }
         assert_eq!(tap_counter.load(Ordering::Relaxed), 1);
         assert_eq!(hold_counter.load(Ordering::Relaxed), 0);
@@ -1424,14 +1446,18 @@ mod tests {
         std::thread::sleep(Duration::from_millis(60));
 
         let timeout_results = dispatcher.check_tap_hold_timeouts();
-        assert!(timeout_results
-            .iter()
-            .any(|r| matches!(r, MatchResult::Matched { .. })));
+        assert!(
+            timeout_results
+                .iter()
+                .any(|r| matches!(r, MatchResult::Matched { .. }))
+        );
         for result in &timeout_results {
-            if let MatchResult::Matched { action, .. } = result {
-                if let Action::Callback(cb) = action {
-                    cb();
-                }
+            if let MatchResult::Matched {
+                action: Action::Callback(cb),
+                ..
+            } = result
+            {
+                cb();
             }
         }
         assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
@@ -1491,23 +1517,25 @@ mod tests {
 
         // First tap
         dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
-        let result =
-            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
-        if let MatchResult::Matched { action, .. } = result {
-            if let Action::Callback(cb) = action {
-                cb();
-            }
+        let result = dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
+            cb();
         }
         assert_eq!(tap_counter.load(Ordering::Relaxed), 1);
 
         // Second tap
         dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
-        let result =
-            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
-        if let MatchResult::Matched { action, .. } = result {
-            if let Action::Callback(cb) = action {
-                cb();
-            }
+        let result = dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Release);
+        if let MatchResult::Matched {
+            action: Action::Callback(cb),
+            ..
+        } = result
+        {
+            cb();
         }
         assert_eq!(tap_counter.load(Ordering::Relaxed), 2);
     }
@@ -1527,8 +1555,7 @@ mod tests {
 
         dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Press);
 
-        let result =
-            dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Repeat);
+        let result = dispatcher.process(Hotkey::new(Key::CAPS_LOCK), KeyTransition::Repeat);
         assert!(!matches!(
             result,
             MatchResult::NoMatch | MatchResult::Ignored

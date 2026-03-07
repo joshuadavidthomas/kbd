@@ -288,7 +288,13 @@ impl Engine {
             .apply_device_event(event.device_fd, event.key, event.transition);
 
         // Release: use cached disposition, remove cache entry.
+        // Exception: tap-hold keys bypass the press cache — their tap
+        // action resolves on release through the Dispatcher.
         if matches!(event.transition, KeyTransition::Release) {
+            if self.dispatcher.is_tap_hold_key(event.key) {
+                self.press_cache.remove(&event.key);
+                return self.process_tap_hold_release(event);
+            }
             if let Some(cached) = self.press_cache.remove(&event.key) {
                 match cached.outcome {
                     KeyEventOutcome::MatchedForwarded | KeyEventOutcome::UnmatchedForwarded => {
@@ -470,6 +476,36 @@ impl Engine {
         }
 
         disposition
+    }
+
+    /// Process a release event for a tap-hold key through the Dispatcher.
+    ///
+    /// Tap-hold keys bypass the press cache for releases because the tap
+    /// action resolves on release. The Dispatcher's `process_tap_hold`
+    /// determines whether this is a tap (released before threshold) or a
+    /// hold cleanup (hold already resolved by timeout or interrupt).
+    fn process_tap_hold_release(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
+        let active_modifiers = self.key_state.active_modifiers();
+        let candidate = Hotkey::with_modifiers(event.key, active_modifiers);
+
+        let device_modifiers = self.key_state.active_modifiers_for_device(event.device_fd);
+        let device_info = self.devices.device_info(event.device_fd);
+
+        let result = if let Some(info) = device_info {
+            let ctx =
+                DeviceContext::new(event.device_fd, info).with_device_modifiers(device_modifiers);
+            self.dispatcher
+                .process_with_device(candidate, event.transition, &ctx)
+        } else {
+            self.dispatcher.process(candidate, event.transition)
+        };
+
+        if let MatchResult::Matched { action, .. } = result {
+            execute_action(action);
+        }
+
+        // Tap-hold keys are always consumed (they require grab mode).
+        KeyEventOutcome::MatchedConsumed
     }
 
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {
@@ -3145,5 +3181,139 @@ mod tests {
         );
 
         runtime.shutdown().expect("engine should shutdown cleanly");
+    }
+
+    #[test]
+    fn tap_hold_tap_resolves_through_engine() {
+        let (grab_state, _forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+        let tap_counter = Arc::new(AtomicUsize::new(0));
+        let hold_counter = Arc::new(AtomicUsize::new(0));
+        let tc = Arc::clone(&tap_counter);
+        let hc = Arc::clone(&hold_counter);
+
+        engine
+            .dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::from(move || {
+                    tc.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::from(move || {
+                    hc.fetch_add(1, Ordering::Relaxed);
+                }),
+                kbd::tap_hold::TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        // Press CapsLock — consumed (buffered)
+        press_key(&mut engine, Key::CAPS_LOCK, 10);
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 0);
+
+        // Release CapsLock before threshold — tap should fire
+        release_key(&mut engine, Key::CAPS_LOCK, 10);
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 1);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn tap_hold_interrupt_resolves_hold_through_engine() {
+        let (grab_state, _forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+        let tap_counter = Arc::new(AtomicUsize::new(0));
+        let hold_counter = Arc::new(AtomicUsize::new(0));
+        let tc = Arc::clone(&tap_counter);
+        let hc = Arc::clone(&hold_counter);
+
+        engine
+            .dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::from(move || {
+                    tc.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::from(move || {
+                    hc.fetch_add(1, Ordering::Relaxed);
+                }),
+                kbd::tap_hold::TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        // Press CapsLock — consumed (buffered)
+        press_key(&mut engine, Key::CAPS_LOCK, 10);
+
+        // Press A — interrupts CapsLock → hold resolves
+        press_key(&mut engine, Key::A, 10);
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 1);
+
+        // Release CapsLock — hold already resolved, should not fire tap
+        release_key(&mut engine, Key::CAPS_LOCK, 10);
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 0);
+        assert_eq!(hold_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn tap_hold_can_be_reused_through_engine() {
+        let (grab_state, _forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+        let tap_counter = Arc::new(AtomicUsize::new(0));
+        let tc = Arc::clone(&tap_counter);
+
+        engine
+            .dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::from(move || {
+                    tc.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::Suppress,
+                kbd::tap_hold::TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        // First tap
+        press_key(&mut engine, Key::CAPS_LOCK, 10);
+        release_key(&mut engine, Key::CAPS_LOCK, 10);
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 1);
+
+        // Second tap
+        press_key(&mut engine, Key::CAPS_LOCK, 10);
+        release_key(&mut engine, Key::CAPS_LOCK, 10);
+        assert_eq!(tap_counter.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn tap_hold_release_not_forwarded_in_grab_mode() {
+        let (grab_state, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab_state);
+
+        engine
+            .dispatcher
+            .register_tap_hold(
+                Key::CAPS_LOCK,
+                Action::Suppress,
+                Action::Suppress,
+                kbd::tap_hold::TapHoldOptions::default(),
+            )
+            .unwrap();
+
+        // Press and release — both should be consumed, not forwarded
+        let press_disposition = press_key(&mut engine, Key::CAPS_LOCK, 10);
+        assert_eq!(press_disposition, KeyEventOutcome::MatchedConsumed);
+
+        let release_disposition = release_key(&mut engine, Key::CAPS_LOCK, 10);
+        assert_eq!(release_disposition, KeyEventOutcome::MatchedConsumed);
+
+        let events = forwarded.lock().unwrap();
+        let caps_events: Vec<_> = events
+            .iter()
+            .filter(|(key, _)| *key == Key::CAPS_LOCK)
+            .collect();
+        assert!(
+            caps_events.is_empty(),
+            "tap-hold key should not be forwarded"
+        );
     }
 }
