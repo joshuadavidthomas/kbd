@@ -57,6 +57,7 @@ pub(super) struct PendingStandalone {
     pub(super) binding_ref: MatchedBindingRef,
     pub(super) propagation: KeyPropagation,
     pub(super) layer_effect: LayerEffect,
+    pub(super) repeat_policy: RepeatPolicy,
 }
 
 pub(super) enum SequenceStartCandidate {
@@ -142,7 +143,7 @@ impl Dispatcher {
                 binding_ref: standalone.binding_ref,
                 layer_effect: standalone.layer_effect,
                 propagation: standalone.propagation,
-                repeat_policy: RepeatPolicy::default(),
+                repeat_policy: standalone.repeat_policy,
             });
         }
 
@@ -210,11 +211,14 @@ impl Dispatcher {
         &self,
         binding_match: Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)>,
     ) -> Option<PendingStandalone> {
-        binding_match.map(|(binding_ref, propagation, _repeat_policy)| PendingStandalone {
-            layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
-            binding_ref,
-            propagation,
-        })
+        binding_match.map(
+            |(binding_ref, propagation, repeat_policy)| PendingStandalone {
+                layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
+                binding_ref,
+                propagation,
+                repeat_policy,
+            },
+        )
     }
 
     pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Vec<MatchResult<'_>> {
@@ -233,7 +237,7 @@ impl Dispatcher {
                 return vec![MatchResult::Matched {
                     action,
                     propagation: standalone.propagation,
-                    repeat_policy: RepeatPolicy::default(),
+                    repeat_policy: standalone.repeat_policy,
                 }];
             }
 

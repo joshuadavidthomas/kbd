@@ -18,7 +18,7 @@ pub(crate) struct ThrottleTracker {
 /// Unique key identifying a binding for throttle tracking.
 ///
 /// Mirrors [`MatchedBindingRef`] but derives Hash/Eq for use as a
-/// HashMap key.
+/// `HashMap` key.
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum ThrottleKey {
     Global(BindingId),
@@ -171,9 +171,7 @@ impl Dispatcher {
 
         match binding_ref {
             MatchedBindingRef::Global(id) => self.bindings_by_id[id].options(),
-            MatchedBindingRef::Layer { name, index } => {
-                &self.layers[name].bindings[*index].options
-            }
+            MatchedBindingRef::Layer { name, index } => &self.layers[name].bindings[*index].options,
             MatchedBindingRef::SequenceGlobal(_) | MatchedBindingRef::SequenceLayer { .. } => {
                 &DEFAULT_OPTIONS
             }

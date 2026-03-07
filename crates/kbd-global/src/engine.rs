@@ -282,7 +282,7 @@ impl Engine {
         // Repeat: use cached disposition for forwarding, check repeat
         // policy for action re-execution.
         if matches!(event.transition, KeyTransition::Repeat) {
-            return self.handle_repeat_event(&event);
+            return self.handle_repeat_event(event);
         }
 
         // Press: match through the Dispatcher.
@@ -290,7 +290,7 @@ impl Engine {
     }
 
     /// Handle a repeat event using the press cache and repeat policy.
-    fn handle_repeat_event(&mut self, event: &DeviceKeyEvent) -> KeyEventOutcome {
+    fn handle_repeat_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
         let Some(cached) = self.press_cache.get(&event.key) else {
             // No cache entry — modifier key or key pressed before cache.
             return KeyEventOutcome::Ignored;
@@ -401,7 +401,17 @@ impl Engine {
                         repeat_info,
                     )
                 }
-                MatchResult::Throttled { .. } | MatchResult::Pending { .. } | MatchResult::Suppressed => {
+                MatchResult::Throttled { propagation } => {
+                    // Throttled: action doesn't fire, but key forwarding
+                    // still respects the binding's propagation setting.
+                    (
+                        MatchOutcome::Matched {
+                            propagation: *propagation,
+                        },
+                        None,
+                    )
+                }
+                MatchResult::Pending { .. } | MatchResult::Suppressed => {
                     (MatchOutcome::Consumed, None)
                 }
                 MatchResult::NoMatch | MatchResult::Ignored => (MatchOutcome::Unmatched, None),
@@ -2914,10 +2924,12 @@ mod tests {
                 cc.fetch_add(1, Ordering::Relaxed);
             }),
         )
-        .with_options(BindingOptions::default().with_repeat_policy(RepeatPolicy::Custom {
-            delay: Duration::from_millis(50),
-            rate: Duration::from_millis(10),
-        }));
+        .with_options(
+            BindingOptions::default().with_repeat_policy(RepeatPolicy::Custom {
+                delay: Duration::from_millis(50),
+                rate: Duration::from_millis(10),
+            }),
+        );
         engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::A, 10);
@@ -2945,10 +2957,12 @@ mod tests {
                 cc.fetch_add(1, Ordering::Relaxed);
             }),
         )
-        .with_options(BindingOptions::default().with_repeat_policy(RepeatPolicy::Custom {
-            delay: Duration::from_millis(0),
-            rate: Duration::from_millis(50),
-        }));
+        .with_options(
+            BindingOptions::default().with_repeat_policy(RepeatPolicy::Custom {
+                delay: Duration::from_millis(0),
+                rate: Duration::from_millis(50),
+            }),
+        );
         engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::A, 10);

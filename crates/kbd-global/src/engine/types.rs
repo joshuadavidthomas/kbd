@@ -65,7 +65,7 @@ pub(super) struct RepeatInfo {
 
 /// Intermediate result from matching, used for forwarding decisions.
 ///
-/// The `Dispatcher` returns a rich `MatchResult` with five variants, but the
+/// The `Dispatcher` returns a rich `MatchResult` with six variants, but the
 /// engine only cares about three distinctions:
 /// - A binding matched and produced an action (with a propagation setting).
 /// - The event was consumed without producing a callback (mid-sequence or swallowed).

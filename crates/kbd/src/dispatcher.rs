@@ -330,9 +330,7 @@ impl Dispatcher {
                     repeat_policy,
                 }
             }
-            InternalOutcome::Throttled { propagation } => {
-                MatchResult::Throttled { propagation }
-            }
+            InternalOutcome::Throttled { propagation } => MatchResult::Throttled { propagation },
             InternalOutcome::Pending {
                 steps_matched,
                 steps_remaining,
@@ -441,6 +439,7 @@ impl Dispatcher {
                             },
                             layer_effect: LayerEffect::from_action(&lb.action),
                             propagation: lb.options.propagation(),
+                            repeat_policy: lb.options.repeat_policy(),
                         }
                     });
                     // `stored` is last used above; NLL releases the borrow.
@@ -631,6 +630,7 @@ impl Dispatcher {
     /// limiting, oneshot ticks, or layer effects.
     ///
     /// Returns the action and propagation if a binding matches.
+    #[must_use]
     pub fn lookup_action(
         &self,
         hotkey: &Hotkey,
@@ -642,7 +642,7 @@ impl Dispatcher {
             let Some(stored) = self.layers.get(&entry.name) else {
                 continue;
             };
-            if let Some(index) = resolve::find_immediate_in_layer_pub(stored, hotkey, device) {
+            if let Some(index) = resolve::find_immediate_in_layer(stored, hotkey, device) {
                 return Some(&stored.bindings[index].action);
             }
             if matches!(stored.options.unmatched(), UnmatchedKeys::Swallow) {
@@ -676,7 +676,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-
     use std::time::Duration;
 
     use super::*;
