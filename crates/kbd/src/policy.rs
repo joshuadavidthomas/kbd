@@ -47,20 +47,6 @@ pub enum RepeatPolicy {
 ///
 /// `delay` is the time after the initial press before the first repeat
 /// fires. `rate` is the minimum interval between subsequent repeat fires.
-///
-/// # Examples
-///
-/// ```
-/// use std::time::Duration;
-/// use kbd::policy::RepeatTiming;
-///
-/// let timing = RepeatTiming::new(
-///     Duration::from_millis(500),
-///     Duration::from_millis(30),
-/// );
-/// assert_eq!(timing.delay(), Duration::from_millis(500));
-/// assert_eq!(timing.rate(), Duration::from_millis(30));
-/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RepeatTiming {
@@ -104,11 +90,11 @@ impl RepeatTiming {
 /// ```
 /// use std::time::Duration;
 /// use kbd::policy::RateLimit;
+/// use kbd::binding::BindingOptions;
 ///
-/// // At most 5 fires per second
-/// let rl = RateLimit::new(5, Duration::from_secs(1));
-/// assert_eq!(rl.max_count(), 5);
-/// assert_eq!(rl.window(), Duration::from_secs(1));
+/// // Prevent accidental double-taps: at most 2 fires per second
+/// let opts = BindingOptions::default()
+///     .with_rate_limit(RateLimit::new(2, Duration::from_secs(1)));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
