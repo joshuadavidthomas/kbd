@@ -235,7 +235,7 @@ impl Dispatcher {
 
         if self.pending_standalone.as_ref().is_some_and(|pending| {
             matches!(
-                pending.binding_ref,
+                pending.inner.binding_ref,
                 MatchedBindingRef::Global(global_id) | MatchedBindingRef::SequenceGlobal(global_id)
                     if global_id == id
             )

@@ -30,6 +30,7 @@ use self::sequence::PendingStandalone;
 use self::sequence::RegisteredSequenceBinding;
 use self::sequence::SequenceBindingRef;
 use self::sequence::SequenceStartCandidate;
+use self::sequence::StandaloneMatch;
 use self::tap_hold::TapHoldBinding;
 use self::tap_hold::TapHoldOutcome;
 use self::tap_hold::TapHoldState;
@@ -617,13 +618,15 @@ impl Dispatcher {
                     let pending_standalone = immediate_index.map(|idx| {
                         let lb = &stored.bindings[idx];
                         PendingStandalone {
-                            binding_ref: MatchedBindingRef::Layer {
-                                name: layer_name.clone(),
-                                index: idx,
+                            inner: StandaloneMatch {
+                                binding_ref: MatchedBindingRef::Layer {
+                                    name: layer_name.clone(),
+                                    index: idx,
+                                },
+                                propagation: lb.options.propagation(),
+                                repeat_policy: lb.options.repeat_policy(),
                             },
                             layer_effect: LayerEffect::from_action(&lb.action),
-                            propagation: lb.options.propagation(),
-                            repeat_policy: lb.options.repeat_policy(),
                         }
                     });
                     // `stored` is last used above; NLL releases the borrow.

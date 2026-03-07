@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::Dispatcher;
 use super::MatchResult;
-use super::MatchedBindingRef;
+use super::sequence::StandaloneMatch;
 use crate::binding::BindingId;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
@@ -23,28 +23,14 @@ pub struct PendingTimeout {
 }
 
 enum TimeoutKind {
-    Standalone {
-        binding_ref: MatchedBindingRef,
-        propagation: KeyPropagation,
-        repeat_policy: RepeatPolicy,
-    },
-    TapHoldHold {
-        binding_id: BindingId,
-    },
+    Standalone(StandaloneMatch),
+    TapHoldHold { binding_id: BindingId },
 }
 
 impl PendingTimeout {
-    pub(super) fn standalone(
-        binding_ref: MatchedBindingRef,
-        propagation: KeyPropagation,
-        repeat_policy: RepeatPolicy,
-    ) -> Self {
+    pub(super) fn standalone(inner: StandaloneMatch) -> Self {
         Self {
-            kind: TimeoutKind::Standalone {
-                binding_ref,
-                propagation,
-                repeat_policy,
-            },
+            kind: TimeoutKind::Standalone(inner),
         }
     }
 
@@ -132,14 +118,10 @@ impl Dispatcher {
     #[must_use]
     pub fn match_pending_timeout(&self, pending: &PendingTimeout) -> Option<MatchResult<'_>> {
         match &pending.kind {
-            TimeoutKind::Standalone {
-                binding_ref,
-                propagation,
-                repeat_policy,
-            } => Some(MatchResult::Matched {
-                action: self.resolve_binding(binding_ref),
-                propagation: *propagation,
-                repeat_policy: *repeat_policy,
+            TimeoutKind::Standalone(standalone) => Some(MatchResult::Matched {
+                action: self.resolve_binding(&standalone.binding_ref),
+                propagation: standalone.propagation,
+                repeat_policy: standalone.repeat_policy,
             }),
             TimeoutKind::TapHoldHold { binding_id } => {
                 self.tap_hold
