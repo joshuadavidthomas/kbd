@@ -1,6 +1,6 @@
 [package]
 name = "kbd-winit"
-version = "0.1.0"
+version = "0.2.0"
 description = "winit bridge for kbd — converts winit key events and modifiers to kbd types."
 edition.workspace = true
 rust-version.workspace = true
