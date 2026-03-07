@@ -466,6 +466,39 @@ mod tests {
     }
 
     #[test]
+    fn binding_source_parses_reserved_labels() {
+        assert!(matches!(
+            BindingSource::new("default"),
+            BindingSource::Default
+        ));
+        assert!(matches!(BindingSource::new("user"), BindingSource::User));
+        assert!(matches!(
+            BindingSource::new("plugin"),
+            BindingSource::Custom(_)
+        ));
+    }
+
+    #[test]
+    fn binding_source_parsing_is_case_insensitive() {
+        assert_eq!(BindingSource::new("DEFAULT"), BindingSource::Default);
+        assert_eq!(BindingSource::new("UsEr"), BindingSource::User);
+    }
+
+    #[test]
+    fn binding_source_as_str_normalizes_reserved_labels() {
+        assert_eq!(BindingSource::new("DEFAULT").as_str(), "default");
+        assert_eq!(BindingSource::new("UsEr").as_str(), "user");
+        assert_eq!(BindingSource::new("plugin").as_str(), "plugin");
+    }
+
+    #[test]
+    fn binding_source_display() {
+        assert_eq!(BindingSource::Default.to_string(), "default");
+        assert_eq!(BindingSource::User.to_string(), "user");
+        assert_eq!(BindingSource::Custom("plugin".into()).to_string(), "plugin");
+    }
+
+    #[test]
     fn binding_options_can_track_binding_source() {
         let source = BindingSource::new("user");
         let options = BindingOptions::default().with_source(source.clone());

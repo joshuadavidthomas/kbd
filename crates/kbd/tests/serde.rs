@@ -187,6 +187,29 @@ fn overlay_visibility_round_trip() {
     }
 }
 
+#[test]
+fn binding_source_round_trip() {
+    // Reserved variants serialize as their canonical lowercase forms
+    assert_eq!(round_trip(&BindingSource::Default), BindingSource::Default);
+    assert_eq!(round_trip(&BindingSource::User), BindingSource::User);
+
+    // Custom labels preserve their value
+    let plugin = BindingSource::new("plugin");
+    assert_eq!(round_trip(&plugin), plugin);
+}
+
+#[test]
+fn binding_source_deserialize_normalizes_reserved_labels() {
+    // Deserializing a reserved label in any case produces the typed variant
+    let from_upper: BindingSource = serde_json::from_str(r#""DEFAULT""#).unwrap();
+    assert_eq!(from_upper, BindingSource::Default);
+    assert_eq!(serde_json::to_string(&from_upper).unwrap(), r#""default""#);
+
+    let from_mixed: BindingSource = serde_json::from_str(r#""UsEr""#).unwrap();
+    assert_eq!(from_mixed, BindingSource::User);
+    assert_eq!(serde_json::to_string(&from_mixed).unwrap(), r#""user""#);
+}
+
 // Composite types
 
 #[test]
