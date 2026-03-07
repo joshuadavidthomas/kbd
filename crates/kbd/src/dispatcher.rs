@@ -31,6 +31,7 @@ use self::sequence::SequenceBindingRef;
 use self::sequence::SequenceStartCandidate;
 use self::sequence::StandaloneMatch;
 use self::tap_hold::TapHoldBinding;
+use self::tap_hold::TapHoldDecision;
 use self::tap_hold::TapHoldOutcome;
 use self::tap_hold::TapHoldState;
 use self::throttle::ThrottleTracker;
@@ -198,20 +199,6 @@ pub(crate) enum MatchedBindingRef {
     Layer { name: LayerName, index: usize },
     SequenceGlobal(BindingId),
     SequenceLayer { name: LayerName, index: usize },
-}
-
-/// Borrow-free result of tap-hold processing, used to avoid lifetime
-/// conflicts with subsequent `self` usage in `process_internal`.
-enum TapHoldDecision {
-    /// Event consumed (buffered or repeat suppressed).
-    Consumed,
-    /// Tap resolved — look up the tap action by binding ID.
-    TapResolved { binding_id: BindingId },
-    /// Hold resolved by interrupt, and the pressing key was also a tap-hold
-    /// key that got consumed.
-    HoldResolvedThenConsumed,
-    /// Not handled by tap-hold — pass through to normal matching.
-    PassThrough,
 }
 
 /// Internal match outcome that carries binding refs and layer effects.

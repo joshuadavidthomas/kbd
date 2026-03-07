@@ -64,6 +64,20 @@ pub(crate) enum TapHoldOutcome {
     PassThrough,
 }
 
+/// Borrow-free result of tap-hold processing, used to avoid lifetime
+/// conflicts with subsequent `self` usage in `process_internal`.
+pub(super) enum TapHoldDecision {
+    /// Event consumed (buffered or repeat suppressed).
+    Consumed,
+    /// Tap resolved — look up the tap action by binding ID.
+    TapResolved { binding_id: BindingId },
+    /// Hold resolved by interrupt, and the pressing key was also a tap-hold
+    /// key that got consumed.
+    HoldResolvedThenConsumed,
+    /// Not handled by tap-hold — pass through to normal matching.
+    PassThrough,
+}
+
 impl TapHoldState {
     /// Register a tap-hold binding.
     pub(crate) fn register(&mut self, binding: TapHoldBinding) {
