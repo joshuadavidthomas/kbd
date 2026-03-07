@@ -172,8 +172,7 @@ impl TapHoldState {
     }
 
     /// Return the nearest tap-hold timeout deadline, if any pending.
-    pub(crate) fn next_deadline(&self) -> Option<Duration> {
-        let now = Instant::now();
+    pub(crate) fn next_deadline(&self, now: Instant) -> Option<Duration> {
         let mut min_remaining: Option<Duration> = None;
 
         for (key, active) in &self.active {

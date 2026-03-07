@@ -30,7 +30,7 @@ impl Dispatcher {
             });
         }
 
-        if let Some(tap_hold_remaining) = self.tap_hold.next_deadline() {
+        if let Some(tap_hold_remaining) = self.tap_hold.next_deadline(now) {
             min_remaining = Some(match min_remaining {
                 Some(current) => std::cmp::min(current, tap_hold_remaining),
                 None => tap_hold_remaining,
