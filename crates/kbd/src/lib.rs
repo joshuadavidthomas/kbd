@@ -15,16 +15,27 @@
 //! ```
 //! use kbd::action::Action;
 //! use kbd::dispatcher::{Dispatcher, MatchResult};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
 //! use kbd::key_state::KeyTransition;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut dispatcher = Dispatcher::new();
 //!
-//! dispatcher.register("Ctrl+S", || println!("saved"))?;
-//! dispatcher.register("Ctrl+Shift+P", Action::Suppress)?;
+//! // Register via string parsing
+//! dispatcher.register("Ctrl+S", Action::Suppress)?;
+//!
+//! // Register programmatically — useful for dynamic or computed bindings
+//! dispatcher.register(
+//!     Hotkey::new(Key::A).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
+//!     Action::Suppress,
+//! )?;
 //!
 //! // process() returns Matched, Pending (partial sequence), or NoMatch
-//! let result = dispatcher.process("Ctrl+S".parse()?, KeyTransition::Press);
+//! let result = dispatcher.process(
+//!     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
+//!     KeyTransition::Press,
+//! );
 //! assert!(matches!(result, MatchResult::Matched { .. }));
 //! # Ok(())
 //! # }
@@ -69,18 +80,35 @@
 //! ```
 //! use kbd::action::Action;
 //! use kbd::dispatcher::{Dispatcher, MatchResult};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
 //! use kbd::key_state::KeyTransition;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut dispatcher = Dispatcher::new();
+//!
+//! // Register via string — parsed into a HotkeySequence
 //! dispatcher.register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)?;
 //!
+//! // Or build the sequence programmatically
+//! let steps = vec![
+//!     Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+//!     Hotkey::new(Key::D).modifier(Modifier::Ctrl),
+//! ];
+//! dispatcher.register_sequence(steps, Action::Suppress)?;
+//!
 //! // First step — dispatcher remembers the partial match
-//! let r = dispatcher.process("Ctrl+K".parse()?, KeyTransition::Press);
+//! let r = dispatcher.process(
+//!     Hotkey::new(Key::K).modifier(Modifier::Ctrl),
+//!     KeyTransition::Press,
+//! );
 //! assert!(matches!(r, MatchResult::Pending { .. }));
 //!
 //! // Second step — sequence completes
-//! let r = dispatcher.process("Ctrl+C".parse()?, KeyTransition::Press);
+//! let r = dispatcher.process(
+//!     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
+//!     KeyTransition::Press,
+//! );
 //! assert!(matches!(r, MatchResult::Matched { .. }));
 //! # Ok(())
 //! # }

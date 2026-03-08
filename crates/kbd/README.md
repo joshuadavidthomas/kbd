@@ -17,14 +17,20 @@ kbd = "0.1"
 ```rust
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
+use kbd::hotkey::{Hotkey, Modifier};
 use kbd::key::Key;
 use kbd::layer::Layer;
 
 let mut dispatcher = Dispatcher::new();
 
-// Global bindings — always active
-dispatcher.register("Ctrl+S", || println!("saved"))?;
-dispatcher.register("Ctrl+Shift+P", Action::Suppress)?;
+// Global bindings — register via string parsing...
+dispatcher.register("Ctrl+S", Action::Suppress)?;
+
+// ...or build hotkeys programmatically
+dispatcher.register(
+    Hotkey::new(Key::P).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
+    Action::Suppress,
+)?;
 
 // Layer bindings — active only when the layer is pushed
 let normal = Layer::new("normal")
