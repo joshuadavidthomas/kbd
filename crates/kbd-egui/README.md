@@ -3,11 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-egui.svg)](https://crates.io/crates/kbd-egui)
 [![docs.rs](https://docs.rs/kbd-egui/badge.svg)](https://docs.rs/kbd-egui)
 
-[`kbd`](https://crates.io/crates/kbd) bridge for [egui](https://docs.rs/egui) — converts key events and modifiers to `kbd` types.
-
-This lets GUI key events (from egui) and global hotkey events (from [`kbd-global`](https://docs.rs/kbd-global)) feed into the same `Dispatcher`. Useful in egui apps that want both in-window shortcuts and system-wide hotkeys handled through a single hotkey registry.
-
-Egui has a smaller, custom key enum that is not 1:1 with the W3C specification — some egui keys are logical/shifted characters without a single physical key equivalent (e.g., `Colon`, `Pipe`, `Plus`), and those return `None`.
+`kbd-egui` converts egui keyboard events into `kbd` types so egui input and global hotkeys can share the same `kbd::dispatcher::Dispatcher`.
 
 ```toml
 [dependencies]
@@ -15,23 +11,28 @@ kbd = "0.1"
 kbd-egui = "0.1"
 ```
 
-## Extension traits
+## Public API
 
-- **`EguiKeyExt`** — converts an `egui::Key` to a `kbd::key::Key`
-- **`EguiModifiersExt`** — converts `egui::Modifiers` to a `Vec<Modifier>`
-- **`EguiEventExt`** — converts a full `egui::Event` keyboard event to a `kbd::hotkey::Hotkey`
+- `EguiKeyExt` converts `egui::Key` to `kbd::key::Key`
+- `EguiModifiersExt` converts `egui::Modifiers` to `kbd::hotkey::ModifierSet`
+- `EguiEventExt` converts keyboard `egui::Event` values to `kbd::hotkey::Hotkey`
 
-## Usage
+## Example
 
 ```rust
-use egui::{Key as EguiKey, Modifiers};
-use kbd::prelude::*;
+use egui::{Event, Key as EguiKey, Modifiers};
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key::Key;
 use kbd_egui::{EguiEventExt, EguiKeyExt, EguiModifiersExt};
 
 let key = EguiKey::A.to_key();
 assert_eq!(key, Some(Key::A));
 
-let event = egui::Event::Key {
+let mods = Modifiers::CTRL.to_modifiers();
+assert!(mods.contains(Modifier::Ctrl));
+assert_eq!(mods.len(), 1);
+
+let event = Event::Key {
     key: EguiKey::C,
     physical_key: None,
     pressed: true,
@@ -42,26 +43,13 @@ let hotkey = event.to_hotkey();
 assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
 ```
 
-## Key mapping
+## Mapping notes
 
-| egui | kbd | Notes |
-|---|---|---|
-| `Key::A` – `Key::Z` | `Key::A` – `Key::Z` | Letters |
-| `Key::Num0` – `Key::Num9` | `Key::DIGIT0` – `Key::DIGIT9` | Digits |
-| `Key::F1` – `Key::F35` | `Key::F1` – `Key::F35` | Function keys |
-| `Key::Minus`, `Key::Period`, … | `Key::MINUS`, `Key::PERIOD`, … | Physical-position punctuation |
-| `Key::ArrowDown`, `Key::Enter`, … | `Key::ARROW_DOWN`, `Key::ENTER`, … | Navigation / editing |
-| `Key::Copy`, `Key::Cut`, `Key::Paste` | `Key::COPY`, `Key::CUT`, `Key::PASTE` | Clipboard |
-| `Key::Colon`, `Key::Pipe`, `Key::Plus`, … | `None` | Logical/shifted — no single physical key |
+- egui has a smaller key model than W3C physical keys, so some values cannot be mapped
+- logical or shifted keys such as `Colon` or `Plus` return `None`
+- modifier conversion yields a compact `ModifierSet`
 
-## Modifier mapping
-
-| egui | kbd | Notes |
-|---|---|---|
-| `ctrl` | `Modifier::Ctrl` | |
-| `shift` | `Modifier::Shift` | |
-| `alt` | `Modifier::Alt` | |
-| `mac_cmd` | `Modifier::Super` | Avoids double-counting with `command` on macOS |
+See the [API docs on docs.rs](https://docs.rs/kbd-egui) for the complete mapping details.
 
 ## License
 

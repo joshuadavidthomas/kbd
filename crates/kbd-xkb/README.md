@@ -1,10 +1,19 @@
 # kbd-xkb
 
-Keyboard layout awareness for [`kbd`](https://crates.io/crates/kbd) — xkbcommon integration for keycode-to-keysym resolution and layout change detection.
+`kbd-xkb` is the planned keyboard-layout integration crate for the `kbd` ecosystem.
+
+The intended scope is xkbcommon-powered layout awareness, such as resolving keycodes to keysyms, distinguishing position-based vs symbol-based bindings, and responding to layout changes.
 
 ## Status
 
-**Not yet implemented.** This is a placeholder crate.
+This crate is not implemented yet.
+
+Today it is an unpublished scaffold that documents the intended direction but does not expose a functional API.
+
+## Publishing
+
+- unpublished (`publish = false`)
+- not ready for production use
 
 ## License
 

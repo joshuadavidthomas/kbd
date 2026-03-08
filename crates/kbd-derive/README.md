@@ -1,10 +1,19 @@
 # kbd-derive
 
-Derive macros for [`kbd`](https://crates.io/crates/kbd) — `#[derive(Bindings)]` for declarative hotkey registration, `#[hotkey(...)]` attributes, `#[flatten]` for composition, and compile-time hotkey string validation.
+`kbd-derive` is the planned procedural macro companion for `kbd`.
+
+The intended scope is declarative binding registration and compile-time validation for hotkey declarations, including APIs such as `#[derive(Bindings)]`, `#[hotkey(...)]`, and composition helpers.
 
 ## Status
 
-**Not yet implemented.** This is a placeholder crate.
+This crate is not implemented yet.
+
+Today it exists as an unpublished scaffold so the workspace can reserve the name and document the planned API surface.
+
+## Publishing
+
+- unpublished (`publish = false`)
+- not ready for production use
 
 ## License
 

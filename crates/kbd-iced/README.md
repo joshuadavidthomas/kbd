@@ -3,11 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-iced.svg)](https://crates.io/crates/kbd-iced)
 [![docs.rs](https://docs.rs/kbd-iced/badge.svg)](https://docs.rs/kbd-iced)
 
-[`kbd`](https://crates.io/crates/kbd) bridge for [iced](https://docs.rs/iced) — converts key events and modifiers to `kbd` types.
-
-This lets GUI key events (from iced) and global hotkey events (from [`kbd-global`](https://docs.rs/kbd-global)) feed into the same `Dispatcher`. Useful in iced apps that want both in-window shortcuts and system-wide hotkeys handled through a single hotkey registry.
-
-Iced defines its own W3C-derived key types: `key::Code` for physical key positions and `key::Physical` wrapping `Code` with an unidentified fallback. This crate only converts physical keys — they are layout-independent and match `kbd`'s model.
+`kbd-iced` converts iced keyboard events into `kbd` types so in-window shortcuts and global hotkeys can share the same dispatcher.
 
 ```toml
 [dependencies]
@@ -15,49 +11,35 @@ kbd = "0.1"
 kbd-iced = "0.1"
 ```
 
-## Extension traits
+## Public API
 
-- **`IcedKeyExt`** — converts an iced `key::Code` or `key::Physical` to a `kbd::Key`
-- **`IcedModifiersExt`** — converts iced `Modifiers` to a `Vec<Modifier>`
-- **`IcedEventExt`** — converts an iced keyboard `Event` to a `kbd::Hotkey`
+- `IcedKeyExt` converts `iced_core::keyboard::key::Code` and `key::Physical` to `kbd::key::Key`
+- `IcedModifiersExt` converts iced `Modifiers` to `kbd::hotkey::ModifierSet`
+- `IcedEventExt` converts iced keyboard `Event` values to `kbd::hotkey::Hotkey`
 
-## Usage
+## Example
 
 ```rust
-use iced_core::keyboard::{key::Code, Modifiers};
-use kbd::prelude::*;
+use iced_core::keyboard::{self, Modifiers};
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
 use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 
-let key = Code::KeyA.to_key();
+let key = keyboard::key::Code::KeyA.to_key();
 assert_eq!(key, Some(Key::A));
 
 let mods = Modifiers::CTRL.to_modifiers();
-assert_eq!(mods, vec![Modifier::Ctrl]);
+assert!(mods.contains(Modifier::Ctrl));
+assert_eq!(mods.len(), 1);
 ```
 
-## Key mapping
+## Mapping notes
 
-| iced | kbd | Notes |
-|---|---|---|
-| `Code::KeyA` – `Code::KeyZ` | `Key::A` – `Key::Z` | Letters |
-| `Code::Digit0` – `Code::Digit9` | `Key::DIGIT0` – `Key::DIGIT9` | Digits |
-| `Code::F1` – `Code::F35` | `Key::F1` – `Key::F35` | Function keys |
-| `Code::Numpad0` – `Code::Numpad9` | `Key::NUMPAD0` – `Key::NUMPAD9` | Numpad |
-| `Code::Enter`, `Code::Escape`, … | `Key::ENTER`, `Key::ESCAPE`, … | Navigation / editing |
-| `Code::ControlLeft`, … | `Key::CONTROL_LEFT`, … | Modifier keys as triggers |
-| `Code::SuperLeft` / `Code::Meta` | `Key::META_LEFT` | iced's Super = kbd's Meta |
-| `Code::MediaPlayPause`, … | `Key::MEDIA_PLAY_PAUSE`, … | Media keys |
-| `Code::BrowserBack`, … | `Key::BROWSER_BACK`, … | Browser keys |
-| `Physical::Unidentified(_)` | `None` | No mapping possible |
+- this crate converts physical key types, not iced logical key values
+- modifier conversion yields a compact `ModifierSet`
+- modifier keys used as triggers are normalized so they do not include themselves as active modifiers
 
-## Modifier mapping
-
-| iced | kbd |
-|---|---|
-| `CTRL` | `Modifier::Ctrl` |
-| `SHIFT` | `Modifier::Shift` |
-| `ALT` | `Modifier::Alt` |
-| `LOGO` | `Modifier::Super` |
+See the [API docs on docs.rs](https://docs.rs/kbd-iced) for full event conversion details and mapping tables.
 
 ## License
 

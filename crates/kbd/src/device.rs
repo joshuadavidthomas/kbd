@@ -131,7 +131,7 @@ impl DeviceFilter {
 ///
 /// Carries device identity and per-device modifier state so the
 /// dispatcher can enforce device-specific bindings and modifier
-/// isolation. Created by the engine or by consumers of `kbd-core`
+/// isolation. Created by the engine or by consumers of `kbd`
 /// that have device-level information.
 ///
 /// # Modifier isolation

@@ -3,9 +3,9 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-global.svg)](https://crates.io/crates/kbd-global)
 [![docs.rs](https://docs.rs/kbd-global/badge.svg)](https://docs.rs/kbd-global)
 
-Global hotkey runtime for kbd — threaded engine, device management, and backend selection for Linux.
+`kbd-global` is the Linux runtime for `kbd`. It owns device discovery, hotplug handling, the engine thread, and the manager API used to register global hotkeys and layers.
 
-When a key combination happens on a Linux keyboard, do something. Works on Wayland, X11, and TTY — it reads evdev directly, no display server integration needed.
+Today the runtime uses the evdev backend directly, so it works on Wayland, X11, and TTY without display-server-specific integrations.
 
 ```toml
 [dependencies]
@@ -16,25 +16,57 @@ kbd-global = "0.1"
 ## Quick start
 
 ```rust,no_run
-use kbd::prelude::*;
-use kbd_global::HotkeyManager;
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key::Key;
+use kbd_global::manager::HotkeyManager;
 
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let manager = HotkeyManager::new()?;
 
 let _guard = manager.register(
-    Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
-    || println!("Ctrl+Shift+C pressed!"),
+    Hotkey::new(Key::C)
+        .modifier(Modifier::Ctrl)
+        .modifier(Modifier::Shift),
+    || println!("Ctrl+Shift+C pressed"),
 )?;
 
 std::thread::park();
-# Ok::<(), kbd_global::Error>(())
+# Ok(())
+# }
 ```
 
-Key types, actions, and layers come from [`kbd`](https://crates.io/crates/kbd). `kbd-global` provides the runtime ([`HotkeyManager`], [`BindingGuard`], [`Backend`]).
+## What the crate provides
+
+- `manager::HotkeyManager` for registration, queries, layers, and shutdown
+- `binding_guard::BindingGuard` for RAII-style unregistration
+- `backend::Backend` for explicit backend selection
+- A threaded engine that owns all mutable runtime state
+- Access to `kbd` features such as sequences, tap-hold bindings, binding metadata, and introspection
+
+## Layers
+
+```rust,no_run
+use kbd::action::Action;
+use kbd::key::Key;
+use kbd::layer::Layer;
+use kbd_global::manager::HotkeyManager;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let manager = HotkeyManager::new()?;
+
+let layer = Layer::new("vim-normal")
+    .bind(Key::J, Action::Suppress)?
+    .bind(Key::K, Action::Suppress)?;
+
+manager.define_layer(layer)?;
+manager.push_layer("vim-normal")?;
+# Ok(())
+# }
+```
 
 ## Prerequisites
 
-Your user must be in the `input` group to read `/dev/input/event*` devices:
+`kbd-global` reads `/dev/input/event*`, so your user must have permission to access Linux input devices.
 
 ```bash
 sudo usermod -aG input $USER
@@ -42,50 +74,31 @@ sudo usermod -aG input $USER
 
 Log out and back in for the group change to take effect.
 
-## Architecture
-
-`HotkeyManager` is the public API. Internally it sends commands to a
-dedicated engine thread over an `mpsc` channel, with an `eventfd` wake
-mechanism to interrupt `poll()`. All mutable state lives in the engine —
-no locks, no shared mutation.
-
-```text
-┌──────────────────┐    Command     ┌──────────────────┐
-│  HotkeyManager   │ ─────────────► │  Engine thread   │
-│  (command sender) │ ◄───────────── │  (event loop)    │
-└──────────────────┘    Reply        └──────────────────┘
-                                          │
-                                     poll(devices + wake_fd)
-```
-
-## Layers
-
-Layers let you define context-dependent bindings. Define a layer, push
-it onto the stack, and its bindings take priority over global ones:
-
-```rust,no_run
-use kbd::prelude::*;
-use kbd_global::HotkeyManager;
-
-let manager = HotkeyManager::new()?;
-
-let layer = Layer::new("vim-normal")
-    .bind(Hotkey::new(Key::J), Action::from(|| println!("down")))?;
-
-manager.define_layer(layer)?;
-manager.push_layer("vim-normal")?;
-// Key::J now fires "down" instead of any global binding
-# Ok::<(), kbd_global::Error>(())
-```
+If you enable grab mode, you also need permission to create and write to `/dev/uinput`.
 
 ## Feature flags
 
 | Feature | Effect |
-|---------|--------|
-| `grab` | Enables exclusive device capture via `EVIOCGRAB` with uinput forwarding for non-hotkey events |
-| `serde` | Adds `Serialize`/`Deserialize` to key and hotkey types (via `kbd`) |
+|---|---|
+| `grab` | Enables exclusive device capture via `EVIOCGRAB` with uinput forwarding for unmatched events |
+| `serde` | Enables serde support for shared `kbd` key and hotkey types |
 
-The `grab` feature requires udev rules for uinput access — see the [docs](https://docs.rs/kbd-global) for setup instructions.
+## Current limitations
+
+- Linux only
+- evdev is the only backend currently available
+- `Action::EmitHotkey` and `Action::EmitSequence` are not yet implemented in the runtime
+
+## Documentation
+
+The crate exposes modules rather than root-level type re-exports. Typical imports look like:
+
+- `kbd_global::manager::HotkeyManager`
+- `kbd_global::binding_guard::BindingGuard`
+- `kbd_global::backend::Backend`
+- `kbd_global::error::{RegisterError, LayerError}`
+
+See the [API docs on docs.rs](https://docs.rs/kbd-global) for the full reference.
 
 ## License
 

@@ -3,96 +3,66 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-evdev.svg)](https://crates.io/crates/kbd-evdev)
 [![docs.rs](https://docs.rs/kbd-evdev/badge.svg)](https://docs.rs/kbd-evdev)
 
-Linux evdev backend for [`kbd`](https://crates.io/crates/kbd) — device discovery, hotplug, grab, and event forwarding.
+`kbd-evdev` is the low-level Linux input backend for the `kbd` ecosystem. It handles device discovery, hotplug, optional exclusive grabbing, and virtual-device forwarding.
 
-## Features
-
-- **Device discovery** — scans `/dev/input/` for keyboards (devices supporting A–Z + Enter)
-- **Hotplug** — inotify watch for device add/remove at runtime
-- **Exclusive grab** — `EVIOCGRAB` for intercepting events before other applications
-- **Event forwarding** — uinput virtual device re-emits unmatched events in grab mode
-- **Key conversion** — extension traits for `evdev::KeyCode` ↔ `kbd::Key`
-
-## Prerequisites
-
-- **Linux only** — uses `/dev/input/`, `inotify`, and `/dev/uinput`
-- **Read access to `/dev/input/`** — run as root or add your user to the `input` group:
-
-  ```sh
-  sudo usermod -aG input $USER
-  # log out and back in for the group change to take effect
-  ```
-
-- **Write access to `/dev/uinput`** (grab mode only) — needed for the virtual device that forwards unmatched events
-
-## Usage
+Most applications should start with [`kbd-global`](https://docs.rs/kbd-global), which wraps this crate in a threaded runtime. Use `kbd-evdev` directly when you need explicit control over the device loop.
 
 ```toml
 [dependencies]
+kbd = "0.1"
 kbd-evdev = "0.1"
 ```
 
-### Key conversion
+## What the crate provides
+
+- `convert` for `evdev::KeyCode` ↔ `kbd::key::Key` conversions
+- `devices::DeviceManager` for discovery, hotplug, and polling
+- `devices::DeviceGrabMode` for shared vs exclusive access
+- `forwarder::UinputForwarder` for forwarding unmatched events in grab mode
+
+## Key conversion
 
 ```rust
 use evdev::KeyCode;
-use kbd::prelude::*;
-use kbd_evdev::{EvdevKeyCodeExt, KbdKeyExt};
+use kbd::key::Key;
+use kbd_evdev::convert::{EvdevKeyCodeExt, KbdKeyExt};
 
-// evdev → kbd
 let key: Key = KeyCode::KEY_A.to_key();
 assert_eq!(key, Key::A);
 
-// kbd → evdev
 let code: KeyCode = Key::A.to_key_code();
 assert_eq!(code, KeyCode::KEY_A);
 ```
 
-### Device polling
+## Device management
 
 ```rust,no_run
 use std::path::Path;
-use kbd_evdev::devices::{DeviceManager, DeviceGrabMode};
+use kbd_evdev::devices::{DeviceGrabMode, DeviceManager};
 
-let mut manager = DeviceManager::new(
-    Path::new("/dev/input"),
-    DeviceGrabMode::Shared,
-);
-
-// Build pollfd array from manager's file descriptors
-let mut pollfds: Vec<libc::pollfd> = manager
-    .poll_fds()
-    .iter()
-    .map(|&fd| libc::pollfd { fd, events: libc::POLLIN, revents: 0 })
-    .collect();
-
-// Poll and process events
-unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as _, 100) };
-let result = manager.process_polled_events(&pollfds);
-
-for event in &result.key_events {
-    println!("{:?} {:?}", event.key, event.transition);
-}
+let manager = DeviceManager::new(Path::new("/dev/input"), DeviceGrabMode::Shared);
+let _poll_fds = manager.poll_fds();
 ```
 
-## Architecture
+Call `poll(2)` on `DeviceManager::poll_fds()`, then pass the ready descriptors to `DeviceManager::process_polled_events()` to receive `DeviceKeyEvent` values and disconnection notifications.
 
-```text
-/dev/input/event*          DeviceManager
-  ├─ event0  ──┐       ┌─ discover + poll ──→ DeviceKeyEvent
-  ├─ event1  ──┼──────→│  hotplug (inotify)   │
-  └─ event2  ──┘       └───────────────────────┘
-                                               │
-                                     EvdevKeyCodeExt::to_key()
-                                               │
-                                               ▼
-                                          kbd::Key
+## Prerequisites
+
+- Linux only
+- Read access to `/dev/input/`
+- Write access to `/dev/uinput` if you use grab mode and forwarding
+
+To read input devices without running as root, add your user to the `input` group:
+
+```bash
+sudo usermod -aG input $USER
 ```
 
-## See also
+Log out and back in for the group change to take effect.
 
-- [`kbd`](https://crates.io/crates/kbd) — core key types, matching, and layers
-- [`kbd-global`](https://crates.io/crates/kbd-global) — threaded runtime built on this crate
+## Documentation
+
+See the [API docs on docs.rs](https://docs.rs/kbd-evdev) for the complete module reference.
 
 ## License
 

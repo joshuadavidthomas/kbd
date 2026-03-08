@@ -1,10 +1,11 @@
-//! uinput virtual device for event forwarding and emission.
+//! uinput virtual device for event forwarding.
 //!
 //! In grab mode, unmatched key events are re-emitted through a virtual
 //! device so they reach applications normally.
 //!
-//! Note: keyd creates two virtual devices (keyboard + pointer). For now
-//! we only need one (keyboard).
+//! Synthetic action emission is planned but is not implemented yet.
+//! Unlike tools such as keyd, this crate currently needs only a keyboard
+//! virtual device.
 
 use kbd::key::Key;
 use kbd::key_state::KeyTransition;
