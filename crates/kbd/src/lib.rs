@@ -27,14 +27,9 @@
 //! # }
 //! ```
 //!
-//! # What the crate covers
-//!
-//! - hotkey and sequence types in [`hotkey`]
-//! - registration and matching in [`dispatcher`]
-//! - stackable named layers in [`layer`]
-//! - binding metadata and behavior in [`binding`] and [`policy`]
-//! - per-device filtering and modifier isolation in [`device`]
-//! - read-only snapshots for overlays and debugging in [`introspection`]
+//! Most integrations revolve around [`dispatcher::Dispatcher`]. Supporting
+//! modules cover hotkey parsing, layers, binding metadata and policies,
+//! per-device matching, and read-only introspection snapshots.
 //!
 //! # Feature flags
 //!

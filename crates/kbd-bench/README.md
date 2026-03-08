@@ -1,14 +1,8 @@
 # kbd-bench
 
-Internal benchmark fixtures and microbenchmarks for the `kbd` workspace.
+`kbd-bench` holds the workspace's benchmark fixtures and benchmark targets.
 
-This crate is not published and is intended for workspace development only. It provides reusable helpers for constructing dispatchers with many bindings and benchmark suites for hotkey parsing, hashing, equality, and dispatch hot paths.
-
-## What is here today
-
-- Shared benchmark fixtures in `src/lib.rs`
-- Dispatch benchmarks in `benches/dispatch.rs`
-- Hotkey benchmarks in `benches/hotkey.rs`
+It is an internal crate used for measuring dispatch and hotkey operations under realistic binding counts.
 
 ## Status
 
