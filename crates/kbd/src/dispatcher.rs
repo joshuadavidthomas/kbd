@@ -27,7 +27,6 @@ use self::resolve::LayerMatch;
 use self::resolve::SequencePrefixMatch;
 use self::sequence::ActiveSequence;
 use self::sequence::PendingStandalone;
-use self::sequence::RegisteredSequenceBinding;
 use self::sequence::SequenceBindingRef;
 use self::sequence::SequenceStartCandidate;
 use self::sequence::StandaloneMatch;
@@ -39,6 +38,7 @@ pub use self::timeout::PendingTimeout;
 use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::RegisteredBinding;
+use crate::binding::RegisteredSequenceBinding;
 use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -597,14 +597,14 @@ impl Dispatcher {
                         PendingStandalone {
                             inner: StandaloneMatch {
                                 binding_ref: MatchedBindingRef::Layer {
-                                    id: lb.id,
+                                    id: lb.id(),
                                     name: layer_name.clone(),
                                     index: idx,
                                 },
-                                propagation: lb.options.propagation(),
-                                repeat_policy: lb.options.repeat_policy(),
+                                propagation: lb.options().propagation(),
+                                repeat_policy: lb.options().repeat_policy(),
                             },
-                            layer_effect: LayerEffect::from_action(&lb.action),
+                            layer_effect: LayerEffect::from_action(lb.action()),
                         }
                     });
                     // `stored` is last used above; NLL releases the borrow.
@@ -617,10 +617,10 @@ impl Dispatcher {
                 LayerMatch::Immediate { index } => {
                     let stored = &self.layers[&layer_name];
                     let lb = &stored.bindings[index];
-                    let id = lb.id;
-                    let propagation = lb.options.propagation();
-                    let repeat_policy = lb.options.repeat_policy();
-                    let layer_effect = LayerEffect::from_action(&lb.action);
+                    let id = lb.id();
+                    let propagation = lb.options().propagation();
+                    let repeat_policy = lb.options().repeat_policy();
+                    let layer_effect = LayerEffect::from_action(lb.action());
                     return Some(BindingMatch::Matched {
                         layer_effect,
                         binding_ref: MatchedBindingRef::Layer {
@@ -792,7 +792,7 @@ impl Dispatcher {
         match binding_ref {
             MatchedBindingRef::Global(id) => self.bindings_by_id[id].action(),
             MatchedBindingRef::Layer { name, index, .. } => {
-                &self.layers[name].bindings[*index].action
+                self.layers[name].bindings[*index].action()
             }
             MatchedBindingRef::SequenceGlobal(id) => &self.sequence_bindings_by_id[id].action,
             MatchedBindingRef::SequenceLayer { name, index, .. } => {

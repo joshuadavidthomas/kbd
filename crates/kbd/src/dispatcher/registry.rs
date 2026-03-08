@@ -1,12 +1,12 @@
 use super::Dispatcher;
 use super::MatchedBindingRef;
-use super::sequence::RegisteredSequenceBinding;
 use super::sequence::SequenceBindingRef;
 use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
 use crate::binding::BindingSource;
 use crate::binding::RegisteredBinding;
+use crate::binding::RegisteredSequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;

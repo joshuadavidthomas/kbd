@@ -9,37 +9,11 @@ use super::timeout::PendingTimeout;
 use super::timeout::TimeoutKind;
 use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
-use crate::hotkey::HotkeySequence;
 use crate::layer::LayerName;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
 use crate::sequence::SequenceOptions;
-
-pub(super) struct RegisteredSequenceBinding {
-    pub(super) id: BindingId,
-    pub(super) sequence: HotkeySequence,
-    pub(super) action: crate::action::Action,
-    pub(super) propagation: KeyPropagation,
-    pub(super) options: SequenceOptions,
-}
-
-impl RegisteredSequenceBinding {
-    pub(super) fn new(
-        id: BindingId,
-        sequence: HotkeySequence,
-        action: crate::action::Action,
-        options: SequenceOptions,
-    ) -> Self {
-        Self {
-            id,
-            sequence,
-            action,
-            propagation: KeyPropagation::Stop,
-            options,
-        }
-    }
-}
 
 #[derive(Clone)]
 pub(super) enum SequenceBindingRef {

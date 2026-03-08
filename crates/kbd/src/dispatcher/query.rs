@@ -3,6 +3,7 @@ use super::resolve;
 use super::resolve::LayerMatch;
 use super::resolve::SequencePrefixMatch;
 use crate::binding::BindingId;
+use crate::binding::RegisteredSequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
@@ -54,7 +55,7 @@ impl Dispatcher {
     /// Results are grouped by hotkey and then by precedence tier.
     fn collect_global_bindings(
         &self,
-        global_sequences: &[&super::sequence::RegisteredSequenceBinding],
+        global_sequences: &[&RegisteredSequenceBinding],
     ) -> Vec<BindingInfo> {
         let mut results = Vec::new();
 
@@ -130,7 +131,7 @@ impl Dispatcher {
     fn global_claim(
         &self,
         hotkey: Hotkey,
-        global_sequences: &[&super::sequence::RegisteredSequenceBinding],
+        global_sequences: &[&RegisteredSequenceBinding],
     ) -> Option<HotkeyClaim> {
         match resolve::classify_sequence_prefixes(
             global_sequences.iter().map(|binding| &binding.sequence),
@@ -166,7 +167,7 @@ impl Dispatcher {
 
             for (index, binding) in stored.bindings.iter().enumerate() {
                 let shadowed = if is_active {
-                    match self.active_layer_claim(binding.hotkey) {
+                    match self.active_layer_claim(binding.hotkey()) {
                         Some(HotkeyClaim::LayerImmediate {
                             layer,
                             index: active_index,
@@ -192,12 +193,12 @@ impl Dispatcher {
                 };
 
                 results.push(BindingInfo {
-                    hotkey: binding.hotkey,
-                    description: binding.options.description().map(Box::from),
-                    source: binding.options.source().cloned(),
+                    hotkey: binding.hotkey(),
+                    description: binding.options().description().map(Box::from),
+                    source: binding.options().source().cloned(),
                     location: BindingLocation::Layer(layer_name.clone()),
                     shadowed,
-                    overlay_visibility: binding.options.overlay_visibility(),
+                    overlay_visibility: binding.options().overlay_visibility(),
                 });
             }
         }
@@ -273,12 +274,12 @@ impl Dispatcher {
                     LayerMatch::Immediate { index } => {
                         let lb = &stored.bindings[index];
                         return Some(BindingInfo {
-                            hotkey: lb.hotkey,
-                            description: lb.options.description().map(Box::from),
-                            source: lb.options.source().cloned(),
+                            hotkey: lb.hotkey(),
+                            description: lb.options().description().map(Box::from),
+                            source: lb.options().source().cloned(),
                             location: BindingLocation::Layer(entry.name.clone()),
                             shadowed: ShadowedStatus::Active,
-                            overlay_visibility: lb.options.overlay_visibility(),
+                            overlay_visibility: lb.options().overlay_visibility(),
                         });
                     }
                     LayerMatch::None => {

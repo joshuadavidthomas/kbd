@@ -99,7 +99,7 @@ impl Dispatcher {
         let options = match binding_ref {
             MatchedBindingRef::Global(id) => self.bindings_by_id[id].options(),
             MatchedBindingRef::Layer { name, index, .. } => {
-                &self.layers[name].bindings[*index].options
+                self.layers[name].bindings[*index].options()
             }
             MatchedBindingRef::SequenceGlobal(_) | MatchedBindingRef::SequenceLayer { .. } => {
                 &BindingOptions::default()
