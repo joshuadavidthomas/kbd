@@ -7,12 +7,6 @@ Low-level Linux input backend for the [`kbd` workspace](https://github.com/joshu
 
 Most applications should start with [`kbd-global`](https://docs.rs/kbd-global), which wraps this crate in a threaded runtime. Use `kbd-evdev` directly when you need to own the poll loop yourself — your own event loop, your own threading, your own timing.
 
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-evdev = "0.1"
-```
-
 ## Requirements
 
 - Linux only

@@ -7,12 +7,6 @@ Converts [winit](https://docs.rs/winit) key events into [`kbd`](https://docs.rs/
 
 [API docs](https://docs.rs/kbd-winit) — includes the full key and modifier mapping tables and an event-loop example.
 
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-winit = "0.1"
-```
-
 ## Example
 
 ```rust

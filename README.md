@@ -24,30 +24,11 @@ Bindings use physical key positions (W3C key codes), so they work the same regar
 
 ## Getting started
 
-Add `kbd` to your project:
-
-```toml
-[dependencies]
-kbd = "0.1"
-```
-
 The core crate is pure logic — no threads, no platform dependencies, no async runtime. You bring the key events, `kbd` does the matching.
 
-If your events come from a GUI framework, add the bridge crate for your framework. It converts the framework's key types into `kbd` types so you can feed them straight to the dispatcher:
-
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-winit = "0.1"  # or kbd-egui, kbd-iced, kbd-tao, kbd-crossterm
-```
+If your events come from a GUI framework, add the bridge crate for your framework (`kbd-winit`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-crossterm`). It converts the framework's key types into `kbd` types so you can feed them straight to the dispatcher.
 
 For system-wide hotkeys on Linux, `kbd-global` runs a background thread that reads from evdev devices directly — works on Wayland, X11, and TTY without display-server integration:
-
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-global = "0.1"
-```
 
 ```rust,no_run
 use kbd::hotkey::{Hotkey, Modifier};

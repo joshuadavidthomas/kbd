@@ -7,12 +7,6 @@ Converts [iced](https://docs.rs/iced) key events into [`kbd`](https://docs.rs/kb
 
 [API docs](https://docs.rs/kbd-iced) — includes the full key and modifier mapping tables.
 
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-iced = "0.1"
-```
-
 ## Example
 
 ```rust
