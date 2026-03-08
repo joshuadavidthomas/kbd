@@ -22,35 +22,7 @@ let result = dispatcher.process("Ctrl+S".parse()?, KeyTransition::Press);
 
 Bindings use physical key positions (W3C key codes), so they work the same regardless of keyboard layout. Layers, sequences, tap-hold, device filtering, and introspection are all built in — see the [`kbd` crate docs](https://docs.rs/kbd) for the full picture.
 
-## Getting started
-
-The core crate is pure logic — no threads, no platform dependencies, no async runtime. You bring the key events, `kbd` does the matching.
-
-If your events come from a GUI framework, add the bridge crate for your framework (`kbd-winit`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-crossterm`). It converts the framework's key types into `kbd` types so you can feed them straight to the dispatcher.
-
-For system-wide hotkeys on Linux, `kbd-global` runs a background thread that reads from evdev devices directly — works on Wayland, X11, and TTY without display-server integration:
-
-```rust,no_run
-use kbd::hotkey::{Hotkey, Modifier};
-use kbd::key::Key;
-use kbd_global::manager::HotkeyManager;
-
-let manager = HotkeyManager::new()?;
-
-// Registration returns a guard — the binding stays active until it's dropped
-let _guard = manager.register(
-    Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
-    || println!("Ctrl+Shift+C"),
-)?;
-```
-
-## How it fits together
-
-`kbd` is the matching engine. It has no idea where key events come from — it just evaluates bindings against whatever you hand it.
-
-Backend crates connect to actual input sources. Today that's `kbd-evdev` (Linux input devices) and `kbd-global` (threaded runtime around evdev). Bridge crates convert framework events into `kbd` types so you don't write the mapping yourself.
-
-You can mix sources. A Tauri app might use `kbd-tao` for in-window shortcuts and `kbd-global` for system-wide hotkeys, both feeding the same `Dispatcher`.
+The core crate is pure logic — no platform dependencies, no async runtime, no threads. You bring key events from wherever you have them. Bridge crates (`kbd-winit`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-crossterm`) convert framework key types into `kbd` types. For system-wide hotkeys on Linux, `kbd-global` runs a background thread reading evdev devices directly — works on Wayland, X11, and TTY. You can mix sources: a Tauri app might use `kbd-tao` for in-window shortcuts and `kbd-global` for global hotkeys, both feeding the same `Dispatcher`.
 
 ## Crates
 
