@@ -37,20 +37,20 @@ _All crates: 0.1.0 → 0.2.0. Substantive changes in `kbd`, `kbd-evdev`, and `kb
 
 ### Changed
 
-- Replaced `Vec<Modifier>` with a `u8` bitmask (`ModifierSet`), making `Hotkey` `Copy` and eliminating heap allocations for modifier storage. Code that captures `Hotkey` in non-move closures may behave differently. (`kbd`, **breaking**)
-- Replaced monolithic `kbd::error::Error` enum with scoped error types: `RegisterError`, `LayerError`, `QueryError`, `ShutdownError`, and `StartupError`. (`kbd`, **breaking**)
-- Renamed `RegisteredBinding` to `Binding` and `RegisteredSequenceBinding` to `SequenceBinding`. (`kbd`, **breaking**)
-- `MatchResult::Matched` now includes a `repeat_policy` field. Code that constructs or pattern-matches this variant will need to be updated. (`kbd`, **breaking**)
-- `BindingInfo` now has a `source` field. Code that constructs `BindingInfo` with struct literals will need to include it. (`kbd`, **breaking**)
-- Removed `Dispatcher::check_timeouts`; timeout handling is now internal to the dispatcher. (`kbd`, **breaking**)
+- **Breaking:** Replaced `Vec<Modifier>` with a `u8` bitmask (`ModifierSet`), making `Hotkey` `Copy` and eliminating heap allocations for modifier storage. Code that captures `Hotkey` in non-move closures may behave differently. (`kbd`)
+- **Breaking:** Replaced monolithic `kbd::error::Error` enum with scoped error types: `RegisterError`, `LayerError`, `QueryError`, `ShutdownError`, and `StartupError`. (`kbd`)
+- **Breaking:** Renamed `RegisteredBinding` to `Binding` and `RegisteredSequenceBinding` to `SequenceBinding`. (`kbd`)
+- **Breaking:** `MatchResult::Matched` now includes a `repeat_policy` field. Code that constructs or pattern-matches this variant will need to be updated. (`kbd`)
+- **Breaking:** `BindingInfo` now has a `source` field. Code that constructs `BindingInfo` with struct literals will need to include it. (`kbd`)
+- **Breaking:** Removed `Dispatcher::check_timeouts`; timeout handling is now internal to the dispatcher. (`kbd`)
 - Switched sequence bindings from `HashMap` to `BTreeMap`, eliminating an O(n log n) sort on every keypress during sequence matching. (`kbd`)
-- Removed `KbdKeyExt` and `EvdevKeyCodeExt` re-exports from the crate root. Use the explicit module paths instead. (`kbd-evdev`, **breaking**)
-- Removed root re-exports of `Backend`, `Error`, `BindingGuard`, `HotkeyManagerBuilder`, and `HotkeyManager`. Use the explicit module paths instead. (`kbd-global`, **breaking**)
+- **Breaking:** Removed `KbdKeyExt` and `EvdevKeyCodeExt` re-exports from the crate root. Use the explicit module paths instead. (`kbd-evdev`)
+- **Breaking:** Removed root re-exports of `Backend`, `Error`, `BindingGuard`, `HotkeyManagerBuilder`, and `HotkeyManager`. Use the explicit module paths instead. (`kbd-global`)
 - Refreshed crate and module documentation with hero examples, architecture guides, and clearer introductions for all crates.
 
 ### Removed
 
-- Removed prelude module and root-level re-exports. All types are now accessed via explicit module paths (e.g., `kbd::hotkey::Hotkey`). (`kbd`, `kbd-evdev`, `kbd-global`, **breaking**)
+- **Breaking:** Removed prelude module and root-level re-exports. All types are now accessed via explicit module paths (e.g., `kbd::hotkey::Hotkey`). (`kbd`, `kbd-evdev`, `kbd-global`)
 
 ## [0.1.0](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.1.0)
 
