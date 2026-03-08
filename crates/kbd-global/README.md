@@ -3,9 +3,11 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-global.svg)](https://crates.io/crates/kbd-global)
 [![docs.rs](https://docs.rs/kbd-global/badge.svg)](https://docs.rs/kbd-global)
 
-`kbd-global` is the Linux runtime for `kbd`. It owns device discovery, hotplug handling, the engine thread, and the manager API used to register global hotkeys and layers.
+`kbd-global` is the Linux runtime for `kbd`.
 
-Today the runtime uses the evdev backend directly, so it works on Wayland, X11, and TTY without display-server-specific integrations.
+Use it when you want process-wide or system-wide hotkeys on Linux without writing your own evdev polling loop. The runtime owns device discovery, hotplug handling, the engine thread, and the manager API used to register bindings and layers.
+
+Today it uses the evdev backend directly, so it works on Wayland, X11, and TTY without display-server-specific integrations.
 
 ```toml
 [dependencies]
@@ -35,13 +37,7 @@ std::thread::park();
 # }
 ```
 
-## What the crate provides
-
-- `manager::HotkeyManager` for registration, queries, layers, and shutdown
-- `binding_guard::BindingGuard` for RAII-style unregistration
-- `backend::Backend` for explicit backend selection
-- A threaded engine that owns all mutable runtime state
-- Access to `kbd` features such as sequences, tap-hold bindings, binding metadata, and introspection
+`HotkeyManager` is the main entry point. Registration returns a `BindingGuard`; dropping it unregisters the binding.
 
 ## Layers
 
@@ -64,7 +60,7 @@ manager.push_layer("vim-normal")?;
 # }
 ```
 
-## Prerequisites
+## Requirements
 
 `kbd-global` reads `/dev/input/event*`, so your user must have permission to access Linux input devices.
 
@@ -83,13 +79,11 @@ If you enable grab mode, you also need permission to create and write to `/dev/u
 | `grab` | Enables exclusive device capture via `EVIOCGRAB` with uinput forwarding for unmatched events |
 | `serde` | Enables serde support for shared `kbd` key and hotkey types |
 
-## Current limitations
+## Current status
 
 - Linux only
 - evdev is the only backend currently available
 - `Action::EmitHotkey` and `Action::EmitSequence` are not yet implemented in the runtime
-
-## Documentation
 
 See the [API docs on docs.rs](https://docs.rs/kbd-global) for the full reference.
 

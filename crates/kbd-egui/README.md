@@ -3,19 +3,15 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-egui.svg)](https://crates.io/crates/kbd-egui)
 [![docs.rs](https://docs.rs/kbd-egui/badge.svg)](https://docs.rs/kbd-egui)
 
-`kbd-egui` converts egui keyboard events into `kbd` types so egui input and global hotkeys can share the same `kbd::dispatcher::Dispatcher`.
+`kbd-egui` converts egui keyboard events into `kbd` types.
+
+Use it when an egui app wants one hotkey model for both in-window shortcuts and external bindings handled by the rest of the `kbd` workspace.
 
 ```toml
 [dependencies]
 kbd = "0.1"
 kbd-egui = "0.1"
 ```
-
-## Public API
-
-- `EguiKeyExt` converts `egui::Key` to `kbd::key::Key`
-- `EguiModifiersExt` converts `egui::Modifiers` to `kbd::hotkey::ModifierSet`
-- `EguiEventExt` converts keyboard `egui::Event` values to `kbd::hotkey::Hotkey`
 
 ## Example
 
@@ -30,7 +26,6 @@ assert_eq!(key, Some(Key::A));
 
 let mods = Modifiers::CTRL.to_modifiers();
 assert!(mods.contains(Modifier::Ctrl));
-assert_eq!(mods.len(), 1);
 
 let event = Event::Key {
     key: EguiKey::C,
@@ -43,11 +38,7 @@ let hotkey = event.to_hotkey();
 assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
 ```
 
-## Mapping notes
-
-- egui has a smaller key model than W3C physical keys, so some values cannot be mapped
-- logical or shifted keys such as `Colon` or `Plus` return `None`
-- modifier conversion yields a compact `ModifierSet`
+Egui does not expose the full W3C physical-key space. Logical or shifted keys such as `Colon` or `Plus` do not have a single physical-key mapping, so they return `None`.
 
 See the [API docs on docs.rs](https://docs.rs/kbd-egui) for the complete mapping details.
 

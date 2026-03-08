@@ -24,14 +24,9 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! # Concepts
-//!
-//! Four concepts cover the library's public surface:
-//!
-//! - **Keys** — physical keys and modifiers from [`kbd`] ([`Key`](kbd::key::Key), [`Modifier`](kbd::hotkey::Modifier), [`Hotkey`](kbd::hotkey::Hotkey))
-//! - **Bindings** — registrations plus metadata and behavior ([`Action`](kbd::action::Action), [`BindingOptions`](kbd::binding::BindingOptions))
-//! - **Layers** — named groups of bindings that can be pushed and popped at runtime ([`Layer`](kbd::layer::Layer), [`LayerOptions`](kbd::layer::LayerOptions))
-//! - **Grab mode** — optional exclusive capture for interception and forwarding
+//! Most application code goes through [`HotkeyManager`](manager::HotkeyManager)
+//! and the returned [`BindingGuard`](binding_guard::BindingGuard). Key types,
+//! actions, and layer definitions still come from [`kbd`].
 //!
 //! # Architecture
 //!
@@ -50,14 +45,12 @@
 //!                                   poll(devices + wake_fd)
 //! ```
 //!
-//! # Lifecycle
-//!
-//! 1. Create a manager with [`HotkeyManager::new()`](manager::HotkeyManager::new) or [`HotkeyManager::builder()`](manager::HotkeyManager::builder)
-//! 2. Register bindings with [`HotkeyManager::register()`](manager::HotkeyManager::register), [`HotkeyManager::register_sequence()`](manager::HotkeyManager::register_sequence), or [`HotkeyManager::register_tap_hold()`](manager::HotkeyManager::register_tap_hold)
-//! 3. Optionally define and activate [`Layer`](kbd::layer::Layer)s
-//! 4. The engine thread processes device events and fires callbacks
-//! 5. Drop the returned [`BindingGuard`](binding_guard::BindingGuard) to unregister, or call [`BindingGuard::unregister()`](binding_guard::BindingGuard::unregister)
-//! 6. Drop the manager, or call [`HotkeyManager::shutdown()`](manager::HotkeyManager::shutdown), to stop the runtime
+//! Create a manager with [`HotkeyManager::new()`](manager::HotkeyManager::new)
+//! or [`HotkeyManager::builder()`](manager::HotkeyManager::builder), register
+//! bindings and optional layers, and keep the returned
+//! [`BindingGuard`](binding_guard::BindingGuard)s alive for as long as the
+//! bindings should remain active. Dropping a guard unregisters its binding;
+//! dropping the manager, or calling [`HotkeyManager::shutdown()`](manager::HotkeyManager::shutdown), stops the runtime.
 //!
 //! # Backend selection
 //!
