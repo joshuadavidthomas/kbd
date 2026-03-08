@@ -3,7 +3,7 @@
 # - switch to per-crate changelogs (remove changelog_path overrides)
 
 [workspace]
-changelog_update = true
+changelog_update = false
 semver_check = true
 git_tag_enable = true
 git_release_enable = true
@@ -65,28 +65,3 @@ name = "kbd-xkb"
 release = false
 publish = false
 
-[changelog]
-header = """# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-"""
-body = """
-## [{{ version }}]{%- if release_link -%}({{ release_link }}){% endif %}
-{% for group, commits in commits | group_by(attribute="group") %}
-  ### {{ group | upper_first }}
-  {% for commit in commits %}
-    {%- if commit.scope -%}
-      - *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}{%- if commit.links %} ({% for link in commit.links %}[{{link.text}}]({{link.href}}) {% endfor -%}){% endif %}
-    {% else -%}
-    - {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}
-    {% endif -%}
-  {% endfor -%}
-{% endfor %}
-"""
-trim = true

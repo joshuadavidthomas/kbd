@@ -41,6 +41,12 @@ You can mix sources — a Tauri app might use `kbd-tao` for in-window shortcuts 
 | [`kbd-tao`](crates/kbd-tao) | [![crates.io](https://img.shields.io/crates/v/kbd-tao.svg)](https://crates.io/crates/kbd-tao) | [tao](https://docs.rs/tao) bridge (Tauri) |
 | [`kbd-winit`](crates/kbd-winit) | [![crates.io](https://img.shields.io/crates/v/kbd-winit.svg)](https://crates.io/crates/kbd-winit) | [winit](https://docs.rs/winit) bridge |
 
+## Versioning
+
+kbd is pre-1.0 and under active development. The public API may change between minor versions.
+
+All published crates in the workspace currently share a single version number and are released together, even if only some crates have changes in a given release. After 1.0, crates will move to independent versioning.
+
 ## Contributing
 
 [Issues](https://github.com/joshuadavidthomas/kbd/issues) and pull requests are welcome. See the [changelog](CHANGELOG.md) for release history.

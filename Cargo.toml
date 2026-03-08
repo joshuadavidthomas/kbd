@@ -3,17 +3,17 @@ members = ["crates/*"]
 resolver = "3"
 
 [workspace.dependencies]
-kbd = { version = "0.1.0", path = "crates/kbd" }
+kbd = { version = "0.2.0", path = "crates/kbd" }
 kbd-bench = { path = "crates/kbd-bench" }
-kbd-crossterm = { version = "0.1.0", path = "crates/kbd-crossterm" }
+kbd-crossterm = { version = "0.2.0", path = "crates/kbd-crossterm" }
 kbd-derive = { path = "crates/kbd-derive" }
-kbd-egui = { version = "0.1.0", path = "crates/kbd-egui" }
-kbd-evdev = { version = "0.1.0", path = "crates/kbd-evdev" }
-kbd-global = { version = "0.1.0", path = "crates/kbd-global" }
-kbd-iced = { version = "0.1.0", path = "crates/kbd-iced" }
+kbd-egui = { version = "0.2.0", path = "crates/kbd-egui" }
+kbd-evdev = { version = "0.2.0", path = "crates/kbd-evdev" }
+kbd-global = { version = "0.2.0", path = "crates/kbd-global" }
+kbd-iced = { version = "0.2.0", path = "crates/kbd-iced" }
 kbd-portal = { path = "crates/kbd-portal" }
-kbd-tao = { version = "0.1.0", path = "crates/kbd-tao" }
-kbd-winit = { version = "0.1.0", path = "crates/kbd-winit" }
+kbd-tao = { version = "0.2.0", path = "crates/kbd-tao" }
+kbd-winit = { version = "0.2.0", path = "crates/kbd-winit" }
 kbd-xkb = { path = "crates/kbd-xkb" }
 
 ashpd = { version = "0.13", default-features = false, features = ["async-io"] }
