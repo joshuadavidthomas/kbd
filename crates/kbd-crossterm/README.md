@@ -7,12 +7,6 @@ Converts [crossterm](https://docs.rs/crossterm) key events into [`kbd`](https://
 
 [API docs](https://docs.rs/kbd-crossterm) — includes the full key and modifier mapping tables.
 
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-crossterm = "0.1"
-```
-
 ## Example
 
 ```rust
