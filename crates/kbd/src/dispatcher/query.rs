@@ -36,7 +36,7 @@ impl Dispatcher {
     /// declaration order.
     #[must_use]
     pub fn list_bindings(&self) -> Vec<BindingInfo> {
-        let global_seqs = self.sorted_global_sequences();
+        let global_seqs: Vec<_> = self.sequence_bindings_by_id.values().collect();
         let mut results = self.collect_global_bindings(&global_seqs);
         results.extend(self.collect_layer_bindings());
         results
@@ -293,7 +293,7 @@ impl Dispatcher {
         }
 
         // Global sequences are checked before global hotkeys, matching process().
-        let global_seqs = self.sorted_global_sequences();
+        let global_seqs: Vec<_> = self.sequence_bindings_by_id.values().collect();
         let prefix_match =
             resolve::classify_sequence_prefixes(global_seqs.iter().map(|b| &b.sequence), hotkey);
 
