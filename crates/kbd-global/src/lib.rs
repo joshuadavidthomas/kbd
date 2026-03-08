@@ -34,7 +34,7 @@
 //!
 //! # Architecture
 //!
-//! [`HotkeyManager`] is the public API. Internally it sends commands to a
+//! [`HotkeyManager`](manager::HotkeyManager) is the public API. Internally it sends commands to a
 //! dedicated engine thread over an `mpsc` channel, with an `eventfd` wake
 //! mechanism to interrupt `poll()`. All mutable state lives in the engine —
 //! no locks, no shared mutation.
@@ -50,16 +50,16 @@
 //!
 //! # Lifecycle
 //!
-//! 1. Create a manager with [`HotkeyManager::new()`] or [`HotkeyManager::builder()`]
-//! 2. Register hotkeys with [`HotkeyManager::register()`] — returns a [`BindingGuard`]
+//! 1. Create a manager with [`HotkeyManager::new()`](manager::HotkeyManager::new) or [`HotkeyManager::builder()`](manager::HotkeyManager::builder)
+//! 2. Register hotkeys with [`HotkeyManager::register()`](manager::HotkeyManager::register) — returns a [`BindingGuard`](binding_guard::BindingGuard)
 //! 3. Optionally define and push [`Layer`](kbd::layer::Layer)s for context-dependent bindings
 //! 4. The engine thread processes key events and fires callbacks
-//! 5. Drop the [`BindingGuard`] to unregister, or call [`BindingGuard::unregister()`]
-//! 6. Drop the manager (or call [`HotkeyManager::shutdown()`]) to stop
+//! 5. Drop the [`BindingGuard`](binding_guard::BindingGuard) to unregister, or call [`BindingGuard::unregister()`](binding_guard::BindingGuard::unregister)
+//! 6. Drop the manager (or call [`HotkeyManager::shutdown()`](manager::HotkeyManager::shutdown)) to stop
 //!
 //! # Backend selection
 //!
-//! Currently only [`Backend::Evdev`] is available — it reads `/dev/input/event*`
+//! Currently only [`Backend::Evdev`](backend::Backend::Evdev) is available — it reads `/dev/input/event*`
 //! directly and works on Wayland, X11, and TTY. Your user must be in the
 //! `input` group:
 //!
