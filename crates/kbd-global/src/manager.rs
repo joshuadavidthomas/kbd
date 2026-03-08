@@ -12,9 +12,9 @@
 //!
 //! ```text
 //! HotkeyManager::register()
-//!   → sends Command::Register { id, binding, reply_tx }
-//!   → engine processes command, sends Result back on reply_tx
-//!   → manager returns BindingGuard or Error to caller
+//!   → sends Command::Register { binding, reply }
+//!   → engine processes command, sends Result back on reply
+//!   → manager returns BindingGuard or error to caller
 //! ```
 
 use std::fmt;
