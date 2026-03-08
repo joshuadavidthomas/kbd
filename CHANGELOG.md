@@ -21,6 +21,33 @@ _For multi-package releases, list package versions here_
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/joshuadavidthomas/kbd/compare/kbd-v0.1.0...kbd-v0.2.0)
+
+### Added
+- Add per-binding debounce, rate limiting, and repeat policy ([#127](https://github.com/joshuadavidthomas/kbd/pull/127))
+- Device-specific bindings with per-device modifier isolation ([#126](https://github.com/joshuadavidthomas/kbd/pull/126))
+- Add binding provenance tracking w/source-aware precedence ([#125](https://github.com/joshuadavidthomas/kbd/pull/125))
+- *(kdb)* Add sealed HotkeyInput trait for ergonomic hotkey registration ([#115](https://github.com/joshuadavidthomas/kbd/pull/115))
+- Add sequence matching to dispatcher and manager ([#106](https://github.com/joshuadavidthomas/kbd/pull/106))
+
+### Other
+- refresh crate and module docs ([#149](https://github.com/joshuadavidthomas/kbd/pull/149))
+- Remove prelude module and root-level re-exports ([#148](https://github.com/joshuadavidthomas/kbd/pull/148))
+- [**breaking**] Drop Register prefix from Binding, SequenceBinding ([#147](https://github.com/joshuadavidthomas/kbd/pull/147))
+- Assign BindingId to layer bindings ([#146](https://github.com/joshuadavidthomas/kbd/pull/146))
+- Scoped enums error types instead of god enums ([#144](https://github.com/joshuadavidthomas/kbd/pull/144))
+- Use BTreeMap for sequence bindings for per-keypress sort ([#143](https://github.com/joshuadavidthomas/kbd/pull/143))
+- Add tap-hold timing and matching logic ([#139](https://github.com/joshuadavidthomas/kbd/pull/139))
+- Represent modifiers as a bitmask instead of Vec<Modifier> ([#138](https://github.com/joshuadavidthomas/kbd/pull/138))
+- align binding module types with their domains ([#129](https://github.com/joshuadavidthomas/kbd/pull/129))
+- fmt
+- Clarify list_bindings doc comment ([#124](https://github.com/joshuadavidthomas/kbd/pull/124))
+- *(kbd)* Unify per-scope classification for layer bindings ([#118](https://github.com/joshuadavidthomas/kbd/pull/118))
+- *(kbd)* Extract shared candidate resolution helpers into dispatcher/resolve.rs ([#114](https://github.com/joshuadavidthomas/kbd/pull/114))
+- *(kbd)* Extract registration/storage helpers into dispatcher/registry.rs ([#113](https://github.com/joshuadavidthomas/kbd/pull/113))
+- *(kbd)* Extract layer stack operations into dispatcher/layers.rs ([#112](https://github.com/joshuadavidthomas/kbd/pull/112))
+- *(kbd)* Extract layer timeout and oneshot logic into dispatcher/timeout.rs ([#111](https://github.com/joshuadavidthomas/kbd/pull/111))
+
 ## [0.1.0](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.1.0)
 
 ### Added
