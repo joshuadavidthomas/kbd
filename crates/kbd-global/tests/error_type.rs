@@ -2,12 +2,12 @@
 use std::error::Error as StdError;
 
 use kbd::hotkey::Hotkey;
-use kbd_global::LayerError;
-use kbd_global::ManagerStopped;
-use kbd_global::QueryError;
-use kbd_global::RegisterError;
-use kbd_global::ShutdownError;
-use kbd_global::StartupError;
+use kbd_global::error::LayerError;
+use kbd_global::error::ManagerStopped;
+use kbd_global::error::QueryError;
+use kbd_global::error::RegisterError;
+use kbd_global::error::ShutdownError;
+use kbd_global::error::StartupError;
 
 #[test]
 fn startup_error_display_messages() {

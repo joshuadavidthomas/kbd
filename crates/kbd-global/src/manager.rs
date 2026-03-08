@@ -38,13 +38,13 @@ use kbd::sequence::PendingSequenceInfo;
 use kbd::sequence::SequenceInput;
 use kbd::sequence::SequenceOptions;
 
-use crate::ManagerStopped;
 use crate::backend::Backend;
 use crate::binding_guard::BindingGuard;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 use crate::engine::EngineRuntime;
 use crate::engine::GrabState;
+use crate::error::ManagerStopped;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackendSelection {
@@ -98,7 +98,7 @@ impl HotkeyManagerBuilder {
     /// Returns an error if the backend cannot be initialized, grab mode
     /// is requested without the `grab` feature, or the engine thread
     /// fails to start.
-    pub fn build(self) -> Result<HotkeyManager, crate::StartupError> {
+    pub fn build(self) -> Result<HotkeyManager, crate::error::StartupError> {
         let backend = resolve_backend(self.backend)?;
         validate_grab_configuration(backend, self.grab)?;
 
@@ -147,7 +147,7 @@ impl HotkeyManager {
     ///
     /// Returns an error if the backend cannot be initialized or input
     /// devices are not accessible.
-    pub fn new() -> Result<Self, crate::StartupError> {
+    pub fn new() -> Result<Self, crate::error::StartupError> {
         Self::builder().build()
     }
 
@@ -170,17 +170,17 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::Parse`](crate::RegisterError::Parse) when
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when
     /// string input conversion fails,
-    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if the hotkey is already bound, or
-    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// [`RegisterError::ManagerStopped`](crate::error::RegisterError::ManagerStopped)
     /// if the engine has shut down.
     pub fn register<F>(
         &self,
         hotkey: impl HotkeyInput,
         callback: F,
-    ) -> Result<BindingGuard, crate::RegisterError>
+    ) -> Result<BindingGuard, crate::error::RegisterError>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -191,17 +191,17 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::Parse`](crate::RegisterError::Parse) when
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when
     /// sequence input conversion fails,
-    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if the sequence is already bound, or
-    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// [`RegisterError::ManagerStopped`](crate::error::RegisterError::ManagerStopped)
     /// if the engine has shut down.
     pub fn register_sequence<F>(
         &self,
         sequence: impl SequenceInput,
         callback: F,
-    ) -> Result<BindingGuard, crate::RegisterError>
+    ) -> Result<BindingGuard, crate::error::RegisterError>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -216,18 +216,18 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::Parse`](crate::RegisterError::Parse) when
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when
     /// sequence input conversion fails,
-    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if the sequence is already bound, or
-    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// [`RegisterError::ManagerStopped`](crate::error::RegisterError::ManagerStopped)
     /// if the engine has shut down.
     pub fn register_sequence_with_options(
         &self,
         sequence: impl SequenceInput,
         action: impl Into<Action>,
         options: SequenceOptions,
-    ) -> Result<BindingGuard, crate::RegisterError> {
+    ) -> Result<BindingGuard, crate::error::RegisterError> {
         let sequence = sequence.into_sequence()?;
         let action = action.into();
         let id = self.request(|reply| Command::RegisterSequence {
@@ -249,18 +249,18 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::Parse`](crate::RegisterError::Parse) when
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when
     /// string input conversion fails,
-    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if the hotkey is already bound, or
-    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// [`RegisterError::ManagerStopped`](crate::error::RegisterError::ManagerStopped)
     /// if the engine has shut down.
     pub fn register_with_options(
         &self,
         hotkey: impl HotkeyInput,
         action: impl Into<Action>,
         options: BindingOptions,
-    ) -> Result<BindingGuard, crate::RegisterError> {
+    ) -> Result<BindingGuard, crate::error::RegisterError> {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
         let binding = Binding::new(id, hotkey, action.into()).with_options(options);
@@ -276,11 +276,14 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`QueryError::Parse`](crate::QueryError::Parse) when string
+    /// Returns [`QueryError::Parse`](crate::error::QueryError::Parse) when string
     /// input conversion fails, or
-    /// [`QueryError::ManagerStopped`](crate::QueryError::ManagerStopped) if
+    /// [`QueryError::ManagerStopped`](crate::error::QueryError::ManagerStopped) if
     /// the engine has shut down.
-    pub fn is_registered(&self, hotkey: impl HotkeyInput) -> Result<bool, crate::QueryError> {
+    pub fn is_registered(
+        &self,
+        hotkey: impl HotkeyInput,
+    ) -> Result<bool, crate::error::QueryError> {
         let hotkey = hotkey.into_hotkey()?;
         Ok(self.request(|reply| Command::IsRegistered { hotkey, reply })?)
     }
@@ -313,11 +316,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`LayerError::AlreadyDefined`](crate::LayerError::AlreadyDefined)
+    /// Returns [`LayerError::AlreadyDefined`](crate::error::LayerError::AlreadyDefined)
     /// if a layer with the same name has already been defined, or
-    /// [`LayerError::ManagerStopped`](crate::LayerError::ManagerStopped)
+    /// [`LayerError::ManagerStopped`](crate::error::LayerError::ManagerStopped)
     /// if the engine has shut down.
-    pub fn define_layer(&self, layer: Layer) -> Result<(), crate::LayerError> {
+    pub fn define_layer(&self, layer: Layer) -> Result<(), crate::error::LayerError> {
         self.request(|reply| Command::DefineLayer { layer, reply })?
     }
 
@@ -328,9 +331,9 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`ShutdownError::Engine`](crate::ShutdownError::Engine) if
+    /// Returns [`ShutdownError::Engine`](crate::error::ShutdownError::Engine) if
     /// the engine thread panicked.
-    pub fn shutdown(self) -> Result<(), crate::ShutdownError> {
+    pub fn shutdown(self) -> Result<(), crate::error::ShutdownError> {
         self.shutdown_inner()
     }
 
@@ -347,11 +350,11 @@ impl HotkeyManager {
         reply_rx.recv().map_err(|_| ManagerStopped)
     }
 
-    fn shutdown_inner(&self) -> Result<(), crate::ShutdownError> {
+    fn shutdown_inner(&self) -> Result<(), crate::error::ShutdownError> {
         let mut runtime = self
             .runtime
             .lock()
-            .map_err(|_| crate::ShutdownError::Engine)?;
+            .map_err(|_| crate::error::ShutdownError::Engine)?;
         if let Some(runtime) = runtime.take() {
             return runtime.shutdown();
         }
@@ -366,11 +369,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`LayerError::NotDefined`](crate::LayerError::NotDefined) if
+    /// Returns [`LayerError::NotDefined`](crate::error::LayerError::NotDefined) if
     /// no layer with the given name exists, or
-    /// [`LayerError::ManagerStopped`](crate::LayerError::ManagerStopped) if
+    /// [`LayerError::ManagerStopped`](crate::error::LayerError::ManagerStopped) if
     /// the engine has shut down.
-    pub fn push_layer(&self, name: impl Into<LayerName>) -> Result<(), crate::LayerError> {
+    pub fn push_layer(&self, name: impl Into<LayerName>) -> Result<(), crate::error::LayerError> {
         self.request(|reply| Command::PushLayer {
             name: name.into(),
             reply,
@@ -383,11 +386,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`LayerError::EmptyStack`](crate::LayerError::EmptyStack)
+    /// Returns [`LayerError::EmptyStack`](crate::error::LayerError::EmptyStack)
     /// if no layers are active, or
-    /// [`LayerError::ManagerStopped`](crate::LayerError::ManagerStopped) if
+    /// [`LayerError::ManagerStopped`](crate::error::LayerError::ManagerStopped) if
     /// the engine has shut down.
-    pub fn pop_layer(&self) -> Result<LayerName, crate::LayerError> {
+    pub fn pop_layer(&self) -> Result<LayerName, crate::error::LayerError> {
         self.request(|reply| Command::PopLayer { reply })?
     }
 
@@ -398,11 +401,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`LayerError::NotDefined`](crate::LayerError::NotDefined) if
+    /// Returns [`LayerError::NotDefined`](crate::error::LayerError::NotDefined) if
     /// no layer with the given name exists, or
-    /// [`LayerError::ManagerStopped`](crate::LayerError::ManagerStopped) if
+    /// [`LayerError::ManagerStopped`](crate::error::LayerError::ManagerStopped) if
     /// the engine has shut down.
-    pub fn toggle_layer(&self, name: impl Into<LayerName>) -> Result<(), crate::LayerError> {
+    pub fn toggle_layer(&self, name: impl Into<LayerName>) -> Result<(), crate::error::LayerError> {
         self.request(|reply| Command::ToggleLayer {
             name: name.into(),
             reply,
@@ -429,14 +432,14 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`QueryError::Parse`](crate::QueryError::Parse) when string
+    /// Returns [`QueryError::Parse`](crate::error::QueryError::Parse) when string
     /// input conversion fails, or
-    /// [`QueryError::ManagerStopped`](crate::QueryError::ManagerStopped) if
+    /// [`QueryError::ManagerStopped`](crate::error::QueryError::ManagerStopped) if
     /// the engine has shut down.
     pub fn bindings_for_key(
         &self,
         hotkey: impl HotkeyInput,
-    ) -> Result<Option<BindingInfo>, crate::QueryError> {
+    ) -> Result<Option<BindingInfo>, crate::error::QueryError> {
         let hotkey = hotkey.into_hotkey()?;
         Ok(self.request(|reply| Command::BindingsForKey { hotkey, reply })?)
     }
@@ -473,11 +476,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::UnsupportedFeature`](crate::RegisterError::UnsupportedFeature)
+    /// Returns [`RegisterError::UnsupportedFeature`](crate::error::RegisterError::UnsupportedFeature)
     /// if grab mode is not enabled,
-    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if the key already has a tap-hold binding, or
-    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// [`RegisterError::ManagerStopped`](crate::error::RegisterError::ManagerStopped)
     /// if the engine has shut down.
     pub fn register_tap_hold(
         &self,
@@ -485,7 +488,7 @@ impl HotkeyManager {
         tap_action: impl Into<Action>,
         hold_action: impl Into<Action>,
         options: kbd::tap_hold::TapHoldOptions,
-    ) -> Result<BindingGuard, crate::RegisterError> {
+    ) -> Result<BindingGuard, crate::error::RegisterError> {
         let id = self.request(|reply| Command::RegisterTapHold {
             key,
             tap_action: tap_action.into(),
@@ -515,7 +518,7 @@ impl Drop for HotkeyManager {
     }
 }
 
-fn resolve_backend(selection: BackendSelection) -> Result<Backend, crate::StartupError> {
+fn resolve_backend(selection: BackendSelection) -> Result<Backend, crate::error::StartupError> {
     match selection {
         BackendSelection::Auto => Ok(Backend::Evdev),
         BackendSelection::Explicit(backend) => validate_explicit_backend(backend),
@@ -523,7 +526,7 @@ fn resolve_backend(selection: BackendSelection) -> Result<Backend, crate::Startu
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn validate_explicit_backend(backend: Backend) -> Result<Backend, crate::StartupError> {
+fn validate_explicit_backend(backend: Backend) -> Result<Backend, crate::error::StartupError> {
     match backend {
         Backend::Evdev => Ok(Backend::Evdev),
     }
@@ -533,7 +536,7 @@ fn validate_explicit_backend(backend: Backend) -> Result<Backend, crate::Startup
 fn validate_grab_configuration(
     _backend: Backend,
     _grab: GrabConfiguration,
-) -> Result<(), crate::StartupError> {
+) -> Result<(), crate::error::StartupError> {
     Ok(())
 }
 
@@ -541,7 +544,7 @@ fn internal_test_input_directory() -> Option<PathBuf> {
     std::env::var_os("_KBD_GLOBAL_INTERNAL_TEST_INPUT_DIR").map(PathBuf::from)
 }
 
-fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, crate::StartupError> {
+fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, crate::error::StartupError> {
     match grab {
         GrabConfiguration::Disabled => Ok(GrabState::Disabled),
         GrabConfiguration::Enabled => {
@@ -554,7 +557,7 @@ fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, crate::Startu
             }
             #[cfg(not(feature = "grab"))]
             {
-                Err(crate::StartupError::UnsupportedFeature)
+                Err(crate::error::StartupError::UnsupportedFeature)
             }
         }
     }

@@ -1,6 +1,6 @@
 //! Command protocol for manager→engine communication.
 //!
-//! Every [`HotkeyManager`](crate::HotkeyManager) method translates to a
+//! Every [`HotkeyManager`](crate::manager::HotkeyManager) method translates to a
 //! [`Command`] sent through the channel. Commands that need a response
 //! include a one-shot reply sender.
 
@@ -24,25 +24,25 @@ use kbd::sequence::SequenceOptions;
 use kbd::tap_hold::TapHoldOptions;
 
 use super::wake::WakeFd;
-use crate::ManagerStopped;
+use crate::error::ManagerStopped;
 
 pub(crate) enum Command {
     Register {
         binding: Binding,
-        reply: mpsc::Sender<Result<(), crate::RegisterError>>,
+        reply: mpsc::Sender<Result<(), crate::error::RegisterError>>,
     },
     RegisterSequence {
         sequence: HotkeySequence,
         action: Action,
         options: SequenceOptions,
-        reply: mpsc::Sender<Result<BindingId, crate::RegisterError>>,
+        reply: mpsc::Sender<Result<BindingId, crate::error::RegisterError>>,
     },
     RegisterTapHold {
         key: Key,
         tap_action: Action,
         hold_action: Action,
         options: TapHoldOptions,
-        reply: mpsc::Sender<Result<BindingId, crate::RegisterError>>,
+        reply: mpsc::Sender<Result<BindingId, crate::error::RegisterError>>,
     },
     PendingSequence {
         reply: mpsc::Sender<Option<PendingSequenceInfo>>,
@@ -52,18 +52,18 @@ pub(crate) enum Command {
     },
     DefineLayer {
         layer: Layer,
-        reply: mpsc::Sender<Result<(), crate::LayerError>>,
+        reply: mpsc::Sender<Result<(), crate::error::LayerError>>,
     },
     PushLayer {
         name: LayerName,
-        reply: mpsc::Sender<Result<(), crate::LayerError>>,
+        reply: mpsc::Sender<Result<(), crate::error::LayerError>>,
     },
     PopLayer {
-        reply: mpsc::Sender<Result<LayerName, crate::LayerError>>,
+        reply: mpsc::Sender<Result<LayerName, crate::error::LayerError>>,
     },
     ToggleLayer {
         name: LayerName,
-        reply: mpsc::Sender<Result<(), crate::LayerError>>,
+        reply: mpsc::Sender<Result<(), crate::error::LayerError>>,
     },
     IsRegistered {
         hotkey: Hotkey,

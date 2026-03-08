@@ -10,7 +10,7 @@ use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd::layer::LayerOptions;
 use kbd::layer::UnmatchedKeys;
-use kbd_global::LayerError;
+use kbd_global::error::LayerError;
 
 #[test]
 fn define_layer_via_manager() {

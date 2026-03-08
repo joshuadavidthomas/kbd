@@ -11,9 +11,9 @@ use std::fmt;
 
 use kbd::binding::BindingId;
 
-use crate::ManagerStopped;
 use crate::engine::Command;
 use crate::engine::CommandSender;
+use crate::error::ManagerStopped;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HandleState {

@@ -53,7 +53,8 @@
 //!
 //! ```
 //! use iced_core::keyboard::{key::Code, Modifiers};
-//! use kbd::prelude::*;
+//! use kbd::hotkey::Modifier;
+//! use kbd::key::Key;
 //! use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 //!
 //! // Code conversion
@@ -94,7 +95,7 @@ pub trait IcedKeyExt: private::Sealed {
     ///
     /// ```
     /// use iced_core::keyboard::key;
-    /// use kbd::prelude::*;
+    /// use kbd::key::Key;
     /// use kbd_iced::IcedKeyExt;
     ///
     /// assert_eq!(key::Code::KeyA.to_key(), Some(Key::A));
@@ -360,7 +361,7 @@ pub trait IcedModifiersExt: private::Sealed {
     ///
     /// ```
     /// use iced_core::keyboard::Modifiers;
-    /// use kbd::prelude::*;
+    /// use kbd::hotkey::Modifier;
     /// use kbd_iced::IcedModifiersExt;
     ///
     /// let mods = (Modifiers::CTRL | Modifiers::SHIFT).to_modifiers();
@@ -400,7 +401,8 @@ pub trait IcedEventExt: private::Sealed {
     ///
     /// ```
     /// use iced_core::keyboard::{Event, Location, Modifiers, key};
-    /// use kbd::prelude::*;
+    /// use kbd::hotkey::{Hotkey, Modifier};
+    /// use kbd::key::Key;
     /// use kbd_iced::IcedEventExt;
     ///
     /// let event = Event::KeyPressed {

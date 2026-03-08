@@ -10,8 +10,12 @@
 
 use std::sync::mpsc;
 
-use kbd::prelude::*;
-use kbd_global::HotkeyManager;
+use kbd::action::Action;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
+use kbd::layer::Layer;
+use kbd_global::manager::HotkeyManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Ignore terminal job-control signals so Ctrl+Z doesn't background us
