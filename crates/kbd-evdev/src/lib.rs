@@ -61,11 +61,7 @@
 //! - [`kbd-global`](https://docs.rs/kbd-global) — threaded runtime built on
 //!   this crate
 
-/// Extension traits for converting between `evdev::KeyCode` and [`kbd::key::Key`].
 pub mod convert;
-/// Device discovery, hotplug monitoring, and event polling.
 pub mod devices;
-/// Error types for the evdev backend.
 pub mod error;
-/// Virtual uinput device for forwarding and emitting key events.
 pub mod forwarder;

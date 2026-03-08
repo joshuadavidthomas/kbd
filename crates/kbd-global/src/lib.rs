@@ -90,12 +90,8 @@
 //!
 //! - [`kbd`] — core dispatch engine, key types, and layer logic
 
-/// Which input backend to use.
 pub mod backend;
-/// RAII guard that keeps a binding alive until dropped.
 pub mod binding_guard;
 mod engine;
-/// Error types for the global hotkey manager.
 pub mod error;
-/// The main entry point — manages the engine thread and hotkey registration.
 pub mod manager;
