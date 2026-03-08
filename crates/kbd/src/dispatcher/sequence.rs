@@ -15,7 +15,6 @@ use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
 use crate::sequence::SequenceOptions;
 
-#[derive(Clone)]
 pub(super) enum SequenceBindingRef {
     Global(BindingId),
     Layer {

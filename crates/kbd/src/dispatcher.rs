@@ -193,7 +193,6 @@ pub struct Dispatcher {
 
 /// Internal reference to a matched binding, used to re-find the action
 /// after layer mutations are applied.
-#[derive(Clone)]
 pub(crate) enum MatchedBindingRef {
     Global(BindingId),
     Layer {

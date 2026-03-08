@@ -1,4 +1,5 @@
 use super::DeviceContext;
+use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::layer::StoredLayer;
@@ -168,9 +169,9 @@ fn find_immediate_in_layer(
         .position(|binding| binding_matches_hotkey(binding, hotkey, device))
 }
 
-/// Check whether a layer binding matches a hotkey, respecting device filters.
+/// Check whether a binding matches a hotkey, respecting device filters.
 fn binding_matches_hotkey(
-    binding: &crate::binding::RegisteredBinding,
+    binding: &RegisteredBinding,
     hotkey: Hotkey,
     device: Option<&DeviceContext<'_>>,
 ) -> bool {
@@ -204,7 +205,6 @@ mod tests {
     use super::*;
     use crate::action::Action;
     use crate::binding::BindingId;
-    use crate::binding::RegisteredBinding;
     use crate::binding::RegisteredSequenceBinding;
     use crate::hotkey::Hotkey;
     use crate::key::Key;

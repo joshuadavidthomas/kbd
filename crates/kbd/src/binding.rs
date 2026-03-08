@@ -347,10 +347,10 @@ impl BindingOptions {
     }
 }
 
-/// A binding registered with the engine: hotkey + action + options.
+/// A binding: hotkey + action + options.
 ///
-/// This is the engine's storage type for bindings. Created by the manager
-/// and sent to the engine via command channel.
+/// Used for both global bindings (stored in the dispatcher's registry)
+/// and layer bindings (stored within layer definitions).
 pub struct RegisteredBinding {
     id: BindingId,
     hotkey: Hotkey,
