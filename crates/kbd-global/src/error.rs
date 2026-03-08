@@ -23,6 +23,7 @@ pub struct ManagerStopped;
 /// Covers device access, unsupported feature requests (e.g. grab mode
 /// without the `grab` feature), and engine thread failures.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum StartupError {
     /// An input device operation failed (open, read, ioctl, etc.).
     #[error("input device operation failed")]
@@ -50,6 +51,7 @@ impl From<kbd_evdev::error::Error> for StartupError {
 /// Covers hotkey registration, sequence registration, and tap-hold
 /// registration through the manager.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RegisterError {
     /// A hotkey string like `"Ctrl+A"` could not be parsed.
     #[error("parse error: {0}")]
@@ -82,6 +84,7 @@ impl From<kbd::error::RegisterError> for RegisterError {
 /// Covers layer definition, push, pop, and toggle operations
 /// through the manager.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum LayerError {
     /// A layer with the given name was already defined.
     #[error("a layer with this name is already defined")]
@@ -114,6 +117,7 @@ impl From<kbd::error::LayerError> for LayerError {
 /// and [`bindings_for_key()`](crate::HotkeyManager::bindings_for_key)
 /// can fail from string parsing or a dead engine.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum QueryError {
     /// A hotkey string could not be parsed.
     #[error("parse error: {0}")]
@@ -125,6 +129,7 @@ pub enum QueryError {
 
 /// Error returned when shutting down the manager.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ShutdownError {
     /// An internal engine failure occurred (thread panic, mutex poison, etc.).
     #[error("hotkey engine encountered an internal failure")]

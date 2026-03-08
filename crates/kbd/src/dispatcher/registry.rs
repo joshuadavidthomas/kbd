@@ -50,9 +50,9 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::error::RegisterError::Parse) when string
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when string
     /// input conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same hotkey already exists in the standard
     /// precedence tier.
     pub fn register(
@@ -71,9 +71,9 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::error::RegisterError::Parse) when string
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when string
     /// input conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same hotkey already exists in the same precedence
     /// tier.
     pub fn register_with_options(
@@ -93,9 +93,9 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::error::RegisterError::Parse) when sequence input
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when sequence input
     /// conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
     pub fn register_sequence(
         &mut self,
@@ -109,9 +109,9 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::error::RegisterError::Parse) when sequence input
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when sequence input
     /// conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
     pub fn register_sequence_with_options(
         &mut self,
@@ -129,7 +129,7 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// Returns [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
     pub(crate) fn register_sequence_binding_with_id(
         &mut self,
@@ -146,7 +146,7 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// Returns [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same hotkey already exists in the same precedence
     /// tier and device scope. Bindings with different device filters (or one
     /// with a filter and one without) can coexist for the same hotkey and tier.

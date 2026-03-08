@@ -48,7 +48,7 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::LayerNotDefined`](crate::error::LayerError::NotDefined)
+    /// Returns [`LayerError::NotDefined`](crate::error::LayerError::NotDefined)
     /// if no layer with this name is defined.
     pub fn push_layer(
         &mut self,
@@ -76,7 +76,7 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::EmptyLayerStack`](crate::error::LayerError::EmptyStack)
+    /// Returns [`LayerError::EmptyStack`](crate::error::LayerError::EmptyStack)
     /// if no layers are on the stack.
     pub fn pop_layer(&mut self) -> Result<LayerName, crate::error::LayerError> {
         let name = self
@@ -92,7 +92,7 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::LayerNotDefined`](crate::error::LayerError::NotDefined)
+    /// Returns [`LayerError::NotDefined`](crate::error::LayerError::NotDefined)
     /// if no layer with this name is defined.
     pub fn toggle_layer(
         &mut self,
