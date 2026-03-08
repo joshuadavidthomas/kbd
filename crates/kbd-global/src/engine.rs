@@ -604,9 +604,9 @@ mod tests {
     use std::time::Duration;
 
     use kbd::action::Action;
+    use kbd::binding::Binding;
     use kbd::binding::BindingId;
     use kbd::binding::BindingOptions;
-    use kbd::binding::RegisteredBinding;
     use kbd::hotkey::Hotkey;
     use kbd::hotkey::Modifier;
     use kbd::hotkey::ModifierSet;
@@ -710,7 +710,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: RegisteredBinding::new(BindingId::new(), hotkey, Action::Suppress),
+                binding: Binding::new(BindingId::new(), hotkey, Action::Suppress),
                 reply: register_reply_tx,
             })
             .expect("register command should send");
@@ -765,8 +765,8 @@ mod tests {
         assert!(matches!(send_result, Err(crate::ManagerStopped)));
     }
 
-    fn test_binding(id: BindingId, hotkey: Hotkey) -> RegisteredBinding {
-        RegisteredBinding::new(id, hotkey, Action::Suppress)
+    fn test_binding(id: BindingId, hotkey: Hotkey) -> Binding {
+        Binding::new(id, hotkey, Action::Suppress)
     }
 
     /// Create a minimal engine for unit testing (no devices, no grab, no event loop).
@@ -853,7 +853,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding = RegisteredBinding::new(id, hotkey, action);
+        let binding = Binding::new(id, hotkey, action);
         engine.dispatcher.register_binding(binding).unwrap();
 
         // Simulate: press Ctrl, then press C
@@ -874,7 +874,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding = RegisteredBinding::new(id, hotkey, action);
+        let binding = Binding::new(id, hotkey, action);
         engine.dispatcher.register_binding(binding).unwrap();
 
         // Press V instead of C (with Ctrl held)
@@ -895,7 +895,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding = RegisteredBinding::new(id, hotkey, action);
+        let binding = Binding::new(id, hotkey, action);
         engine.dispatcher.register_binding(binding).unwrap();
 
         // Press Ctrl+Shift+C — binding only wants Ctrl+C
@@ -919,7 +919,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding = RegisteredBinding::new(id, hotkey, action);
+        let binding = Binding::new(id, hotkey, action);
         engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
@@ -940,7 +940,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding = RegisteredBinding::new(id, hotkey, action);
+        let binding = Binding::new(id, hotkey, action);
         engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::ESCAPE, 10);
@@ -959,7 +959,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding = RegisteredBinding::new(id, hotkey, action);
+        let binding = Binding::new(id, hotkey, action);
         engine.dispatcher.register_binding(binding).unwrap();
 
         // Press the hotkey so it fires once
@@ -986,7 +986,7 @@ mod tests {
         });
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(id1, hotkey1, action1))
+            .register_binding(Binding::new(id1, hotkey1, action1))
             .unwrap();
 
         // Register a second binding that increments a counter
@@ -997,7 +997,7 @@ mod tests {
         });
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(id2, hotkey2, action2))
+            .register_binding(Binding::new(id2, hotkey2, action2))
             .unwrap();
 
         // Trigger the panicking callback
@@ -1023,7 +1023,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding = RegisteredBinding::new(id, hotkey, action);
+        let binding = Binding::new(id, hotkey, action);
         engine.dispatcher.register_binding(binding).unwrap();
 
         // Use RightCtrl instead of LeftCtrl — should still match
@@ -1044,7 +1044,7 @@ mod tests {
         let hotkey = Hotkey::new(Key::C).modifier(Modifier::Ctrl);
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(id, hotkey, Action::Suppress))
+            .register_binding(Binding::new(id, hotkey, Action::Suppress))
             .unwrap();
 
         // Press A with no modifiers — no binding matches, should be forwarded
@@ -1071,7 +1071,7 @@ mod tests {
         });
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(id, hotkey, action))
+            .register_binding(Binding::new(id, hotkey, action))
             .unwrap();
 
         // Press Ctrl+C — matches binding, should be consumed
@@ -1099,8 +1099,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding =
-            RegisteredBinding::new(id, hotkey, action).with_propagation(KeyPropagation::Continue);
+        let binding = Binding::new(id, hotkey, action).with_propagation(KeyPropagation::Continue);
         engine.dispatcher.register_binding(binding).unwrap();
 
         // Press Ctrl+C with passthrough — should fire AND forward
@@ -1140,8 +1139,7 @@ mod tests {
         let action = Action::from(move || {
             counter_clone.fetch_add(1, Ordering::Relaxed);
         });
-        let binding =
-            RegisteredBinding::new(id, hotkey, action).with_propagation(KeyPropagation::Continue);
+        let binding = Binding::new(id, hotkey, action).with_propagation(KeyPropagation::Continue);
         engine.dispatcher.register_binding(binding).unwrap();
 
         press_key(&mut engine, Key::CONTROL_LEFT, 10);
@@ -1666,7 +1664,7 @@ mod tests {
         let gc = Arc::clone(&global_counter);
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
                 Action::from(move || {
@@ -1690,7 +1688,7 @@ mod tests {
         let gc = Arc::clone(&global_counter);
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
                 Action::from(move || {
@@ -1734,7 +1732,7 @@ mod tests {
         // Register a global binding that pushes the layer
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F1),
                 Action::PushLayer(kbd::layer::LayerName::from("nav")),
@@ -1804,7 +1802,7 @@ mod tests {
         // Register toggle binding
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::F2),
                 Action::ToggleLayer(kbd::layer::LayerName::from("nav")),
@@ -1835,7 +1833,7 @@ mod tests {
         let gc = Arc::clone(&global_counter);
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
                 Action::from(move || {
@@ -2209,7 +2207,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                 Action::Suppress,
@@ -2238,7 +2236,7 @@ mod tests {
         engine
             .dispatcher
             .register_binding(
-                RegisteredBinding::new(
+                Binding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
@@ -2302,7 +2300,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                 Action::from(move || {
@@ -2362,7 +2360,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                 Action::Suppress,
@@ -2398,7 +2396,7 @@ mod tests {
         engine
             .dispatcher
             .register_binding(
-                RegisteredBinding::new(
+                Binding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
@@ -2435,7 +2433,7 @@ mod tests {
         engine
             .dispatcher
             .register_binding(
-                RegisteredBinding::new(
+                Binding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
@@ -2499,7 +2497,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
                 Action::Suppress,
@@ -2602,7 +2600,7 @@ mod tests {
         engine
             .dispatcher
             .register_binding(
-                RegisteredBinding::new(
+                Binding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
@@ -2628,7 +2626,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                 Action::Suppress,
@@ -2648,10 +2646,9 @@ mod tests {
         engine
             .dispatcher
             .register_binding(
-                RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::H), Action::Suppress)
-                    .with_options(
-                        kbd::binding::BindingOptions::default().with_description("Global H"),
-                    ),
+                Binding::new(BindingId::new(), Hotkey::new(Key::H), Action::Suppress).with_options(
+                    kbd::binding::BindingOptions::default().with_description("Global H"),
+                ),
             )
             .unwrap();
 
@@ -2726,7 +2723,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                 Action::Suppress,
@@ -2743,7 +2740,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::H),
                 Action::Suppress,
@@ -2820,7 +2817,7 @@ mod tests {
         runtime
             .commands()
             .send(Command::Register {
-                binding: RegisteredBinding::new(
+                binding: Binding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
@@ -2888,7 +2885,7 @@ mod tests {
         engine
             .dispatcher
             .register_binding(
-                RegisteredBinding::new(
+                Binding::new(
                     BindingId::new(),
                     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
                     Action::Suppress,
@@ -2914,7 +2911,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::X),
                 Action::Suppress,
@@ -2947,7 +2944,7 @@ mod tests {
 
         engine
             .dispatcher
-            .register_binding(RegisteredBinding::new(
+            .register_binding(Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::CONTROL_LEFT),
                 Action::Suppress,
@@ -2971,7 +2968,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let binding = RegisteredBinding::new(
+        let binding = Binding::new(
             BindingId::new(),
             Hotkey::new(Key::A),
             Action::from(move || {
@@ -2996,7 +2993,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let binding = RegisteredBinding::new(
+        let binding = Binding::new(
             BindingId::new(),
             Hotkey::new(Key::A),
             Action::from(move || {
@@ -3023,7 +3020,7 @@ mod tests {
         let cc = Arc::clone(&counter);
 
         let binding =
-            RegisteredBinding::new(
+            Binding::new(
                 BindingId::new(),
                 Hotkey::new(Key::A),
                 Action::from(move || {
@@ -3056,7 +3053,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let binding = RegisteredBinding::new(
+        let binding = Binding::new(
             BindingId::new(),
             Hotkey::new(Key::A),
             Action::from(move || {
@@ -3093,7 +3090,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let binding = RegisteredBinding::new(
+        let binding = Binding::new(
             BindingId::new(),
             Hotkey::new(Key::A),
             Action::from(move || {
@@ -3117,7 +3114,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let binding = RegisteredBinding::new(
+        let binding = Binding::new(
             BindingId::new(),
             Hotkey::new(Key::A),
             Action::from(move || {
@@ -3148,7 +3145,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&counter);
 
-        let binding = RegisteredBinding::new(
+        let binding = Binding::new(
             BindingId::new(),
             Hotkey::new(Key::A),
             Action::from(move || {

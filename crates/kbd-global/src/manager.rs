@@ -23,9 +23,9 @@ use std::sync::Mutex;
 use std::sync::mpsc;
 
 use kbd::action::Action;
+use kbd::binding::Binding;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
-use kbd::binding::RegisteredBinding;
 use kbd::hotkey::HotkeyInput;
 use kbd::hotkey::ModifierSet;
 use kbd::introspection::ActiveLayerInfo;
@@ -263,7 +263,7 @@ impl HotkeyManager {
     ) -> Result<BindingGuard, crate::RegisterError> {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
-        let binding = RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
+        let binding = Binding::new(id, hotkey, action.into()).with_options(options);
 
         self.request(|reply| Command::Register { binding, reply })??;
         Ok(BindingGuard::new(id, self.commands.clone()))

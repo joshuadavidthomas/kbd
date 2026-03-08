@@ -2,11 +2,11 @@ use super::Dispatcher;
 use super::MatchedBindingRef;
 use super::sequence::SequenceBindingRef;
 use crate::action::Action;
+use crate::binding::Binding;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
 use crate::binding::BindingSource;
-use crate::binding::RegisteredBinding;
-use crate::binding::RegisteredSequenceBinding;
+use crate::binding::SequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
@@ -67,7 +67,7 @@ impl Dispatcher {
     ///
     /// Use this when you want binding metadata like descriptions, provenance,
     /// or overlay visibility without constructing a low-level
-    /// [`RegisteredBinding`] yourself.
+    /// [`Binding`] yourself.
     ///
     /// # Errors
     ///
@@ -84,7 +84,7 @@ impl Dispatcher {
     ) -> Result<BindingId, crate::error::RegisterError> {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
-        let binding = RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
+        let binding = Binding::new(id, hotkey, action.into()).with_options(options);
         self.register_binding(binding)?;
         Ok(id)
     }
@@ -138,11 +138,11 @@ impl Dispatcher {
         action: Action,
         options: SequenceOptions,
     ) -> Result<(), crate::error::RegisterError> {
-        let binding = RegisteredSequenceBinding::new(id, sequence, action, options);
+        let binding = SequenceBinding::new(id, sequence, action, options);
         self.register_sequence_binding(binding)
     }
 
-    /// Register a [`RegisteredBinding`] with full options control.
+    /// Register a [`Binding`] with full options control.
     ///
     /// # Errors
     ///
@@ -152,7 +152,7 @@ impl Dispatcher {
     /// with a filter and one without) can coexist for the same hotkey and tier.
     pub fn register_binding(
         &mut self,
-        binding: RegisteredBinding,
+        binding: Binding,
     ) -> Result<(), crate::error::RegisterError> {
         let id = binding.id();
         let hotkey = binding.hotkey();
@@ -191,7 +191,7 @@ impl Dispatcher {
 
     fn register_sequence_binding(
         &mut self,
-        binding: RegisteredSequenceBinding,
+        binding: SequenceBinding,
     ) -> Result<(), crate::error::RegisterError> {
         let id = binding.id;
         let sequence = binding.sequence.clone();
@@ -262,9 +262,9 @@ mod tests {
     use super::super::Dispatcher;
     use super::SourcePriority;
     use crate::action::Action;
+    use crate::binding::Binding;
     use crate::binding::BindingId;
     use crate::binding::BindingSource;
-    use crate::binding::RegisteredBinding;
     use crate::hotkey::Hotkey;
     use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
@@ -379,11 +379,7 @@ mod tests {
         let id = BindingId::new();
 
         dispatcher
-            .register_binding(RegisteredBinding::new(
-                id,
-                Hotkey::new(Key::A),
-                Action::Suppress,
-            ))
+            .register_binding(Binding::new(id, Hotkey::new(Key::A), Action::Suppress))
             .unwrap();
 
         let result = dispatcher.register_sequence_binding_with_id(
@@ -413,11 +409,8 @@ mod tests {
             )
             .unwrap();
 
-        let result = dispatcher.register_binding(RegisteredBinding::new(
-            id,
-            Hotkey::new(Key::A),
-            Action::Suppress,
-        ));
+        let result =
+            dispatcher.register_binding(Binding::new(id, Hotkey::new(Key::A), Action::Suppress));
 
         assert!(matches!(
             result,

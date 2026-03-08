@@ -2,8 +2,8 @@
 //!
 //! A binding is the core unit: "when this input pattern matches, do this
 //! action." [`BindingId`] uniquely identifies a binding. [`BindingOptions`] holds
-//! per-binding configuration. [`RegisteredBinding`] pairs a hotkey with
-//! an action and options. `RegisteredSequenceBinding` does the same for
+//! per-binding configuration. [`Binding`] pairs a hotkey with
+//! an action and options. `SequenceBinding` does the same for
 //! multi-step sequences.
 //!
 //! Both types are used for global bindings and layer bindings — a binding
@@ -351,14 +351,14 @@ impl BindingOptions {
 ///
 /// Used for both global bindings (stored in the dispatcher's registry)
 /// and layer bindings (stored within layer definitions).
-pub struct RegisteredBinding {
+pub struct Binding {
     id: BindingId,
     hotkey: Hotkey,
     action: Action,
     options: BindingOptions,
 }
 
-impl RegisteredBinding {
+impl Binding {
     /// Create a registered binding with default options.
     #[must_use]
     pub fn new(id: BindingId, hotkey: Hotkey, action: Action) -> Self {
@@ -418,7 +418,7 @@ impl RegisteredBinding {
 /// A sequence binding: multi-step hotkey pattern + action + options.
 ///
 /// Used for both global sequence bindings and layer sequence bindings.
-pub(crate) struct RegisteredSequenceBinding {
+pub(crate) struct SequenceBinding {
     pub(crate) id: BindingId,
     pub(crate) sequence: HotkeySequence,
     pub(crate) action: Action,
@@ -426,7 +426,7 @@ pub(crate) struct RegisteredSequenceBinding {
     pub(crate) options: SequenceOptions,
 }
 
-impl RegisteredSequenceBinding {
+impl SequenceBinding {
     /// Create a new sequence binding with default propagation (`Stop`).
     pub(crate) fn new(
         id: BindingId,
@@ -543,7 +543,7 @@ mod tests {
     fn registered_binding_stores_fields() {
         let id = BindingId::new();
         let hotkey = Hotkey::new(Key::S).modifier(Modifier::Ctrl);
-        let binding = RegisteredBinding::new(id, hotkey, Action::Suppress);
+        let binding = Binding::new(id, hotkey, Action::Suppress);
 
         assert_eq!(binding.id(), id);
         assert_eq!(binding.hotkey(), hotkey);
@@ -553,7 +553,7 @@ mod tests {
     #[test]
     fn registered_binding_with_propagation() {
         let id = BindingId::new();
-        let binding = RegisteredBinding::new(id, Hotkey::new(Key::A), Action::Suppress)
+        let binding = Binding::new(id, Hotkey::new(Key::A), Action::Suppress)
             .with_propagation(KeyPropagation::Continue);
 
         assert_eq!(binding.propagation(), KeyPropagation::Continue);
@@ -565,8 +565,7 @@ mod tests {
         let opts = BindingOptions::default()
             .with_description("test")
             .with_overlay_visibility(OverlayVisibility::Hidden);
-        let binding =
-            RegisteredBinding::new(id, Hotkey::new(Key::A), Action::Suppress).with_options(opts);
+        let binding = Binding::new(id, Hotkey::new(Key::A), Action::Suppress).with_options(opts);
 
         assert_eq!(binding.options().description(), Some("test"));
         assert_eq!(

@@ -15,10 +15,10 @@
 use std::time::Duration;
 
 use crate::action::Action;
+use crate::binding::Binding;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
-use crate::binding::RegisteredBinding;
-use crate::binding::RegisteredSequenceBinding;
+use crate::binding::SequenceBinding;
 use crate::error::ParseHotkeyError;
 use crate::hotkey::HotkeyInput;
 use crate::sequence::SequenceInput;
@@ -154,8 +154,8 @@ impl LayerOptions {
 
 /// Engine-internal representation of a stored layer definition.
 pub(crate) struct StoredLayer {
-    pub(crate) bindings: Vec<RegisteredBinding>,
-    pub(crate) sequence_bindings: Vec<RegisteredSequenceBinding>,
+    pub(crate) bindings: Vec<Binding>,
+    pub(crate) sequence_bindings: Vec<SequenceBinding>,
     pub(crate) options: LayerOptions,
 }
 
@@ -232,8 +232,8 @@ impl std::fmt::Debug for StoredLayer {
 /// ```
 pub struct Layer {
     name: LayerName,
-    bindings: Vec<RegisteredBinding>,
-    sequence_bindings: Vec<RegisteredSequenceBinding>,
+    bindings: Vec<Binding>,
+    sequence_bindings: Vec<SequenceBinding>,
     options: LayerOptions,
 }
 
@@ -281,7 +281,7 @@ impl Layer {
         options: BindingOptions,
     ) -> Result<Self, ParseHotkeyError> {
         self.bindings.push(
-            RegisteredBinding::new(BindingId::new(), hotkey.into_hotkey()?, action.into())
+            Binding::new(BindingId::new(), hotkey.into_hotkey()?, action.into())
                 .with_options(options),
         );
         Ok(self)
@@ -297,7 +297,7 @@ impl Layer {
         sequence: impl SequenceInput,
         action: impl Into<Action>,
     ) -> Result<Self, ParseHotkeyError> {
-        self.sequence_bindings.push(RegisteredSequenceBinding::new(
+        self.sequence_bindings.push(SequenceBinding::new(
             BindingId::new(),
             sequence.into_sequence()?,
             action.into(),
@@ -317,7 +317,7 @@ impl Layer {
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<Self, ParseHotkeyError> {
-        self.sequence_bindings.push(RegisteredSequenceBinding::new(
+        self.sequence_bindings.push(SequenceBinding::new(
             BindingId::new(),
             sequence.into_sequence()?,
             action.into(),
@@ -378,12 +378,7 @@ impl Layer {
     #[must_use]
     pub(crate) fn into_parts(
         self,
-    ) -> (
-        LayerName,
-        Vec<RegisteredBinding>,
-        Vec<RegisteredSequenceBinding>,
-        LayerOptions,
-    ) {
+    ) -> (LayerName, Vec<Binding>, Vec<SequenceBinding>, LayerOptions) {
         (
             self.name,
             self.bindings,
