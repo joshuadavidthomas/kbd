@@ -19,7 +19,7 @@
 //!     Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
 //!     || println!("fired"),
 //! )?;
-//! # Ok::<(), kbd_global::Error>(())
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! # Concepts
@@ -74,7 +74,7 @@
 //! let manager = HotkeyManager::builder()
 //!     .backend(Backend::Evdev)
 //!     .build()?;
-//! # Ok::<(), kbd_global::Error>(())
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! # Feature flags
@@ -98,8 +98,12 @@ mod manager;
 pub use crate::backend::Backend;
 /// RAII guard that keeps a binding alive until dropped.
 pub use crate::binding_guard::BindingGuard;
-/// Error type for all kbd-global operations.
-pub use crate::error::Error;
+pub use crate::error::LayerError;
+pub use crate::error::ManagerStopped;
+pub use crate::error::QueryError;
+pub use crate::error::RegisterError;
+pub use crate::error::ShutdownError;
+pub use crate::error::StartupError;
 /// The main entry point — manages the engine thread and hotkey registration.
 pub use crate::manager::HotkeyManager;
 /// Builder for configuring backend and runtime options before starting.

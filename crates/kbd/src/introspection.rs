@@ -18,7 +18,7 @@
 //! use kbd::key::Key;
 //! use kbd::layer::Layer;
 //!
-//! # fn main() -> Result<(), kbd::error::Error> {
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut dispatcher = Dispatcher::new();
 //! dispatcher.register(
 //!     Hotkey::new(Key::C).modifier(Modifier::Ctrl),
@@ -68,7 +68,7 @@ pub enum BindingLocation {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
-/// # fn main() -> Result<(), kbd::error::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.register(Hotkey::new(Key::H), Action::Suppress)?;
 ///
@@ -137,7 +137,7 @@ pub struct BindingInfo {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
-/// # fn main() -> Result<(), kbd::error::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.define_layer(
 ///     Layer::new("nav")
@@ -178,7 +178,7 @@ pub struct ActiveLayerInfo {
 /// use kbd::key::Key;
 /// use kbd::layer::Layer;
 ///
-/// # fn main() -> Result<(), kbd::error::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.register(Hotkey::new(Key::H), Action::Suppress)?;
 /// dispatcher.define_layer(

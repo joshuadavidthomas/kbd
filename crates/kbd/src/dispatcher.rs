@@ -122,7 +122,7 @@ pub enum MatchResult<'a> {
 /// use kbd::key::Key;
 /// use kbd::key_state::KeyTransition;
 ///
-/// # fn main() -> Result<(), kbd::error::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.register(
 ///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
@@ -148,7 +148,7 @@ pub enum MatchResult<'a> {
 /// use kbd::key_state::KeyTransition;
 /// use kbd::layer::Layer;
 ///
-/// # fn main() -> Result<(), kbd::error::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut dispatcher = Dispatcher::new();
 ///
 /// // Define a navigation layer
@@ -250,9 +250,9 @@ impl Dispatcher {
         tap_action: impl Into<Action>,
         hold_action: impl Into<Action>,
         options: TapHoldOptions,
-    ) -> Result<BindingId, crate::error::Error> {
+    ) -> Result<BindingId, crate::error::RegisterError> {
         if self.tap_hold.is_registered(key) {
-            return Err(crate::error::Error::AlreadyRegistered);
+            return Err(crate::error::RegisterError::AlreadyRegistered);
         }
         let id = BindingId::new();
         self.tap_hold.register(TapHoldBinding {
@@ -279,13 +279,16 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::LayerAlreadyDefined`](crate::error::Error::LayerAlreadyDefined)
+    /// Returns [`LayerError::AlreadyDefined`](crate::error::LayerError::AlreadyDefined)
     /// if a layer with the same name exists.
-    pub fn define_layer(&mut self, layer: crate::layer::Layer) -> Result<(), crate::error::Error> {
+    pub fn define_layer(
+        &mut self,
+        layer: crate::layer::Layer,
+    ) -> Result<(), crate::error::LayerError> {
         let (name, bindings, sequence_bindings, options) = layer.into_parts();
         match self.layers.entry(name) {
             std::collections::hash_map::Entry::Occupied(_) => {
-                Err(crate::error::Error::LayerAlreadyDefined)
+                Err(crate::error::LayerError::AlreadyDefined)
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(StoredLayer {
@@ -1091,7 +1094,7 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(crate::error::Error::AlreadyRegistered)
+            Err(crate::error::RegisterError::AlreadyRegistered)
         ));
     }
 
@@ -1606,7 +1609,7 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(crate::error::Error::AlreadyRegistered)
+            Err(crate::error::RegisterError::AlreadyRegistered)
         ));
     }
 

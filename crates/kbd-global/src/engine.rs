@@ -51,7 +51,7 @@ use kbd::key_state::KeyTransition;
 use kbd::policy::KeyPropagation;
 use kbd::policy::RepeatPolicy;
 
-use crate::Error;
+use crate::ShutdownError;
 use crate::engine::devices::DeviceKeyEvent;
 
 pub(crate) mod command;
@@ -108,7 +108,7 @@ impl Engine {
         }
     }
 
-    fn poll_sources(&mut self) -> Result<Vec<libc::pollfd>, Error> {
+    fn poll_sources(&mut self) -> Result<Vec<libc::pollfd>, ShutdownError> {
         let device_fds = self.devices.poll_fds();
 
         let mut poll_fds = Vec::with_capacity(device_fds.len() + 1);
@@ -126,7 +126,7 @@ impl Engine {
             });
         }
 
-        let poll_len = libc::nfds_t::try_from(poll_fds.len()).map_err(|_| Error::EngineError)?;
+        let poll_len = libc::nfds_t::try_from(poll_fds.len()).map_err(|_| ShutdownError::Engine)?;
         let poll_timeout_ms = self.next_timer_deadline_ms();
         // SAFETY: `poll_fds` is a valid mutable buffer of `pollfd` values and
         // `poll_len` matches its length.
@@ -137,11 +137,11 @@ impl Engine {
             if error.kind() == io::ErrorKind::Interrupted {
                 return Ok(poll_fds);
             }
-            return Err(Error::EngineError);
+            return Err(ShutdownError::Engine);
         }
 
         if (poll_fds[0].revents & libc::POLLIN) != 0 {
-            self.wake_fd.clear().map_err(|_| Error::EngineError)?;
+            self.wake_fd.clear().map_err(|_| ShutdownError::Engine)?;
         }
 
         Ok(poll_fds)
@@ -182,7 +182,7 @@ impl Engine {
                 let _ = reply.send(
                     self.dispatcher
                         .register_binding(binding)
-                        .map_err(Error::from),
+                        .map_err(crate::RegisterError::from),
                 );
             }
             Command::RegisterSequence {
@@ -194,7 +194,7 @@ impl Engine {
                 let result = self
                     .dispatcher
                     .register_sequence_with_options(sequence, action, options)
-                    .map_err(Error::from);
+                    .map_err(crate::RegisterError::from);
                 let _ = reply.send(result);
             }
             Command::RegisterTapHold {
@@ -207,12 +207,12 @@ impl Engine {
                 // Tap-hold requires grab mode — without it, we can't
                 // intercept and buffer key events.
                 if matches!(self.grab_state, GrabState::Disabled) {
-                    let _ = reply.send(Err(Error::UnsupportedFeature));
+                    let _ = reply.send(Err(crate::RegisterError::UnsupportedFeature));
                 } else {
                     let result = self
                         .dispatcher
                         .register_tap_hold(key, tap_action, hold_action, options)
-                        .map_err(Error::from);
+                        .map_err(crate::RegisterError::from);
                     let _ = reply.send(result);
                 }
             }
@@ -225,16 +225,28 @@ impl Engine {
 
             // Layers
             Command::DefineLayer { layer, reply } => {
-                let _ = reply.send(self.dispatcher.define_layer(layer).map_err(Error::from));
+                let _ = reply.send(
+                    self.dispatcher
+                        .define_layer(layer)
+                        .map_err(crate::LayerError::from),
+                );
             }
             Command::PushLayer { name, reply } => {
-                let _ = reply.send(self.dispatcher.push_layer(name).map_err(Error::from));
+                let _ = reply.send(
+                    self.dispatcher
+                        .push_layer(name)
+                        .map_err(crate::LayerError::from),
+                );
             }
             Command::PopLayer { reply } => {
-                let _ = reply.send(self.dispatcher.pop_layer().map_err(Error::from));
+                let _ = reply.send(self.dispatcher.pop_layer().map_err(crate::LayerError::from));
             }
             Command::ToggleLayer { name, reply } => {
-                let _ = reply.send(self.dispatcher.toggle_layer(name).map_err(Error::from));
+                let _ = reply.send(
+                    self.dispatcher
+                        .toggle_layer(name)
+                        .map_err(crate::LayerError::from),
+                );
             }
 
             // Queries
@@ -541,7 +553,7 @@ fn invoke_callback(callback: &(dyn Fn() + Send + Sync)) {
     }
 }
 
-pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
+pub(crate) fn run(mut engine: Engine) -> Result<(), ShutdownError> {
     loop {
         let poll_fds = engine.poll_sources()?;
 
@@ -612,7 +624,8 @@ mod tests {
     use super::devices;
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
-    use crate::Error;
+    use crate::LayerError;
+    use crate::RegisterError;
 
     #[test]
     fn engine_processes_register_and_unregister_commands() {
@@ -680,7 +693,10 @@ mod tests {
         let second_result = second_reply_rx
             .recv_timeout(Duration::from_secs(1))
             .expect("second register command should receive reply");
-        assert!(matches!(second_result, Err(Error::AlreadyRegistered)));
+        assert!(matches!(
+            second_result,
+            Err(RegisterError::AlreadyRegistered)
+        ));
 
         runtime.shutdown().expect("engine should shutdown cleanly");
     }
@@ -746,7 +762,7 @@ mod tests {
         let send_result = commands.send(Command::Unregister {
             id: BindingId::new(),
         });
-        assert!(matches!(send_result, Err(Error::ManagerStopped)));
+        assert!(matches!(send_result, Err(crate::ManagerStopped)));
     }
 
     fn test_binding(id: BindingId, hotkey: Hotkey) -> RegisteredBinding {
@@ -1472,7 +1488,7 @@ mod tests {
         let result = dup_reply_rx
             .recv_timeout(Duration::from_secs(1))
             .expect("duplicate define layer should receive reply");
-        assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
+        assert!(matches!(result, Err(LayerError::AlreadyDefined)));
 
         runtime.shutdown().expect("engine should shutdown cleanly");
     }
@@ -1595,7 +1611,7 @@ mod tests {
         let result = engine
             .dispatcher
             .toggle_layer(kbd::layer::LayerName::from("nonexistent"));
-        assert!(matches!(result, Err(kbd::error::Error::LayerNotDefined)));
+        assert!(matches!(result, Err(kbd::error::LayerError::NotDefined)));
     }
 
     #[test]
@@ -1999,7 +2015,7 @@ mod tests {
             })
             .unwrap();
         let result = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert!(matches!(result, Err(Error::LayerNotDefined)));
+        assert!(matches!(result, Err(LayerError::NotDefined)));
 
         runtime.shutdown().unwrap();
     }
@@ -2061,7 +2077,7 @@ mod tests {
             .send(Command::PopLayer { reply: reply_tx })
             .unwrap();
         let result = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert!(matches!(result, Err(Error::EmptyLayerStack)));
+        assert!(matches!(result, Err(LayerError::EmptyStack)));
 
         runtime.shutdown().unwrap();
     }
@@ -3176,7 +3192,7 @@ mod tests {
             .expect("should receive reply");
 
         assert!(
-            matches!(result, Err(Error::UnsupportedFeature)),
+            matches!(result, Err(RegisterError::UnsupportedFeature)),
             "tap-hold without grab mode should return UnsupportedFeature, got: {result:?}"
         );
 

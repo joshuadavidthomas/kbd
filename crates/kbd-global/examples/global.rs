@@ -11,7 +11,6 @@
 use std::sync::mpsc;
 
 use kbd::prelude::*;
-use kbd_global::Error;
 use kbd_global::HotkeyManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -37,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("  2. Or run with sudo (not recommended for regular use)");
                 Ok(())
             } else {
-                Err(e.into())
+                Err(e)
             }
         }
     };
@@ -68,7 +67,7 @@ fn restore_termios(original: Option<libc::termios>) {
     }
 }
 
-fn run() -> Result<(), Error> {
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let manager = HotkeyManager::new()?;
     let (tx, rx) = mpsc::channel::<String>();
 

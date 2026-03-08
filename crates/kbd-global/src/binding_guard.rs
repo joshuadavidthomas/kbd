@@ -11,7 +11,7 @@ use std::fmt;
 
 use kbd::binding::BindingId;
 
-use crate::Error;
+use crate::ManagerStopped;
 use crate::engine::Command;
 use crate::engine::CommandSender;
 
@@ -59,13 +59,12 @@ impl BindingGuard {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`](crate::Error::ManagerStopped) if
-    /// the manager has already been shut down.
-    pub fn unregister(mut self) -> Result<(), Error> {
+    /// Returns [`ManagerStopped`] if the manager has already been shut down.
+    pub fn unregister(mut self) -> Result<(), ManagerStopped> {
         self.unregister_inner()
     }
 
-    fn unregister_inner(&mut self) -> Result<(), Error> {
+    fn unregister_inner(&mut self) -> Result<(), ManagerStopped> {
         match self.state {
             HandleState::Active => {
                 self.state = HandleState::Released;

@@ -50,16 +50,16 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::error::Error::Parse) when string
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when string
     /// input conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same hotkey already exists in the standard
     /// precedence tier.
     pub fn register(
         &mut self,
         hotkey: impl HotkeyInput,
         action: impl Into<Action>,
-    ) -> Result<BindingId, crate::error::Error> {
+    ) -> Result<BindingId, crate::error::RegisterError> {
         self.register_with_options(hotkey, action, BindingOptions::default())
     }
 
@@ -71,9 +71,9 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::error::Error::Parse) when string
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when string
     /// input conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same hotkey already exists in the same precedence
     /// tier.
     pub fn register_with_options(
@@ -81,7 +81,7 @@ impl Dispatcher {
         hotkey: impl HotkeyInput,
         action: impl Into<Action>,
         options: BindingOptions,
-    ) -> Result<BindingId, crate::error::Error> {
+    ) -> Result<BindingId, crate::error::RegisterError> {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
         let binding = RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
@@ -93,15 +93,15 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::error::Error::Parse) when sequence input
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when sequence input
     /// conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
     pub fn register_sequence(
         &mut self,
         sequence: impl SequenceInput,
         action: impl Into<Action>,
-    ) -> Result<BindingId, crate::error::Error> {
+    ) -> Result<BindingId, crate::error::RegisterError> {
         self.register_sequence_with_options(sequence, action, SequenceOptions::default())
     }
 
@@ -109,16 +109,16 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::error::Error::Parse) when sequence input
+    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when sequence input
     /// conversion fails, or
-    /// [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
     pub fn register_sequence_with_options(
         &mut self,
         sequence: impl SequenceInput,
         action: impl Into<Action>,
         options: SequenceOptions,
-    ) -> Result<BindingId, crate::error::Error> {
+    ) -> Result<BindingId, crate::error::RegisterError> {
         let id = BindingId::new();
         let sequence = sequence.into_sequence()?;
         self.register_sequence_binding_with_id(id, sequence, action.into(), options)?;
@@ -129,7 +129,7 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// Returns [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same sequence already exists.
     pub(crate) fn register_sequence_binding_with_id(
         &mut self,
@@ -137,7 +137,7 @@ impl Dispatcher {
         sequence: HotkeySequence,
         action: Action,
         options: SequenceOptions,
-    ) -> Result<(), crate::error::Error> {
+    ) -> Result<(), crate::error::RegisterError> {
         let binding = RegisteredSequenceBinding::new(id, sequence, action, options);
         self.register_sequence_binding(binding)
     }
@@ -146,21 +146,21 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AlreadyRegistered`](crate::error::Error::AlreadyRegistered)
+    /// Returns [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
     /// if a binding for the same hotkey already exists in the same precedence
     /// tier and device scope. Bindings with different device filters (or one
     /// with a filter and one without) can coexist for the same hotkey and tier.
     pub fn register_binding(
         &mut self,
         binding: RegisteredBinding,
-    ) -> Result<(), crate::error::Error> {
+    ) -> Result<(), crate::error::RegisterError> {
         let id = binding.id();
         let hotkey = binding.hotkey();
         let new_priority = SourcePriority::from(binding.options());
         let new_device = binding.options().device();
 
         if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
-            return Err(crate::error::Error::AlreadyRegistered);
+            return Err(crate::error::RegisterError::AlreadyRegistered);
         }
 
         let ids_for_hotkey = self.binding_ids_by_hotkey.entry(hotkey).or_default();
@@ -172,7 +172,7 @@ impl Dispatcher {
                         && existing.options().device() == new_device
                 })
         }) {
-            return Err(crate::error::Error::AlreadyRegistered);
+            return Err(crate::error::RegisterError::AlreadyRegistered);
         }
 
         let insert_at = ids_for_hotkey
@@ -192,7 +192,7 @@ impl Dispatcher {
     fn register_sequence_binding(
         &mut self,
         binding: RegisteredSequenceBinding,
-    ) -> Result<(), crate::error::Error> {
+    ) -> Result<(), crate::error::RegisterError> {
         let id = binding.id;
         let sequence = binding.sequence.clone();
 
@@ -200,7 +200,7 @@ impl Dispatcher {
             || self.bindings_by_id.contains_key(&id)
             || self.sequence_ids_by_value.contains_key(&sequence)
         {
-            return Err(crate::error::Error::AlreadyRegistered);
+            return Err(crate::error::RegisterError::AlreadyRegistered);
         }
 
         self.sequence_ids_by_value.insert(sequence, id);
@@ -370,7 +370,7 @@ mod tests {
 
         let result = dispatcher.register_sequence("Ctrl+K, Ctrl+Nope", Action::Suppress);
 
-        assert!(matches!(result, Err(crate::error::Error::Parse(_))));
+        assert!(matches!(result, Err(crate::error::RegisterError::Parse(_))));
     }
 
     #[test]
@@ -395,7 +395,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(crate::error::Error::AlreadyRegistered)
+            Err(crate::error::RegisterError::AlreadyRegistered)
         ));
     }
 
@@ -421,7 +421,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(crate::error::Error::AlreadyRegistered)
+            Err(crate::error::RegisterError::AlreadyRegistered)
         ));
     }
 
@@ -484,7 +484,7 @@ mod tests {
         let result = dispatcher.register(Hotkey::new(Key::A), Action::Suppress);
         assert!(matches!(
             result,
-            Err(crate::error::Error::AlreadyRegistered)
+            Err(crate::error::RegisterError::AlreadyRegistered)
         ));
     }
 
@@ -492,7 +492,7 @@ mod tests {
     fn register_reports_parse_error_for_invalid_string() {
         let mut dispatcher = Dispatcher::new();
         let result = dispatcher.register("Ctrl+Nope", Action::Suppress);
-        assert!(matches!(result, Err(crate::error::Error::Parse(_))));
+        assert!(matches!(result, Err(crate::error::RegisterError::Parse(_))));
     }
 
     #[test]
@@ -536,7 +536,7 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(crate::error::Error::AlreadyRegistered)
+            Err(crate::error::RegisterError::AlreadyRegistered)
         ));
     }
 

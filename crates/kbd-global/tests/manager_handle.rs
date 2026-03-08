@@ -4,7 +4,8 @@ mod utils;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
-use kbd_global::Error;
+use kbd_global::ManagerStopped;
+use kbd_global::RegisterError;
 
 #[test]
 fn register_and_drop_handle_unregisters_hotkey() {
@@ -34,7 +35,7 @@ fn duplicate_hotkey_registration_returns_conflict_error() {
         .expect("first registration should succeed");
 
     let duplicate = manager.register(hotkey, || {});
-    assert!(matches!(duplicate, Err(Error::AlreadyRegistered)));
+    assert!(matches!(duplicate, Err(RegisterError::AlreadyRegistered)));
 }
 
 #[test]
@@ -67,7 +68,7 @@ fn shutdown_stops_handle_unregistration_commands() {
     manager.shutdown().expect("shutdown should succeed");
 
     let unregister = handle.unregister();
-    assert!(matches!(unregister, Err(Error::ManagerStopped)));
+    assert!(matches!(unregister, Err(ManagerStopped)));
 }
 
 #[test]
@@ -120,7 +121,7 @@ fn register_sequence_reports_parse_error_for_string_input() {
     let manager = utils::test_manager();
 
     let result = manager.register_sequence("Ctrl+K, Ctrl+Nope", || {});
-    assert!(matches!(result, Err(Error::Parse(_))));
+    assert!(matches!(result, Err(RegisterError::Parse(_))));
 }
 
 #[test]

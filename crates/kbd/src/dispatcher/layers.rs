@@ -48,14 +48,17 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::LayerNotDefined`](crate::error::Error::LayerNotDefined)
+    /// Returns [`LayerError::NotDefined`](crate::error::LayerError::NotDefined)
     /// if no layer with this name is defined.
-    pub fn push_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
+    pub fn push_layer(
+        &mut self,
+        name: impl Into<LayerName>,
+    ) -> Result<(), crate::error::LayerError> {
         let name = name.into();
         let stored = self
             .layers
             .get(&name)
-            .ok_or(crate::error::Error::LayerNotDefined)?;
+            .ok_or(crate::error::LayerError::NotDefined)?;
         let oneshot_remaining = stored.options.oneshot();
         let timeout = stored.options.timeout().map(|duration| LayerTimeout {
             duration,
@@ -73,14 +76,14 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::EmptyLayerStack`](crate::error::Error::EmptyLayerStack)
+    /// Returns [`LayerError::EmptyStack`](crate::error::LayerError::EmptyStack)
     /// if no layers are on the stack.
-    pub fn pop_layer(&mut self) -> Result<LayerName, crate::error::Error> {
+    pub fn pop_layer(&mut self) -> Result<LayerName, crate::error::LayerError> {
         let name = self
             .layer_stack
             .pop()
             .map(|entry| entry.name)
-            .ok_or(crate::error::Error::EmptyLayerStack)?;
+            .ok_or(crate::error::LayerError::EmptyStack)?;
         self.clear_sequences_for_layer_if_inactive(&name);
         Ok(name)
     }
@@ -89,12 +92,15 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::LayerNotDefined`](crate::error::Error::LayerNotDefined)
+    /// Returns [`LayerError::NotDefined`](crate::error::LayerError::NotDefined)
     /// if no layer with this name is defined.
-    pub fn toggle_layer(&mut self, name: impl Into<LayerName>) -> Result<(), crate::error::Error> {
+    pub fn toggle_layer(
+        &mut self,
+        name: impl Into<LayerName>,
+    ) -> Result<(), crate::error::LayerError> {
         let name = name.into();
         if !self.layers.contains_key(&name) {
-            return Err(crate::error::Error::LayerNotDefined);
+            return Err(crate::error::LayerError::NotDefined);
         }
         if let Some(pos) = self
             .layer_stack

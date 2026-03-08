@@ -1,9 +1,10 @@
 //! Error types for hotkey operations.
 //!
-//! [`ParseHotkeyError`] covers parsing failures for keys and hotkeys from strings.
-//! [`Error`] covers domain-level errors: binding conflicts and layer operations.
-//! Platform-specific errors (backend init, device access, permissions)
-//! belong in the runtime crate (`kbd-global`).
+//! Errors are scoped to the operation that produces them:
+//!
+//! - [`ParseHotkeyError`] — parsing keys and hotkeys from strings
+//! - [`RegisterError`] — binding registration (hotkeys, sequences, tap-hold)
+//! - [`LayerError`] — layer definition and stack operations
 
 /// Error returned when parsing a hotkey or key from a string fails.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -26,23 +27,34 @@ pub enum ParseHotkeyError {
     MultipleKeys,
 }
 
-/// Core error type for hotkey operations.
+/// Error returned when registering a binding fails.
+///
+/// Covers hotkey registration, sequence registration, and tap-hold
+/// registration within the core dispatcher.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum Error {
+pub enum RegisterError {
     /// A hotkey string could not be parsed.
     #[error("parse error: {0}")]
     Parse(#[from] ParseHotkeyError),
     /// A binding for this hotkey is already registered.
     #[error("hotkey registration conflicts with an existing binding")]
     AlreadyRegistered,
+}
+
+/// Error returned when a layer operation fails.
+///
+/// Covers layer definition, push, pop, and toggle operations.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum LayerError {
     /// A layer with this name already exists.
     #[error("a layer with this name is already defined")]
-    LayerAlreadyDefined,
+    AlreadyDefined,
     /// No layer with this name has been defined.
     #[error("no layer with this name has been defined")]
-    LayerNotDefined,
+    NotDefined,
     /// Tried to pop a layer but the stack is empty.
     #[error("no active layer to pop")]
-    EmptyLayerStack,
+    EmptyStack,
 }
