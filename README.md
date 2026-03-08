@@ -4,7 +4,7 @@
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](#)
 
-A keyboard shortcut engine for Rust. You describe the bindings you care about, feed in key events from whatever source you have, and `kbd` tells you when something matches.
+A keyboard shortcut engine for Rust. Register bindings, feed in key events, get back match results. Same engine whether you're building a text editor, a tiling compositor, or a global hotkey daemon.
 
 ```rust
 use kbd::action::Action;
@@ -13,22 +13,42 @@ use kbd::key_state::KeyTransition;
 
 let mut dispatcher = Dispatcher::new();
 
+// Register with a string — or build hotkeys programmatically
 dispatcher.register("Ctrl+S", || println!("saved"))?;
 dispatcher.register("Ctrl+Shift+P", Action::Suppress)?;
 
-// process() tells you: matched, partially matched (sequence), or no match
 let result = dispatcher.process("Ctrl+S".parse()?, KeyTransition::Press);
+assert!(matches!(result, MatchResult::Matched { .. }));
 ```
 
 Bindings use physical key positions (W3C key codes), so they work the same regardless of keyboard layout. Layers, sequences, tap-hold, device filtering, and introspection are all built in — see the [`kbd` crate docs](https://docs.rs/kbd) for the full picture.
 
 ## Getting started
 
+Add `kbd` to your project:
+
+```toml
+[dependencies]
+kbd = "0.1"
+```
+
 The core crate is pure logic — no threads, no platform dependencies, no async runtime. You bring the key events, `kbd` does the matching.
 
-If your events come from a GUI framework, add the bridge crate for your framework (`kbd-winit`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-crossterm`). It converts the framework's key types into `kbd` types so you can feed them straight to the dispatcher.
+If your events come from a GUI framework, add the bridge crate for your framework. It converts the framework's key types into `kbd` types so you can feed them straight to the dispatcher:
+
+```toml
+[dependencies]
+kbd = "0.1"
+kbd-winit = "0.1"  # or kbd-egui, kbd-iced, kbd-tao, kbd-crossterm
+```
 
 For system-wide hotkeys on Linux, `kbd-global` runs a background thread that reads from evdev devices directly — works on Wayland, X11, and TTY without display-server integration:
+
+```toml
+[dependencies]
+kbd = "0.1"
+kbd-global = "0.1"
+```
 
 ```rust,no_run
 use kbd::hotkey::{Hotkey, Modifier};
