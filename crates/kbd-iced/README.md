@@ -3,9 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-iced.svg)](https://crates.io/crates/kbd-iced)
 [![docs.rs](https://docs.rs/kbd-iced/badge.svg)](https://docs.rs/kbd-iced)
 
-Iced key event conversions for the [`kbd` workspace](https://github.com/joshuadavidthomas/kbd).
-
-Use it when an iced application wants to keep its in-window shortcuts in the same hotkey format used by `kbd` and `kbd-global`.
+Converts [iced](https://docs.rs/iced) key events into [`kbd`](https://docs.rs/kbd) types so that in-window shortcuts and global hotkeys (from [`kbd-global`](https://docs.rs/kbd-global)) can share the same dispatcher.
 
 [API docs](https://docs.rs/kbd-iced) — includes the full key and modifier mapping tables.
 
@@ -19,21 +17,16 @@ kbd-iced = "0.1"
 
 ```rust
 use iced_core::keyboard::{key::Code, Modifiers};
-use kbd::action::Action;
-use kbd::dispatcher::{Dispatcher, MatchResult};
-use kbd::hotkey::{Hotkey, Modifier};
-use kbd::key_state::KeyTransition;
 use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 
-let mut dispatcher = Dispatcher::new();
-dispatcher.register("Ctrl+S", Action::Suppress)?;
+let key = Code::KeyS.to_key();
+// Some(Key::S)
 
-let key = Code::KeyS.to_key().unwrap();
 let mods = Modifiers::CTRL.to_modifiers();
-let hotkey = Hotkey::new(key).modifiers(mods);
+// ModifierSet containing Modifier::Ctrl
 
-let result = dispatcher.process(hotkey, KeyTransition::Press);
-assert!(matches!(result, MatchResult::Matched { .. }));
+// Combine into a Hotkey for use with a Dispatcher
+let hotkey = kbd::hotkey::Hotkey::new(key.unwrap()).modifiers(mods);
 ```
 
 This crate converts iced's physical key types. Logical key values are out of scope — `kbd` matches physical positions.

@@ -4,7 +4,7 @@
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](#)
 
-A keyboard shortcut engine for Rust. Register bindings, feed in key events, get back match results. Same engine whether you're building a text editor, a tiling compositor, or a global hotkey daemon.
+A keyboard shortcut engine for Rust. You describe the bindings you care about, feed in key events from whatever source you have, and `kbd` tells you when something matches.
 
 ```rust
 use kbd::action::Action;
@@ -13,12 +13,11 @@ use kbd::key_state::KeyTransition;
 
 let mut dispatcher = Dispatcher::new();
 
-// Register with a string — or build hotkeys programmatically
 dispatcher.register("Ctrl+S", || println!("saved"))?;
 dispatcher.register("Ctrl+Shift+P", Action::Suppress)?;
 
+// process() tells you: matched, partially matched (sequence), or no match
 let result = dispatcher.process("Ctrl+S".parse()?, KeyTransition::Press);
-assert!(matches!(result, MatchResult::Matched { .. }));
 ```
 
 Bindings use physical key positions (W3C key codes), so they work the same regardless of keyboard layout. Layers, sequences, tap-hold, device filtering, and introspection are all built in — see the [`kbd` crate docs](https://docs.rs/kbd) for the full picture.
