@@ -41,12 +41,13 @@
 //! lives in the engine thread.
 //!
 //! ```text
-//! ┌──────────────────┐    Command     ┌──────────────────┐
-//! │  HotkeyManager   │ ─────────────► │  Engine thread   │
-//! │  (command sender)│ ◄───────────── │  (event loop)    │
-//! └──────────────────┘    Reply        └──────────────────┘
-//!                                           │
-//!                                      poll(devices + wake_fd)
+//! +------------------+                +------------------+
+//! |  HotkeyManager   | -- commands -->|  Engine thread   |
+//! | (command sender) |<--- replies ---|   (event loop)   |
+//! +------------------+                +------------------+
+//!                                              |
+//!                                              v
+//!                                   poll(devices + wake_fd)
 //! ```
 //!
 //! # Lifecycle
