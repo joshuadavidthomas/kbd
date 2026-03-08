@@ -44,6 +44,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
+          set -euo pipefail
           if cargo semver-checks check-release \
             --workspace \
             --baseline-rev "origin/${BASE_REF}" \
