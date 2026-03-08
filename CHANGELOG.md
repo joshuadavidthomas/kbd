@@ -36,15 +36,20 @@ _For multi-package releases, list package versions here_
 
 ### Changed
 
-- Replaced `Vec<Modifier>` with a `u8` bitmask (`ModifierSet`), making `Hotkey` `Copy` and eliminating heap allocations for modifier storage.
+- **Breaking:** Replaced `Vec<Modifier>` with a `u8` bitmask (`ModifierSet`), making `Hotkey` `Copy` and eliminating heap allocations for modifier storage. Code that captures `Hotkey` in non-move closures may behave differently.
+- **Breaking:** Replaced monolithic `kbd::error::Error` enum with scoped error types: `RegisterError`, `LayerError`, `QueryError`, `ShutdownError`, and `StartupError`.
+- **Breaking:** Renamed `RegisteredBinding` to `Binding` and `RegisteredSequenceBinding` to `SequenceBinding`.
+- **Breaking:** `MatchResult::Matched` now includes a `repeat_policy` field. Code that constructs or pattern-matches this variant will need to be updated.
+- **Breaking:** `BindingInfo` now has a `source` field. Code that constructs `BindingInfo` with struct literals will need to include it.
+- **Breaking:** Removed `Dispatcher::check_timeouts`; timeout handling is now internal to the dispatcher.
+- **Breaking (kbd-evdev):** Removed `KbdKeyExt` and `EvdevKeyCodeExt` re-exports from the crate root. Use the explicit module paths instead.
+- **Breaking (kbd-global):** Removed root re-exports of `Backend`, `Error`, `BindingGuard`, `HotkeyManagerBuilder`, and `HotkeyManager`. Use the explicit module paths instead.
 - Switched sequence bindings from `HashMap` to `BTreeMap`, eliminating an O(n log n) sort on every keypress during sequence matching.
-- Replaced monolithic error enum with scoped error types: `RegisterError`, `LayerError`, `QueryError`, `ShutdownError`, and `StartupError`.
-- Renamed `RegisteredBinding` to `Binding` and `RegisteredSequenceBinding` to `SequenceBinding`.
 - Refreshed crate and module documentation with hero examples, architecture guides, and clearer introductions for all crates.
 
 ### Removed
 
-- Removed prelude module and root-level re-exports. All types are now accessed via explicit module paths (e.g., `kbd::hotkey::Hotkey`).
+- **Breaking:** Removed prelude module and root-level re-exports across `kbd`, `kbd-evdev`, and `kbd-global`. All types are now accessed via explicit module paths (e.g., `kbd::hotkey::Hotkey`).
 
 ## [0.1.0](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.1.0)
 
