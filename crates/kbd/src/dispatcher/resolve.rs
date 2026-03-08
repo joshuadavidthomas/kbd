@@ -1,6 +1,4 @@
 use super::DeviceContext;
-use super::Dispatcher;
-use super::sequence::RegisteredSequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::layer::StoredLayer;
@@ -198,19 +196,6 @@ fn binding_matches_hotkey(
     } else {
         // No device modifiers — use aggregate
         binding.hotkey == hotkey
-    }
-}
-
-impl Dispatcher {
-    /// Return all global sequence bindings sorted by ID for deterministic ordering.
-    ///
-    /// Both the runtime and query paths need globally-registered sequences in a
-    /// consistent order. This helper centralises the filter-free sort so callers
-    /// can pass the result straight to [`classify_sequence_prefixes`].
-    pub(super) fn sorted_global_sequences(&self) -> Vec<&RegisteredSequenceBinding> {
-        let mut seqs: Vec<_> = self.sequence_bindings_by_id.values().collect();
-        seqs.sort_by_key(|b| b.id.as_u64());
-        seqs
     }
 }
 

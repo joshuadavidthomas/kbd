@@ -17,6 +17,7 @@ mod tap_hold;
 mod throttle;
 mod timeout;
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -180,7 +181,7 @@ pub enum MatchResult<'a> {
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, RegisteredBinding>,
     binding_ids_by_hotkey: HashMap<Hotkey, Vec<BindingId>>,
-    sequence_bindings_by_id: HashMap<BindingId, RegisteredSequenceBinding>,
+    sequence_bindings_by_id: BTreeMap<BindingId, RegisteredSequenceBinding>,
     sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
     layer_stack: Vec<LayerStackEntry>,
@@ -622,7 +623,7 @@ impl Dispatcher {
         device: Option<&DeviceContext<'_>>,
     ) -> BindingMatch {
         let candidates: Vec<SequenceStartCandidate> = {
-            let global_seqs = self.sorted_global_sequences();
+            let global_seqs: Vec<_> = self.sequence_bindings_by_id.values().collect();
             let prefix_match = resolve::classify_sequence_prefixes(
                 global_seqs.iter().map(|b| &b.sequence),
                 hotkey,
