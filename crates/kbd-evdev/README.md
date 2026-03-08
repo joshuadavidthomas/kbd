@@ -13,6 +13,20 @@ kbd = "0.1"
 kbd-evdev = "0.1"
 ```
 
+## Requirements
+
+- Linux only
+- Read access to `/dev/input/`
+- Write access to `/dev/uinput` if you use grab mode and forwarding
+
+To read input devices without running as root, add your user to the `input` group:
+
+```bash
+sudo usermod -aG input $USER
+```
+
+Log out and back in for the group change to take effect.
+
 ## What it handles
 
 - **Device discovery** — scans `/dev/input/` for keyboards (devices that support A–Z + Enter)
@@ -48,20 +62,6 @@ let _poll_fds = manager.poll_fds();
 ```
 
 Call `poll(2)` on `DeviceManager::poll_fds()`, then pass the ready descriptors to `DeviceManager::process_polled_events()` — you get back key events (with device identity and press/release state) and disconnection notifications.
-
-## Requirements
-
-- Linux only
-- Read access to `/dev/input/`
-- Write access to `/dev/uinput` if you use grab mode and forwarding
-
-To read input devices without running as root, add your user to the `input` group:
-
-```bash
-sudo usermod -aG input $USER
-```
-
-Log out and back in for the group change to take effect.
 
 ## License
 
