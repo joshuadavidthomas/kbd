@@ -3,17 +3,25 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-global.svg)](https://crates.io/crates/kbd-global)
 [![docs.rs](https://docs.rs/kbd-global/badge.svg)](https://docs.rs/kbd-global)
 
-`kbd-global` is the Linux runtime for `kbd`.
+System-wide hotkeys on Linux for the [`kbd` workspace](https://github.com/joshuadavidthomas/kbd).
 
-Use it when you want process-wide or system-wide hotkeys on Linux without writing your own evdev polling loop. The runtime owns device discovery, hotplug handling, the engine thread, and the manager API used to register bindings and layers.
-
-Today it uses the evdev backend directly, so it works on Wayland, X11, and TTY without display-server-specific integrations.
+`kbd-global` runs a background thread that reads from evdev input devices, feeds events through `kbd`'s dispatcher, and fires your callbacks when bindings match. It handles device discovery, hotplug, and the event loop so you don't have to. Works on Wayland, X11, and TTY — no display server integration needed.
 
 ```toml
 [dependencies]
 kbd = "0.1"
 kbd-global = "0.1"
 ```
+
+## Setting up
+
+`kbd-global` reads `/dev/input/event*` directly. Your user needs permission to access input devices:
+
+```bash
+sudo usermod -aG input $USER
+```
+
+Log out and back in for the group change to take effect.
 
 ## Quick start
 
@@ -25,21 +33,23 @@ use kbd_global::manager::HotkeyManager;
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let manager = HotkeyManager::new()?;
 
+// Registration returns a guard — the binding lives until the guard is dropped
 let _guard = manager.register(
-    Hotkey::new(Key::C)
-        .modifier(Modifier::Ctrl)
-        .modifier(Modifier::Shift),
+    Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
     || println!("Ctrl+Shift+C pressed"),
 )?;
 
+// Keep the main thread alive so the background listener keeps running
 std::thread::park();
 # Ok(())
 # }
 ```
 
-`HotkeyManager` is the main entry point. Registration returns a `BindingGuard`; dropping it unregisters the binding.
+`HotkeyManager` is the main entry point. It spawns the engine thread on creation and communicates with it over a channel. Registration returns a [`BindingGuard`](https://docs.rs/kbd-global/latest/kbd_global/binding_guard/struct.BindingGuard.html) — dropping it unregisters the binding. Dropping the manager (or calling `shutdown()`) stops the runtime.
 
 ## Layers
+
+Layers let you swap between different binding sets at runtime — think vim modes, or a "gaming" layer that disables desktop shortcuts:
 
 ```rust,no_run
 use kbd::action::Action;
@@ -51,38 +61,55 @@ use kbd_global::manager::HotkeyManager;
 let manager = HotkeyManager::new()?;
 
 let layer = Layer::new("vim-normal")
-    .bind(Key::J, Action::Suppress)?
-    .bind(Key::K, Action::Suppress)?;
+    .bind(Key::J, || println!("down"))?
+    .bind(Key::K, || println!("up"))?
+    .bind(Key::I, Action::PushLayer("vim-insert".into()))?;
+
+let insert = Layer::new("vim-insert")
+    .bind("Escape".parse()?, Action::PopLayer)?;
 
 manager.define_layer(layer)?;
+manager.define_layer(insert)?;
 manager.push_layer("vim-normal")?;
 # Ok(())
 # }
 ```
 
-## Requirements
+Layers stack — the most recently pushed layer is checked first. `PopLayer` removes the top layer, `ToggleLayer` adds or removes by name.
 
-`kbd-global` reads `/dev/input/event*`, so your user must have permission to access Linux input devices.
+## Grab mode
 
-```bash
-sudo usermod -aG input $USER
+With the `grab` feature enabled, `kbd-global` can exclusively capture input devices so matched keys never reach other applications. Unmatched events are forwarded through a virtual uinput device.
+
+```toml
+[dependencies]
+kbd-global = { version = "0.1", features = ["grab"] }
 ```
 
-Log out and back in for the group change to take effect.
+```rust,no_run
+use kbd_global::manager::HotkeyManager;
 
-If you enable grab mode, you also need permission to create and write to `/dev/uinput`.
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let manager = HotkeyManager::builder()
+    .grab(true)
+    .build()?;
+# Ok(())
+# }
+```
+
+Grab mode requires write access to `/dev/uinput` in addition to read access on `/dev/input/`.
 
 ## Feature flags
 
 | Feature | Effect |
 |---|---|
-| `grab` | Enables exclusive device capture via `EVIOCGRAB` with uinput forwarding for unmatched events |
-| `serde` | Enables serde support for shared `kbd` key and hotkey types |
+| `grab` | Exclusive device capture via `EVIOCGRAB` with uinput forwarding for unmatched events |
+| `serde` | Serde support for shared `kbd` key and hotkey types |
 
 ## Current status
 
 - Linux only
-- evdev is the only backend currently available
+- evdev is the only backend
 - `Action::EmitHotkey` and `Action::EmitSequence` are not yet implemented in the runtime
 
 See the [API docs on docs.rs](https://docs.rs/kbd-global) for the full reference.

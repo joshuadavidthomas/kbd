@@ -15,23 +15,32 @@ kbd-winit = "0.1"
 
 ## Example
 
+Convert a winit key code and feed it to a dispatcher:
+
 ```rust
-use kbd::hotkey::Modifier;
-use kbd::key::Key;
+use kbd::action::Action;
+use kbd::dispatcher::{Dispatcher, MatchResult};
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key_state::KeyTransition;
 use kbd_winit::{WinitKeyExt, WinitModifiersExt};
-use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
+use winit::keyboard::{KeyCode, ModifiersState};
 
-let key = KeyCode::KeyA.to_key();
-assert_eq!(key, Some(Key::A));
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let mut dispatcher = Dispatcher::new();
+dispatcher.register("Ctrl+S", Action::Suppress)?;
 
-let physical = PhysicalKey::Code(KeyCode::KeyA).to_key();
-assert_eq!(physical, Some(Key::A));
-
+// Convert winit types to kbd types
+let key = KeyCode::KeyS.to_key().unwrap();
 let mods = ModifiersState::CONTROL.to_modifiers();
-assert!(mods.contains(Modifier::Ctrl));
+let hotkey = Hotkey::new(key).modifiers(mods);
+
+let result = dispatcher.process(hotkey, KeyTransition::Press);
+assert!(matches!(result, MatchResult::Matched { .. }));
+# Ok(())
+# }
 ```
 
-Winit tracks modifiers separately from key events. When you convert a full `KeyEvent`, pass in the latest `ModifiersState` from `WindowEvent::ModifiersChanged`.
+Winit tracks modifiers separately from key events. When you convert a full `KeyEvent`, use [`WinitEventExt`](https://docs.rs/kbd-winit/latest/kbd_winit/trait.WinitEventExt.html) and pass in the latest `ModifiersState` from `WindowEvent::ModifiersChanged`.
 
 See the [API docs on docs.rs](https://docs.rs/kbd-winit) for the full event-loop example and mapping tables.
 

@@ -15,20 +15,31 @@ kbd-tao = "0.1"
 
 ## Example
 
+Convert tao key types and feed them to a dispatcher:
+
 ```rust
-use kbd::hotkey::Modifier;
-use kbd::key::Key;
+use kbd::action::Action;
+use kbd::dispatcher::{Dispatcher, MatchResult};
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key_state::KeyTransition;
 use kbd_tao::{TaoKeyExt, TaoModifiersExt};
 use tao::keyboard::{KeyCode, ModifiersState};
 
-let key = KeyCode::KeyA.to_key();
-assert_eq!(key, Some(Key::A));
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let mut dispatcher = Dispatcher::new();
+dispatcher.register("Ctrl+S", Action::Suppress)?;
 
+let key = KeyCode::KeyS.to_key().unwrap();
 let mods = ModifiersState::CONTROL.to_modifiers();
-assert!(mods.contains(Modifier::Ctrl));
+let hotkey = Hotkey::new(key).modifiers(mods);
+
+let result = dispatcher.process(hotkey, KeyTransition::Press);
+assert!(matches!(result, MatchResult::Matched { .. }));
+# Ok(())
+# }
 ```
 
-Tao tracks modifiers separately from key events. When you convert a full `KeyEvent`, pass in the latest `ModifiersState` you received from the event loop.
+Tao tracks modifiers separately from key events. When you convert a full `KeyEvent`, use [`TaoEventExt`](https://docs.rs/kbd-tao/latest/kbd_tao/trait.TaoEventExt.html) and pass in the latest `ModifiersState` from the event loop.
 
 See the [API docs on docs.rs](https://docs.rs/kbd-tao) for the event-loop example and mapping tables.
 

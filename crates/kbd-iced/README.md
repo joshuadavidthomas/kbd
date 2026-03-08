@@ -15,20 +15,31 @@ kbd-iced = "0.1"
 
 ## Example
 
+Convert an iced key code and feed it to a dispatcher:
+
 ```rust
-use iced_core::keyboard::{self, Modifiers};
-use kbd::hotkey::Modifier;
-use kbd::key::Key;
+use iced_core::keyboard::{key::Code, Modifiers};
+use kbd::action::Action;
+use kbd::dispatcher::{Dispatcher, MatchResult};
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key_state::KeyTransition;
 use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 
-let key = keyboard::key::Code::KeyA.to_key();
-assert_eq!(key, Some(Key::A));
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let mut dispatcher = Dispatcher::new();
+dispatcher.register("Ctrl+S", Action::Suppress)?;
 
+let key = Code::KeyS.to_key().unwrap();
 let mods = Modifiers::CTRL.to_modifiers();
-assert!(mods.contains(Modifier::Ctrl));
+let hotkey = Hotkey::new(key).modifiers(mods);
+
+let result = dispatcher.process(hotkey, KeyTransition::Press);
+assert!(matches!(result, MatchResult::Matched { .. }));
+# Ok(())
+# }
 ```
 
-This crate converts iced's physical key types. Logical key values are intentionally out of scope because `kbd` matches physical positions.
+This crate converts iced's physical key types. Logical key values are out of scope — `kbd` matches physical positions.
 
 See the [API docs on docs.rs](https://docs.rs/kbd-iced) for the event conversion APIs and mapping tables.
 

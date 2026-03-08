@@ -15,17 +15,18 @@ kbd-egui = "0.1"
 
 ## Example
 
+Convert an egui event and feed it to a dispatcher:
+
 ```rust
 use egui::{Event, Key as EguiKey, Modifiers};
-use kbd::hotkey::{Hotkey, Modifier};
-use kbd::key::Key;
-use kbd_egui::{EguiEventExt, EguiKeyExt, EguiModifiersExt};
+use kbd::action::Action;
+use kbd::dispatcher::{Dispatcher, MatchResult};
+use kbd::key_state::KeyTransition;
+use kbd_egui::EguiEventExt;
 
-let key = EguiKey::A.to_key();
-assert_eq!(key, Some(Key::A));
-
-let mods = Modifiers::CTRL.to_modifiers();
-assert!(mods.contains(Modifier::Ctrl));
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let mut dispatcher = Dispatcher::new();
+dispatcher.register("Ctrl+C", Action::Suppress)?;
 
 let event = Event::Key {
     key: EguiKey::C,
@@ -34,11 +35,16 @@ let event = Event::Key {
     repeat: false,
     modifiers: Modifiers::CTRL,
 };
-let hotkey = event.to_hotkey();
-assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
+
+if let Some(hotkey) = event.to_hotkey() {
+    let result = dispatcher.process(hotkey, KeyTransition::Press);
+    assert!(matches!(result, MatchResult::Matched { .. }));
+}
+# Ok(())
+# }
 ```
 
-Egui does not expose the full W3C physical-key space. Logical or shifted keys such as `Colon` or `Plus` do not have a single physical-key mapping, so they return `None`.
+Egui does not expose the full W3C physical-key space. Logical or shifted keys such as `Colon` or `Plus` do not have a single physical-key mapping, so `to_hotkey()` returns `None` for those.
 
 See the [API docs on docs.rs](https://docs.rs/kbd-egui) for the complete mapping details.
 
