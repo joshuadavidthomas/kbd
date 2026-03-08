@@ -4,6 +4,7 @@ use std::error::Error as StdError;
 use kbd::hotkey::Hotkey;
 use kbd_global::LayerError;
 use kbd_global::ManagerStopped;
+use kbd_global::QueryError;
 use kbd_global::RegisterError;
 use kbd_global::ShutdownError;
 use kbd_global::StartupError;
@@ -88,6 +89,23 @@ fn shutdown_error_display_messages() {
     for (error, expected_message) in cases {
         assert_eq!(error.to_string(), expected_message);
     }
+}
+
+#[test]
+fn query_error_display_messages() {
+    let cases: Vec<(QueryError, &str)> = vec![(
+        QueryError::ManagerStopped(ManagerStopped),
+        "hotkey manager is no longer running",
+    )];
+
+    for (error, expected_message) in cases {
+        assert_eq!(error.to_string(), expected_message);
+    }
+
+    // Parse variant tested via conversion below
+    let parse_error = "NotAKey".parse::<Hotkey>().unwrap_err();
+    let error = QueryError::from(parse_error);
+    assert!(error.to_string().starts_with("parse error:"));
 }
 
 #[test]
