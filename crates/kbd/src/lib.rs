@@ -9,7 +9,8 @@
 //!
 //! # Quick start
 //!
-//! Register a hotkey, feed key events, and inspect the match result:
+//! Describe your bindings — as strings or programmatically — and the
+//! dispatcher tells you when incoming key events match:
 //!
 //! ```
 //! use kbd::action::Action;
@@ -22,6 +23,7 @@
 //! dispatcher.register("Ctrl+S", || println!("saved"))?;
 //! dispatcher.register("Ctrl+Shift+P", Action::Suppress)?;
 //!
+//! // process() returns Matched, Pending (partial sequence), or NoMatch
 //! let result = dispatcher.process("Ctrl+S".parse()?, KeyTransition::Press);
 //! assert!(matches!(result, MatchResult::Matched { .. }));
 //! # Ok(())
