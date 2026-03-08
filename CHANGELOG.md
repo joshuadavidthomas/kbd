@@ -23,7 +23,7 @@ _For multi-package releases, list package versions here_
 
 ## [0.2.0](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.2.0)
 
-_All crates: 0.1.0 → 0.2.0. Substantive changes in `kbd`, `kbd-evdev`, and `kbd-global`. Bridge crates (`kbd-crossterm`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-winit`) received version bumps only._
+_Substantive changes in `kbd`, `kbd-evdev`, and `kbd-global`. Bridge crates (`kbd-crossterm`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-winit`) received version bumps only._
 
 ### Added
 
