@@ -15,6 +15,7 @@
 use std::time::Duration;
 
 use crate::action::Action;
+use crate::binding::BindingId;
 use crate::binding::BindingOptions;
 use crate::error::ParseHotkeyError;
 use crate::hotkey::Hotkey;
@@ -155,6 +156,7 @@ impl LayerOptions {
 /// A single hotkey binding within a layer.
 #[derive(Debug)]
 pub(crate) struct LayerBinding {
+    pub(crate) id: BindingId,
     pub(crate) hotkey: Hotkey,
     pub(crate) action: Action,
     pub(crate) options: BindingOptions,
@@ -163,6 +165,7 @@ pub(crate) struct LayerBinding {
 /// A single sequence binding within a layer.
 #[derive(Debug)]
 pub(crate) struct LayerSequenceBinding {
+    pub(crate) id: BindingId,
     pub(crate) sequence: HotkeySequence,
     pub(crate) action: Action,
     pub(crate) propagation: KeyPropagation,
@@ -297,6 +300,7 @@ impl Layer {
         options: BindingOptions,
     ) -> Result<Self, ParseHotkeyError> {
         self.bindings.push(LayerBinding {
+            id: BindingId::new(),
             hotkey: hotkey.into_hotkey()?,
             action: action.into(),
             options,
@@ -315,6 +319,7 @@ impl Layer {
         action: impl Into<Action>,
     ) -> Result<Self, ParseHotkeyError> {
         self.sequence_bindings.push(LayerSequenceBinding {
+            id: BindingId::new(),
             sequence: sequence.into_sequence()?,
             action: action.into(),
             propagation: KeyPropagation::default(),
@@ -335,6 +340,7 @@ impl Layer {
         options: SequenceOptions,
     ) -> Result<Self, ParseHotkeyError> {
         self.sequence_bindings.push(LayerSequenceBinding {
+            id: BindingId::new(),
             sequence: sequence.into_sequence()?,
             action: action.into(),
             propagation: KeyPropagation::default(),

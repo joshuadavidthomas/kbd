@@ -203,6 +203,7 @@ fn binding_matches_hotkey(
 mod tests {
     use super::*;
     use crate::action::Action;
+    use crate::binding::BindingId;
     use crate::binding::BindingOptions;
     use crate::hotkey::Hotkey;
     use crate::key::Key;
@@ -227,6 +228,7 @@ mod tests {
 
     fn immediate(key: Key) -> LayerBinding {
         LayerBinding {
+            id: BindingId::new(),
             hotkey: Hotkey::new(key),
             action: Action::Suppress,
             options: BindingOptions::default(),
@@ -235,6 +237,7 @@ mod tests {
 
     fn seq_binding(sequence: HotkeySequence) -> LayerSequenceBinding {
         LayerSequenceBinding {
+            id: BindingId::new(),
             sequence,
             action: Action::Suppress,
             propagation: KeyPropagation::default(),
