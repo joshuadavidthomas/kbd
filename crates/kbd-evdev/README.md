@@ -7,8 +7,6 @@ Low-level Linux input backend for the [`kbd` workspace](https://github.com/joshu
 
 Most applications should start with [`kbd-global`](https://docs.rs/kbd-global), which wraps this crate in a threaded runtime. Use `kbd-evdev` directly when you need explicit control over device discovery, hotplug handling, file-descriptor polling, grab mode, or virtual-device forwarding.
 
-[API docs](https://docs.rs/kbd-evdev)
-
 ```toml
 [dependencies]
 kbd = "0.1"

@@ -7,8 +7,6 @@ The pure matching engine at the center of the [`kbd` workspace](https://github.c
 
 You describe bindings — as strings like `"Ctrl+Shift+A"` or programmatically — and the dispatcher tells you when incoming key events match. It has no platform dependencies and no runtime thread of its own; you bring the key events from wherever you have them.
 
-[API docs](https://docs.rs/kbd)
-
 ```toml
 [dependencies]
 kbd = "0.1"
