@@ -36,9 +36,9 @@ use self::tap_hold::TapHoldState;
 use self::throttle::ThrottleTracker;
 pub use self::timeout::PendingTimeout;
 use crate::action::Action;
+use crate::binding::Binding;
 use crate::binding::BindingId;
-use crate::binding::RegisteredBinding;
-use crate::binding::RegisteredSequenceBinding;
+use crate::binding::SequenceBinding;
 use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
@@ -179,9 +179,9 @@ pub enum MatchResult<'a> {
 /// ```
 #[derive(Default)]
 pub struct Dispatcher {
-    bindings_by_id: HashMap<BindingId, RegisteredBinding>,
+    bindings_by_id: HashMap<BindingId, Binding>,
     binding_ids_by_hotkey: HashMap<Hotkey, Vec<BindingId>>,
-    sequence_bindings_by_id: BTreeMap<BindingId, RegisteredSequenceBinding>,
+    sequence_bindings_by_id: BTreeMap<BindingId, SequenceBinding>,
     sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
     layer_stack: Vec<LayerStackEntry>,

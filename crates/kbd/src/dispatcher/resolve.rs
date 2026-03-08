@@ -1,5 +1,5 @@
 use super::DeviceContext;
-use crate::binding::RegisteredBinding;
+use crate::binding::Binding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::layer::StoredLayer;
@@ -171,7 +171,7 @@ fn find_immediate_in_layer(
 
 /// Check whether a binding matches a hotkey, respecting device filters.
 fn binding_matches_hotkey(
-    binding: &RegisteredBinding,
+    binding: &Binding,
     hotkey: Hotkey,
     device: Option<&DeviceContext<'_>>,
 ) -> bool {
@@ -205,7 +205,7 @@ mod tests {
     use super::*;
     use crate::action::Action;
     use crate::binding::BindingId;
-    use crate::binding::RegisteredSequenceBinding;
+    use crate::binding::SequenceBinding;
     use crate::hotkey::Hotkey;
     use crate::key::Key;
     use crate::layer::LayerOptions;
@@ -224,12 +224,12 @@ mod tests {
         HotkeySequence::new(vec![Hotkey::new(a), Hotkey::new(b), Hotkey::new(c)]).unwrap()
     }
 
-    fn immediate(key: Key) -> RegisteredBinding {
-        RegisteredBinding::new(BindingId::new(), Hotkey::new(key), Action::Suppress)
+    fn immediate(key: Key) -> Binding {
+        Binding::new(BindingId::new(), Hotkey::new(key), Action::Suppress)
     }
 
-    fn seq_binding(sequence: HotkeySequence) -> RegisteredSequenceBinding {
-        RegisteredSequenceBinding::new(
+    fn seq_binding(sequence: HotkeySequence) -> SequenceBinding {
+        SequenceBinding::new(
             BindingId::new(),
             sequence,
             Action::Suppress,
@@ -237,10 +237,7 @@ mod tests {
         )
     }
 
-    fn layer(
-        bindings: Vec<RegisteredBinding>,
-        sequence_bindings: Vec<RegisteredSequenceBinding>,
-    ) -> StoredLayer {
+    fn layer(bindings: Vec<Binding>, sequence_bindings: Vec<SequenceBinding>) -> StoredLayer {
         StoredLayer {
             bindings,
             sequence_bindings,

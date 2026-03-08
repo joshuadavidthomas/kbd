@@ -3,7 +3,7 @@ use super::resolve;
 use super::resolve::LayerMatch;
 use super::resolve::SequencePrefixMatch;
 use crate::binding::BindingId;
-use crate::binding::RegisteredSequenceBinding;
+use crate::binding::SequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
@@ -52,10 +52,7 @@ impl Dispatcher {
     /// determine whether the device-filtered binding would actually fire.
     ///
     /// Results are grouped by hotkey and then by precedence tier.
-    fn collect_global_bindings(
-        &self,
-        global_sequences: &[&RegisteredSequenceBinding],
-    ) -> Vec<BindingInfo> {
+    fn collect_global_bindings(&self, global_sequences: &[&SequenceBinding]) -> Vec<BindingInfo> {
         let mut results = Vec::new();
 
         let mut global_hotkeys: Vec<_> = self.binding_ids_by_hotkey.keys().collect();
@@ -130,7 +127,7 @@ impl Dispatcher {
     fn global_claim(
         &self,
         hotkey: Hotkey,
-        global_sequences: &[&RegisteredSequenceBinding],
+        global_sequences: &[&SequenceBinding],
     ) -> Option<HotkeyClaim> {
         match resolve::classify_sequence_prefixes(
             global_sequences.iter().map(|binding| &binding.sequence),
@@ -740,7 +737,7 @@ mod tests {
 
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(
+                crate::binding::Binding::new(
                     crate::binding::BindingId::new(),
                     hotkey,
                     Action::Suppress,
@@ -751,7 +748,7 @@ mod tests {
 
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(
+                crate::binding::Binding::new(
                     crate::binding::BindingId::new(),
                     hotkey,
                     Action::Suppress,
@@ -819,7 +816,7 @@ mod tests {
         let default_id = crate::binding::BindingId::new();
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(default_id, hotkey, Action::Suppress)
+                crate::binding::Binding::new(default_id, hotkey, Action::Suppress)
                     .with_options(crate::binding::BindingOptions::default().with_source("DEFAULT")),
             )
             .unwrap();
@@ -827,7 +824,7 @@ mod tests {
         let plugin_id = crate::binding::BindingId::new();
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(plugin_id, hotkey, Action::Suppress)
+                crate::binding::Binding::new(plugin_id, hotkey, Action::Suppress)
                     .with_options(crate::binding::BindingOptions::default().with_source("plugin")),
             )
             .unwrap();
@@ -835,7 +832,7 @@ mod tests {
         let user_id = crate::binding::BindingId::new();
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(user_id, hotkey, Action::Suppress)
+                crate::binding::Binding::new(user_id, hotkey, Action::Suppress)
                     .with_options(crate::binding::BindingOptions::default().with_source("user")),
             )
             .unwrap();
@@ -890,7 +887,7 @@ mod tests {
 
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(
+                crate::binding::Binding::new(
                     crate::binding::BindingId::new(),
                     Hotkey::new(Key::V),
                     Action::Suppress,
@@ -899,7 +896,7 @@ mod tests {
             )
             .unwrap();
         dispatcher
-            .register_binding(crate::binding::RegisteredBinding::new(
+            .register_binding(crate::binding::Binding::new(
                 crate::binding::BindingId::new(),
                 Hotkey::new(Key::A),
                 Action::Suppress,
@@ -907,7 +904,7 @@ mod tests {
             .unwrap();
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(
+                crate::binding::Binding::new(
                     crate::binding::BindingId::new(),
                     Hotkey::new(Key::V),
                     Action::Suppress,
@@ -917,7 +914,7 @@ mod tests {
             .unwrap();
         dispatcher
             .register_binding(
-                crate::binding::RegisteredBinding::new(
+                crate::binding::Binding::new(
                     crate::binding::BindingId::new(),
                     Hotkey::new(Key::V),
                     Action::Suppress,

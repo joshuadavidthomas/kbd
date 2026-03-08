@@ -11,11 +11,11 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use kbd::action::Action;
+use kbd::binding::Binding;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::BindingSource;
 use kbd::binding::OverlayVisibility;
-use kbd::binding::RegisteredBinding;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
 use kbd::error::LayerError;
@@ -204,7 +204,7 @@ fn propagation_continue_returned_in_match() {
 
     dispatcher
         .register_binding(
-            RegisteredBinding::new(BindingId::new(), Hotkey::new(Key::A), Action::Suppress)
+            Binding::new(BindingId::new(), Hotkey::new(Key::A), Action::Suppress)
                 .with_propagation(KeyPropagation::Continue),
         )
         .unwrap();
@@ -628,18 +628,11 @@ fn register_binding_duplicate_returns_error() {
     let hotkey = Hotkey::new(Key::A);
 
     dispatcher
-        .register_binding(RegisteredBinding::new(
-            BindingId::new(),
-            hotkey,
-            Action::Suppress,
-        ))
+        .register_binding(Binding::new(BindingId::new(), hotkey, Action::Suppress))
         .unwrap();
 
-    let result = dispatcher.register_binding(RegisteredBinding::new(
-        BindingId::new(),
-        hotkey,
-        Action::Suppress,
-    ));
+    let result =
+        dispatcher.register_binding(Binding::new(BindingId::new(), hotkey, Action::Suppress));
     assert!(matches!(result, Err(RegisterError::AlreadyRegistered)));
 }
 

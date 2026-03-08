@@ -20,14 +20,14 @@ use std::time::Duration;
 ///
 /// ```
 /// use kbd::action::Action;
-/// use kbd::binding::{BindingId, BindingOptions, RegisteredBinding};
+/// use kbd::binding::{BindingId, BindingOptions, Binding};
 /// use kbd::hotkey::{Hotkey, Modifier};
 /// use kbd::key::Key;
 /// use kbd::policy::KeyPropagation;
 ///
 /// // A binding that forwards the key event to the application
 /// // while still running its action (e.g., logging keypresses).
-/// let binding = RegisteredBinding::new(
+/// let binding = Binding::new(
 ///     BindingId::new(),
 ///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
 ///     Action::Suppress,

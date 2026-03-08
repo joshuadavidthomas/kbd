@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::sync::mpsc;
 
 use kbd::action::Action;
+use kbd::binding::Binding;
 use kbd::binding::BindingId;
-use kbd::binding::RegisteredBinding;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::ModifierSet;
@@ -28,7 +28,7 @@ use crate::ManagerStopped;
 
 pub(crate) enum Command {
     Register {
-        binding: RegisteredBinding,
+        binding: Binding,
         reply: mpsc::Sender<Result<(), crate::RegisterError>>,
     },
     RegisterSequence {
