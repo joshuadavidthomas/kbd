@@ -23,8 +23,6 @@ _For multi-package releases, list package versions here_
 
 ## [0.2.0](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.2.0)
 
-_Substantive changes in `kbd`, `kbd-evdev`, and `kbd-global`. Bridge crates (`kbd-crossterm`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-winit`) received version bumps only._
-
 ### Added
 
 - Added sequence matching to the dispatcher and manager, enabling multi-key shortcut sequences (e.g., `g g` or `Ctrl+K Ctrl+C`). (`kbd`)
