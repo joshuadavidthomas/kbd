@@ -15,7 +15,7 @@
 //! ```
 //! use kbd::prelude::*;
 //!
-//! # fn main() -> Result<(), kbd::error::Error> {
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut dispatcher = Dispatcher::new();
 //!
 //! // Register Ctrl+S as a global binding
@@ -66,7 +66,7 @@ pub mod tap_hold;
 /// ```
 /// use kbd::prelude::*;
 ///
-/// # fn main() -> Result<(), kbd::error::Error> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut dispatcher = Dispatcher::new();
 /// dispatcher.register(
 ///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),

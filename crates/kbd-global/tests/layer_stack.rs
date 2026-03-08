@@ -5,7 +5,7 @@ use kbd::action::Action;
 use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd::layer::LayerName;
-use kbd_global::Error;
+use kbd_global::LayerError;
 
 #[test]
 fn push_layer_succeeds_for_defined_layer() {
@@ -23,7 +23,7 @@ fn push_undefined_layer_returns_error() {
     let manager = utils::test_manager();
 
     let result = manager.push_layer("nonexistent");
-    assert!(matches!(result, Err(Error::LayerNotDefined)));
+    assert!(matches!(result, Err(LayerError::NotDefined)));
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn pop_empty_stack_returns_error() {
     let manager = utils::test_manager();
 
     let result = manager.pop_layer();
-    assert!(matches!(result, Err(Error::EmptyLayerStack)));
+    assert!(matches!(result, Err(LayerError::EmptyStack)));
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn toggle_layer_on_and_off() {
 
     // Pop should fail — stack is empty after toggle off
     let result = manager.pop_layer();
-    assert!(matches!(result, Err(Error::EmptyLayerStack)));
+    assert!(matches!(result, Err(LayerError::EmptyStack)));
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn toggle_undefined_layer_returns_error() {
     let manager = utils::test_manager();
 
     let result = manager.toggle_layer("nonexistent");
-    assert!(matches!(result, Err(Error::LayerNotDefined)));
+    assert!(matches!(result, Err(LayerError::NotDefined)));
 }
 
 #[test]

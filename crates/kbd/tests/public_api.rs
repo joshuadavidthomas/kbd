@@ -18,8 +18,9 @@ use kbd::binding::OverlayVisibility;
 use kbd::binding::RegisteredBinding;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
-use kbd::error::Error;
+use kbd::error::LayerError;
 use kbd::error::ParseHotkeyError;
+use kbd::error::RegisterError;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
@@ -426,19 +427,19 @@ fn error_variants_accessible() {
         .unwrap();
     assert!(matches!(
         dispatcher.register(Hotkey::new(Key::A), Action::Suppress),
-        Err(Error::AlreadyRegistered)
+        Err(RegisterError::AlreadyRegistered)
     ));
 
     // LayerNotDefined
     assert!(matches!(
         dispatcher.push_layer("nope"),
-        Err(Error::LayerNotDefined)
+        Err(LayerError::NotDefined)
     ));
 
     // EmptyLayerStack
     assert!(matches!(
         dispatcher.pop_layer(),
-        Err(Error::EmptyLayerStack)
+        Err(LayerError::EmptyStack)
     ));
 
     // LayerAlreadyDefined
@@ -447,7 +448,7 @@ fn error_variants_accessible() {
         .unwrap();
     assert!(matches!(
         dispatcher.define_layer(Layer::new("x").bind(Key::B, Action::Suppress).unwrap()),
-        Err(Error::LayerAlreadyDefined)
+        Err(LayerError::AlreadyDefined)
     ));
 }
 
@@ -639,7 +640,7 @@ fn register_binding_duplicate_returns_error() {
         hotkey,
         Action::Suppress,
     ));
-    assert!(matches!(result, Err(Error::AlreadyRegistered)));
+    assert!(matches!(result, Err(RegisterError::AlreadyRegistered)));
 }
 
 #[test]
@@ -656,5 +657,5 @@ fn register_with_options_standard_tier_sources_still_conflict() {
         .unwrap();
 
     let result = dispatcher.register(hotkey, Action::Suppress);
-    assert!(matches!(result, Err(Error::AlreadyRegistered)));
+    assert!(matches!(result, Err(RegisterError::AlreadyRegistered)));
 }

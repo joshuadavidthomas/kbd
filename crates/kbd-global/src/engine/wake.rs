@@ -11,18 +11,18 @@ use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
 use std::os::fd::RawFd;
 
-use crate::Error;
+use crate::StartupError;
 
 pub(crate) struct WakeFd {
     fd: OwnedFd,
 }
 
 impl WakeFd {
-    pub(crate) fn new() -> Result<Self, Error> {
+    pub(crate) fn new() -> Result<Self, StartupError> {
         // SAFETY: Calling libc `eventfd` with constant flags.
         let raw_fd = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
         if raw_fd < 0 {
-            return Err(Error::EngineError);
+            return Err(StartupError::Engine);
         }
 
         // SAFETY: `raw_fd` is an owned descriptor returned by `eventfd`.

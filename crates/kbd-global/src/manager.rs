@@ -40,7 +40,7 @@ use kbd::sequence::PendingSequenceInfo;
 use kbd::sequence::SequenceInput;
 use kbd::sequence::SequenceOptions;
 
-use crate::Error;
+use crate::ManagerStopped;
 use crate::backend::Backend;
 use crate::binding_guard::BindingGuard;
 use crate::engine::Command;
@@ -100,7 +100,7 @@ impl HotkeyManagerBuilder {
     /// Returns an error if the backend cannot be initialized, grab mode
     /// is requested without the `grab` feature, or the engine thread
     /// fails to start.
-    pub fn build(self) -> Result<HotkeyManager, Error> {
+    pub fn build(self) -> Result<HotkeyManager, crate::StartupError> {
         let backend = resolve_backend(self.backend)?;
         validate_grab_configuration(backend, self.grab)?;
 
@@ -149,7 +149,7 @@ impl HotkeyManager {
     ///
     /// Returns an error if the backend cannot be initialized or input
     /// devices are not accessible.
-    pub fn new() -> Result<Self, Error> {
+    pub fn new() -> Result<Self, crate::StartupError> {
         Self::builder().build()
     }
 
@@ -172,10 +172,17 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when string input conversion fails,
-    /// [`Error::AlreadyRegistered`] if the hotkey is already bound,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn register<F>(&self, hotkey: impl HotkeyInput, callback: F) -> Result<BindingGuard, Error>
+    /// Returns [`RegisterError::Parse`](crate::RegisterError::Parse) when
+    /// string input conversion fails,
+    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// if the hotkey is already bound, or
+    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// if the engine has shut down.
+    pub fn register<F>(
+        &self,
+        hotkey: impl HotkeyInput,
+        callback: F,
+    ) -> Result<BindingGuard, crate::RegisterError>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -187,14 +194,17 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when sequence input conversion fails,
-    /// [`Error::AlreadyRegistered`] if the sequence is already bound,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    /// Returns [`RegisterError::Parse`](crate::RegisterError::Parse) when
+    /// sequence input conversion fails,
+    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// if the sequence is already bound, or
+    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// if the engine has shut down.
     pub fn register_sequence<F>(
         &self,
         sequence: impl SequenceInput,
         callback: F,
-    ) -> Result<BindingGuard, Error>
+    ) -> Result<BindingGuard, crate::RegisterError>
     where
         F: Fn() + Send + Sync + 'static,
     {
@@ -206,15 +216,18 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when sequence input conversion fails,
-    /// [`Error::AlreadyRegistered`] if the sequence is already bound,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    /// Returns [`RegisterError::Parse`](crate::RegisterError::Parse) when
+    /// sequence input conversion fails,
+    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// if the sequence is already bound, or
+    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// if the engine has shut down.
     pub fn register_sequence_with_options(
         &self,
         sequence: impl SequenceInput,
         action: impl Into<Action>,
         options: SequenceOptions,
-    ) -> Result<BindingGuard, Error> {
+    ) -> Result<BindingGuard, crate::RegisterError> {
         let sequence = sequence.into_sequence()?;
         self.register_sequence_action(sequence, action.into(), options)
     }
@@ -229,15 +242,18 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when string input conversion fails,
-    /// [`Error::AlreadyRegistered`] if the hotkey is already bound,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    /// Returns [`RegisterError::Parse`](crate::RegisterError::Parse) when
+    /// string input conversion fails,
+    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// if the hotkey is already bound, or
+    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// if the engine has shut down.
     pub fn register_with_options(
         &self,
         hotkey: impl HotkeyInput,
         action: impl Into<Action>,
         options: BindingOptions,
-    ) -> Result<BindingGuard, Error> {
+    ) -> Result<BindingGuard, crate::RegisterError> {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
         let binding = RegisteredBinding::new(id, hotkey, action.into()).with_options(options);
@@ -253,19 +269,21 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when string input conversion fails,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn is_registered(&self, hotkey: impl HotkeyInput) -> Result<bool, Error> {
+    /// Returns [`QueryError::Parse`](crate::QueryError::Parse) when string
+    /// input conversion fails, or
+    /// [`QueryError::ManagerStopped`](crate::QueryError::ManagerStopped) if
+    /// the engine has shut down.
+    pub fn is_registered(&self, hotkey: impl HotkeyInput) -> Result<bool, crate::QueryError> {
         let hotkey = hotkey.into_hotkey()?;
-        self.request(|reply| Command::IsRegistered { hotkey, reply })
+        Ok(self.request(|reply| Command::IsRegistered { hotkey, reply })?)
     }
 
     /// Query whether a specific key is currently pressed on any device.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn is_key_pressed(&self, key: Key) -> Result<bool, Error> {
+    /// Returns [`ManagerStopped`] if the engine has shut down.
+    pub fn is_key_pressed(&self, key: Key) -> Result<bool, ManagerStopped> {
         self.request(|reply| Command::IsKeyPressed { key, reply })
     }
 
@@ -276,8 +294,8 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn active_modifiers(&self) -> Result<ModifierSet, Error> {
+    /// Returns [`ManagerStopped`] if the engine has shut down.
+    pub fn active_modifiers(&self) -> Result<ModifierSet, ManagerStopped> {
         self.request(|reply| Command::ActiveModifiers { reply })
     }
 
@@ -288,10 +306,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::LayerAlreadyDefined`] if a layer with the same
-    /// name has already been defined, or [`Error::ManagerStopped`] if
-    /// the engine has shut down.
-    pub fn define_layer(&self, layer: Layer) -> Result<(), Error> {
+    /// Returns [`LayerError::AlreadyDefined`](crate::LayerError::AlreadyDefined)
+    /// if a layer with the same name has already been defined, or
+    /// [`LayerError::ManagerStopped`](crate::LayerError::ManagerStopped)
+    /// if the engine has shut down.
+    pub fn define_layer(&self, layer: Layer) -> Result<(), crate::LayerError> {
         self.request(|reply| Command::DefineLayer { layer, reply })?
     }
 
@@ -302,8 +321,9 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::EngineError`] if the engine thread panicked.
-    pub fn shutdown(self) -> Result<(), Error> {
+    /// Returns [`ShutdownError::Engine`](crate::ShutdownError::Engine) if
+    /// the engine thread panicked.
+    pub fn shutdown(self) -> Result<(), crate::ShutdownError> {
         self.shutdown_inner()
     }
 
@@ -311,13 +331,20 @@ impl HotkeyManager {
     ///
     /// Encapsulates the channel-create → send → recv → map-error boilerplate
     /// shared by every request/reply manager method.
-    fn request<T>(&self, build: impl FnOnce(mpsc::Sender<T>) -> Command) -> Result<T, Error> {
+    fn request<T>(
+        &self,
+        build: impl FnOnce(mpsc::Sender<T>) -> Command,
+    ) -> Result<T, ManagerStopped> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.commands.send(build(reply_tx))?;
-        reply_rx.recv().map_err(|_| Error::ManagerStopped)
+        reply_rx.recv().map_err(|_| ManagerStopped)
     }
 
-    fn register_action(&self, hotkey: Hotkey, action: Action) -> Result<BindingGuard, Error> {
+    fn register_action(
+        &self,
+        hotkey: Hotkey,
+        action: Action,
+    ) -> Result<BindingGuard, crate::RegisterError> {
         self.register_with_options(hotkey, action, BindingOptions::default())
     }
 
@@ -326,7 +353,7 @@ impl HotkeyManager {
         sequence: HotkeySequence,
         action: Action,
         options: SequenceOptions,
-    ) -> Result<BindingGuard, Error> {
+    ) -> Result<BindingGuard, crate::RegisterError> {
         let id = self.request(|reply| Command::RegisterSequence {
             sequence,
             action,
@@ -336,8 +363,11 @@ impl HotkeyManager {
         Ok(BindingGuard::new(id, self.commands.clone()))
     }
 
-    fn shutdown_inner(&self) -> Result<(), Error> {
-        let mut runtime = self.runtime.lock().map_err(|_| Error::EngineError)?;
+    fn shutdown_inner(&self) -> Result<(), crate::ShutdownError> {
+        let mut runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| crate::ShutdownError::Engine)?;
         if let Some(runtime) = runtime.take() {
             return runtime.shutdown();
         }
@@ -352,9 +382,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::LayerNotDefined`] if no layer with the given name exists,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn push_layer(&self, name: impl Into<LayerName>) -> Result<(), Error> {
+    /// Returns [`LayerError::NotDefined`](crate::LayerError::NotDefined) if
+    /// no layer with the given name exists, or
+    /// [`LayerError::ManagerStopped`](crate::LayerError::ManagerStopped) if
+    /// the engine has shut down.
+    pub fn push_layer(&self, name: impl Into<LayerName>) -> Result<(), crate::LayerError> {
         self.request(|reply| Command::PushLayer {
             name: name.into(),
             reply,
@@ -367,9 +399,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::EmptyLayerStack`] if no layers are active,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn pop_layer(&self) -> Result<LayerName, Error> {
+    /// Returns [`LayerError::EmptyStack`](crate::LayerError::EmptyStack)
+    /// if no layers are active, or
+    /// [`LayerError::ManagerStopped`](crate::LayerError::ManagerStopped) if
+    /// the engine has shut down.
+    pub fn pop_layer(&self) -> Result<LayerName, crate::LayerError> {
         self.request(|reply| Command::PopLayer { reply })?
     }
 
@@ -380,9 +414,11 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::LayerNotDefined`] if no layer with the given name exists,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn toggle_layer(&self, name: impl Into<LayerName>) -> Result<(), Error> {
+    /// Returns [`LayerError::NotDefined`](crate::LayerError::NotDefined) if
+    /// no layer with the given name exists, or
+    /// [`LayerError::ManagerStopped`](crate::LayerError::ManagerStopped) if
+    /// the engine has shut down.
+    pub fn toggle_layer(&self, name: impl Into<LayerName>) -> Result<(), crate::LayerError> {
         self.request(|reply| Command::ToggleLayer {
             name: name.into(),
             reply,
@@ -397,8 +433,8 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn list_bindings(&self) -> Result<Vec<BindingInfo>, Error> {
+    /// Returns [`ManagerStopped`] if the engine has shut down.
+    pub fn list_bindings(&self) -> Result<Vec<BindingInfo>, ManagerStopped> {
         self.request(|reply| Command::ListBindings { reply })
     }
 
@@ -409,10 +445,16 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn bindings_for_key(&self, hotkey: impl HotkeyInput) -> Result<Option<BindingInfo>, Error> {
+    /// Returns [`QueryError::Parse`](crate::QueryError::Parse) when string
+    /// input conversion fails, or
+    /// [`QueryError::ManagerStopped`](crate::QueryError::ManagerStopped) if
+    /// the engine has shut down.
+    pub fn bindings_for_key(
+        &self,
+        hotkey: impl HotkeyInput,
+    ) -> Result<Option<BindingInfo>, crate::QueryError> {
         let hotkey = hotkey.into_hotkey()?;
-        self.request(|reply| Command::BindingsForKey { hotkey, reply })
+        Ok(self.request(|reply| Command::BindingsForKey { hotkey, reply })?)
     }
 
     /// Query the current layer stack.
@@ -421,8 +463,8 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn active_layers(&self) -> Result<Vec<ActiveLayerInfo>, Error> {
+    /// Returns [`ManagerStopped`] if the engine has shut down.
+    pub fn active_layers(&self) -> Result<Vec<ActiveLayerInfo>, ManagerStopped> {
         self.request(|reply| Command::ActiveLayers { reply })
     }
 
@@ -430,8 +472,8 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn pending_sequence(&self) -> Result<Option<PendingSequenceInfo>, Error> {
+    /// Returns [`ManagerStopped`] if the engine has shut down.
+    pub fn pending_sequence(&self) -> Result<Option<PendingSequenceInfo>, ManagerStopped> {
         self.request(|reply| Command::PendingSequence { reply })
     }
 
@@ -447,16 +489,19 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnsupportedFeature`] if grab mode is not enabled,
-    /// [`Error::AlreadyRegistered`] if the key already has a tap-hold binding,
-    /// or [`Error::ManagerStopped`] if the engine has shut down.
+    /// Returns [`RegisterError::UnsupportedFeature`](crate::RegisterError::UnsupportedFeature)
+    /// if grab mode is not enabled,
+    /// [`RegisterError::AlreadyRegistered`](crate::RegisterError::AlreadyRegistered)
+    /// if the key already has a tap-hold binding, or
+    /// [`RegisterError::ManagerStopped`](crate::RegisterError::ManagerStopped)
+    /// if the engine has shut down.
     pub fn register_tap_hold(
         &self,
         key: Key,
         tap_action: impl Into<Action>,
         hold_action: impl Into<Action>,
         options: kbd::tap_hold::TapHoldOptions,
-    ) -> Result<BindingGuard, Error> {
+    ) -> Result<BindingGuard, crate::RegisterError> {
         let id = self.request(|reply| Command::RegisterTapHold {
             key,
             tap_action: tap_action.into(),
@@ -474,8 +519,8 @@ impl HotkeyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ManagerStopped`] if the engine has shut down.
-    pub fn conflicts(&self) -> Result<Vec<ConflictInfo>, Error> {
+    /// Returns [`ManagerStopped`] if the engine has shut down.
+    pub fn conflicts(&self) -> Result<Vec<ConflictInfo>, ManagerStopped> {
         self.request(|reply| Command::Conflicts { reply })
     }
 }
@@ -486,7 +531,7 @@ impl Drop for HotkeyManager {
     }
 }
 
-fn resolve_backend(selection: BackendSelection) -> Result<Backend, Error> {
+fn resolve_backend(selection: BackendSelection) -> Result<Backend, crate::StartupError> {
     match selection {
         BackendSelection::Auto => Ok(Backend::Evdev),
         BackendSelection::Explicit(backend) => validate_explicit_backend(backend),
@@ -494,14 +539,17 @@ fn resolve_backend(selection: BackendSelection) -> Result<Backend, Error> {
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn validate_explicit_backend(backend: Backend) -> Result<Backend, Error> {
+fn validate_explicit_backend(backend: Backend) -> Result<Backend, crate::StartupError> {
     match backend {
         Backend::Evdev => Ok(Backend::Evdev),
     }
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn validate_grab_configuration(_backend: Backend, _grab: GrabConfiguration) -> Result<(), Error> {
+fn validate_grab_configuration(
+    _backend: Backend,
+    _grab: GrabConfiguration,
+) -> Result<(), crate::StartupError> {
     Ok(())
 }
 
@@ -509,7 +557,7 @@ fn internal_test_input_directory() -> Option<PathBuf> {
     std::env::var_os("_KBD_GLOBAL_INTERNAL_TEST_INPUT_DIR").map(PathBuf::from)
 }
 
-fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, Error> {
+fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, crate::StartupError> {
     match grab {
         GrabConfiguration::Disabled => Ok(GrabState::Disabled),
         GrabConfiguration::Enabled => {
@@ -522,7 +570,7 @@ fn create_grab_state(grab: GrabConfiguration) -> Result<GrabState, Error> {
             }
             #[cfg(not(feature = "grab"))]
             {
-                Err(Error::UnsupportedFeature)
+                Err(crate::StartupError::UnsupportedFeature)
             }
         }
     }

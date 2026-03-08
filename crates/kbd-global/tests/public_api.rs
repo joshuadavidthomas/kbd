@@ -14,9 +14,11 @@ mod utils;
 use kbd::prelude::*;
 use kbd_global::Backend;
 use kbd_global::BindingGuard;
-use kbd_global::Error;
 use kbd_global::HotkeyManager;
 use kbd_global::HotkeyManagerBuilder;
+use kbd_global::ManagerStopped;
+use kbd_global::RegisterError;
+use kbd_global::StartupError;
 
 // Quick-start / smoke tests
 
@@ -70,7 +72,7 @@ fn builder_type_is_exported() {
 #[cfg(not(feature = "grab"))]
 fn builder_grab_without_feature_returns_unsupported() {
     let result = utils::test_builder().grab().build();
-    assert!(matches!(result, Err(Error::UnsupportedFeature)));
+    assert!(matches!(result, Err(StartupError::UnsupportedFeature)));
 }
 
 // Registration and guard lifecycle
@@ -151,7 +153,7 @@ fn duplicate_registration_returns_already_registered() {
 
     let _first = manager.register(hotkey, || {}).unwrap();
     let result = manager.register(hotkey, || {});
-    assert!(matches!(result, Err(Error::AlreadyRegistered)));
+    assert!(matches!(result, Err(RegisterError::AlreadyRegistered)));
 }
 
 // Key state queries
@@ -305,7 +307,7 @@ fn guard_unregister_after_shutdown_returns_manager_stopped() {
     let guard = manager.register(Key::F7, || {}).unwrap();
     manager.shutdown().expect("shutdown should succeed");
     let result = guard.unregister();
-    assert!(matches!(result, Err(Error::ManagerStopped)));
+    assert!(matches!(result, Err(ManagerStopped)));
 }
 
 // Into<Hotkey> ergonomics
@@ -349,20 +351,30 @@ fn backend_debug_and_equality() {
 // Error type surface
 
 #[test]
-fn error_implements_std_error() {
+fn error_types_implement_std_error() {
     fn assert_std_error<T: std::error::Error>() {}
-    assert_std_error::<Error>();
+    assert_std_error::<StartupError>();
+    assert_std_error::<RegisterError>();
+    assert_std_error::<kbd_global::LayerError>();
+    assert_std_error::<kbd_global::QueryError>();
+    assert_std_error::<kbd_global::ShutdownError>();
+    assert_std_error::<ManagerStopped>();
 }
 
 #[test]
-fn error_is_send_and_sync() {
+fn error_types_are_send_and_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<Error>();
+    assert_send_sync::<StartupError>();
+    assert_send_sync::<RegisterError>();
+    assert_send_sync::<kbd_global::LayerError>();
+    assert_send_sync::<kbd_global::QueryError>();
+    assert_send_sync::<kbd_global::ShutdownError>();
+    assert_send_sync::<ManagerStopped>();
 }
 
 #[test]
-fn parse_error_converts_to_library_error() {
+fn parse_error_converts_to_register_error() {
     let parse_err = "Ctrl+NotAKey".parse::<Hotkey>().unwrap_err();
-    let error: Error = parse_err.into();
-    assert!(matches!(error, Error::Parse(_)));
+    let error: RegisterError = parse_err.into();
+    assert!(matches!(error, RegisterError::Parse(_)));
 }

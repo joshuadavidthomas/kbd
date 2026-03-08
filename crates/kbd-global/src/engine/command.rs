@@ -24,25 +24,25 @@ use kbd::sequence::SequenceOptions;
 use kbd::tap_hold::TapHoldOptions;
 
 use super::wake::WakeFd;
-use crate::Error;
+use crate::ManagerStopped;
 
 pub(crate) enum Command {
     Register {
         binding: RegisteredBinding,
-        reply: mpsc::Sender<Result<(), Error>>,
+        reply: mpsc::Sender<Result<(), crate::RegisterError>>,
     },
     RegisterSequence {
         sequence: HotkeySequence,
         action: Action,
         options: SequenceOptions,
-        reply: mpsc::Sender<Result<BindingId, Error>>,
+        reply: mpsc::Sender<Result<BindingId, crate::RegisterError>>,
     },
     RegisterTapHold {
         key: Key,
         tap_action: Action,
         hold_action: Action,
         options: TapHoldOptions,
-        reply: mpsc::Sender<Result<BindingId, Error>>,
+        reply: mpsc::Sender<Result<BindingId, crate::RegisterError>>,
     },
     PendingSequence {
         reply: mpsc::Sender<Option<PendingSequenceInfo>>,
@@ -52,18 +52,18 @@ pub(crate) enum Command {
     },
     DefineLayer {
         layer: Layer,
-        reply: mpsc::Sender<Result<(), Error>>,
+        reply: mpsc::Sender<Result<(), crate::LayerError>>,
     },
     PushLayer {
         name: LayerName,
-        reply: mpsc::Sender<Result<(), Error>>,
+        reply: mpsc::Sender<Result<(), crate::LayerError>>,
     },
     PopLayer {
-        reply: mpsc::Sender<Result<LayerName, Error>>,
+        reply: mpsc::Sender<Result<LayerName, crate::LayerError>>,
     },
     ToggleLayer {
         name: LayerName,
-        reply: mpsc::Sender<Result<(), Error>>,
+        reply: mpsc::Sender<Result<(), crate::LayerError>>,
     },
     IsRegistered {
         hotkey: Hotkey,
@@ -106,11 +106,9 @@ impl CommandSender {
         }
     }
 
-    pub(crate) fn send(&self, command: Command) -> Result<(), Error> {
-        self.command_tx
-            .send(command)
-            .map_err(|_| Error::ManagerStopped)?;
-        self.wake_fd.wake().map_err(|_| Error::ManagerStopped)?;
+    pub(crate) fn send(&self, command: Command) -> Result<(), ManagerStopped> {
+        self.command_tx.send(command).map_err(|_| ManagerStopped)?;
+        self.wake_fd.wake().map_err(|_| ManagerStopped)?;
         Ok(())
     }
 }

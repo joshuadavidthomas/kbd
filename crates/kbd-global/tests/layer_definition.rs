@@ -10,7 +10,7 @@ use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd::layer::LayerOptions;
 use kbd::layer::UnmatchedKeys;
-use kbd_global::Error;
+use kbd_global::LayerError;
 
 #[test]
 fn define_layer_via_manager() {
@@ -39,7 +39,7 @@ fn define_duplicate_layer_returns_error() {
 
     let layer2 = Layer::new("nav").bind(Key::J, Action::Suppress).unwrap();
     let result = manager.define_layer(layer2);
-    assert!(matches!(result, Err(Error::LayerAlreadyDefined)));
+    assert!(matches!(result, Err(LayerError::AlreadyDefined)));
 }
 
 #[test]
