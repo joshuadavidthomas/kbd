@@ -7,8 +7,6 @@ System-wide hotkeys on Linux for the [`kbd` workspace](https://github.com/joshua
 
 `kbd-global` runs a background thread that reads from evdev input devices, feeds events through `kbd`'s dispatcher, and fires your callbacks when bindings match. It handles device discovery, hotplug, and the event loop so you don't have to. Works on Wayland, X11, and TTY — no display server integration needed.
 
-[API docs](https://docs.rs/kbd-global)
-
 ```toml
 [dependencies]
 kbd = "0.1"
