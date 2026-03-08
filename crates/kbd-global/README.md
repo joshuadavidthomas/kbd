@@ -7,6 +7,8 @@ System-wide hotkeys on Linux for the [`kbd` workspace](https://github.com/joshua
 
 `kbd-global` runs a background thread that reads from evdev input devices, feeds events through `kbd`'s dispatcher, and fires your callbacks when bindings match. It handles device discovery, hotplug, and the event loop so you don't have to. Works on Wayland, X11, and TTY — no display server integration needed.
 
+[API docs](https://docs.rs/kbd-global)
+
 ```toml
 [dependencies]
 kbd = "0.1"
@@ -23,14 +25,13 @@ sudo usermod -aG input $USER
 
 Log out and back in for the group change to take effect.
 
-## Quick start
+## Example
 
 ```rust,no_run
 use kbd::hotkey::{Hotkey, Modifier};
 use kbd::key::Key;
 use kbd_global::manager::HotkeyManager;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let manager = HotkeyManager::new()?;
 
 // Registration returns a guard — the binding lives until the guard is dropped
@@ -41,8 +42,6 @@ let _guard = manager.register(
 
 // Keep the main thread alive so the background listener keeps running
 std::thread::park();
-# Ok(())
-# }
 ```
 
 `HotkeyManager` is the main entry point. It spawns the engine thread on creation and communicates with it over a channel. Registration returns a [`BindingGuard`](https://docs.rs/kbd-global/latest/kbd_global/binding_guard/struct.BindingGuard.html) — dropping it unregisters the binding. Dropping the manager (or calling `shutdown()`) stops the runtime.
@@ -57,7 +56,6 @@ use kbd::key::Key;
 use kbd::layer::Layer;
 use kbd_global::manager::HotkeyManager;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let manager = HotkeyManager::new()?;
 
 let layer = Layer::new("vim-normal")
@@ -71,8 +69,6 @@ let insert = Layer::new("vim-insert")
 manager.define_layer(layer)?;
 manager.define_layer(insert)?;
 manager.push_layer("vim-normal")?;
-# Ok(())
-# }
 ```
 
 Layers stack — the most recently pushed layer is checked first. `PopLayer` removes the top layer, `ToggleLayer` adds or removes by name.
@@ -89,12 +85,9 @@ kbd-global = { version = "0.1", features = ["grab"] }
 ```rust,no_run
 use kbd_global::manager::HotkeyManager;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let manager = HotkeyManager::builder()
     .grab(true)
     .build()?;
-# Ok(())
-# }
 ```
 
 Grab mode requires write access to `/dev/uinput` in addition to read access on `/dev/input/`.
@@ -111,8 +104,6 @@ Grab mode requires write access to `/dev/uinput` in addition to read access on `
 - Linux only
 - evdev is the only backend
 - `Action::EmitHotkey` and `Action::EmitSequence` are not yet implemented in the runtime
-
-See the [API docs on docs.rs](https://docs.rs/kbd-global) for the full reference.
 
 ## License
 

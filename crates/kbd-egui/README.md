@@ -3,9 +3,11 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-egui.svg)](https://crates.io/crates/kbd-egui)
 [![docs.rs](https://docs.rs/kbd-egui/badge.svg)](https://docs.rs/kbd-egui)
 
-`kbd-egui` converts egui keyboard events into `kbd` types.
+Egui key event conversions for the [`kbd` workspace](https://github.com/joshuadavidthomas/kbd).
 
-Use it when an egui app wants one hotkey model for both in-window shortcuts and external bindings handled by the rest of the `kbd` workspace.
+Use it when an egui app wants one hotkey model for both in-window shortcuts and external bindings handled by `kbd-global`.
+
+[API docs](https://docs.rs/kbd-egui) — includes the full key and modifier mapping tables.
 
 ```toml
 [dependencies]
@@ -15,8 +17,6 @@ kbd-egui = "0.1"
 
 ## Example
 
-Convert an egui event and feed it to a dispatcher:
-
 ```rust
 use egui::{Event, Key as EguiKey, Modifiers};
 use kbd::action::Action;
@@ -24,7 +24,6 @@ use kbd::dispatcher::{Dispatcher, MatchResult};
 use kbd::key_state::KeyTransition;
 use kbd_egui::EguiEventExt;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mut dispatcher = Dispatcher::new();
 dispatcher.register("Ctrl+C", Action::Suppress)?;
 
@@ -40,13 +39,9 @@ if let Some(hotkey) = event.to_hotkey() {
     let result = dispatcher.process(hotkey, KeyTransition::Press);
     assert!(matches!(result, MatchResult::Matched { .. }));
 }
-# Ok(())
-# }
 ```
 
 Egui does not expose the full W3C physical-key space. Logical or shifted keys such as `Colon` or `Plus` do not have a single physical-key mapping, so `to_hotkey()` returns `None` for those.
-
-See the [API docs on docs.rs](https://docs.rs/kbd-egui) for the complete mapping details.
 
 ## License
 
