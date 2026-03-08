@@ -60,13 +60,6 @@ assert!(matches!(result, MatchResult::Matched { .. }));
 
 ## Documentation
 
-The crate is organized by domain modules rather than root-level re-exports. Typical imports look like:
-
-- `kbd::dispatcher::Dispatcher`
-- `kbd::hotkey::{Hotkey, Modifier}`
-- `kbd::key::Key`
-- `kbd::layer::Layer`
-
 See the [API docs on docs.rs](https://docs.rs/kbd) for the full reference.
 
 ## License

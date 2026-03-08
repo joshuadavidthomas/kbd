@@ -91,13 +91,6 @@ If you enable grab mode, you also need permission to create and write to `/dev/u
 
 ## Documentation
 
-The crate exposes modules rather than root-level type re-exports. Typical imports look like:
-
-- `kbd_global::manager::HotkeyManager`
-- `kbd_global::binding_guard::BindingGuard`
-- `kbd_global::backend::Backend`
-- `kbd_global::error::{RegisterError, LayerError}`
-
 See the [API docs on docs.rs](https://docs.rs/kbd-global) for the full reference.
 
 ## License
