@@ -6,7 +6,7 @@
 //! - All registered bindings
 //! - The layer stack
 //! - Key state (what's currently pressed)
-//! - The press cache (for correct releases across layer transitions)
+//! - Held-key state (for correct releases across layer transitions)
 //! - Device handles and the uinput forwarder
 //!
 //! No shared mutable state. The manager communicates via a command channel.
@@ -27,13 +27,13 @@
 //!
 //! - [`devices`] — device discovery, hotplug, capability detection
 //! - [`forwarder`] — uinput virtual device for event forwarding/emission
+//! - [`held_keys`] — per-key engine decisions for keys that are currently pressed
 //! - [`types`] — shared engine types (grab state, dispositions, match outcomes)
 //! - [`command`] — command enum and sender for manager→engine communication
 //! - [`runtime`] — engine thread lifecycle (spawn, shutdown, join)
 //!
 //! Key state and matching logic live in `kbd` (`KeyState`, `Dispatcher`).
 
-use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
@@ -45,7 +45,6 @@ use kbd::device::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
 use kbd::hotkey::Hotkey;
-use kbd::hotkey::Modifier;
 use kbd::key::Key;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
@@ -58,34 +57,28 @@ use crate::engine::devices::DeviceKeyEvent;
 pub(crate) mod command;
 pub(crate) mod devices;
 pub(crate) mod forwarder;
+pub(crate) mod held_keys;
 pub(crate) mod runtime;
 pub(crate) mod types;
 mod wake;
 
 pub(crate) use self::command::Command;
 pub(crate) use self::command::CommandSender;
+use self::held_keys::HeldKeyState;
+use self::held_keys::RepeatState;
 pub(crate) use self::runtime::EngineRuntime;
 pub(crate) use self::types::GrabState;
 pub(crate) use self::types::KeyEventOutcome;
 use self::types::MatchOutcome;
-use self::types::PressCacheEntry;
-use self::types::RepeatInfo;
 use self::wake::WakeFd;
 
 pub(crate) struct Engine {
     /// The synchronous matching engine — owns bindings, layers, and layer stack.
     dispatcher: Dispatcher,
-    /// Press cache: records what happened on key press so the corresponding
-    /// release event uses the same disposition. Essential for correct
-    /// release behavior across layer transitions — if a key was consumed
-    /// on press, its release should also be consumed even if the layer
-    /// was popped in between (oneshot, `PopLayer` action, etc.).
+    /// Tracks engine decisions for keys that are currently held down.
     ///
-    /// Also stores repeat policy info so the engine can handle OS
-    /// auto-repeat events per-binding (Allow, Suppress, or Custom).
-    ///
-    /// Mirrors the approach used by keyd's `cache_entry` system.
-    press_cache: HashMap<Key, PressCacheEntry>,
+    /// See [`HeldKeyState`] for full documentation.
+    held_keys: HeldKeyState,
     devices: devices::DeviceManager,
     key_state: KeyState,
     grab_state: GrabState,
@@ -106,7 +99,7 @@ impl Engine {
         };
         Self {
             dispatcher: Dispatcher::new(),
-            press_cache: HashMap::new(),
+            held_keys: HeldKeyState::new(),
             devices: devices::DeviceManager::new(input_directory, device_grab_mode),
             key_state: KeyState::default(),
             grab_state,
@@ -289,14 +282,14 @@ impl Engine {
             .apply_device_event(event.device_fd, event.key, event.transition);
 
         // Release: use cached disposition, remove cache entry.
-        // Exception: tap-hold keys bypass the press cache — their tap
+        // Exception: tap-hold keys bypass held-key state — their tap
         // action resolves on release through the Dispatcher.
         if matches!(event.transition, KeyTransition::Release) {
             if self.dispatcher.is_tap_hold_key(event.key) {
-                self.press_cache.remove(&event.key);
+                self.held_keys.remove(event.key);
                 return self.process_tap_hold_release(event);
             }
-            if let Some(cached) = self.press_cache.remove(&event.key) {
+            if let Some(cached) = self.held_keys.remove(event.key) {
                 match cached.outcome {
                     KeyEventOutcome::MatchedForwarded | KeyEventOutcome::UnmatchedForwarded => {
                         self.forward_event(event.key, event.transition);
@@ -317,27 +310,27 @@ impl Engine {
         self.process_press_event(event)
     }
 
-    /// Handle a repeat event using the press cache and repeat policy.
+    /// Handle a repeat event using held-key state and repeat policy.
     fn handle_repeat_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let Some(cached) = self.press_cache.get(&event.key) else {
+        let Some(cached) = self.held_keys.get(event.key) else {
             // No cache entry — modifier key or key pressed before cache.
             return KeyEventOutcome::Ignored;
         };
 
         // Extract what we need from the cache before any mutable borrows.
         let outcome = cached.outcome;
-        let should_fire = match &cached.repeat_info {
+        let should_fire = match &cached.repeat_state {
             None => false,
-            Some(info) => match info.policy {
+            Some(state) => match state.policy {
                 RepeatPolicy::Suppress => false,
                 RepeatPolicy::Allow => true,
                 RepeatPolicy::Custom(timing) => {
                     let now = Instant::now();
-                    let since_press = now.duration_since(info.press_time);
+                    let since_press = now.duration_since(state.press_time);
 
                     if since_press < timing.delay() {
                         false
-                    } else if let Some(last_fire) = info.last_repeat_fire {
+                    } else if let Some(last_fire) = state.last_repeat_fire {
                         now.duration_since(last_fire) >= timing.rate()
                     } else {
                         true
@@ -353,18 +346,18 @@ impl Engine {
             // dispatcher re-query, so debounce/rate-limit/layer side
             // effects are not triggered.
             if let Some(cb) = self
-                .press_cache
-                .get(&event.key)
-                .and_then(|e| e.repeat_info.as_ref())
-                .and_then(|info| info.callback.as_ref())
+                .held_keys
+                .get(event.key)
+                .and_then(|e| e.repeat_state.as_ref())
+                .and_then(|state| state.callback.as_ref())
             {
                 invoke_callback(cb.as_ref());
             }
 
             // Update last repeat fire time for Custom rate tracking.
-            if let Some(entry) = self.press_cache.get_mut(&event.key) {
-                if let Some(ref mut info) = entry.repeat_info {
-                    info.last_repeat_fire = Some(Instant::now());
+            if let Some(entry) = self.held_keys.get_mut(event.key) {
+                if let Some(ref mut state) = entry.repeat_state {
+                    state.last_repeat_fire = Some(Instant::now());
                 }
             }
         }
@@ -383,18 +376,18 @@ impl Engine {
     fn process_press_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
         let result = self.dispatch(event);
 
-        let (match_outcome, repeat_info) = match result {
+        let (match_outcome, repeat_state) = match result {
             MatchResult::Matched {
                 action,
                 propagation,
                 repeat_policy,
             } => {
-                // Build repeat info before executing the action so
+                // Build repeat state before executing the action so
                 // Custom repeat delay is measured from the key event,
                 // not from after callback completion.
-                let repeat_info = Some(RepeatInfo::for_action(action, repeat_policy));
+                let repeat_state = Some(RepeatState::for_action(action, repeat_policy));
                 execute_action(action);
-                (MatchOutcome::Matched { propagation }, repeat_info)
+                (MatchOutcome::Matched { propagation }, repeat_state)
             }
             MatchResult::Throttled { propagation } => {
                 // Throttled: action doesn't fire, but key forwarding
@@ -409,14 +402,14 @@ impl Engine {
         };
 
         let outcome = self.resolve_outcome(match_outcome, event.key, event.transition);
-        self.cache_press(event.key, outcome, repeat_info);
+        self.held_keys.insert(event.key, outcome, repeat_state);
 
         outcome
     }
 
     /// Process a release event for a tap-hold key through the Dispatcher.
     ///
-    /// Tap-hold keys bypass the press cache for releases because the tap
+    /// Tap-hold keys bypass held-key state for releases because the tap
     /// action resolves on release. The Dispatcher's `process_tap_hold`
     /// determines whether this is a tap (released before threshold) or a
     /// hold cleanup (hold already resolved by timeout or interrupt).
@@ -500,21 +493,6 @@ impl Engine {
         }
     }
 
-    /// Record a press outcome in the cache so release and repeat events
-    /// use the same disposition. Modifier keys are excluded — they don't
-    /// go through binding matching.
-    fn cache_press(&mut self, key: Key, outcome: KeyEventOutcome, repeat_info: Option<RepeatInfo>) {
-        if Modifier::from_key(key).is_none() {
-            self.press_cache.insert(
-                key,
-                PressCacheEntry {
-                    outcome,
-                    repeat_info,
-                },
-            );
-        }
-    }
-
     fn forward_event(&mut self, key: Key, transition: KeyTransition) {
         if let GrabState::Enabled { forwarder } = &mut self.grab_state
             && let Err(error) = forwarder.forward_key(key, transition)
@@ -580,16 +558,16 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
                 repeat_policy,
             }) = engine.dispatcher.match_pending_timeout(pending)
             {
-                // Build repeat info before executing the action so
+                // Build repeat state before executing the action so
                 // Custom repeat delay is measured from resolution time,
                 // not from after callback completion.
-                let repeat_info = pending
+                let repeat_state = pending
                     .tap_hold_key()
-                    .map(|_| RepeatInfo::for_action(action, repeat_policy));
+                    .map(|_| RepeatState::for_action(action, repeat_policy));
 
                 execute_action(action);
 
-                // Tap-hold hold resolutions need press cache updates so
+                // Tap-hold hold resolutions need held-key state updates so
                 // repeat and release events use the correct disposition.
                 if let Some(key) = pending.tap_hold_key() {
                     let outcome = engine.resolve_outcome(
@@ -597,7 +575,7 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), Error> {
                         key,
                         KeyTransition::Press,
                     );
-                    engine.cache_press(key, outcome, repeat_info);
+                    engine.held_keys.insert(key, outcome, repeat_state);
                 }
             }
         }
@@ -822,7 +800,7 @@ mod tests {
     }
 
     /// Drain pending timeouts through the engine, executing actions and
-    /// updating the press cache — mirrors the real event loop's behavior.
+    /// updating held-key state — mirrors the real event loop's behavior.
     fn drain_pending_timeouts(engine: &mut Engine) {
         let pending = engine.dispatcher.pending_timeouts();
         for p in &pending {
@@ -832,9 +810,9 @@ mod tests {
                 repeat_policy,
             }) = engine.dispatcher.match_pending_timeout(p)
             {
-                let repeat_info = p
+                let repeat_state = p
                     .tap_hold_key()
-                    .map(|_| super::types::RepeatInfo::for_action(action, repeat_policy));
+                    .map(|_| super::held_keys::RepeatState::for_action(action, repeat_policy));
                 super::execute_action(action);
                 if let Some(key) = p.tap_hold_key() {
                     let outcome = engine.resolve_outcome(
@@ -842,7 +820,7 @@ mod tests {
                         key,
                         KeyTransition::Press,
                     );
-                    engine.cache_press(key, outcome, repeat_info);
+                    engine.held_keys.insert(key, outcome, repeat_state);
                 }
             }
         }
@@ -2206,10 +2184,10 @@ mod tests {
         runtime.shutdown().unwrap();
     }
 
-    // Press cache tests (Section 3.3)
+    // Held-key state tests (Section 3.3)
 
     #[test]
-    fn press_cache_release_consumed_when_press_was_consumed() {
+    fn held_key_release_consumed_when_press_was_consumed() {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2237,7 +2215,7 @@ mod tests {
     }
 
     #[test]
-    fn press_cache_release_forwarded_when_press_had_passthrough() {
+    fn held_key_release_forwarded_when_press_had_passthrough() {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2270,7 +2248,7 @@ mod tests {
     }
 
     #[test]
-    fn press_cache_release_consumed_when_swallowed() {
+    fn held_key_release_consumed_when_swallowed() {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2299,7 +2277,7 @@ mod tests {
     }
 
     #[test]
-    fn press_cache_cleared_after_release() {
+    fn held_key_cleared_after_release() {
         let (grab_state, _forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2328,7 +2306,7 @@ mod tests {
     }
 
     #[test]
-    fn press_cache_layer_pop_during_press_release_correct() {
+    fn held_key_layer_pop_during_press_release_correct() {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2357,12 +2335,12 @@ mod tests {
         let h_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::H).collect();
         assert!(
             h_events.is_empty(),
-            "press cache should prevent release forwarding after layer pop"
+            "held-key state should prevent release forwarding after layer pop"
         );
     }
 
     #[test]
-    fn press_cache_repeat_consumed_when_press_was_consumed() {
+    fn held_key_repeat_consumed_when_press_was_consumed() {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
@@ -2397,7 +2375,7 @@ mod tests {
     }
 
     #[test]
-    fn press_cache_repeat_forwarded_when_press_had_passthrough() {
+    fn held_key_repeat_forwarded_when_press_had_passthrough() {
         let (grab_state, forwarded) = test_grab_state();
         let mut engine = test_engine_with_grab(grab_state);
 
