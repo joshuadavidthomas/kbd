@@ -7,24 +7,25 @@ The pure matching engine at the center of the [`kbd` workspace](https://github.c
 
 You describe bindings — as strings like `"Ctrl+Shift+A"` or programmatically — and the dispatcher tells you when incoming key events match. It has no platform dependencies and no runtime thread of its own; you bring the key events from wherever you have them.
 
-```toml
-[dependencies]
-kbd = "0.1"
-```
-
 ## Example
 
 ```rust
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
+use kbd::hotkey::{Hotkey, Modifier};
 use kbd::key::Key;
 use kbd::layer::Layer;
 
 let mut dispatcher = Dispatcher::new();
 
-// Global bindings — always active
-dispatcher.register("Ctrl+S", || println!("saved"))?;
-dispatcher.register("Ctrl+Shift+P", Action::Suppress)?;
+// Global bindings — register via string parsing...
+dispatcher.register("Ctrl+S", Action::Suppress)?;
+
+// ...or build hotkeys programmatically
+dispatcher.register(
+    Hotkey::new(Key::P).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
+    Action::Suppress,
+)?;
 
 // Layer bindings — active only when the layer is pushed
 let normal = Layer::new("normal")

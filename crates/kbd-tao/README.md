@@ -7,12 +7,6 @@ Converts [tao](https://docs.rs/tao) key events into [`kbd`](https://docs.rs/kbd)
 
 [API docs](https://docs.rs/kbd-tao) — includes the full key and modifier mapping tables and an event-loop example.
 
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-tao = "0.1"
-```
-
 ## Example
 
 ```rust
@@ -25,7 +19,7 @@ let key = KeyCode::KeyS.to_key();
 let mods = ModifiersState::CONTROL.to_modifiers();
 // ModifierSet containing Modifier::Ctrl
 
-let hotkey = kbd::hotkey::Hotkey::new(key.unwrap()).modifiers(mods);
+let hotkey = kbd::hotkey::Hotkey::with_modifiers(key.unwrap(), mods);
 ```
 
 The resulting `Hotkey` works with everything in `kbd` — layers, sequences, string-based registration, introspection. For a Tauri app, that means your in-window shortcuts and your global hotkeys (via `kbd-global`) share the same binding model and the same dispatcher.

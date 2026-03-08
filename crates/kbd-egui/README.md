@@ -7,12 +7,6 @@ Converts [egui](https://docs.rs/egui) key events into [`kbd`](https://docs.rs/kb
 
 [API docs](https://docs.rs/kbd-egui) — includes the full key and modifier mapping tables.
 
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-egui = "0.1"
-```
-
 ## Example
 
 ```rust

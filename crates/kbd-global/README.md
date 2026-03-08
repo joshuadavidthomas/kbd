@@ -7,12 +7,6 @@ System-wide hotkeys on Linux for the [`kbd` workspace](https://github.com/joshua
 
 `kbd-global` runs a background thread that reads from evdev input devices, feeds events through `kbd`'s dispatcher, and fires your callbacks when bindings match. It handles device discovery, hotplug, and the event loop so you don't have to. Works on Wayland, X11, and TTY — no display server integration needed.
 
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-global = "0.1"
-```
-
 ## Requirements
 
 `kbd-global` reads `/dev/input/event*` directly. Your user needs permission to access input devices:
@@ -75,16 +69,11 @@ Layers stack — the most recently pushed layer is checked first. `PopLayer` rem
 
 With the `grab` feature enabled, `kbd-global` can exclusively capture input devices so matched keys never reach other applications. Unmatched events are forwarded through a virtual uinput device.
 
-```toml
-[dependencies]
-kbd-global = { version = "0.1", features = ["grab"] }
-```
-
 ```rust,no_run
 use kbd_global::manager::HotkeyManager;
 
 let manager = HotkeyManager::builder()
-    .grab(true)
+    .grab()
     .build()?;
 ```
 
