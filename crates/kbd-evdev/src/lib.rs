@@ -33,20 +33,21 @@
 //! # Architecture
 //!
 //! ```text
-//! /dev/input/event*          DeviceManager
-//!   ├─ event0  ──┐       ┌─ discover + poll ──→ DeviceKeyEvent
-//!   ├─ event1  ──┼──────→│  hotplug (inotify)   │
-//!   └─ event2  ──┘       └───────────────────────┘
-//!                                                │
-//!                                      EvdevKeyCodeExt::to_key()
-//!                                                │
-//!                                                ▼
-//!                                           kbd::Key
-//!                                                │
-//!                              ┌─────────────────┼─────────────────┐
-//!                              │                 │                 │
-//!                           Dispatcher          KeyState     UinputForwarder
-//!                        (kbd core)        (kbd core)     (grab mode only)
+//! /dev/input/event* --> DeviceManager --> DeviceKeyEvent
+//!                           |
+//!                           +-- hotplug detection via inotify
+//!                           |
+//!                           v
+//!                 EvdevKeyCodeExt::to_key()
+//!                           |
+//!                           v
+//!                        kbd::Key
+//!                           |
+//!          +----------------+----------------+
+//!          |                |                |
+//!          v                v                v
+//!     Dispatcher         KeyState      UinputForwarder
+//!      (kbd core)       (kbd core)     (grab mode only)
 //! ```
 //!
 //! # Usage

@@ -17,9 +17,9 @@
 //! ```text
 //! loop {
 //!     poll(device_fds + wake_fd, timeout)
-//!     drain_commands()        // process register/unregister/layer ops
-//!     process_key_events()    // for each ready device
-//!     check_timers()          // layer timeouts
+//!     drain_commands()     // register, unregister, layer ops
+//!     process_key_events() // for each ready device
+//!     check_timers()       // layer and tap-hold timeouts
 //! }
 //! ```
 //!
