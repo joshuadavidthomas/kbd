@@ -36,17 +36,6 @@
 //! - per-device filtering and modifier isolation in [`device`]
 //! - read-only snapshots for overlays and debugging in [`introspection`]
 //!
-//! # Module-first API
-//!
-//! The crate is organized by domain modules rather than root-level re-exports.
-//! Typical imports look like:
-//!
-//! - [`dispatcher::Dispatcher`]
-//! - [`hotkey::Hotkey`]
-//! - [`hotkey::Modifier`]
-//! - [`key::Key`]
-//! - [`layer::Layer`]
-//!
 //! # Feature flags
 //!
 //! | Flag | Default | Effect |
