@@ -1,4 +1,5 @@
 use super::DeviceContext;
+use crate::binding::RegisteredBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::layer::StoredLayer;
@@ -168,15 +169,15 @@ fn find_immediate_in_layer(
         .position(|binding| binding_matches_hotkey(binding, hotkey, device))
 }
 
-/// Check whether a layer binding matches a hotkey, respecting device filters.
+/// Check whether a binding matches a hotkey, respecting device filters.
 fn binding_matches_hotkey(
-    binding: &crate::layer::LayerBinding,
+    binding: &RegisteredBinding,
     hotkey: Hotkey,
     device: Option<&DeviceContext<'_>>,
 ) -> bool {
-    let Some(filter) = binding.options.device() else {
+    let Some(filter) = binding.options().device() else {
         // No device filter — match against aggregate hotkey
-        return binding.hotkey == hotkey;
+        return binding.hotkey() == hotkey;
     };
 
     // Binding has a device filter — need device context
@@ -192,10 +193,10 @@ fn binding_matches_hotkey(
     // Build device-specific hotkey for modifier isolation
     if let Some(device_mods) = ctx.device_modifiers() {
         let device_hotkey = Hotkey::with_modifiers(hotkey.key(), device_mods);
-        binding.hotkey == device_hotkey
+        binding.hotkey() == device_hotkey
     } else {
         // No device modifiers — use aggregate
-        binding.hotkey == hotkey
+        binding.hotkey() == hotkey
     }
 }
 
@@ -203,14 +204,12 @@ fn binding_matches_hotkey(
 mod tests {
     use super::*;
     use crate::action::Action;
-    use crate::binding::BindingOptions;
+    use crate::binding::BindingId;
+    use crate::binding::RegisteredSequenceBinding;
     use crate::hotkey::Hotkey;
     use crate::key::Key;
-    use crate::layer::LayerBinding;
     use crate::layer::LayerOptions;
-    use crate::layer::LayerSequenceBinding;
     use crate::layer::StoredLayer;
-    use crate::policy::KeyPropagation;
     use crate::sequence::SequenceOptions;
 
     fn single_step(key: Key) -> HotkeySequence {
@@ -225,26 +224,22 @@ mod tests {
         HotkeySequence::new(vec![Hotkey::new(a), Hotkey::new(b), Hotkey::new(c)]).unwrap()
     }
 
-    fn immediate(key: Key) -> LayerBinding {
-        LayerBinding {
-            hotkey: Hotkey::new(key),
-            action: Action::Suppress,
-            options: BindingOptions::default(),
-        }
+    fn immediate(key: Key) -> RegisteredBinding {
+        RegisteredBinding::new(BindingId::new(), Hotkey::new(key), Action::Suppress)
     }
 
-    fn seq_binding(sequence: HotkeySequence) -> LayerSequenceBinding {
-        LayerSequenceBinding {
+    fn seq_binding(sequence: HotkeySequence) -> RegisteredSequenceBinding {
+        RegisteredSequenceBinding::new(
+            BindingId::new(),
             sequence,
-            action: Action::Suppress,
-            propagation: KeyPropagation::default(),
-            options: SequenceOptions::default(),
-        }
+            Action::Suppress,
+            SequenceOptions::default(),
+        )
     }
 
     fn layer(
-        bindings: Vec<LayerBinding>,
-        sequence_bindings: Vec<LayerSequenceBinding>,
+        bindings: Vec<RegisteredBinding>,
+        sequence_bindings: Vec<RegisteredSequenceBinding>,
     ) -> StoredLayer {
         StoredLayer {
             bindings,

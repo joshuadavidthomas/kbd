@@ -1,12 +1,12 @@
 use super::Dispatcher;
 use super::MatchedBindingRef;
-use super::sequence::RegisteredSequenceBinding;
 use super::sequence::SequenceBindingRef;
 use crate::action::Action;
 use crate::binding::BindingId;
 use crate::binding::BindingOptions;
 use crate::binding::BindingSource;
 use crate::binding::RegisteredBinding;
+use crate::binding::RegisteredSequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
@@ -210,7 +210,7 @@ impl Dispatcher {
 
     /// Unregister a binding by its [`BindingId`].
     pub fn unregister(&mut self, id: BindingId) {
-        self.throttle_tracker.remove_global(id);
+        self.throttle_tracker.remove(id);
         if let Some(binding) = self.bindings_by_id.remove(&id) {
             let hotkey = binding.hotkey();
             let remove_hotkey_entry =

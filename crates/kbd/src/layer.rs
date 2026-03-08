@@ -15,12 +15,12 @@
 use std::time::Duration;
 
 use crate::action::Action;
+use crate::binding::BindingId;
 use crate::binding::BindingOptions;
+use crate::binding::RegisteredBinding;
+use crate::binding::RegisteredSequenceBinding;
 use crate::error::ParseHotkeyError;
-use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
-use crate::hotkey::HotkeySequence;
-use crate::policy::KeyPropagation;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 
@@ -152,27 +152,10 @@ impl LayerOptions {
     }
 }
 
-/// A single hotkey binding within a layer.
-#[derive(Debug)]
-pub(crate) struct LayerBinding {
-    pub(crate) hotkey: Hotkey,
-    pub(crate) action: Action,
-    pub(crate) options: BindingOptions,
-}
-
-/// A single sequence binding within a layer.
-#[derive(Debug)]
-pub(crate) struct LayerSequenceBinding {
-    pub(crate) sequence: HotkeySequence,
-    pub(crate) action: Action,
-    pub(crate) propagation: KeyPropagation,
-    pub(crate) options: SequenceOptions,
-}
-
 /// Engine-internal representation of a stored layer definition.
 pub(crate) struct StoredLayer {
-    pub(crate) bindings: Vec<LayerBinding>,
-    pub(crate) sequence_bindings: Vec<LayerSequenceBinding>,
+    pub(crate) bindings: Vec<RegisteredBinding>,
+    pub(crate) sequence_bindings: Vec<RegisteredSequenceBinding>,
     pub(crate) options: LayerOptions,
 }
 
@@ -249,8 +232,8 @@ impl std::fmt::Debug for StoredLayer {
 /// ```
 pub struct Layer {
     name: LayerName,
-    bindings: Vec<LayerBinding>,
-    sequence_bindings: Vec<LayerSequenceBinding>,
+    bindings: Vec<RegisteredBinding>,
+    sequence_bindings: Vec<RegisteredSequenceBinding>,
     options: LayerOptions,
 }
 
@@ -268,8 +251,9 @@ impl Layer {
 
     /// Add a binding to this layer.
     ///
-    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
-    /// [`Key`](crate::key::Key), or a string (`&str` / `String`).
+    /// Accepts any type implementing [`HotkeyInput`]: a
+    /// [`Hotkey`](crate::hotkey::Hotkey), a [`Key`](crate::key::Key),
+    /// or a string (`&str` / `String`).
     ///
     /// # Errors
     ///
@@ -296,11 +280,10 @@ impl Layer {
         action: impl Into<Action>,
         options: BindingOptions,
     ) -> Result<Self, ParseHotkeyError> {
-        self.bindings.push(LayerBinding {
-            hotkey: hotkey.into_hotkey()?,
-            action: action.into(),
-            options,
-        });
+        self.bindings.push(
+            RegisteredBinding::new(BindingId::new(), hotkey.into_hotkey()?, action.into())
+                .with_options(options),
+        );
         Ok(self)
     }
 
@@ -314,12 +297,12 @@ impl Layer {
         sequence: impl SequenceInput,
         action: impl Into<Action>,
     ) -> Result<Self, ParseHotkeyError> {
-        self.sequence_bindings.push(LayerSequenceBinding {
-            sequence: sequence.into_sequence()?,
-            action: action.into(),
-            propagation: KeyPropagation::default(),
-            options: SequenceOptions::default(),
-        });
+        self.sequence_bindings.push(RegisteredSequenceBinding::new(
+            BindingId::new(),
+            sequence.into_sequence()?,
+            action.into(),
+            SequenceOptions::default(),
+        ));
         Ok(self)
     }
 
@@ -334,12 +317,12 @@ impl Layer {
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Result<Self, ParseHotkeyError> {
-        self.sequence_bindings.push(LayerSequenceBinding {
-            sequence: sequence.into_sequence()?,
-            action: action.into(),
-            propagation: KeyPropagation::default(),
+        self.sequence_bindings.push(RegisteredSequenceBinding::new(
+            BindingId::new(),
+            sequence.into_sequence()?,
+            action.into(),
             options,
-        });
+        ));
         Ok(self)
     }
 
@@ -397,8 +380,8 @@ impl Layer {
         self,
     ) -> (
         LayerName,
-        Vec<LayerBinding>,
-        Vec<LayerSequenceBinding>,
+        Vec<RegisteredBinding>,
+        Vec<RegisteredSequenceBinding>,
         LayerOptions,
     ) {
         (
@@ -430,6 +413,7 @@ mod tests {
     use crate::binding::BindingOptions;
     use crate::binding::BindingSource;
     use crate::binding::OverlayVisibility;
+    use crate::hotkey::Hotkey;
     use crate::hotkey::HotkeySequence;
     use crate::hotkey::Modifier;
     use crate::key::Key;
@@ -482,9 +466,9 @@ mod tests {
             .unwrap();
         let (_, bindings, _, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
-        assert_eq!(bindings[0].hotkey.key(), Key::H);
-        assert!(bindings[0].hotkey.has_modifier(Modifier::Ctrl));
-        assert_eq!(bindings[0].hotkey.modifier_count(), 1);
+        assert_eq!(bindings[0].hotkey().key(), Key::H);
+        assert!(bindings[0].hotkey().has_modifier(Modifier::Ctrl));
+        assert_eq!(bindings[0].hotkey().modifier_count(), 1);
     }
 
     #[test]
@@ -510,13 +494,13 @@ mod tests {
 
         let (_, bindings, _, _) = layer.into_parts();
         assert_eq!(bindings.len(), 1);
-        assert_eq!(bindings[0].options.description(), Some("Move left"));
+        assert_eq!(bindings[0].options().description(), Some("Move left"));
         assert_eq!(
-            bindings[0].options.source().map(BindingSource::as_str),
+            bindings[0].options().source().map(BindingSource::as_str),
             Some("user")
         );
         assert_eq!(
-            bindings[0].options.overlay_visibility(),
+            bindings[0].options().overlay_visibility(),
             OverlayVisibility::Hidden
         );
     }

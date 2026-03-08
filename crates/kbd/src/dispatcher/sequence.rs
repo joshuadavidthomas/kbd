@@ -9,42 +9,19 @@ use super::timeout::PendingTimeout;
 use super::timeout::TimeoutKind;
 use crate::binding::BindingId;
 use crate::hotkey::Hotkey;
-use crate::hotkey::HotkeySequence;
 use crate::layer::LayerName;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
 use crate::sequence::SequenceOptions;
 
-pub(super) struct RegisteredSequenceBinding {
-    pub(super) id: BindingId,
-    pub(super) sequence: HotkeySequence,
-    pub(super) action: crate::action::Action,
-    pub(super) propagation: KeyPropagation,
-    pub(super) options: SequenceOptions,
-}
-
-impl RegisteredSequenceBinding {
-    pub(super) fn new(
-        id: BindingId,
-        sequence: HotkeySequence,
-        action: crate::action::Action,
-        options: SequenceOptions,
-    ) -> Self {
-        Self {
-            id,
-            sequence,
-            action,
-            propagation: KeyPropagation::Stop,
-            options,
-        }
-    }
-}
-
-#[derive(Clone)]
 pub(super) enum SequenceBindingRef {
     Global(BindingId),
-    Layer { name: LayerName, index: usize },
+    Layer {
+        id: BindingId,
+        name: LayerName,
+        index: usize,
+    },
 }
 
 pub(super) struct ActiveSequence {
@@ -266,7 +243,7 @@ impl Dispatcher {
             SequenceBindingRef::Global(id) => {
                 self.sequence_bindings_by_id[id].sequence.steps().len()
             }
-            SequenceBindingRef::Layer { name, index } => self.layers[name].sequence_bindings
+            SequenceBindingRef::Layer { name, index, .. } => self.layers[name].sequence_bindings
                 [*index]
                 .sequence
                 .steps()
@@ -286,7 +263,7 @@ impl Dispatcher {
                 .steps()
                 .get(step_index)
                 .is_some_and(|step| *step == hotkey),
-            SequenceBindingRef::Layer { name, index } => self.layers[name].sequence_bindings
+            SequenceBindingRef::Layer { name, index, .. } => self.layers[name].sequence_bindings
                 [*index]
                 .sequence
                 .steps()
@@ -298,7 +275,7 @@ impl Dispatcher {
     fn sequence_options(&self, binding_ref: &SequenceBindingRef) -> SequenceOptions {
         match binding_ref {
             SequenceBindingRef::Global(id) => self.sequence_bindings_by_id[id].options,
-            SequenceBindingRef::Layer { name, index } => {
+            SequenceBindingRef::Layer { name, index, .. } => {
                 self.layers[name].sequence_bindings[*index].options
             }
         }
@@ -315,10 +292,10 @@ impl Dispatcher {
                     repeat_policy: RepeatPolicy::default(),
                 }
             }
-            SequenceBindingRef::Layer { name, index } => {
+            SequenceBindingRef::Layer { id, name, index } => {
                 let binding = &self.layers[&name].sequence_bindings[index];
                 BindingMatch::Matched {
-                    binding_ref: MatchedBindingRef::SequenceLayer { name, index },
+                    binding_ref: MatchedBindingRef::SequenceLayer { id, name, index },
                     layer_effect: LayerEffect::from_action(&binding.action),
                     propagation: binding.propagation,
                     repeat_policy: RepeatPolicy::default(),
@@ -362,9 +339,9 @@ impl Dispatcher {
 
         if self.pending_standalone.as_ref().is_some_and(|pending| {
             matches!(
-                pending.inner.binding_ref,
-                MatchedBindingRef::Layer { ref name, .. }
-                    | MatchedBindingRef::SequenceLayer { ref name, .. }
+                &pending.inner.binding_ref,
+                MatchedBindingRef::Layer { name, .. }
+                    | MatchedBindingRef::SequenceLayer { name, .. }
                     if name == layer_name
             )
         }) {

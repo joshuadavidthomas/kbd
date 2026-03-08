@@ -21,7 +21,6 @@ pub(super) struct LayerTimeout {
 }
 
 /// Layer stack mutation extracted from a matched action.
-#[derive(Clone)]
 pub(super) enum LayerEffect {
     None,
     Push(LayerName),

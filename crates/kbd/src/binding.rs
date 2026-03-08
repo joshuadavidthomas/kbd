@@ -2,8 +2,12 @@
 //!
 //! A binding is the core unit: "when this input pattern matches, do this
 //! action." [`BindingId`] uniquely identifies a binding. [`BindingOptions`] holds
-//! per-binding configuration. [`RegisteredBinding`] pairs them with
-//! a hotkey and action for engine storage.
+//! per-binding configuration. [`RegisteredBinding`] pairs a hotkey with
+//! an action and options. `RegisteredSequenceBinding` does the same for
+//! multi-step sequences.
+//!
+//! Both types are used for global bindings and layer bindings — a binding
+//! is a binding regardless of where it lives.
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -12,9 +16,11 @@ use std::time::Duration;
 use crate::action::Action;
 use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
+use crate::hotkey::HotkeySequence;
 use crate::policy::KeyPropagation;
 use crate::policy::RateLimit;
 use crate::policy::RepeatPolicy;
+use crate::sequence::SequenceOptions;
 
 /// Unique identifier for a registered binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -341,10 +347,10 @@ impl BindingOptions {
     }
 }
 
-/// A binding registered with the engine: hotkey + action + options.
+/// A binding: hotkey + action + options.
 ///
-/// This is the engine's storage type for bindings. Created by the manager
-/// and sent to the engine via command channel.
+/// Used for both global bindings (stored in the dispatcher's registry)
+/// and layer bindings (stored within layer definitions).
 pub struct RegisteredBinding {
     id: BindingId,
     hotkey: Hotkey,
@@ -406,6 +412,35 @@ impl RegisteredBinding {
     #[must_use]
     pub const fn options(&self) -> &BindingOptions {
         &self.options
+    }
+}
+
+/// A sequence binding: multi-step hotkey pattern + action + options.
+///
+/// Used for both global sequence bindings and layer sequence bindings.
+pub(crate) struct RegisteredSequenceBinding {
+    pub(crate) id: BindingId,
+    pub(crate) sequence: HotkeySequence,
+    pub(crate) action: Action,
+    pub(crate) propagation: KeyPropagation,
+    pub(crate) options: SequenceOptions,
+}
+
+impl RegisteredSequenceBinding {
+    /// Create a new sequence binding with default propagation (`Stop`).
+    pub(crate) fn new(
+        id: BindingId,
+        sequence: HotkeySequence,
+        action: Action,
+        options: SequenceOptions,
+    ) -> Self {
+        Self {
+            id,
+            sequence,
+            action,
+            propagation: KeyPropagation::Stop,
+            options,
+        }
     }
 }
 
