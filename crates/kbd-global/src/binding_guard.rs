@@ -1,11 +1,10 @@
-//! [`BindingGuard`] — RAII guard that keeps a binding alive.
+//! [`BindingGuard`] keeps a registered binding alive.
 //!
-//! When dropped, sends `Command::Unregister` to the engine. No shared
-//! state, no locks — just a binding ID and a command sender.
-//!
-//! One guard type for all binding kinds (replaces v0's `Handle`,
-//! `SequenceHandle`, `TapHoldHandle`).
-//!
+//! The guard stores a binding ID and a command sender. Dropping it attempts to
+//! unregister the binding once, giving the manager a simple RAII story for
+//! hotkeys, sequences, and tap-hold registrations. Shutdown-related errors are
+//! ignored during `Drop`; call [`BindingGuard::unregister`] if you need to
+//! observe them explicitly.
 
 use std::fmt;
 
@@ -54,8 +53,8 @@ impl BindingGuard {
 
     /// Explicitly unregister this guard's binding.
     ///
-    /// Sends an unregister command to the engine. The same unregistration
-    /// is attempted automatically when the guard is dropped.
+    /// Sends an unregister command to the engine. This is a one-shot operation:
+    /// after a successful call, dropping the guard does nothing.
     ///
     /// # Errors
     ///

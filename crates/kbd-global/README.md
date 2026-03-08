@@ -3,38 +3,13 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-global.svg)](https://crates.io/crates/kbd-global)
 [![docs.rs](https://docs.rs/kbd-global/badge.svg)](https://docs.rs/kbd-global)
 
-Global hotkey runtime for kbd — threaded engine, device management, and backend selection for Linux.
+System-wide hotkeys on Linux for the [`kbd` workspace](https://github.com/joshuadavidthomas/kbd).
 
-When a key combination happens on a Linux keyboard, do something. Works on Wayland, X11, and TTY — it reads evdev directly, no display server integration needed.
+`kbd-global` runs a background thread that reads from evdev input devices, feeds events through `kbd`'s dispatcher, and fires your callbacks when bindings match. It handles device discovery, hotplug, and the event loop so you don't have to. Works on Wayland, X11, and TTY — no display server integration needed.
 
-```toml
-[dependencies]
-kbd = "0.1"
-kbd-global = "0.1"
-```
+## Requirements
 
-## Quick start
-
-```rust,no_run
-use kbd::prelude::*;
-use kbd_global::HotkeyManager;
-
-let manager = HotkeyManager::new()?;
-
-let _guard = manager.register(
-    Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
-    || println!("Ctrl+Shift+C pressed!"),
-)?;
-
-std::thread::park();
-# Ok::<(), kbd_global::Error>(())
-```
-
-Key types, actions, and layers come from [`kbd`](https://crates.io/crates/kbd). `kbd-global` provides the runtime ([`HotkeyManager`], [`BindingGuard`], [`Backend`]).
-
-## Prerequisites
-
-Your user must be in the `input` group to read `/dev/input/event*` devices:
+`kbd-global` reads `/dev/input/event*` directly. Your user needs permission to access input devices:
 
 ```bash
 sudo usermod -aG input $USER
@@ -42,50 +17,86 @@ sudo usermod -aG input $USER
 
 Log out and back in for the group change to take effect.
 
-## Architecture
+## Example
 
-`HotkeyManager` is the public API. Internally it sends commands to a
-dedicated engine thread over an `mpsc` channel, with an `eventfd` wake
-mechanism to interrupt `poll()`. All mutable state lives in the engine —
-no locks, no shared mutation.
+```rust,no_run
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key::Key;
+use kbd_global::manager::HotkeyManager;
 
-```text
-┌──────────────────┐    Command     ┌──────────────────┐
-│  HotkeyManager   │ ─────────────► │  Engine thread   │
-│  (command sender) │ ◄───────────── │  (event loop)    │
-└──────────────────┘    Reply        └──────────────────┘
-                                          │
-                                     poll(devices + wake_fd)
+let manager = HotkeyManager::new()?;
+
+// Registration returns a guard — the binding lives until the guard is dropped
+let _guard = manager.register(
+    Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
+    || println!("Ctrl+Shift+C pressed"),
+)?;
+
+// Keep the main thread alive so the background listener keeps running
+std::thread::park();
 ```
+
+`HotkeyManager` is the main entry point. It spawns the engine thread on creation and communicates with it over a channel. Registration returns a [`BindingGuard`](https://docs.rs/kbd-global/latest/kbd_global/binding_guard/struct.BindingGuard.html) — dropping it unregisters the binding. Dropping the manager (or calling `shutdown()`) stops the runtime.
 
 ## Layers
 
-Layers let you define context-dependent bindings. Define a layer, push
-it onto the stack, and its bindings take priority over global ones:
+Layers let you swap between different binding sets at runtime — think vim modes, or a "gaming" layer that disables desktop shortcuts:
 
 ```rust,no_run
-use kbd::prelude::*;
-use kbd_global::HotkeyManager;
+use kbd::action::Action;
+use kbd::key::Key;
+use kbd::layer::Layer;
+use kbd_global::manager::HotkeyManager;
 
 let manager = HotkeyManager::new()?;
 
 let layer = Layer::new("vim-normal")
-    .bind(Hotkey::new(Key::J), Action::from(|| println!("down")))?;
+    .bind(Key::J, || println!("down"))?
+    .bind(Key::K, || println!("up"))?
+    .bind(Key::I, Action::PushLayer("vim-insert".into()))?;
+
+let insert = Layer::new("vim-insert")
+    .bind("Escape".parse()?, Action::PopLayer)?;
 
 manager.define_layer(layer)?;
+manager.define_layer(insert)?;
 manager.push_layer("vim-normal")?;
-// Key::J now fires "down" instead of any global binding
-# Ok::<(), kbd_global::Error>(())
 ```
+
+Layers stack — the most recently pushed layer is checked first. `PopLayer` removes the top layer, `ToggleLayer` adds or removes by name.
+
+## Grab mode
+
+With the `grab` feature enabled, `kbd-global` can exclusively capture input devices so matched keys never reach other applications. Unmatched events are forwarded through a virtual uinput device.
+
+```rust,no_run
+use kbd_global::manager::HotkeyManager;
+
+let manager = HotkeyManager::builder()
+    .grab()
+    .build()?;
+```
+
+Grab mode requires write access to `/dev/uinput` in addition to read access on `/dev/input/`.
 
 ## Feature flags
 
 | Feature | Effect |
-|---------|--------|
-| `grab` | Enables exclusive device capture via `EVIOCGRAB` with uinput forwarding for non-hotkey events |
-| `serde` | Adds `Serialize`/`Deserialize` to key and hotkey types (via `kbd`) |
+|---|---|
+| `grab` | Exclusive device capture via `EVIOCGRAB` with uinput forwarding for unmatched events |
+| `serde` | Serde support for shared `kbd` key and hotkey types |
 
-The `grab` feature requires udev rules for uinput access — see the [docs](https://docs.rs/kbd-global) for setup instructions.
+## Current status
+
+- Linux only
+- evdev is the only backend
+- `Action::EmitHotkey` and `Action::EmitSequence` are not yet implemented in the runtime
+
+## Related crates
+
+- [`kbd`](https://docs.rs/kbd) — the core matching engine, used directly for in-process shortcuts
+- [`kbd-evdev`](https://docs.rs/kbd-evdev) — the low-level device backend this crate wraps, for when you need to own the poll loop yourself
+- Bridge crates for framework integration: [`kbd-crossterm`](https://docs.rs/kbd-crossterm), [`kbd-egui`](https://docs.rs/kbd-egui), [`kbd-iced`](https://docs.rs/kbd-iced), [`kbd-tao`](https://docs.rs/kbd-tao), [`kbd-winit`](https://docs.rs/kbd-winit)
 
 ## License
 

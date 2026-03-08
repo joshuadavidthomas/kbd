@@ -1,10 +1,12 @@
 # kbd-portal
 
-XDG `GlobalShortcuts` portal backend for [`kbd`](https://crates.io/crates/kbd) — Wayland-friendly global shortcut registration via D-Bus, no root access required. Works in sandboxed environments (Flatpak, Snap).
+`kbd-portal` is reserved for a future XDG `GlobalShortcuts` portal backend in the `kbd` ecosystem.
+
+The goal is a Wayland-friendly backend for environments where direct device access is unavailable or undesirable, such as sandboxed desktop applications.
 
 ## Status
 
-**Not yet implemented.** Entry points exist for interface compatibility but are not yet functional.
+This crate is not implemented yet and is not published.
 
 ## License
 

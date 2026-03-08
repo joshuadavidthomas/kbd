@@ -1,4 +1,8 @@
-//! Shared fixtures and helpers for kbd benchmarks.
+//! Shared fixtures and helpers for workspace benchmarks.
+//!
+//! This crate is internal to the `kbd` workspace and is used by the
+//! benchmark targets under `benches/`. It builds realistic dispatchers and
+//! hotkey sets for measuring registration and matching costs.
 
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;

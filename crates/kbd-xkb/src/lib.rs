@@ -1,13 +1,16 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! Keyboard layout awareness for `kbd`.
+//! Planned keyboard-layout integration for `kbd`.
 //!
-//! xkbcommon integration for:
+//! The intended scope is xkbcommon-backed layout awareness for features
+//! that depend on keyboard symbols rather than physical key positions.
+//! Examples include:
 //!
-//! - Keycode → keysym resolution based on active XKB layout
-//! - `KeyReference` enum: `ByCode` (position-based) vs `BySymbol` (character-based)
-//! - Layout change detection and re-resolution of symbol-based bindings
+//! - resolving keycodes to keysyms using the active layout
+//! - distinguishing position-based and symbol-based bindings
+//! - re-resolving symbol-based bindings when the active layout changes
 //!
 //! # Status
 //!
-//! Not yet implemented.
+//! This crate is currently a scaffold only. No functional xkb integration
+//! has been implemented yet.

@@ -1,10 +1,11 @@
-//! uinput virtual device for event forwarding and emission.
+//! uinput virtual device for event forwarding.
 //!
 //! In grab mode, unmatched key events are re-emitted through a virtual
 //! device so they reach applications normally.
 //!
-//! Note: keyd creates two virtual devices (keyboard + pointer). For now
-//! we only need one (keyboard).
+//! Synthetic action emission is planned but is not implemented yet.
+//! Unlike tools such as keyd, this crate currently needs only a keyboard
+//! virtual device.
 
 use kbd::key::Key;
 use kbd::key_state::KeyTransition;
@@ -17,8 +18,9 @@ pub(crate) const VIRTUAL_DEVICE_NAME: &str = "kbd-virtual-keyboard";
 
 /// Sink for forwarding key events through a virtual device.
 ///
-/// The engine uses this trait to forward unmatched events (in grab mode)
-/// and to emit synthetic key events (for remapping actions).
+/// The engine uses this trait to forward unmatched events in grab mode.
+/// Test utilities and alternate implementations can provide a different sink
+/// with the same interface.
 pub trait ForwardSink: Send {
     /// Forward a single key event through the virtual device.
     ///

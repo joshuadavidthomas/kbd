@@ -131,7 +131,7 @@ impl DeviceFilter {
 ///
 /// Carries device identity and per-device modifier state so the
 /// dispatcher can enforce device-specific bindings and modifier
-/// isolation. Created by the engine or by consumers of `kbd-core`
+/// isolation. Created by the engine or by consumers of `kbd`
 /// that have device-level information.
 ///
 /// # Modifier isolation
@@ -148,8 +148,13 @@ impl DeviceFilter {
 /// # Examples
 ///
 /// ```
-/// use kbd::device::{DeviceContext, DeviceInfo};
-/// use kbd::hotkey::{Modifier, ModifierSet};
+/// use kbd::action::Action;
+/// use kbd::binding::BindingOptions;
+/// use kbd::device::{DeviceContext, DeviceFilter, DeviceInfo};
+/// use kbd::dispatcher::{Dispatcher, MatchResult};
+/// use kbd::hotkey::{Hotkey, Modifier, ModifierSet};
+/// use kbd::key::Key;
+/// use kbd::key_state::KeyTransition;
 ///
 /// let info = DeviceInfo::new("StreamDeck XL", 0x0fd9, 0x006c);
 /// let ctx = DeviceContext::new(10, &info)
@@ -158,6 +163,22 @@ impl DeviceFilter {
 /// assert_eq!(ctx.device_id(), 10);
 /// assert_eq!(ctx.info().name(), "StreamDeck XL");
 /// assert_eq!(ctx.device_modifiers(), Some(ModifierSet::CTRL));
+///
+/// let mut dispatcher = Dispatcher::new();
+/// dispatcher.register_with_options(
+///     Hotkey::new(Key::A).modifier(Modifier::Ctrl),
+///     Action::Suppress,
+///     BindingOptions::default().with_device(DeviceFilter::name_contains("StreamDeck")),
+/// ).unwrap();
+///
+/// // The aggregate hotkey says Shift+A, but the device-specific binding still
+/// // matches because filtered bindings use `device_modifiers()` when present.
+/// let result = dispatcher.process_with_device(
+///     Hotkey::new(Key::A).modifier(Modifier::Shift),
+///     KeyTransition::Press,
+///     &ctx,
+/// );
+/// assert!(matches!(result, MatchResult::Matched { .. }));
 /// ```
 #[derive(Debug)]
 pub struct DeviceContext<'a> {

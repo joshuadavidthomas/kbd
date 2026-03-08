@@ -1,22 +1,24 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! XDG `GlobalShortcuts` portal backend for `kbd`.
+//! Planned XDG `GlobalShortcuts` portal backend for `kbd`.
 //!
-//! Wayland-friendly global shortcut registration via the XDG
-//! `GlobalShortcuts` portal (D-Bus, mediated by `ashpd`). No root access
-//! required — works in sandboxed environments (Flatpak, Snap).
+//! The intended goal is a Wayland-friendly, sandbox-friendly global
+//! shortcut backend built on the desktop portal and mediated by `ashpd`.
+//! This would complement the direct-evdev approach used by
+//! [`kbd-global`](https://docs.rs/kbd-global) in environments where direct
+//! device access is unavailable or undesirable.
 //!
 //! # Status
 //!
-//! Not yet implemented. The crate structure and error types exist for
-//! interface compatibility.
+//! The backend is not implemented yet. The crate currently exposes only a
+//! placeholder entry point and error type.
 
 /// Initialize a portal session for global shortcut registration.
 ///
 /// # Errors
 ///
-/// Always returns [`PortalError::NotImplemented`] — the portal backend
-/// is not yet available.
+/// Always returns [`PortalError::NotImplemented`]. The portal backend has
+/// not been implemented yet.
 pub fn init_session() -> Result<(), PortalError> {
     Err(PortalError::NotImplemented)
 }

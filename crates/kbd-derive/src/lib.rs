@@ -1,11 +1,18 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! Derive macros for `kbd`.
+//! Planned procedural macros for `kbd`.
 //!
-//! `#[derive(Bindings)]` for declarative hotkey registration,
-//! `#[hotkey(...)]` attributes, `#[flatten]` for composition,
-//! and compile-time hotkey string validation.
+//! The intended scope includes declarative binding registration,
+//! compile-time validation of hotkey strings, and composition helpers
+//! for larger binding sets.
+//!
+//! Expected surface area includes macros such as:
+//!
+//! - `#[derive(Bindings)]`
+//! - `#[hotkey(...)]`
+//! - `#[flatten]`
 //!
 //! # Status
 //!
-//! Not yet implemented.
+//! This crate is currently a scaffold only. No procedural macros are
+//! implemented yet.
