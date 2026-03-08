@@ -165,7 +165,7 @@ impl HotkeyManager {
 
     /// Register a simple hotkey callback.
     ///
-    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
+    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`](kbd::hotkey::Hotkey), a
     /// [`Key`], or a string (`&str` / `String`).
     ///
     /// # Errors
@@ -241,7 +241,7 @@ impl HotkeyManager {
 
     /// Register a hotkey with an explicit action and binding options.
     ///
-    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
+    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`](kbd::hotkey::Hotkey), a
     /// [`Key`], or a string (`&str` / `String`).
     ///
     /// Use when you need metadata (description, overlay visibility) or
@@ -271,7 +271,7 @@ impl HotkeyManager {
 
     /// Query whether a hotkey is currently registered.
     ///
-    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
+    /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`](kbd::hotkey::Hotkey), a
     /// [`Key`], or a string (`&str` / `String`).
     ///
     /// # Errors
