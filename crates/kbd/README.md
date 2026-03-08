@@ -40,6 +40,16 @@ Layers stack. The most recently pushed layer is checked first, then global bindi
 
 Multi-step bindings work too — register a sequence like `"Ctrl+K, Ctrl+C"` and the dispatcher tracks partial matches, returning `Pending` until the sequence completes or times out.
 
+## What else is in here
+
+Beyond hotkeys, layers, and sequences:
+
+- **Tap-hold** — dual-function keys that do one thing on tap, another on hold. Requires grab mode in `kbd-global`.
+- **Device filtering** — bind to specific keyboards by name, vendor/product ID, or physical path. Useful when you want different bindings for different devices.
+- **Introspection** — query what's registered, which layers are active, and where bindings conflict or shadow each other.
+- **Binding policies** — per-binding control over key propagation (consume vs. forward), repeat handling, and rate limiting.
+- **String parsing** — `"Ctrl+Shift+A"`, `"Super+1"`, `"Ctrl+K, Ctrl+C"` all parse into typed values. Common aliases (`Cmd` → `Super`, `Win` → `Super`, `Return` → `Enter`) are built in.
+
 ## Why physical keys?
 
 `kbd` matches physical key positions, not characters. `Key::A` means "the key in the A position on a QWERTY layout" regardless of whether the user's layout is AZERTY, Dvorak, or Colemak. This is the W3C `KeyboardEvent.code` model.
