@@ -3,9 +3,11 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-winit.svg)](https://crates.io/crates/kbd-winit)
 [![docs.rs](https://docs.rs/kbd-winit/badge.svg)](https://docs.rs/kbd-winit)
 
-`kbd-winit` converts winit keyboard events into `kbd` types.
+Winit key event conversions for the [`kbd` workspace](https://github.com/joshuadavidthomas/kbd).
 
-Use it when a winit application wants one hotkey representation for window input and for the rest of the `kbd` stack.
+Use it when a winit application wants one hotkey representation for window input and the rest of the `kbd` stack.
+
+[API docs](https://docs.rs/kbd-winit) — includes the full key and modifier mapping tables and an event-loop example.
 
 ```toml
 [dependencies]
@@ -15,8 +17,6 @@ kbd-winit = "0.1"
 
 ## Example
 
-Convert a winit key code and feed it to a dispatcher:
-
 ```rust
 use kbd::action::Action;
 use kbd::dispatcher::{Dispatcher, MatchResult};
@@ -25,24 +25,18 @@ use kbd::key_state::KeyTransition;
 use kbd_winit::{WinitKeyExt, WinitModifiersExt};
 use winit::keyboard::{KeyCode, ModifiersState};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mut dispatcher = Dispatcher::new();
 dispatcher.register("Ctrl+S", Action::Suppress)?;
 
-// Convert winit types to kbd types
 let key = KeyCode::KeyS.to_key().unwrap();
 let mods = ModifiersState::CONTROL.to_modifiers();
 let hotkey = Hotkey::new(key).modifiers(mods);
 
 let result = dispatcher.process(hotkey, KeyTransition::Press);
 assert!(matches!(result, MatchResult::Matched { .. }));
-# Ok(())
-# }
 ```
 
 Winit tracks modifiers separately from key events. When you convert a full `KeyEvent`, use [`WinitEventExt`](https://docs.rs/kbd-winit/latest/kbd_winit/trait.WinitEventExt.html) and pass in the latest `ModifiersState` from `WindowEvent::ModifiersChanged`.
-
-See the [API docs on docs.rs](https://docs.rs/kbd-winit) for the full event-loop example and mapping tables.
 
 ## License
 

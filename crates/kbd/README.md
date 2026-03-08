@@ -7,19 +7,20 @@ The pure matching engine at the center of the [`kbd` workspace](https://github.c
 
 Use it when you already have key events from somewhere — a GUI framework, a terminal library, raw evdev — and want a single binding model across all of them. It has no platform dependencies and no runtime thread of its own.
 
+[API docs](https://docs.rs/kbd)
+
 ```toml
 [dependencies]
 kbd = "0.1"
 ```
 
-## Quick start
+## Example
 
 ```rust
 use kbd::action::Action;
 use kbd::dispatcher::{Dispatcher, MatchResult};
 use kbd::key_state::KeyTransition;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mut dispatcher = Dispatcher::new();
 
 dispatcher.register("Ctrl+S", || println!("saved"))?;
@@ -27,8 +28,6 @@ dispatcher.register("Ctrl+Shift+P", Action::Suppress)?;
 
 let result = dispatcher.process("Ctrl+S".parse()?, KeyTransition::Press);
 assert!(matches!(result, MatchResult::Matched { .. }));
-# Ok(())
-# }
 ```
 
 Register bindings with strings (`"Ctrl+Shift+A"`) or build them with [`Hotkey::new`](https://docs.rs/kbd/latest/kbd/hotkey/struct.Hotkey.html). Feed key events to the dispatcher with [`process`](https://docs.rs/kbd/latest/kbd/dispatcher/struct.Dispatcher.html#method.process) and match on the result.
@@ -43,7 +42,6 @@ use kbd::dispatcher::Dispatcher;
 use kbd::key::Key;
 use kbd::layer::Layer;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mut dispatcher = Dispatcher::new();
 
 let layer = Layer::new("vim-normal")
@@ -52,8 +50,6 @@ let layer = Layer::new("vim-normal")
 
 dispatcher.define_layer(layer)?;
 dispatcher.push_layer("vim-normal")?;
-# Ok(())
-# }
 ```
 
 Layers can be oneshot (auto-pop after one match), swallowing (consume unmatched keys), or time-limited.
@@ -66,11 +62,8 @@ Multi-step bindings like `Ctrl+K, Ctrl+C`:
 use kbd::action::Action;
 use kbd::dispatcher::Dispatcher;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mut dispatcher = Dispatcher::new();
 dispatcher.register_sequence("Ctrl+K, Ctrl+C", Action::Suppress)?;
-# Ok(())
-# }
 ```
 
 The dispatcher tracks partial matches — after `Ctrl+K` it returns `MatchResult::Pending`, and completes (or resets) on the next key.
@@ -92,8 +85,6 @@ Physical keys are layout-independent and predictable — the same binding works 
 | Feature | Default | Effect |
 |---|---|---|
 | `serde` | off | Adds `Serialize` and `Deserialize` to key and hotkey-related types |
-
-See the [API docs on docs.rs](https://docs.rs/kbd) for the full reference.
 
 ## License
 
