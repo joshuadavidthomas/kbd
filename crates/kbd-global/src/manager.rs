@@ -26,9 +26,7 @@ use kbd::action::Action;
 use kbd::binding::BindingId;
 use kbd::binding::BindingOptions;
 use kbd::binding::RegisteredBinding;
-use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeyInput;
-use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::ModifierSet;
 use kbd::introspection::ActiveLayerInfo;
 use kbd::introspection::BindingInfo;
@@ -186,8 +184,7 @@ impl HotkeyManager {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        let hotkey = hotkey.into_hotkey()?;
-        self.register_action(hotkey, Action::from(callback))
+        self.register_with_options(hotkey, Action::from(callback), BindingOptions::default())
     }
 
     /// Register a multi-step sequence callback.
@@ -208,8 +205,11 @@ impl HotkeyManager {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        let sequence = sequence.into_sequence()?;
-        self.register_sequence_action(sequence, Action::from(callback), SequenceOptions::default())
+        self.register_sequence_with_options(
+            sequence,
+            Action::from(callback),
+            SequenceOptions::default(),
+        )
     }
 
     /// Register a multi-step sequence with explicit action and options.
@@ -229,7 +229,14 @@ impl HotkeyManager {
         options: SequenceOptions,
     ) -> Result<BindingGuard, crate::RegisterError> {
         let sequence = sequence.into_sequence()?;
-        self.register_sequence_action(sequence, action.into(), options)
+        let action = action.into();
+        let id = self.request(|reply| Command::RegisterSequence {
+            sequence,
+            action,
+            options,
+            reply,
+        })??;
+        Ok(BindingGuard::new(id, self.commands.clone()))
     }
 
     /// Register a hotkey with an explicit action and binding options.
@@ -338,29 +345,6 @@ impl HotkeyManager {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.commands.send(build(reply_tx))?;
         reply_rx.recv().map_err(|_| ManagerStopped)
-    }
-
-    fn register_action(
-        &self,
-        hotkey: Hotkey,
-        action: Action,
-    ) -> Result<BindingGuard, crate::RegisterError> {
-        self.register_with_options(hotkey, action, BindingOptions::default())
-    }
-
-    fn register_sequence_action(
-        &self,
-        sequence: HotkeySequence,
-        action: Action,
-        options: SequenceOptions,
-    ) -> Result<BindingGuard, crate::RegisterError> {
-        let id = self.request(|reply| Command::RegisterSequence {
-            sequence,
-            action,
-            options,
-            reply,
-        })??;
-        Ok(BindingGuard::new(id, self.commands.clone()))
     }
 
     fn shutdown_inner(&self) -> Result<(), crate::ShutdownError> {
