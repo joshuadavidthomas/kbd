@@ -25,7 +25,7 @@ let key = KeyCode::KeyS.to_key();
 let mods = ModifiersState::CONTROL.to_modifiers();
 // ModifierSet containing Modifier::Ctrl
 
-let hotkey = kbd::hotkey::Hotkey::new(key.unwrap()).modifiers(mods);
+let hotkey = kbd::hotkey::Hotkey::with_modifiers(key.unwrap(), mods);
 ```
 
 Once converted, the `Hotkey` plugs into everything `kbd` offers — register bindings with strings, stack layers for modal shortcuts, define multi-step sequences. Define your shortcuts once and let the dispatcher sort out matching, instead of writing `if key == KeyCode::KeyS && modifiers.control_key()` in every event handler.
