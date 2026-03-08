@@ -84,7 +84,7 @@ kbd-global = { version = "0.1", features = ["grab"] }
 use kbd_global::manager::HotkeyManager;
 
 let manager = HotkeyManager::builder()
-    .grab(true)
+    .grab()
     .build()?;
 ```
 
