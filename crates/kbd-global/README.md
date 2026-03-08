@@ -13,7 +13,7 @@ kbd = "0.1"
 kbd-global = "0.1"
 ```
 
-## Setting up
+## Requirements
 
 `kbd-global` reads `/dev/input/event*` directly. Your user needs permission to access input devices:
 
