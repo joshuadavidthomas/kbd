@@ -21,8 +21,10 @@ use kbd_crossterm::CrosstermEventExt;
 
 let event = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
 let hotkey = event.to_hotkey();
-// Some(Hotkey { key: Key::C, modifiers: {Ctrl} }) — ready for a Dispatcher
+// Some(Hotkey { key: Key::C, modifiers: {Ctrl} })
 ```
+
+The resulting `Hotkey` works with everything in `kbd` — register it as a binding, match it in the dispatcher, use it in a layer. You get one shortcut model for your whole TUI instead of hand-matching crossterm events in every input handler.
 
 Crossterm reports keys as characters rather than physical positions, so some inputs don't have a `kbd` equivalent — `to_hotkey()` returns `None` for those. Modifier keys used as triggers are normalized so they don't include themselves as active modifiers.
 
