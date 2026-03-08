@@ -14,7 +14,6 @@ use crate::introspection::ShadowedStatus;
 use crate::layer::LayerName;
 use crate::layer::UnmatchedKeys;
 
-#[derive(Clone)]
 enum HotkeyClaim {
     LayerImmediate { layer: LayerName, index: usize },
     LayerSequence { layer: LayerName },
