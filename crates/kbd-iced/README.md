@@ -25,9 +25,10 @@ let key = Code::KeyS.to_key();
 let mods = Modifiers::CTRL.to_modifiers();
 // ModifierSet containing Modifier::Ctrl
 
-// Combine into a Hotkey for use with a Dispatcher
 let hotkey = kbd::hotkey::Hotkey::new(key.unwrap()).modifiers(mods);
 ```
+
+Once converted, the `Hotkey` plugs into everything `kbd` offers — register bindings with strings, stack layers for modal shortcuts, define multi-step sequences. One shortcut model for both your iced UI and any system-wide hotkeys you add later.
 
 This crate converts iced's physical key types. Logical key values are out of scope — `kbd` matches physical positions.
 

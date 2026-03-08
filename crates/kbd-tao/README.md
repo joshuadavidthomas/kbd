@@ -25,9 +25,10 @@ let key = KeyCode::KeyS.to_key();
 let mods = ModifiersState::CONTROL.to_modifiers();
 // ModifierSet containing Modifier::Ctrl
 
-// Combine into a Hotkey for use with a Dispatcher
 let hotkey = kbd::hotkey::Hotkey::new(key.unwrap()).modifiers(mods);
 ```
+
+The resulting `Hotkey` works with everything in `kbd` — layers, sequences, string-based registration, introspection. For a Tauri app, that means your in-window shortcuts and your global hotkeys (via `kbd-global`) share the same binding model and the same dispatcher.
 
 Tao tracks modifiers separately from key events. For full `KeyEvent` conversion inside an event loop, use [`TaoEventExt`](https://docs.rs/kbd-tao/latest/kbd_tao/trait.TaoEventExt.html) — it takes the latest `ModifiersState` as a parameter.
 

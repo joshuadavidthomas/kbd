@@ -28,8 +28,10 @@ let event = Event::Key {
 };
 
 let hotkey = event.to_hotkey();
-// Some(Hotkey { key: Key::C, modifiers: {Ctrl} }) — ready for a Dispatcher
+// Some(Hotkey { key: Key::C, modifiers: {Ctrl} })
 ```
+
+Once converted, the `Hotkey` works with everything in `kbd` — string-based registration, layers, sequences, introspection. Define your shortcuts once and let the dispatcher handle matching, instead of scattering key checks across your egui `update()` calls.
 
 Egui doesn't expose the full W3C physical-key space. Logical or shifted keys like `Colon` or `Plus` don't have a single physical-key mapping, so `to_hotkey()` returns `None` for those.
 

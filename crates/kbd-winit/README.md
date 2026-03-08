@@ -25,9 +25,10 @@ let key = KeyCode::KeyS.to_key();
 let mods = ModifiersState::CONTROL.to_modifiers();
 // ModifierSet containing Modifier::Ctrl
 
-// Combine into a Hotkey for use with a Dispatcher
 let hotkey = kbd::hotkey::Hotkey::new(key.unwrap()).modifiers(mods);
 ```
+
+Once converted, the `Hotkey` plugs into everything `kbd` offers — register bindings with strings, stack layers for modal shortcuts, define multi-step sequences. Define your shortcuts once and let the dispatcher sort out matching, instead of writing `if key == KeyCode::KeyS && modifiers.control_key()` in every event handler.
 
 Winit tracks modifiers separately from key events. For full `KeyEvent` conversion inside an event loop, use [`WinitEventExt`](https://docs.rs/kbd-winit/latest/kbd_winit/trait.WinitEventExt.html) — it takes the latest `ModifiersState` from `WindowEvent::ModifiersChanged`.
 
