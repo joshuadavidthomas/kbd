@@ -3,28 +3,45 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-tao.svg)](https://crates.io/crates/kbd-tao)
 [![docs.rs](https://docs.rs/kbd-tao/badge.svg)](https://docs.rs/kbd-tao)
 
-Converts [tao](https://docs.rs/tao) key events into [`kbd`](https://docs.rs/kbd) types. Especially useful in Tauri apps that want both in-window shortcuts and system-wide hotkeys (via [`kbd-global`](https://docs.rs/kbd-global)) through a single dispatcher.
+`kbd-tao` converts tao keyboard events into `kbd` types so tao apps can share one hotkey model between in-window input and global hotkeys.
 
-[API docs](https://docs.rs/kbd-tao) — includes the full key and modifier mapping tables and an event-loop example.
+```toml
+[dependencies]
+kbd = "0.1"
+kbd-tao = "0.1"
+```
+
+## Public API
+
+- `TaoKeyExt` converts `tao::keyboard::KeyCode` to `kbd::key::Key`
+- `TaoModifiersExt` converts `tao::keyboard::ModifiersState` to `kbd::hotkey::ModifierSet`
+- `TaoEventExt` converts `tao::event::KeyEvent` plus `ModifiersState` to `kbd::hotkey::Hotkey`
+- `tao_key_to_hotkey(...)` provides the standalone helper used by the event trait
 
 ## Example
 
 ```rust
-use tao::keyboard::{KeyCode, ModifiersState};
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
 use kbd_tao::{TaoKeyExt, TaoModifiersExt};
+use tao::keyboard::{KeyCode, ModifiersState};
 
-let key = KeyCode::KeyS.to_key();
-// Some(Key::S)
+let key = KeyCode::KeyA.to_key();
+assert_eq!(key, Some(Key::A));
 
 let mods = ModifiersState::CONTROL.to_modifiers();
-// ModifierSet containing Modifier::Ctrl
-
-let hotkey = kbd::hotkey::Hotkey::with_modifiers(key.unwrap(), mods);
+assert!(mods.contains(Modifier::Ctrl));
+assert_eq!(mods.len(), 1);
 ```
 
-The resulting `Hotkey` works with everything in `kbd` — layers, sequences, string-based registration, introspection. For a Tauri app, that means your in-window shortcuts and your global hotkeys (via `kbd-global`) share the same binding model and the same dispatcher.
+## Mapping notes
 
-Tao tracks modifiers separately from key events. For full `KeyEvent` conversion inside an event loop, use [`TaoEventExt`](https://docs.rs/kbd-tao/latest/kbd_tao/trait.TaoEventExt.html) — it takes the latest `ModifiersState` as a parameter.
+- tao key codes map mechanically to `kbd`'s physical key model
+- tao `SUPER` maps to `kbd::hotkey::Modifier::Super`
+- modifier conversion yields a compact `ModifierSet`
+- modifier keys used as triggers are normalized so they do not include themselves as active modifiers
+
+See the [API docs on docs.rs](https://docs.rs/kbd-tao) for the full event-loop example and mapping tables.
 
 ## License
 

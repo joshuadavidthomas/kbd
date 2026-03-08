@@ -1,12 +1,19 @@
 # kbd-derive
 
-`kbd-derive` is reserved for planned procedural macros around `kbd`.
+`kbd-derive` is the planned procedural macro companion for `kbd`.
 
-The intended direction is declarative binding registration and compile-time checking for hotkey declarations, including APIs such as `#[derive(Bindings)]` and `#[hotkey(...)]`.
+The intended scope is declarative binding registration and compile-time validation for hotkey declarations, including APIs such as `#[derive(Bindings)]`, `#[hotkey(...)]`, and composition helpers.
 
 ## Status
 
-This crate is not implemented yet and is not published.
+This crate is not implemented yet.
+
+Today it exists as an unpublished scaffold so the workspace can reserve the name and document the planned API surface.
+
+## Publishing
+
+- unpublished (`publish = false`)
+- not ready for production use
 
 ## License
 

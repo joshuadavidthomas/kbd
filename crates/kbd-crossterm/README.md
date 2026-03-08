@@ -3,24 +3,48 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-crossterm.svg)](https://crates.io/crates/kbd-crossterm)
 [![docs.rs](https://docs.rs/kbd-crossterm/badge.svg)](https://docs.rs/kbd-crossterm)
 
-Converts [crossterm](https://docs.rs/crossterm) key events into [`kbd`](https://docs.rs/kbd) types so you can use the same dispatcher, hotkey parsing, layers, and sequences in a TUI app.
+`kbd-crossterm` converts crossterm key types into `kbd` types so you can feed terminal input into `kbd::dispatcher::Dispatcher`.
 
-[API docs](https://docs.rs/kbd-crossterm) — includes the full key and modifier mapping tables.
+```toml
+[dependencies]
+kbd = "0.1"
+kbd-crossterm = "0.1"
+```
+
+## Public API
+
+- `CrosstermKeyExt` converts `crossterm::event::KeyCode` to `kbd::key::Key`
+- `CrosstermModifiersExt` converts `crossterm::event::KeyModifiers` to `kbd::hotkey::ModifierSet`
+- `CrosstermEventExt` converts `crossterm::event::KeyEvent` to `kbd::hotkey::Hotkey`
 
 ## Example
 
 ```rust
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kbd_crossterm::CrosstermEventExt;
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key::Key;
+use kbd_crossterm::{CrosstermEventExt, CrosstermKeyExt, CrosstermModifiersExt};
+
+let key = KeyCode::Char('a').to_key();
+assert_eq!(key, Some(Key::A));
+
+let mods = KeyModifiers::CONTROL.to_modifiers();
+assert!(mods.contains(Modifier::Ctrl));
+assert_eq!(mods.len(), 1);
 
 let event = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
 let hotkey = event.to_hotkey();
-// Some(Hotkey { key: Key::C, modifiers: {Ctrl} })
+assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
 ```
 
-The resulting `Hotkey` works with everything in `kbd` — register it as a binding, match it in the dispatcher, use it in a layer. You get one shortcut model for your whole TUI instead of hand-matching crossterm events in every input handler.
+## Mapping notes
 
-Crossterm reports keys as characters rather than physical positions, so some inputs don't have a `kbd` equivalent — `to_hotkey()` returns `None` for those. Modifier keys used as triggers are normalized so they don't include themselves as active modifiers.
+- crossterm reports keys as characters, while `kbd` models physical key positions
+- modifier conversion yields a compact `ModifierSet`
+- unsupported or non-physical inputs return `None`
+- modifier keys used as triggers are normalized so they do not include themselves as active modifiers
+
+See the [API docs on docs.rs](https://docs.rs/kbd-crossterm) for the full mapping tables and examples.
 
 ## License
 

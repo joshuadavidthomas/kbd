@@ -3,28 +3,43 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-iced.svg)](https://crates.io/crates/kbd-iced)
 [![docs.rs](https://docs.rs/kbd-iced/badge.svg)](https://docs.rs/kbd-iced)
 
-Converts [iced](https://docs.rs/iced) key events into [`kbd`](https://docs.rs/kbd) types so that in-window shortcuts and global hotkeys (from [`kbd-global`](https://docs.rs/kbd-global)) can share the same dispatcher.
+`kbd-iced` converts iced keyboard events into `kbd` types so in-window shortcuts and global hotkeys can share the same dispatcher.
 
-[API docs](https://docs.rs/kbd-iced) — includes the full key and modifier mapping tables.
+```toml
+[dependencies]
+kbd = "0.1"
+kbd-iced = "0.1"
+```
+
+## Public API
+
+- `IcedKeyExt` converts `iced_core::keyboard::key::Code` and `key::Physical` to `kbd::key::Key`
+- `IcedModifiersExt` converts iced `Modifiers` to `kbd::hotkey::ModifierSet`
+- `IcedEventExt` converts iced keyboard `Event` values to `kbd::hotkey::Hotkey`
 
 ## Example
 
 ```rust
-use iced_core::keyboard::{key::Code, Modifiers};
+use iced_core::keyboard::{self, Modifiers};
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
 use kbd_iced::{IcedKeyExt, IcedModifiersExt};
 
-let key = Code::KeyS.to_key();
-// Some(Key::S)
+let key = keyboard::key::Code::KeyA.to_key();
+assert_eq!(key, Some(Key::A));
 
 let mods = Modifiers::CTRL.to_modifiers();
-// ModifierSet containing Modifier::Ctrl
-
-let hotkey = kbd::hotkey::Hotkey::with_modifiers(key.unwrap(), mods);
+assert!(mods.contains(Modifier::Ctrl));
+assert_eq!(mods.len(), 1);
 ```
 
-Once converted, the `Hotkey` plugs into everything `kbd` offers — register bindings with strings, stack layers for modal shortcuts, define multi-step sequences. One shortcut model for both your iced UI and any system-wide hotkeys you add later.
+## Mapping notes
 
-This crate converts iced's physical key types. Logical key values are out of scope — `kbd` matches physical positions.
+- this crate converts physical key types, not iced logical key values
+- modifier conversion yields a compact `ModifierSet`
+- modifier keys used as triggers are normalized so they do not include themselves as active modifiers
+
+See the [API docs on docs.rs](https://docs.rs/kbd-iced) for full event conversion details and mapping tables.
 
 ## License
 

@@ -3,65 +3,71 @@
 [![crates.io](https://img.shields.io/crates/v/kbd.svg)](https://crates.io/crates/kbd)
 [![docs.rs](https://docs.rs/kbd/badge.svg)](https://docs.rs/kbd)
 
-The pure matching engine at the center of the [`kbd` workspace](https://github.com/joshuadavidthomas/kbd).
+`kbd` is a pure-logic hotkey engine for Rust. It provides the domain types and matching logic that sit underneath hotkey systems: physical keys, modifiers, global bindings, layers, sequences, tap-hold bindings, device-aware matching, and introspection.
 
-You describe bindings — as strings like `"Ctrl+Shift+A"` or programmatically — and the dispatcher tells you when incoming key events match. It has no platform dependencies and no runtime thread of its own; you bring the key events from wherever you have them.
+It has no platform dependencies. You feed it key events from your own event loop or from a runtime such as [`kbd-global`](https://docs.rs/kbd-global).
 
-## Example
+```toml
+[dependencies]
+kbd = "0.1"
+```
+
+## Quick start
 
 ```rust
 use kbd::action::Action;
-use kbd::dispatcher::Dispatcher;
-use kbd::hotkey::{Hotkey, Modifier};
-use kbd::key::Key;
-use kbd::layer::Layer;
+use kbd::dispatcher::{Dispatcher, MatchResult};
+use kbd::key_state::KeyTransition;
 
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mut dispatcher = Dispatcher::new();
 
-// Global bindings — register via string parsing...
-dispatcher.register("Ctrl+S", Action::Suppress)?;
+dispatcher.register("Ctrl+Shift+A", Action::Suppress)?;
 
-// ...or build hotkeys programmatically
-dispatcher.register(
-    Hotkey::new(Key::P).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
-    Action::Suppress,
-)?;
-
-// Layer bindings — active only when the layer is pushed
-let normal = Layer::new("normal")
-    .bind(Key::J, || println!("down"))?
-    .bind(Key::K, || println!("up"))?
-    .bind(Key::I, Action::PushLayer("insert".into()))?;
-
-dispatcher.define_layer(normal)?;
-dispatcher.push_layer("normal")?;
+let result = dispatcher.process("Ctrl+Shift+A".parse()?, KeyTransition::Press);
+assert!(matches!(result, MatchResult::Matched { .. }));
+# Ok(())
+# }
 ```
 
-Layers stack. The most recently pushed layer is checked first, then global bindings. Layers can be oneshot (auto-pop after one match), swallowing (consume unmatched keys), or time-limited.
+## What the crate provides
 
-Multi-step bindings work too — register a sequence like `"Ctrl+K, Ctrl+C"` and the dispatcher tracks partial matches, returning `Pending` until the sequence completes or times out.
+- `Key`, `Modifier`, `Hotkey`, and `HotkeySequence` types
+- A synchronous `Dispatcher` for matching key events
+- Global bindings and stackable named layers
+- Multi-step sequence matching with timeouts
+- Tap-hold bindings
+- Per-binding propagation, debounce, rate limiting, and repeat policy
+- Device filters and per-device modifier isolation
+- Introspection APIs for overlays, debugging, and conflict reporting
 
-## What else is in here
+## Ecosystem
 
-Beyond hotkeys, layers, and sequences:
-
-- **Tap-hold** — dual-function keys that do one thing on tap, another on hold. Requires grab mode in `kbd-global`.
-- **Device filtering** — bind to specific keyboards by name, vendor/product ID, or physical path. Useful when you want different bindings for different devices.
-- **Introspection** — query what's registered, which layers are active, and where bindings conflict or shadow each other.
-- **Binding policies** — per-binding control over key propagation (consume vs. forward), repeat handling, and rate limiting.
-- **String parsing** — `"Ctrl+Shift+A"`, `"Super+1"`, `"Ctrl+K, Ctrl+C"` all parse into typed values. Common aliases (`Cmd` → `Super`, `Win` → `Super`, `Return` → `Enter`) are built in.
-
-## Why physical keys?
-
-`kbd` matches physical key positions, not characters. `Key::A` means "the key in the A position on a QWERTY layout" regardless of whether the user's layout is AZERTY, Dvorak, or Colemak. This is the W3C `KeyboardEvent.code` model.
-
-Physical keys are layout-independent and predictable — the same binding works everywhere without knowing the active keyboard layout. This is the right default for shortcuts. (Layout-aware symbol bindings are a planned future addition via `kbd-xkb`.)
+- [`kbd-global`](https://docs.rs/kbd-global) for a threaded Linux runtime backed by evdev
+- [`kbd-evdev`](https://docs.rs/kbd-evdev) for low-level Linux device discovery and forwarding
+- Bridge crates for event-loop integration:
+  - [`kbd-crossterm`](https://docs.rs/kbd-crossterm)
+  - [`kbd-egui`](https://docs.rs/kbd-egui)
+  - [`kbd-iced`](https://docs.rs/kbd-iced)
+  - [`kbd-tao`](https://docs.rs/kbd-tao)
+  - [`kbd-winit`](https://docs.rs/kbd-winit)
 
 ## Feature flags
 
 | Feature | Default | Effect |
 |---|---|---|
 | `serde` | off | Adds `Serialize` and `Deserialize` to key and hotkey-related types |
+
+## Documentation
+
+The crate is organized by domain modules rather than root-level re-exports. Typical imports look like:
+
+- `kbd::dispatcher::Dispatcher`
+- `kbd::hotkey::{Hotkey, Modifier}`
+- `kbd::key::Key`
+- `kbd::layer::Layer`
+
+See the [API docs on docs.rs](https://docs.rs/kbd) for the full reference.
 
 ## License
 

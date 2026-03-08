@@ -3,28 +3,48 @@
 [![crates.io](https://img.shields.io/crates/v/kbd-winit.svg)](https://crates.io/crates/kbd-winit)
 [![docs.rs](https://docs.rs/kbd-winit/badge.svg)](https://docs.rs/kbd-winit)
 
-Converts [winit](https://docs.rs/winit) key events into [`kbd`](https://docs.rs/kbd) types so that in-window shortcuts and global hotkeys (from [`kbd-global`](https://docs.rs/kbd-global)) can share the same dispatcher.
+`kbd-winit` converts winit keyboard events into `kbd` types so applications can share one hotkey model between window input and global hotkeys.
 
-[API docs](https://docs.rs/kbd-winit) — includes the full key and modifier mapping tables and an event-loop example.
+```toml
+[dependencies]
+kbd = "0.1"
+kbd-winit = "0.1"
+```
+
+## Public API
+
+- `WinitKeyExt` converts `winit::keyboard::KeyCode` and `PhysicalKey` to `kbd::key::Key`
+- `WinitModifiersExt` converts `winit::keyboard::ModifiersState` to `kbd::hotkey::ModifierSet`
+- `WinitEventExt` converts `winit::event::KeyEvent` plus `ModifiersState` to `kbd::hotkey::Hotkey`
+- `winit_key_to_hotkey(...)` provides the standalone helper used by the event trait
 
 ## Example
 
 ```rust
-use winit::keyboard::{KeyCode, ModifiersState};
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
 use kbd_winit::{WinitKeyExt, WinitModifiersExt};
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 
-let key = KeyCode::KeyS.to_key();
-// Some(Key::S)
+let key = KeyCode::KeyA.to_key();
+assert_eq!(key, Some(Key::A));
+
+let physical = PhysicalKey::Code(KeyCode::KeyA).to_key();
+assert_eq!(physical, Some(Key::A));
 
 let mods = ModifiersState::CONTROL.to_modifiers();
-// ModifierSet containing Modifier::Ctrl
-
-let hotkey = kbd::hotkey::Hotkey::with_modifiers(key.unwrap(), mods);
+assert!(mods.contains(Modifier::Ctrl));
+assert_eq!(mods.len(), 1);
 ```
 
-Once converted, the `Hotkey` plugs into everything `kbd` offers — register bindings with strings, stack layers for modal shortcuts, define multi-step sequences. Define your shortcuts once and let the dispatcher sort out matching, instead of writing `if key == KeyCode::KeyS && modifiers.control_key()` in every event handler.
+## Mapping notes
 
-Winit tracks modifiers separately from key events. For full `KeyEvent` conversion inside an event loop, use [`WinitEventExt`](https://docs.rs/kbd-winit/latest/kbd_winit/trait.WinitEventExt.html) — it takes the latest `ModifiersState` from `WindowEvent::ModifiersChanged`.
+- winit key codes map closely to `kbd`'s physical key model
+- modifier conversion yields a compact `ModifierSet`
+- modifier keys used as triggers are normalized so they do not include themselves as active modifiers
+- `PhysicalKey::Unidentified(_)` returns `None`
+
+See the [API docs on docs.rs](https://docs.rs/kbd-winit) for the full event-loop example and mapping tables.
 
 ## License
 

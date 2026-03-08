@@ -4,8 +4,9 @@
 //!
 //! `kbd-global` wraps the pure matching engine from [`kbd`] in a threaded
 //! runtime that owns device discovery, hotplug handling, and command-based
-//! registration APIs. It reads from evdev devices directly, so it works
-//! on Wayland, X11, and TTY without display-server integration.
+//! registration APIs. The current implementation uses the evdev backend
+//! directly, so it works on Wayland, X11, and TTY without display-server
+//! specific integrations.
 //!
 //! # Quick start
 //!
@@ -23,56 +24,39 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! [`HotkeyManager`](manager::HotkeyManager) is the main entry point.
-//! Registration returns a [`BindingGuard`](binding_guard::BindingGuard)
-//! that keeps the binding alive — drop it to unregister. Key types,
-//! actions, and layer definitions come from [`kbd`].
+//! # Concepts
 //!
-//! # Layers
+//! Four concepts cover the library's public surface:
 //!
-//! Layers let you swap between different binding sets at runtime:
-//!
-//! ```rust,no_run
-//! use kbd::action::Action;
-//! use kbd::key::Key;
-//! use kbd::layer::Layer;
-//! use kbd_global::manager::HotkeyManager;
-//!
-//! let manager = HotkeyManager::new()?;
-//!
-//! let layer = Layer::new("vim-normal")
-//!     .bind(Key::J, || println!("down"))?
-//!     .bind(Key::K, || println!("up"))?;
-//!
-//! manager.define_layer(layer)?;
-//! manager.push_layer("vim-normal")?;
-//! # Ok::<(), Box<dyn std::error::Error>>(())
-//! ```
-//!
-//! Layers stack — the most recently pushed layer is checked first.
-//! See [`kbd::layer`] for oneshot, swallow, and timeout options.
+//! - **Keys** — physical keys and modifiers from [`kbd`] ([`Key`](kbd::key::Key), [`Modifier`](kbd::hotkey::Modifier), [`Hotkey`](kbd::hotkey::Hotkey))
+//! - **Bindings** — registrations plus metadata and behavior ([`Action`](kbd::action::Action), [`BindingOptions`](kbd::binding::BindingOptions))
+//! - **Layers** — named groups of bindings that can be pushed and popped at runtime ([`Layer`](kbd::layer::Layer), [`LayerOptions`](kbd::layer::LayerOptions))
+//! - **Grab mode** — optional exclusive capture for interception and forwarding
 //!
 //! # Architecture
 //!
-//! [`HotkeyManager`](manager::HotkeyManager) sends typed commands to a
-//! dedicated engine thread over a channel, using an `eventfd` wake
-//! mechanism to interrupt `poll()`. All mutable runtime state lives in
-//! the engine thread.
+//! [`HotkeyManager`](manager::HotkeyManager) is the public API. Internally it
+//! sends typed commands to a dedicated engine thread over a channel, using an
+//! `eventfd` wake mechanism to interrupt `poll()`. All mutable runtime state
+//! lives in the engine thread.
 //!
 //! ```text
-//! +------------------+                +------------------+
-//! |  HotkeyManager   | -- commands -->|  Engine thread   |
-//! | (command sender) |<--- replies ---|   (event loop)   |
-//! +------------------+                +------------------+
-//!                                              |
-//!                                              v
-//!                                   poll(devices + wake_fd)
+//! ┌──────────────────┐    Command     ┌──────────────────┐
+//! │  HotkeyManager   │ ─────────────► │  Engine thread   │
+//! │  (command sender)│ ◄───────────── │  (event loop)    │
+//! └──────────────────┘    Reply        └──────────────────┘
+//!                                           │
+//!                                      poll(devices + wake_fd)
 //! ```
 //!
-//! Create a manager with [`HotkeyManager::new()`](manager::HotkeyManager::new)
-//! or [`HotkeyManager::builder()`](manager::HotkeyManager::builder), register
-//! bindings, and keep the returned guards alive. Dropping a guard unregisters
-//! its binding; dropping the manager stops the runtime.
+//! # Lifecycle
+//!
+//! 1. Create a manager with [`HotkeyManager::new()`](manager::HotkeyManager::new) or [`HotkeyManager::builder()`](manager::HotkeyManager::builder)
+//! 2. Register bindings with [`HotkeyManager::register()`](manager::HotkeyManager::register), [`HotkeyManager::register_sequence()`](manager::HotkeyManager::register_sequence), or [`HotkeyManager::register_tap_hold()`](manager::HotkeyManager::register_tap_hold)
+//! 3. Optionally define and activate [`Layer`](kbd::layer::Layer)s
+//! 4. The engine thread processes device events and fires callbacks
+//! 5. Drop the returned [`BindingGuard`](binding_guard::BindingGuard) to unregister, or call [`BindingGuard::unregister()`](binding_guard::BindingGuard::unregister)
+//! 6. Drop the manager, or call [`HotkeyManager::shutdown()`](manager::HotkeyManager::shutdown), to stop the runtime
 //!
 //! # Backend selection
 //!
@@ -100,13 +84,13 @@
 //!
 //! | Feature | Effect |
 //! |---------|--------|
-//! | `grab` | Exclusive device capture via `EVIOCGRAB` with uinput forwarding for unmatched events |
+//! | `grab` | Enables exclusive device capture via `EVIOCGRAB` with uinput forwarding for unmatched events |
 //! | `serde` | Adds `Serialize`/`Deserialize` to shared key and hotkey types via [`kbd`] |
 //!
 //! # Current limitations
 //!
 //! - Linux only
-//! - evdev is the only backend
+//! - evdev is the only backend currently available
 //! - [`Action::EmitHotkey`](kbd::action::Action::EmitHotkey) and [`Action::EmitSequence`](kbd::action::Action::EmitSequence) are not yet implemented in the runtime
 //!
 //! # See also
