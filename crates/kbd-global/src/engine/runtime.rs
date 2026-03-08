@@ -1,7 +1,7 @@
 //! Engine thread lifecycle — spawn, shutdown, and join.
 //!
 //! [`EngineRuntime`] owns the thread handle and command sender. Created
-//! by [`HotkeyManager`](crate::HotkeyManager) during construction.
+//! by [`HotkeyManager`](crate::manager::HotkeyManager) during construction.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -14,8 +14,8 @@ use super::command::CommandSender;
 use super::run;
 use super::types::GrabState;
 use super::wake::WakeFd;
-use crate::ShutdownError;
-use crate::StartupError;
+use crate::error::ShutdownError;
+use crate::error::StartupError;
 
 pub(crate) struct EngineRuntime {
     commands: CommandSender,

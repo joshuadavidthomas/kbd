@@ -11,7 +11,13 @@
 //! extension traits instead. The `TaoEventExt` trait is tested via unit
 //! tests in lib.rs where we can validate the delegation.
 
-use kbd::prelude::*;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
+use kbd::key_state::KeyTransition;
 use kbd_tao::TaoKeyExt;
 use kbd_tao::TaoModifiersExt;
 use kbd_tao::tao_key_to_hotkey;

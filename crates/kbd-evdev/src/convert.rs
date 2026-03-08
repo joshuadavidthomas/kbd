@@ -8,8 +8,8 @@
 //!
 //! ```rust
 //! use evdev::KeyCode;
-//! use kbd::prelude::*;
-//! use kbd_evdev::EvdevKeyCodeExt;
+//! use kbd::key::Key;
+//! use kbd_evdev::convert::EvdevKeyCodeExt;
 //!
 //! let key: Key = KeyCode::KEY_A.to_key();
 //! assert_eq!(key, Key::A);
@@ -39,8 +39,8 @@ pub trait EvdevKeyCodeExt: private::Sealed {
     ///
     /// ```
     /// use evdev::KeyCode;
-    /// use kbd::prelude::*;
-    /// use kbd_evdev::EvdevKeyCodeExt;
+    /// use kbd::key::Key;
+    /// use kbd_evdev::convert::EvdevKeyCodeExt;
     ///
     /// assert_eq!(KeyCode::KEY_A.to_key(), Key::A);
     /// assert_eq!(KeyCode::KEY_LEFTCTRL.to_key(), Key::CONTROL_LEFT);
@@ -67,8 +67,8 @@ pub trait KbdKeyExt: private::Sealed {
     ///
     /// ```
     /// use evdev::KeyCode;
-    /// use kbd::prelude::*;
-    /// use kbd_evdev::KbdKeyExt;
+    /// use kbd::key::Key;
+    /// use kbd_evdev::convert::KbdKeyExt;
     ///
     /// assert_eq!(Key::A.to_key_code(), KeyCode::KEY_A);
     /// assert_eq!(Key::CONTROL_LEFT.to_key_code(), KeyCode::KEY_LEFTCTRL);

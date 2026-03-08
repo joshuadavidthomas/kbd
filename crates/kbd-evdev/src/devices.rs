@@ -26,7 +26,7 @@ use kbd::device::DeviceInfo;
 use kbd::key::Key;
 use kbd::key_state::KeyTransition;
 
-use crate::EvdevKeyCodeExt;
+use crate::convert::EvdevKeyCodeExt;
 use crate::forwarder::VIRTUAL_DEVICE_NAME;
 
 /// Default path to the Linux input device directory.

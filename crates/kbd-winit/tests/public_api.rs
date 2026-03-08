@@ -11,7 +11,13 @@
 //! instead. The `WinitEventExt` trait is tested via unit tests in lib.rs
 //! where we can validate the delegation.
 
-use kbd::prelude::*;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
+use kbd::key_state::KeyTransition;
 use kbd_winit::WinitKeyExt;
 use kbd_winit::WinitModifiersExt;
 use kbd_winit::winit_key_to_hotkey;

@@ -51,8 +51,8 @@ use kbd::key_state::KeyTransition;
 use kbd::policy::KeyPropagation;
 use kbd::policy::RepeatPolicy;
 
-use crate::ShutdownError;
 use crate::engine::devices::DeviceKeyEvent;
+use crate::error::ShutdownError;
 
 pub(crate) mod command;
 pub(crate) mod devices;
@@ -182,7 +182,7 @@ impl Engine {
                 let _ = reply.send(
                     self.dispatcher
                         .register_binding(binding)
-                        .map_err(crate::RegisterError::from),
+                        .map_err(crate::error::RegisterError::from),
                 );
             }
             Command::RegisterSequence {
@@ -194,7 +194,7 @@ impl Engine {
                 let result = self
                     .dispatcher
                     .register_sequence_with_options(sequence, action, options)
-                    .map_err(crate::RegisterError::from);
+                    .map_err(crate::error::RegisterError::from);
                 let _ = reply.send(result);
             }
             Command::RegisterTapHold {
@@ -207,12 +207,12 @@ impl Engine {
                 // Tap-hold requires grab mode — without it, we can't
                 // intercept and buffer key events.
                 if matches!(self.grab_state, GrabState::Disabled) {
-                    let _ = reply.send(Err(crate::RegisterError::UnsupportedFeature));
+                    let _ = reply.send(Err(crate::error::RegisterError::UnsupportedFeature));
                 } else {
                     let result = self
                         .dispatcher
                         .register_tap_hold(key, tap_action, hold_action, options)
-                        .map_err(crate::RegisterError::from);
+                        .map_err(crate::error::RegisterError::from);
                     let _ = reply.send(result);
                 }
             }
@@ -228,24 +228,28 @@ impl Engine {
                 let _ = reply.send(
                     self.dispatcher
                         .define_layer(layer)
-                        .map_err(crate::LayerError::from),
+                        .map_err(crate::error::LayerError::from),
                 );
             }
             Command::PushLayer { name, reply } => {
                 let _ = reply.send(
                     self.dispatcher
                         .push_layer(name)
-                        .map_err(crate::LayerError::from),
+                        .map_err(crate::error::LayerError::from),
                 );
             }
             Command::PopLayer { reply } => {
-                let _ = reply.send(self.dispatcher.pop_layer().map_err(crate::LayerError::from));
+                let _ = reply.send(
+                    self.dispatcher
+                        .pop_layer()
+                        .map_err(crate::error::LayerError::from),
+                );
             }
             Command::ToggleLayer { name, reply } => {
                 let _ = reply.send(
                     self.dispatcher
                         .toggle_layer(name)
-                        .map_err(crate::LayerError::from),
+                        .map_err(crate::error::LayerError::from),
                 );
             }
 
@@ -624,8 +628,8 @@ mod tests {
     use super::devices;
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
-    use crate::LayerError;
-    use crate::RegisterError;
+    use crate::error::LayerError;
+    use crate::error::RegisterError;
 
     #[test]
     fn engine_processes_register_and_unregister_commands() {
@@ -762,7 +766,7 @@ mod tests {
         let send_result = commands.send(Command::Unregister {
             id: BindingId::new(),
         });
-        assert!(matches!(send_result, Err(crate::ManagerStopped)));
+        assert!(matches!(send_result, Err(crate::error::ManagerStopped)));
     }
 
     fn test_binding(id: BindingId, hotkey: Hotkey) -> Binding {

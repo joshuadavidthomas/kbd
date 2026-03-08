@@ -30,7 +30,7 @@ pub enum StartupError {
     Device,
     /// The requested feature is not supported by the selected backend.
     ///
-    /// Returned when calling [`HotkeyManagerBuilder::grab()`](crate::HotkeyManagerBuilder::grab)
+    /// Returned when calling [`HotkeyManagerBuilder::grab()`](crate::manager::HotkeyManagerBuilder::grab)
     /// without the `grab` feature enabled.
     #[error("requested feature is unsupported by the selected backend")]
     UnsupportedFeature,
@@ -113,8 +113,8 @@ impl From<kbd::error::LayerError> for LayerError {
 
 /// Error returned by query methods that accept parseable hotkey input.
 ///
-/// Methods like [`is_registered()`](crate::HotkeyManager::is_registered)
-/// and [`bindings_for_key()`](crate::HotkeyManager::bindings_for_key)
+/// Methods like [`is_registered()`](crate::manager::HotkeyManager::is_registered)
+/// and [`bindings_for_key()`](crate::manager::HotkeyManager::bindings_for_key)
 /// can fail from string parsing or a dead engine.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

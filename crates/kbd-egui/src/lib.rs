@@ -48,7 +48,8 @@
 //!
 //! ```
 //! use egui::{Key as EguiKey, Modifiers};
-//! use kbd::prelude::*;
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
 //! use kbd_egui::{EguiEventExt, EguiKeyExt, EguiModifiersExt};
 //!
 //! // Single key conversion
@@ -100,7 +101,7 @@ pub trait EguiKeyExt: private::Sealed {
     ///
     /// ```
     /// use egui::Key as EguiKey;
-    /// use kbd::prelude::*;
+    /// use kbd::key::Key;
     /// use kbd_egui::EguiKeyExt;
     ///
     /// assert_eq!(EguiKey::A.to_key(), Some(Key::A));
@@ -266,7 +267,7 @@ pub trait EguiModifiersExt: private::Sealed {
     ///
     /// ```
     /// use egui::Modifiers;
-    /// use kbd::prelude::*;
+    /// use kbd::hotkey::Modifier;
     /// use kbd_egui::EguiModifiersExt;
     ///
     /// let mods = Modifiers {
@@ -307,7 +308,8 @@ pub trait EguiEventExt: private::Sealed {
     ///
     /// ```
     /// use egui::{Key as EguiKey, Modifiers};
-    /// use kbd::prelude::*;
+    /// use kbd::hotkey::{Hotkey, Modifier};
+    /// use kbd::key::Key;
     /// use kbd_egui::EguiEventExt;
     ///
     /// let event = egui::Event::Key {

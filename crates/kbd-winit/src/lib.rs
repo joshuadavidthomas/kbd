@@ -56,7 +56,6 @@
 //! events directly:
 //!
 //! ```no_run
-//! use kbd::prelude::*;
 //! use kbd_winit::WinitEventExt;
 //! use winit::application::ApplicationHandler;
 //! use winit::event::WindowEvent;
@@ -100,7 +99,8 @@
 //! The individual conversion traits can also be used separately:
 //!
 //! ```
-//! use kbd::prelude::*;
+//! use kbd::hotkey::Modifier;
+//! use kbd::key::Key;
 //! use kbd_winit::{WinitKeyExt, WinitModifiersExt};
 //! use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 //!
@@ -147,7 +147,7 @@ pub trait WinitKeyExt: private::Sealed {
     /// # Examples
     ///
     /// ```
-    /// use kbd::prelude::*;
+    /// use kbd::key::Key;
     /// use kbd_winit::WinitKeyExt;
     /// use winit::keyboard::{KeyCode, PhysicalKey};
     ///
@@ -408,7 +408,7 @@ pub trait WinitModifiersExt: private::Sealed {
     /// # Examples
     ///
     /// ```
-    /// use kbd::prelude::*;
+    /// use kbd::hotkey::Modifier;
     /// use kbd_winit::WinitModifiersExt;
     /// use winit::keyboard::ModifiersState;
     ///
@@ -486,7 +486,8 @@ pub trait WinitEventExt: private::Sealed {
     /// [`winit_key_to_hotkey`]:
     ///
     /// ```
-    /// use kbd::prelude::*;
+    /// use kbd::hotkey::{Hotkey, Modifier};
+    /// use kbd::key::Key;
     /// use kbd_winit::winit_key_to_hotkey;
     /// use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
     ///

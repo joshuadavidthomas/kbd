@@ -11,14 +11,18 @@
 
 mod utils;
 
-use kbd::prelude::*;
-use kbd_global::Backend;
-use kbd_global::BindingGuard;
-use kbd_global::HotkeyManager;
-use kbd_global::HotkeyManagerBuilder;
-use kbd_global::ManagerStopped;
-use kbd_global::RegisterError;
-use kbd_global::StartupError;
+use kbd::action::Action;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
+use kbd::layer::Layer;
+use kbd_global::backend::Backend;
+use kbd_global::binding_guard::BindingGuard;
+use kbd_global::error::ManagerStopped;
+use kbd_global::error::RegisterError;
+use kbd_global::error::StartupError;
+use kbd_global::manager::HotkeyManager;
+use kbd_global::manager::HotkeyManagerBuilder;
 
 // Quick-start / smoke tests
 
@@ -355,9 +359,9 @@ fn error_types_implement_std_error() {
     fn assert_std_error<T: std::error::Error>() {}
     assert_std_error::<StartupError>();
     assert_std_error::<RegisterError>();
-    assert_std_error::<kbd_global::LayerError>();
-    assert_std_error::<kbd_global::QueryError>();
-    assert_std_error::<kbd_global::ShutdownError>();
+    assert_std_error::<kbd_global::error::LayerError>();
+    assert_std_error::<kbd_global::error::QueryError>();
+    assert_std_error::<kbd_global::error::ShutdownError>();
     assert_std_error::<ManagerStopped>();
 }
 
@@ -366,9 +370,9 @@ fn error_types_are_send_and_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<StartupError>();
     assert_send_sync::<RegisterError>();
-    assert_send_sync::<kbd_global::LayerError>();
-    assert_send_sync::<kbd_global::QueryError>();
-    assert_send_sync::<kbd_global::ShutdownError>();
+    assert_send_sync::<kbd_global::error::LayerError>();
+    assert_send_sync::<kbd_global::error::QueryError>();
+    assert_send_sync::<kbd_global::error::ShutdownError>();
     assert_send_sync::<ManagerStopped>();
 }
 

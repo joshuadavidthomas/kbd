@@ -53,7 +53,6 @@
 //! directly:
 //!
 //! ```no_run
-//! use kbd::prelude::*;
 //! use kbd_tao::TaoEventExt;
 //! use tao::event::{Event, WindowEvent};
 //! use tao::event_loop::{ControlFlow, EventLoop};
@@ -83,7 +82,8 @@
 //! The individual conversion traits can also be used separately:
 //!
 //! ```
-//! use kbd::prelude::*;
+//! use kbd::hotkey::Modifier;
+//! use kbd::key::Key;
 //! use kbd_tao::{TaoKeyExt, TaoModifiersExt};
 //! use tao::keyboard::{KeyCode, ModifiersState};
 //!
@@ -122,7 +122,7 @@ pub trait TaoKeyExt: private::Sealed {
     /// # Examples
     ///
     /// ```
-    /// use kbd::prelude::*;
+    /// use kbd::key::Key;
     /// use kbd_tao::TaoKeyExt;
     /// use tao::keyboard::KeyCode;
     ///
@@ -373,7 +373,7 @@ pub trait TaoModifiersExt: private::Sealed {
     /// # Examples
     ///
     /// ```
-    /// use kbd::prelude::*;
+    /// use kbd::hotkey::Modifier;
     /// use kbd_tao::TaoModifiersExt;
     /// use tao::keyboard::ModifiersState;
     ///
@@ -450,7 +450,6 @@ pub trait TaoEventExt: private::Sealed {
     /// tao's event loop where the framework provides the event:
     ///
     /// ```no_run
-    /// use kbd::prelude::*;
     /// use kbd_tao::TaoEventExt;
     /// use tao::event::{Event, WindowEvent};
     /// use tao::event_loop::{ControlFlow, EventLoop};

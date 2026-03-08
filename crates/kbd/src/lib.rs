@@ -13,7 +13,11 @@
 //! Register a hotkey, feed key events, and check for matches:
 //!
 //! ```
-//! use kbd::prelude::*;
+//! use kbd::action::Action;
+//! use kbd::dispatcher::{Dispatcher, MatchResult};
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
+//! use kbd::key_state::KeyTransition;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut dispatcher = Dispatcher::new();
@@ -60,52 +64,3 @@ pub mod layer;
 pub mod policy;
 pub mod sequence;
 pub mod tap_hold;
-
-/// Convenience re-exports for common types.
-///
-/// ```
-/// use kbd::prelude::*;
-///
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let mut dispatcher = Dispatcher::new();
-/// dispatcher.register(
-///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-///     Action::Suppress,
-/// )?;
-///
-/// let result = dispatcher.process(
-///     Hotkey::new(Key::S).modifier(Modifier::Ctrl),
-///     KeyTransition::Press,
-/// );
-/// assert!(matches!(result, MatchResult::Matched { .. }));
-/// # Ok(())
-/// # }
-/// ```
-pub mod prelude {
-    pub use crate::action::Action;
-    pub use crate::binding::BindingOptions;
-    pub use crate::binding::BindingSource;
-    pub use crate::binding::OverlayVisibility;
-    pub use crate::device::DeviceContext;
-    pub use crate::device::DeviceFilter;
-    pub use crate::device::DeviceInfo;
-    pub use crate::dispatcher::Dispatcher;
-    pub use crate::dispatcher::MatchResult;
-    pub use crate::dispatcher::PendingTimeout;
-    pub use crate::hotkey::Hotkey;
-    pub use crate::hotkey::HotkeyInput;
-    pub use crate::hotkey::HotkeySequence;
-    pub use crate::hotkey::Modifier;
-    pub use crate::key::Key;
-    pub use crate::key_state::KeyTransition;
-    pub use crate::layer::Layer;
-    pub use crate::layer::LayerName;
-    pub use crate::policy::KeyPropagation;
-    pub use crate::policy::RateLimit;
-    pub use crate::policy::RepeatPolicy;
-    pub use crate::policy::RepeatTiming;
-    pub use crate::sequence::PendingSequenceInfo;
-    pub use crate::sequence::SequenceInput;
-    pub use crate::sequence::SequenceOptions;
-    pub use crate::tap_hold::TapHoldOptions;
-}

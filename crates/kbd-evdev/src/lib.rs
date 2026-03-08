@@ -13,7 +13,7 @@
 //! - **Event forwarding** — [`UinputForwarder`](forwarder::UinputForwarder)
 //!   re-emits unmatched events through a virtual device so they still reach
 //!   applications in grab mode
-//! - **Key conversion** — extension traits ([`EvdevKeyCodeExt`], [`KbdKeyExt`])
+//! - **Key conversion** — extension traits ([`convert::EvdevKeyCodeExt`], [`convert::KbdKeyExt`])
 //!   for converting between `evdev::KeyCode` and [`kbd::key::Key`]
 //!
 //! # Prerequisites
@@ -69,8 +69,3 @@ pub mod devices;
 pub mod error;
 /// Virtual uinput device for forwarding and emitting key events.
 pub mod forwarder;
-
-/// Convert an [`evdev::KeyCode`] to a [`kbd::key::Key`].
-pub use crate::convert::EvdevKeyCodeExt;
-/// Convert a [`kbd::key::Key`] to an [`evdev::KeyCode`].
-pub use crate::convert::KbdKeyExt;

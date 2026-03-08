@@ -10,8 +10,9 @@
 //! # Quick start
 //!
 //! ```rust,no_run
-//! use kbd::prelude::*;
-//! use kbd_global::HotkeyManager;
+//! use kbd::hotkey::{Hotkey, Modifier};
+//! use kbd::key::Key;
+//! use kbd_global::manager::HotkeyManager;
 //!
 //! let manager = HotkeyManager::new()?;
 //!
@@ -69,7 +70,8 @@
 //! Use the builder for explicit backend selection:
 //!
 //! ```rust,no_run
-//! use kbd_global::{Backend, HotkeyManager};
+//! use kbd_global::backend::Backend;
+//! use kbd_global::manager::HotkeyManager;
 //!
 //! let manager = HotkeyManager::builder()
 //!     .backend(Backend::Evdev)
@@ -88,23 +90,12 @@
 //!
 //! - [`kbd`] — core dispatch engine, key types, and layer logic
 
-mod backend;
-mod binding_guard;
-mod engine;
-mod error;
-mod manager;
-
 /// Which input backend to use.
-pub use crate::backend::Backend;
+pub mod backend;
 /// RAII guard that keeps a binding alive until dropped.
-pub use crate::binding_guard::BindingGuard;
-pub use crate::error::LayerError;
-pub use crate::error::ManagerStopped;
-pub use crate::error::QueryError;
-pub use crate::error::RegisterError;
-pub use crate::error::ShutdownError;
-pub use crate::error::StartupError;
+pub mod binding_guard;
+mod engine;
+/// Error types for the global hotkey manager.
+pub mod error;
 /// The main entry point — manages the engine thread and hotkey registration.
-pub use crate::manager::HotkeyManager;
-/// Builder for configuring backend and runtime options before starting.
-pub use crate::manager::HotkeyManagerBuilder;
+pub mod manager;

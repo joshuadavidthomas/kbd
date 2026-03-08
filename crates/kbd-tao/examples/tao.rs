@@ -5,7 +5,13 @@
 //! cargo run -p kbd-tao --example tao
 //! ```
 
-use kbd::prelude::*;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
+use kbd::key_state::KeyTransition;
 use kbd_tao::TaoEventExt;
 use tao::event::Event;
 use tao::event::WindowEvent;

@@ -9,9 +9,15 @@
 //! here because they need hardware access and root/group permissions.
 
 use evdev::KeyCode;
-use kbd::prelude::*;
-use kbd_evdev::EvdevKeyCodeExt;
-use kbd_evdev::KbdKeyExt;
+use kbd::action::Action;
+use kbd::dispatcher::Dispatcher;
+use kbd::dispatcher::MatchResult;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
+use kbd::key::Key;
+use kbd::key_state::KeyTransition;
+use kbd_evdev::convert::EvdevKeyCodeExt;
+use kbd_evdev::convert::KbdKeyExt;
 
 #[test]
 fn convert_and_dispatch_simple_hotkey() {
