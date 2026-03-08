@@ -56,12 +56,6 @@ Beyond hotkeys, layers, and sequences:
 
 Physical keys are layout-independent and predictable — the same binding works everywhere without knowing the active keyboard layout. This is the right default for shortcuts. (Layout-aware symbol bindings are a planned future addition via `kbd-xkb`.)
 
-## In this workspace
-
-- [`kbd-global`](https://docs.rs/kbd-global) — threaded Linux runtime for system-wide hotkeys
-- [`kbd-evdev`](https://docs.rs/kbd-evdev) — low-level Linux device backend
-- Bridge crates for framework integration: [`kbd-crossterm`](https://docs.rs/kbd-crossterm), [`kbd-egui`](https://docs.rs/kbd-egui), [`kbd-iced`](https://docs.rs/kbd-iced), [`kbd-tao`](https://docs.rs/kbd-tao), [`kbd-winit`](https://docs.rs/kbd-winit)
-
 ## Feature flags
 
 | Feature | Default | Effect |

@@ -103,6 +103,12 @@ Grab mode requires write access to `/dev/uinput` in addition to read access on `
 - evdev is the only backend
 - `Action::EmitHotkey` and `Action::EmitSequence` are not yet implemented in the runtime
 
+## Related crates
+
+- [`kbd`](https://docs.rs/kbd) — the core matching engine, used directly for in-process shortcuts
+- [`kbd-evdev`](https://docs.rs/kbd-evdev) — the low-level device backend this crate wraps, for when you need to own the poll loop yourself
+- Bridge crates for framework integration: [`kbd-crossterm`](https://docs.rs/kbd-crossterm), [`kbd-egui`](https://docs.rs/kbd-egui), [`kbd-iced`](https://docs.rs/kbd-iced), [`kbd-tao`](https://docs.rs/kbd-tao), [`kbd-winit`](https://docs.rs/kbd-winit)
+
 ## License
 
 kbd-global is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.

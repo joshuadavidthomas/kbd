@@ -63,6 +63,11 @@ let _poll_fds = manager.poll_fds();
 
 Call `poll(2)` on `DeviceManager::poll_fds()`, then pass the ready descriptors to `DeviceManager::process_polled_events()` — you get back key events (with device identity and press/release state) and disconnection notifications.
 
+## Related crates
+
+- [`kbd`](https://docs.rs/kbd) — the core matching engine that processes the key events this crate produces
+- [`kbd-global`](https://docs.rs/kbd-global) — threaded runtime built on top of this crate, handles the event loop for you
+
 ## License
 
 kbd-evdev is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.
