@@ -45,7 +45,7 @@ You can mix sources — a Tauri app might use `kbd-tao` for in-window shortcuts 
 
 kbd is pre-1.0 and under active development. The public API may change between minor versions.
 
-All published crates in the workspace currently share a single version number and are released together, even if only some crates have changes in a given release. After 1.0, crates will move to independent versioning.
+All published crates in the workspace currently share a single version number and are released together, even if only some crates have changes in a given release. After 1.0, crates may move to independent versioning.
 
 ## Contributing
 
