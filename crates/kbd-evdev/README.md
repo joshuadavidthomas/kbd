@@ -5,13 +5,21 @@
 
 Low-level Linux input backend for the [`kbd` workspace](https://github.com/joshuadavidthomas/kbd).
 
-Most applications should start with [`kbd-global`](https://docs.rs/kbd-global), which wraps this crate in a threaded runtime. Use `kbd-evdev` directly when you need explicit control over device discovery, hotplug handling, file-descriptor polling, grab mode, or virtual-device forwarding.
+Most applications should start with [`kbd-global`](https://docs.rs/kbd-global), which wraps this crate in a threaded runtime. Use `kbd-evdev` directly when you need to own the poll loop yourself — your own event loop, your own threading, your own timing.
 
 ```toml
 [dependencies]
 kbd = "0.1"
 kbd-evdev = "0.1"
 ```
+
+## What it handles
+
+- **Device discovery** — scans `/dev/input/` for keyboards (devices that support A–Z + Enter)
+- **Hotplug** — inotify watch picks up devices added or removed at runtime
+- **Exclusive grab** — `EVIOCGRAB` intercepts events before other applications see them
+- **Event forwarding** — a uinput virtual device re-emits unmatched events in grab mode so other apps still work
+- **Key conversion** — extension traits for `evdev::KeyCode` ↔ `kbd::key::Key`
 
 ## Example
 
@@ -39,7 +47,7 @@ let manager = DeviceManager::new(Path::new("/dev/input"), DeviceGrabMode::Shared
 let _poll_fds = manager.poll_fds();
 ```
 
-Call `poll(2)` on `DeviceManager::poll_fds()`, then pass the ready descriptors to `DeviceManager::process_polled_events()` to receive key events and disconnection notifications.
+Call `poll(2)` on `DeviceManager::poll_fds()`, then pass the ready descriptors to `DeviceManager::process_polled_events()` — you get back key events (with device identity and press/release state) and disconnection notifications.
 
 ## Requirements
 
