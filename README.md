@@ -22,7 +22,25 @@ let result = dispatcher.process("Ctrl+S".parse()?, KeyTransition::Press);
 
 Bindings use physical key positions (W3C key codes), so they work the same regardless of keyboard layout. Layers, sequences, tap-hold, device filtering, and introspection are all built in — see the [`kbd` crate docs](https://docs.rs/kbd) for the full picture.
 
-The core crate is pure logic — no platform dependencies, no async runtime, no threads. You bring key events from wherever you have them. Bridge crates (`kbd-winit`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-crossterm`) convert framework key types into `kbd` types. For system-wide hotkeys on Linux, `kbd-global` runs a background thread reading evdev devices directly — works on Wayland, X11, and TTY. You can mix sources: a Tauri app might use `kbd-tao` for in-window shortcuts and `kbd-global` for global hotkeys, both feeding the same `Dispatcher`.
+The core crate is pure logic — no platform dependencies, no async runtime, no threads. You bring key events from wherever you have them. Bridge crates (`kbd-winit`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-crossterm`) convert framework key types into `kbd` types so you can feed them straight to the dispatcher.
+
+For system-wide hotkeys on Linux, `kbd-global` runs a background thread that reads from evdev devices directly — works on Wayland, X11, and TTY without display-server integration:
+
+```rust,no_run
+use kbd::hotkey::{Hotkey, Modifier};
+use kbd::key::Key;
+use kbd_global::manager::HotkeyManager;
+
+let manager = HotkeyManager::new()?;
+
+// Registration returns a guard — the binding stays active until it's dropped
+let _guard = manager.register(
+    Hotkey::new(Key::C).modifier(Modifier::Ctrl).modifier(Modifier::Shift),
+    || println!("Ctrl+Shift+C"),
+)?;
+```
+
+You can mix sources — a Tauri app might use `kbd-tao` for in-window shortcuts and `kbd-global` for global hotkeys, both feeding the same `Dispatcher`.
 
 ## Crates
 
