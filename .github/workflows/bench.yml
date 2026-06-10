@@ -37,11 +37,11 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [should-run]
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
-      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98
+      - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6
         with:
           cache: true
 
@@ -51,7 +51,7 @@ jobs:
         run: cargo codspeed build -p kbd-bench
 
       - name: Run the benchmarks
-        uses: CodSpeedHQ/action@4deb3275dd364fb96fb074c953133d29ec96f80f
+        uses: CodSpeedHQ/action@9d332c4d90b43981c3e55ae8e38e68709996240f
         with:
           mode: instrumentation
           run: cargo codspeed run -p kbd-bench
