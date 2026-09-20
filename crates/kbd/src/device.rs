@@ -185,6 +185,7 @@ pub struct DeviceContext<'a> {
     device_id: i32,
     info: &'a DeviceInfo,
     device_modifiers: Option<ModifierSet>,
+    modifier_observation: Option<crate::observation::ModifierObservation>,
 }
 
 impl<'a> DeviceContext<'a> {
@@ -199,6 +200,7 @@ impl<'a> DeviceContext<'a> {
             device_id,
             info,
             device_modifiers: None,
+            modifier_observation: None,
         }
     }
 
@@ -210,7 +212,29 @@ impl<'a> DeviceContext<'a> {
     #[must_use]
     pub fn with_device_modifiers(mut self, modifiers: ModifierSet) -> Self {
         self.device_modifiers = Some(modifiers);
+        self.modifier_observation = None;
         self
+    }
+
+    /// Supply source-local physical and semantic modifier evidence.
+    #[must_use]
+    pub fn with_modifier_observation(
+        mut self,
+        observation: crate::observation::ModifierObservation,
+    ) -> Self {
+        self.device_modifiers = Some(observation.physical.active());
+        self.modifier_observation = Some(observation);
+        self
+    }
+
+    pub(crate) fn scoped_event(
+        &self,
+        event: &crate::observation::KeyboardObservation,
+    ) -> Option<crate::observation::KeyboardObservation> {
+        let mut event = event.clone();
+        event.modifiers = self.device_modifiers?;
+        event.modifier_observation = self.modifier_observation;
+        Some(event)
     }
 
     /// The platform-specific device identifier (e.g., file descriptor).

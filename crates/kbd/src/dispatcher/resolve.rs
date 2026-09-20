@@ -172,7 +172,9 @@ pub(super) fn binding_matches_observation(
 ) -> bool {
     let Some(filter) = binding.options().device() else {
         // No device filter — match against aggregate hotkey
-        return binding.pattern().matches(event);
+        return binding
+            .pattern()
+            .matches_with_policy(event, binding.options().logical_match_policy());
     };
 
     // Binding has a device filter — need device context
@@ -186,13 +188,15 @@ pub(super) fn binding_matches_observation(
     }
 
     // Build device-specific hotkey for modifier isolation
-    if let Some(device_mods) = ctx.device_modifiers() {
-        let mut event = event.clone();
-        event.modifiers = device_mods;
-        binding.pattern().matches(&event)
+    if let Some(event) = ctx.scoped_event(event) {
+        binding
+            .pattern()
+            .matches_with_policy(&event, binding.options().logical_match_policy())
     } else {
         // No device modifiers — use aggregate
-        binding.pattern().matches(event)
+        binding
+            .pattern()
+            .matches_with_policy(event, binding.options().logical_match_policy())
     }
 }
 

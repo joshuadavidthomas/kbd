@@ -38,6 +38,18 @@ pub(super) fn convert(event: &Event) -> Option<KeyboardObservation> {
         // Even a named shortcut can originate from a physical fallback.
         logical: None,
         modifiers: modifiers.to_modifiers(),
+        modifier_observation: Some(kbd::observation::ModifierObservation {
+            // mac_cmd=true is positive evidence; false does not establish
+            // Super's absence on non-Mac hosts. `command` is only an alias.
+            physical: kbd::observation::ModifierState::new(
+                modifiers.to_modifiers(),
+                kbd::hotkey::ModifierSet::CTRL
+                    .union(kbd::hotkey::ModifierSet::SHIFT)
+                    .union(kbd::hotkey::ModifierSet::ALT),
+            )
+            .with_extra_active(modifiers.command && !modifiers.ctrl && !modifiers.mac_cmd),
+            logical: None,
+        }),
         transition: match (*pressed, *repeat) {
             (false, _) => KeyTransition::Release,
             (true, true) => KeyTransition::Repeat,
@@ -55,6 +67,37 @@ mod tests {
 
     use super::*;
     use crate::EguiEventExt;
+
+    #[test]
+    fn command_alias_does_not_establish_super_knowledge() {
+        let mut source = event(Some(Key::A), true, false);
+        if let Event::Key { modifiers, .. } = &mut source {
+            modifiers.command = true;
+        }
+        let observed = source.to_observation().unwrap();
+        assert!(
+            !observed
+                .physical_modifiers()
+                .known()
+                .contains(kbd::hotkey::Modifier::Super)
+        );
+        assert!(observed.physical_modifiers().active().is_empty());
+        // An active alias with no concrete flag is still not an unmodified event.
+        assert!(observed.physical_modifiers().extra_active());
+        assert!(!kbd::observation::BindingPattern::Physical(Physical::A.into()).matches(&observed));
+        assert!(observed.physical_hotkey().is_none());
+        if let Event::Key { modifiers, .. } = &mut source {
+            modifiers.mac_cmd = true;
+        }
+        let observed = source.to_observation().unwrap();
+        assert!(
+            observed
+                .physical_modifiers()
+                .known()
+                .contains(kbd::hotkey::Modifier::Super)
+        );
+        assert_eq!(observed.physical_modifiers().active(), ModifierSet::SUPER);
+    }
 
     fn event(physical_key: Option<Key>, pressed: bool, repeat: bool) -> Event {
         Event::Key {

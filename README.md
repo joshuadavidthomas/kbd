@@ -28,6 +28,31 @@ Bridge crates (`kbd-winit`, `kbd-egui`, `kbd-iced`, `kbd-tao`, `kbd-crossterm`) 
 
 You can mix sources — a Tauri app might use `kbd-tao` for in-window shortcuts and `kbd-global` for global hotkeys, both feeding the same `Dispatcher`.
 
+## Input lifetime and modifier evidence
+
+`KeyboardObservation::modifier_observation` separates physical flags from optional
+semantic logical modifiers. `ModifierState` records active and known masks plus
+unrepresentable active extras. Exact matching compares known active flags; unknown
+flags cannot satisfy requirements, and reported extras block matching. Unreported
+Fn/AltGraph remain unknown rather than known-inactive. Legacy `modifiers` remains
+a compatibility set; rich metadata is authoritative when supplied.
+
+Logical matching stays exact by default. Immediate bindings can explicitly select
+`BindingOptions::with_logical_match_policy(LogicalMatchPolicy::Consumed)` to allow
+extra modifiers reported consumed by a layout. Required modifiers remain required;
+unknown consumption falls back to exact matching. This can match logical `!` while
+physical Shift+Digit1 remains available, or logical Tab on Shift+Tab when Shift is
+consumed. Sequence steps stay exact. Backend masks need semantic, keymap-aware
+translation; right Alt is not proof of AltGraph, and no layout is inferred here.
+
+Parse configuration aliases into `ConfiguredPattern`, then call
+`register_configured_pattern` with explicit `PrimaryModifier::Ctrl` or `Super`.
+For example, `Primary+logical:"s"` resolves before conflict checking. Keep the
+configuration value for serialization or later policy changes; Primary is never
+an observed modifier. `Modifier::keys()` now returns optional physical associations
+(one key for Fn, none for AltGraph); use `Key::try_from(modifier)` for a fallible
+physical projection.
+
 ## Crates
 
 | Crate | | |

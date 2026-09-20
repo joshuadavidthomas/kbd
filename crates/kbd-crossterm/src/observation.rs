@@ -16,6 +16,16 @@ pub(super) fn convert(event: &KeyEvent) -> KeyboardObservation {
         physical: None,
         logical: logical_key(event.code),
         modifiers: event.modifiers.to_modifiers(),
+        modifier_observation: Some(kbd::observation::ModifierObservation {
+            physical: kbd::observation::ModifierState::new(
+                event.modifiers.to_modifiers(),
+                kbd::hotkey::ModifierSet::STANDARD,
+            )
+            .with_extra_active(event.modifiers.intersects(
+                crossterm::event::KeyModifiers::HYPER | crossterm::event::KeyModifiers::META,
+            )),
+            logical: None,
+        }),
         transition: match event.kind {
             KeyEventKind::Press => KeyTransition::Press,
             KeyEventKind::Repeat => KeyTransition::Repeat,
@@ -114,6 +124,35 @@ mod tests {
 
     use super::*;
     use crate::CrosstermEventExt;
+
+    #[test]
+    fn unrepresentable_active_modifiers_do_not_match_plain_shortcuts() {
+        for flags in [KeyModifiers::HYPER, KeyModifiers::META] {
+            let source = KeyEvent::new(KeyCode::Char('a'), flags);
+            let event = source.to_observation();
+            let mut dispatcher = Dispatcher::new();
+            dispatcher
+                .register_pattern(
+                    BindingPattern::logical(
+                        LogicalKeyValue::Character("a".into()),
+                        ModifierSet::NONE,
+                    ),
+                    Action::Suppress,
+                    BindingOptions::default(),
+                )
+                .unwrap();
+            assert!(event.physical_modifiers().extra_active());
+            assert!(matches!(
+                dispatcher.process_event(&event),
+                MatchResult::NoMatch
+            ));
+            // The legacy lossy projection remains a compatibility API.
+            assert_eq!(
+                source.to_hotkey().unwrap().modifier_set(),
+                ModifierSet::NONE
+            );
+        }
+    }
 
     #[test]
     fn exact_characters_without_physical_inference_or_case_normalization() {

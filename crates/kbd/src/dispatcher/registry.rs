@@ -45,6 +45,21 @@ impl From<&BindingOptions> for SourcePriority {
 }
 
 impl Dispatcher {
+    /// Resolve configuration-only aliases with an explicit runtime policy,
+    /// then register the resulting pattern with ordinary conflict checks.
+    ///
+    /// # Errors
+    /// Returns `AlreadyRegistered` for a conflicting resolved pattern.
+    pub fn register_configured_pattern(
+        &mut self,
+        pattern: &crate::observation::ConfiguredPattern,
+        primary: crate::policy::PrimaryModifier,
+        action: impl Into<Action>,
+        options: BindingOptions,
+    ) -> Result<BindingId, crate::error::RegisterError> {
+        self.register_pattern(pattern.resolve(primary), action, options)
+    }
+
     /// Register a mixed physical/logical input sequence with explicit options.
     /// Legacy [`register_sequence`](Self::register_sequence) remains physical-only.
     ///
@@ -220,6 +235,9 @@ impl Dispatcher {
 
         ids_for_hotkey.insert(insert_at, id);
         self.bindings_by_id.insert(id, binding);
+        self.registration_order_by_id
+            .insert(id, self.next_registration_order);
+        self.next_registration_order += 1;
         Ok(())
     }
 
@@ -245,6 +263,7 @@ impl Dispatcher {
     /// Unregister a binding by its [`BindingId`].
     pub fn unregister(&mut self, id: BindingId) {
         self.throttle_tracker.remove(id);
+        self.registration_order_by_id.remove(&id);
         if let Some(binding) = self.bindings_by_id.remove(&id) {
             let hotkey = binding.pattern().clone();
             let remove_hotkey_entry =

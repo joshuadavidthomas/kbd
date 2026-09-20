@@ -852,6 +852,7 @@ mod observation_tests {
             physical,
             logical: logical.map(|text| LogicalKeyValue::Character(text.into()).into()),
             modifiers: ModifierSet::NONE,
+            modifier_observation: None,
             transition: KeyTransition::Press,
         }
     }

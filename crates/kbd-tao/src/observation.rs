@@ -25,6 +25,13 @@ pub(super) fn from_parts(
         },
         logical: logical_key(logical),
         modifiers: modifiers.to_modifiers(),
+        modifier_observation: Some(kbd::observation::ModifierObservation {
+            physical: kbd::observation::ModifierState::new(
+                modifiers.to_modifiers(),
+                kbd::hotkey::ModifierSet::STANDARD,
+            ),
+            logical: None,
+        }),
         transition: match (state, repeat) {
             (ElementState::Released, _) => KeyTransition::Release,
             (ElementState::Pressed, true) => KeyTransition::Repeat,
@@ -456,6 +463,8 @@ mod tests {
             assert_eq!(observed.physical, Some(Physical::CONTROL_RIGHT));
             assert_eq!(observed.transition, expected);
             assert_eq!(observed.modifiers, ModifierSet::CTRL);
+            assert_eq!(observed.physical_modifiers().known(), ModifierSet::STANDARD);
+            assert_eq!(observed.logical_modifiers().consumed, None);
         }
         let observed = from_parts(
             KeyCode::NumpadEnter,

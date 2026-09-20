@@ -111,9 +111,12 @@ impl KeyState {
             Modifier::Shift,
             Modifier::Alt,
             Modifier::Super,
+            Modifier::Fn,
         ] {
-            let (left, right) = modifier.keys();
-            if is_pressed(left) || is_pressed(right) {
+            if modifier
+                .keys()
+                .is_some_and(|keys| keys.iter().copied().any(&is_pressed))
+            {
                 set = set.with(modifier);
             }
         }

@@ -27,6 +27,13 @@ pub(super) fn from_parts(
         },
         logical: logical_key(logical),
         modifiers: modifiers.to_modifiers(),
+        modifier_observation: Some(kbd::observation::ModifierObservation {
+            physical: kbd::observation::ModifierState::new(
+                modifiers.to_modifiers(),
+                kbd::hotkey::ModifierSet::STANDARD,
+            ),
+            logical: None,
+        }),
         transition: match (state, repeat) {
             (ElementState::Released, _) => KeyTransition::Release,
             (ElementState::Pressed, true) => KeyTransition::Repeat,
@@ -447,6 +454,8 @@ mod tests {
             assert_eq!(observed.transition, expected);
             assert_eq!(observed.modifiers, ModifierSet::SHIFT);
             assert_eq!(observed.physical, Some(Physical::SHIFT_LEFT));
+            assert_eq!(observed.physical_modifiers().known(), ModifierSet::STANDARD);
+            assert_eq!(observed.logical_modifiers().consumed, None);
         }
         for (code, expected) in [
             (KeyCode::Meta, None),

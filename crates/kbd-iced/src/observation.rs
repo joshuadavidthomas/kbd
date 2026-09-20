@@ -52,6 +52,13 @@ pub(super) fn convert(event: &Event) -> Option<KeyboardObservation> {
             Key::Unidentified => None,
         },
         modifiers: modifiers.to_modifiers(),
+        modifier_observation: Some(kbd::observation::ModifierObservation {
+            physical: kbd::observation::ModifierState::new(
+                modifiers.to_modifiers(),
+                kbd::hotkey::ModifierSet::STANDARD,
+            ),
+            logical: None,
+        }),
         transition,
     })
 }
@@ -485,6 +492,8 @@ mod tests {
         assert_eq!(observed.physical, Some(Physical::SHIFT_RIGHT));
         assert_eq!(observed.logical, Some(NamedKey::Shift.into()));
         assert_eq!(observed.modifiers, ModifierSet::SHIFT);
+        assert_eq!(observed.physical_modifiers().known(), ModifierSet::STANDARD);
+        assert_eq!(observed.logical_modifiers().consumed, None);
         assert_eq!(
             source.to_hotkey().unwrap().modifier_set(),
             ModifierSet::NONE

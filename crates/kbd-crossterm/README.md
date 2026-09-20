@@ -37,8 +37,10 @@ the logical AltGraph key, not an AltGr modifier flag. BackTab, Null, KeypadBegin
 media Reverse, ISO level 5 and unsupported function keys have no exact mapping;
 their logical identity remains absent. Modifiers are not self-stripped.
 
-**Modifier and transition knowledge is incomplete.** The existing modifier set
-cannot represent Hyper/Meta flags or AltGr/Fn state. Unix repeat/release reporting
+**Modifier and transition knowledge is incomplete.** Observation metadata marks
+the four reported modifiers known and leaves AltGraph/Fn unknown. Active Hyper/Meta
+flags are preserved as `extra_active`, preventing false unmodified matches even
+though `ModifierSet` cannot name them. Unix repeat/release reporting
 requires terminal enhancement support; a default Press does not prove a fresh
 hardware press. Keep the source for keypad and lock-state evidence; absent flags
 do not establish standard location or inactive locks. Handle paste separately;

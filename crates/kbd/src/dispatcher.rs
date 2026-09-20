@@ -182,6 +182,9 @@ pub enum MatchResult<'a> {
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, Binding>,
     binding_ids_by_hotkey: HashMap<BindingPattern, Vec<BindingId>>,
+    /// Successful immediate registrations, independent of ID creation and pattern buckets.
+    registration_order_by_id: HashMap<BindingId, u64>,
+    next_registration_order: u64,
     sequence_bindings_by_id: BTreeMap<BindingId, SequenceBinding>,
     sequence_ids_by_value: HashMap<crate::sequence::BindingSequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
@@ -767,37 +770,28 @@ impl Dispatcher {
     ) -> Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)> {
         // Only look up the observed identities, with aggregate and (if different)
         // device-local modifiers. Do not scan unrelated registered bindings.
-        let device_modifiers = device
-            .and_then(DeviceContext::device_modifiers)
-            .filter(|modifiers| *modifiers != event.modifiers);
-        [Some(event.modifiers), device_modifiers]
+        let scoped = device.and_then(|device| device.scoped_event(event));
+        event
+            .candidate_patterns()
             .into_iter()
-            .flatten()
-            .flat_map(|modifiers| {
-                [
-                    event.physical.map(|key| {
-                        BindingPattern::Physical(Hotkey::with_modifiers(key, modifiers))
-                    }),
-                    event
-                        .logical
-                        .clone()
-                        .map(|key| BindingPattern::Logical { key, modifiers }),
-                ]
-            })
-            .flatten()
+            .chain(
+                scoped
+                    .iter()
+                    .flat_map(KeyboardObservation::candidate_patterns),
+            )
             .filter_map(|pattern| self.binding_ids_by_hotkey.get(&pattern))
-            .flat_map(|ids| ids.iter().enumerate())
-            .filter_map(|(index, id)| self.bindings_by_id.get(id).map(|binding| (index, binding)))
-            .filter(|(_, binding)| resolve::binding_matches_observation(binding, event, device))
-            .max_by_key(|(index, binding)| {
+            .flat_map(|ids| ids.iter())
+            .filter_map(|id| self.bindings_by_id.get(id))
+            .filter(|binding| resolve::binding_matches_observation(binding, event, device))
+            .max_by_key(|binding| {
                 (
                     binding.options().device().is_some(),
                     registry::SourcePriority::from(binding.options()),
                     binding.hotkey().is_some(),
-                    *index,
+                    self.registration_order_by_id[&binding.id()],
                 )
             })
-            .map(|(_, binding)| {
+            .map(|binding| {
                 (
                     MatchedBindingRef::Global(binding.id()),
                     binding.propagation(),

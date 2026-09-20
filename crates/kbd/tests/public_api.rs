@@ -675,6 +675,7 @@ mod observations {
             physical,
             logical: Some(LogicalKeyValue::Character(text.into()).into()),
             modifiers: ModifierSet::NONE,
+            modifier_observation: None,
             transition: KeyTransition::Press,
         }
     }

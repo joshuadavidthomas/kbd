@@ -10,6 +10,29 @@
 
 use std::time::Duration;
 
+/// Logical matching is exact unless consumption-aware behavior is selected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum LogicalMatchPolicy {
+    /// Require exactly the observed active modifiers (default).
+    #[default]
+    Exact,
+    /// Allow additional modifiers only when explicitly reported consumed.
+    /// Required modifiers remain required, even if consumed. For example,
+    /// Shift+Tab may match logical Tab if Shift is consumed by the layout.
+    /// Unknown consumption falls back to exact matching.
+    Consumed,
+}
+
+/// Explicit runtime resolution of the configuration-only `Primary` alias.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrimaryModifier {
+    /// Resolve Primary to Control.
+    Ctrl,
+    /// Resolve Primary to Super/Command.
+    Super,
+}
+
 /// How a matched binding handles the original key event.
 ///
 /// After a binding matches, the dispatcher needs to know what to do with the

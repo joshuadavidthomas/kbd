@@ -29,7 +29,7 @@ use keyboard_types::Code;
 use crate::error::ParseHotkeyError;
 use crate::key::Key;
 
-/// A canonical modifier key (Ctrl, Shift, Alt, Super).
+/// A canonical modifier (Ctrl, Shift, Alt, Super, Fn, `AltGraph`).
 ///
 /// Left and right physical variants are canonicalized — both `ControlLeft`
 /// and `ControlRight` map to `Modifier::Ctrl`.
@@ -44,6 +44,10 @@ pub enum Modifier {
     Alt,
     /// The Super/Meta/Win modifier (left or right).
     Super,
+    /// Function modifier, when observable (often handled by firmware).
+    Fn,
+    /// Semantic alternate-graphics modifier, not synonymous with right Alt.
+    AltGraph,
 }
 
 impl Modifier {
@@ -55,10 +59,14 @@ impl Modifier {
             Self::Shift => "Shift",
             Self::Alt => "Alt",
             Self::Super => "Super",
+            Self::Fn => "Fn",
+            Self::AltGraph => "AltGraph",
         }
     }
 
-    /// Check whether a key is a modifier key, returning the canonical modifier.
+    /// Physical association only, not a layout's semantic modifier mapping.
+    /// In particular, right Alt's physical association does not prove logical
+    /// Alt or `AltGraph` is active.
     ///
     /// Left/right variants canonicalize: both `ControlLeft` and `ControlRight`
     /// return `Some(Modifier::Ctrl)`.
@@ -69,18 +77,22 @@ impl Modifier {
             Code::ShiftLeft | Code::ShiftRight => Some(Self::Shift),
             Code::AltLeft | Code::AltRight => Some(Self::Alt),
             Code::MetaLeft | Code::MetaRight => Some(Self::Super),
+            Code::Fn => Some(Self::Fn),
             _ => None,
         }
     }
 
-    /// Return the left and right physical [`Key`] variants for this modifier.
+    /// Physical associations, when universal. `AltGraph` requires layout/backend
+    /// evidence; Fn has only one position, not a fabricated left/right pair.
     #[must_use]
-    pub const fn keys(self) -> (Key, Key) {
+    pub const fn keys(self) -> Option<&'static [Key]> {
         match self {
-            Self::Ctrl => (Key::CONTROL_LEFT, Key::CONTROL_RIGHT),
-            Self::Shift => (Key::SHIFT_LEFT, Key::SHIFT_RIGHT),
-            Self::Alt => (Key::ALT_LEFT, Key::ALT_RIGHT),
-            Self::Super => (Key::META_LEFT, Key::META_RIGHT),
+            Self::Ctrl => Some(&[Key::CONTROL_LEFT, Key::CONTROL_RIGHT]),
+            Self::Shift => Some(&[Key::SHIFT_LEFT, Key::SHIFT_RIGHT]),
+            Self::Alt => Some(&[Key::ALT_LEFT, Key::ALT_RIGHT]),
+            Self::Super => Some(&[Key::META_LEFT, Key::META_RIGHT]),
+            Self::Fn => Some(&[Key::FN]),
+            Self::AltGraph => None,
         }
     }
 
@@ -124,6 +136,8 @@ impl Modifier {
             Self::Shift => 0b0010,
             Self::Alt => 0b0100,
             Self::Super => 0b1000,
+            Self::Fn => 0b1_0000,
+            Self::AltGraph => 0b10_0000,
         }
     }
 }
@@ -146,6 +160,8 @@ impl FromStr for Modifier {
             "shift" => Some(Self::Shift),
             "alt" => Some(Self::Alt),
             "super" | "meta" | "win" | "windows" => Some(Self::Super),
+            "fn" => Some(Self::Fn),
+            "altgraph" => Some(Self::AltGraph),
             _ => None,
         } {
             return Ok(modifier);
@@ -167,16 +183,23 @@ impl TryFrom<Key> for Modifier {
     }
 }
 
-impl From<Modifier> for Key {
-    fn from(value: Modifier) -> Self {
-        value.keys().0
+impl TryFrom<Modifier> for Key {
+    type Error = Modifier;
+
+    fn try_from(value: Modifier) -> Result<Self, Self::Error> {
+        value
+            .keys()
+            .and_then(|keys| keys.first())
+            .copied()
+            .ok_or(value)
     }
 }
 
 /// A set of modifier keys represented as a bitmask.
 ///
-/// This is a `Copy` type that stores up to 4 modifiers (Ctrl, Shift, Alt,
-/// Super) in a single `u8`. Used internally by [`Hotkey`] and bridge crates.
+/// This is a `Copy` type that stores six modifiers in a single `u8`.
+/// Used internally by [`Hotkey`] and bridge crates. It is a set, not a claim
+/// that a backend can observe every modifier.
 ///
 /// Most users should interact with modifiers through [`Hotkey::modifier`],
 /// [`Hotkey::has_modifier`], and [`Hotkey::modifiers`] instead of using
@@ -211,21 +234,31 @@ impl ModifierSet {
     pub const ALT: Self = Self(Modifier::Alt.bit());
     /// A modifier set containing only Super.
     pub const SUPER: Self = Self(Modifier::Super.bit());
+    /// Function modifier.
+    pub const FN: Self = Self(Modifier::Fn.bit());
+    /// Alternate graphics modifier.
+    pub const ALT_GRAPH: Self = Self(Modifier::AltGraph.bit());
+    /// The four modifiers supported by legacy adapters.
+    pub const STANDARD: Self = Self(0b1111);
+    /// All representable modifiers.
+    pub const ALL_MODIFIERS: Self = Self(0b11_1111);
 
     /// All canonical modifiers in order, for iteration.
-    const ALL: [Modifier; 4] = [
+    const ALL: [Modifier; 6] = [
         Modifier::Ctrl,
         Modifier::Shift,
         Modifier::Alt,
         Modifier::Super,
+        Modifier::Fn,
+        Modifier::AltGraph,
     ];
 
     /// Create a modifier set from a raw bitmask.
     ///
-    /// Only the lower 4 bits are meaningful. Higher bits are masked off.
+    /// Only the lower 6 bits are meaningful. Higher bits are masked off.
     #[must_use]
     pub const fn from_bits(bits: u8) -> Self {
-        Self(bits & 0b1111)
+        Self(bits & 0b11_1111)
     }
 
     /// Return the raw bitmask.
@@ -491,6 +524,11 @@ impl FromStr for Hotkey {
             let token = segment.trim();
             if token.is_empty() {
                 return Err(ParseHotkeyError::EmptySegment);
+            }
+
+            if token.eq_ignore_ascii_case("altgraph") {
+                modifiers = modifiers.with(Modifier::AltGraph);
+                continue;
             }
 
             let parsed_key = token

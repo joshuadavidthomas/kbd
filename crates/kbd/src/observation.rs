@@ -28,6 +28,7 @@
 //!     physical: Some(Key::Q), // for example, a layout that maps Q to "a"
 //!     logical: Some(logical_a.into()),
 //!     modifiers: ModifierSet::NONE,
+//!     modifier_observation: None,
 //!     transition: KeyTransition::Press,
 //! };
 //! assert!(matches!(dispatcher.process_event(&event), MatchResult::Matched { .. }));
@@ -61,6 +62,85 @@ impl From<NamedKey> for LogicalKey {
     }
 }
 
+/// Modifier evidence in one domain. Unknown flags are not known-inactive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModifierState {
+    active: ModifierSet,
+    known: ModifierSet,
+    extra_active: bool,
+}
+
+impl ModifierState {
+    /// Record known flags; every reported active flag is necessarily known.
+    #[must_use]
+    pub const fn new(active: ModifierSet, known: ModifierSet) -> Self {
+        Self {
+            active,
+            known: known.union(active),
+            extra_active: false,
+        }
+    }
+
+    /// Preserve active modifiers outside the representable vocabulary. These
+    /// prevent exact matching rather than silently becoming an unmodified event.
+    #[must_use]
+    pub const fn with_extra_active(mut self, active: bool) -> Self {
+        self.extra_active = active;
+        self
+    }
+
+    /// Active representable modifiers.
+    #[must_use]
+    pub const fn active(self) -> ModifierSet {
+        self.active
+    }
+
+    /// Modifiers whose state is known.
+    #[must_use]
+    pub const fn known(self) -> ModifierSet {
+        self.known
+    }
+
+    /// Whether an unrepresentable modifier was reported active.
+    #[must_use]
+    pub const fn extra_active(self) -> bool {
+        self.extra_active
+    }
+
+    fn matches(self, required: ModifierSet, consumed: Option<ModifierSet>) -> bool {
+        if self.extra_active
+            || required.intersection(self.known) != required
+            || required.intersection(self.active) != required
+        {
+            return false;
+        }
+        let extras = ModifierSet::from_bits(self.active.bits() & !required.bits());
+        consumed.map_or(extras.is_empty(), |consumed| {
+            extras.intersection(consumed) == extras
+        })
+    }
+}
+
+/// Semantic layout evidence. Raw backend masks must first be translated using
+/// the active keymap; neither right Alt nor a fixed XKB mask implies `AltGraph`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogicalModifiers {
+    /// Semantic active and known modifiers, independent of physical flags.
+    pub state: ModifierState,
+    /// Known consumed modifiers. `None` means unavailable, forcing exact matching.
+    pub consumed: Option<ModifierSet>,
+}
+
+/// Rich evidence supplied by adapters. Physical flags are never globally
+/// reduced by logical consumed modifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModifierObservation {
+    /// Physical/backend-observed state.
+    pub physical: ModifierState,
+    /// Optional semantic layout enrichment.
+    pub logical: Option<LogicalModifiers>,
+}
+
 /// One keyboard event. Neither identity is inferred from the other.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyboardObservation {
@@ -70,6 +150,11 @@ pub struct KeyboardObservation {
     pub logical: Option<LogicalKey>,
     /// Currently active modifiers, using the existing modifier model.
     pub modifiers: ModifierSet,
+    /// Optional richer evidence. Without it, legacy modifiers describe only
+    /// the standard four flags plus explicitly active extended flags. Exact
+    /// matching constrains known flags, never requires unknown flags, and
+    /// rejects reported extras. Omitted extended flags remain unknown.
+    pub modifier_observation: Option<ModifierObservation>,
     /// Press, release, or OS repeat.
     pub transition: KeyTransition,
 }
@@ -82,15 +167,62 @@ impl KeyboardObservation {
             physical: Some(hotkey.key()),
             logical: None,
             modifiers: hotkey.modifier_set(),
+            modifier_observation: None,
             transition,
         }
     }
 
-    /// Project an observation into the physical domain, if available.
+    /// Project into the physical domain if its identity and active modifiers
+    /// are representable. Unobserved flags remain outside this projection.
     #[must_use]
     pub fn physical_hotkey(&self) -> Option<Hotkey> {
         self.physical
-            .map(|key| Hotkey::with_modifiers(key, self.modifiers))
+            .filter(|_| !self.physical_modifiers().extra_active())
+            .map(|key| Hotkey::with_modifiers(key, self.physical_modifiers().active()))
+    }
+
+    /// Physical modifier evidence, with a compatibility fallback for legacy input.
+    #[must_use]
+    pub fn physical_modifiers(&self) -> ModifierState {
+        self.modifier_observation.map_or(
+            ModifierState::new(self.modifiers, ModifierSet::STANDARD),
+            |m| m.physical,
+        )
+    }
+
+    /// Logical modifier evidence; no consumed information is inferred.
+    #[must_use]
+    pub fn logical_modifiers(&self) -> LogicalModifiers {
+        self.modifier_observation
+            .and_then(|m| m.logical)
+            .unwrap_or(LogicalModifiers {
+                state: self.physical_modifiers(),
+                consumed: None,
+            })
+    }
+
+    pub(crate) fn candidate_patterns(&self) -> Vec<BindingPattern> {
+        let mut patterns = Vec::new();
+        if let Some(hotkey) = self.physical_hotkey() {
+            patterns.push(BindingPattern::Physical(hotkey));
+        }
+        if let Some(key) = &self.logical {
+            let logical = self.logical_modifiers();
+            let active = logical.state.active().bits();
+            let removable = logical.consumed.unwrap_or(ModifierSet::NONE).bits() & active;
+            let mut subset = removable;
+            loop {
+                patterns.push(BindingPattern::logical(
+                    key.clone(),
+                    ModifierSet::from_bits(active & !subset),
+                ));
+                if subset == 0 {
+                    break;
+                }
+                subset = (subset - 1) & removable;
+            }
+        }
+        patterns
     }
 }
 
@@ -132,10 +264,30 @@ impl BindingPattern {
     /// The dispatcher applies those policies when processing the event.
     #[must_use]
     pub fn matches(&self, event: &KeyboardObservation) -> bool {
+        self.matches_with_policy(event, crate::policy::LogicalMatchPolicy::Exact)
+    }
+
+    /// Match once, with an explicit policy for logical consumed modifiers.
+    #[must_use]
+    pub fn matches_with_policy(
+        &self,
+        event: &KeyboardObservation,
+        policy: crate::policy::LogicalMatchPolicy,
+    ) -> bool {
         match self {
-            Self::Physical(hotkey) => event.physical_hotkey() == Some(*hotkey),
+            Self::Physical(hotkey) => {
+                event.physical == Some(hotkey.key())
+                    && event
+                        .physical_modifiers()
+                        .matches(hotkey.modifier_set(), None)
+            }
             Self::Logical { key, modifiers } => {
-                event.logical.as_ref() == Some(key) && event.modifiers == *modifiers
+                let logical = event.logical_modifiers();
+                let consumed = match policy {
+                    crate::policy::LogicalMatchPolicy::Exact => None,
+                    crate::policy::LogicalMatchPolicy::Consumed => logical.consumed,
+                };
+                event.logical.as_ref() == Some(key) && logical.state.matches(*modifiers, consumed)
             }
         }
     }
@@ -150,6 +302,7 @@ impl BindingPattern {
                 physical: None,
                 logical: Some(key.clone()),
                 modifiers: *modifiers,
+                modifier_observation: None,
                 transition: KeyTransition::Press,
             },
         }
@@ -159,6 +312,82 @@ impl BindingPattern {
 impl From<Hotkey> for BindingPattern {
     fn from(hotkey: Hotkey) -> Self {
         Self::Physical(hotkey)
+    }
+}
+
+/// Configuration pattern retaining the `Primary` alias until an explicit
+/// runtime policy resolves it. Observations and registered patterns never
+/// contain Primary. Keep this value to re-register under a changed policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfiguredPattern {
+    pattern: BindingPattern,
+    primary: bool,
+}
+
+impl ConfiguredPattern {
+    /// Resolve the alias before registration and conflict checking.
+    #[must_use]
+    pub fn resolve(&self, policy: crate::policy::PrimaryModifier) -> BindingPattern {
+        let mut pattern = self.pattern.clone();
+        if self.primary {
+            let modifier = match policy {
+                crate::policy::PrimaryModifier::Ctrl => Modifier::Ctrl,
+                crate::policy::PrimaryModifier::Super => Modifier::Super,
+            };
+            match &mut pattern {
+                BindingPattern::Physical(hotkey) => *hotkey = hotkey.modifier(modifier),
+                BindingPattern::Logical { modifiers, .. } => *modifiers = modifiers.with(modifier),
+            }
+        }
+        pattern
+    }
+}
+
+impl std::str::FromStr for ConfiguredPattern {
+    type Err = ParseHotkeyError;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let tokens = split_quoted(input, '+')?;
+        let (key, prefixes) = tokens.split_last().ok_or(ParseHotkeyError::Empty)?;
+        let primary = prefixes
+            .iter()
+            .any(|token| token.eq_ignore_ascii_case("primary"));
+        let input = prefixes
+            .iter()
+            .copied()
+            .filter(|token| !token.eq_ignore_ascii_case("primary"))
+            .chain(std::iter::once(*key))
+            .collect::<Vec<_>>()
+            .join("+");
+        Ok(Self {
+            pattern: input.parse()?,
+            primary,
+        })
+    }
+}
+
+impl std::fmt::Display for ConfiguredPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.primary {
+            f.write_str("Primary+")?;
+        }
+        self.pattern.fmt(f)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ConfiguredPattern {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ConfiguredPattern {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -195,11 +424,7 @@ impl std::str::FromStr for BindingPattern {
         let (key, modifiers) = tokens.split_last().ok_or(ParseHotkeyError::Empty)?;
         let mut modifier_set = ModifierSet::NONE;
         for token in modifiers {
-            let modifier = token
-                .parse::<Key>()
-                .ok()
-                .and_then(Modifier::from_key)
-                .ok_or_else(|| ParseHotkeyError::UnknownToken((*token).into()))?;
+            let modifier = token.parse::<Modifier>()?;
             modifier_set = modifier_set.with(modifier);
         }
         if let Some(key) = key.strip_prefix("physical:") {
