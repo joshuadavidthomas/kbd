@@ -16,11 +16,11 @@ use std::time::Duration;
 use crate::action::Action;
 use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
-use crate::hotkey::HotkeySequence;
 use crate::observation::BindingPattern;
 use crate::policy::KeyPropagation;
 use crate::policy::RateLimit;
 use crate::policy::RepeatPolicy;
+use crate::sequence::BindingSequence;
 use crate::sequence::SequenceOptions;
 
 /// Unique identifier for a registered binding.
@@ -427,7 +427,7 @@ impl Binding {
 /// Used for both global sequence bindings and layer sequence bindings.
 pub(crate) struct SequenceBinding {
     pub(crate) id: BindingId,
-    pub(crate) sequence: HotkeySequence,
+    pub(crate) sequence: BindingSequence,
     pub(crate) action: Action,
     pub(crate) propagation: KeyPropagation,
     pub(crate) options: SequenceOptions,
@@ -437,13 +437,13 @@ impl SequenceBinding {
     /// Create a new sequence binding with default propagation (`Stop`).
     pub(crate) fn new(
         id: BindingId,
-        sequence: HotkeySequence,
+        sequence: impl Into<BindingSequence>,
         action: Action,
         options: SequenceOptions,
     ) -> Self {
         Self {
             id,
-            sequence,
+            sequence: sequence.into(),
             action,
             propagation: KeyPropagation::Stop,
             options,

@@ -20,7 +20,7 @@ dispatcher.register("Ctrl+Shift+P", Action::Suppress)?;
 let result = dispatcher.process("Ctrl+S".parse()?, KeyTransition::Press);
 ```
 
-Bindings use physical key positions (W3C key codes), so they work the same regardless of keyboard layout. Layers, sequences, tap-hold, device filtering, and introspection are all built in — see the [`kbd` crate docs](https://docs.rs/kbd) for the full picture.
+Legacy hotkeys use physical key positions (W3C key codes), so they work the same regardless of keyboard layout. Explicit `BindingPattern` values also match exact logical characters or named keys, and `BindingSequence` can mix both domains. For example, `Ctrl+physical:K, logical:"c"` describes two input events; `logical:Enter` and `logical:"Enter"` are distinct. Feed a `KeyboardObservation` to `process_event` to resolve both identities together without layout inference. Layers, sequences, tap-hold, device filtering, and introspection are all built in — see the [`kbd` crate docs](https://docs.rs/kbd) for the full picture.
 
 The core crate is pure logic — no platform dependencies, no async runtime, no threads. You bring key events from wherever you have them.
 

@@ -51,17 +51,53 @@ Beyond hotkeys, layers, and sequences:
 - **Binding policies** — per-binding control over key propagation (consume vs. forward), repeat handling, and rate limiting.
 - **String parsing** — `"Ctrl+Shift+A"`, `"Super+1"`, `"Ctrl+K, Ctrl+C"` all parse into typed values. Common aliases (`Cmd` → `Super`, `Win` → `Super`, `Return` → `Enter`) are built in.
 
-## Why physical keys?
+## Physical and logical input
 
-`kbd` matches physical key positions, not characters. `Key::A` means "the key in the A position on a QWERTY layout" regardless of whether the user's layout is AZERTY, Dvorak, or Colemak. This is the W3C `KeyboardEvent.code` model.
+Legacy `Key`, `Hotkey`, `HotkeySequence`, `register`, and `process` use physical key positions. `Key::A` means "the key in the A position on a QWERTY layout" regardless of whether the user's layout is AZERTY, Dvorak, or Colemak. Their string formats and serialized output are unchanged.
 
-Physical keys are layout-independent and predictable — the same binding works everywhere without knowing the active keyboard layout. This is the right default for shortcuts. (Layout-aware symbol bindings are a planned future addition via `kbd-xkb`.)
+For layout-sensitive shortcuts, parse an explicit `BindingPattern` and pass observations to `process_event`:
+
+```rust
+use kbd::action::Action;
+use kbd::binding::BindingOptions;
+use kbd::dispatcher::Dispatcher;
+use kbd::observation::NamedKey;
+use kbd::sequence::SequenceOptions;
+
+let mut dispatcher = Dispatcher::new();
+dispatcher.register_pattern(
+    r#"Ctrl+logical:"s""#.parse()?,
+    Action::Suppress,
+    BindingOptions::default(),
+)?;
+dispatcher.register_sequence_pattern(
+    r#"Ctrl+physical:K, logical:",", logical:Enter"#.parse()?,
+    Action::Suppress,
+    SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+)?;
+```
+
+- `physical:A` selects a position; `logical:"a"` selects an exact character string; `logical:Enter` selects a named key. `logical:"Enter"` is a character string, not the named key. Strings preserve case, whitespace, and Unicode (including multi-scalar and empty values), without normalization or layout inference.
+- Quotes use JSON escapes. `+` and `,` inside quotes are literal characters. Unqualified old strings still mean physical keys. New patterns/sequences display and serialize with explicit domain markers; old `Hotkey`/`HotkeySequence` output stays unchanged. Parsing works without the `serde` feature.
+- `BindingSequence` is a non-empty list of patterns for **input matching**. Use `register_sequence_pattern` or `Layer::bind_sequence_pattern` with explicit `SequenceOptions`. Physical `SequenceInput` and `Action::EmitSequence` do not accept logical patterns.
+- `KeyboardObservation` carries optional physical/logical identities, supplied modifiers, and transition. A press advances each candidate at most one step, even when both identities match; Repeat/Release do not advance sequences. Missing identities are not inferred.
+- Active sequence candidates resolve before fresh bindings. Layers rank above globals. Within a scope, single-step sequences precede multi-step prefixes, which defer standalone bindings. Keep all matching prefixes; simultaneous completions prefer physical at the earliest differing step, then stable declaration/ID order. No sequence source tiers are added.
+- Immediate layer bindings retain first eligible declaration within each domain, with physical above logical; source labels do not rank layers. Global immediate bindings rank device scope, source, domain, then registration order.
+- `bindings_for_event` and its device-aware variant are nonmutating **fresh-event classifiers**, not simulations of pending sequences, tap-hold, or throttling. Static listing/conflicts cannot infer cross-domain overlap without an observation.
+
+### Timeout and cancellation semantics
+
+Each successful step refreshes the timeout. A deferred standalone fires only when all remaining candidates expire while waiting for step 2. Progress, a live mismatch, abort, unregister, or layer removal never fires that fallback. A mismatch retries the current event against fresh bindings. For compatibility, if all candidates are already expired when an event arrives, returning the fallback consumes that event; poll `pending_timeouts` **before** input processing to resolve expiry separately. Resolve collected timeout tokens before mutating registrations/state.
+
+The default abort remains **physical Escape**. `with_logical_abort_key` selects an exact logical identity for logical-only input; abort ignores modifiers, and a matching expected next step wins over abort. `SequenceOptions` is now `Clone`, not `Copy`, and `abort_key()` returns `&SequenceAbortKey` so logical aborts are represented truthfully.
+
+`cancel_pending_sequence()` silently and idempotently clears sequence candidates and their fallback. It does not clear registrations, layers, throttle history, tap-hold, or held-key/modifier state and does not revoke previously collected timeout tokens. Hosts can compose it into their own lifecycle reset.
 
 ## Feature flags
 
 | Feature | Default | Effect |
 |---|---|---|
-| `serde` | off | Adds `Serialize` and `Deserialize` to key and hotkey-related types |
+| `serde` | off | Adds `Serialize` and `Deserialize` to key/hotkey types, `BindingPattern`, and `BindingSequence` |
 
 ## License
 

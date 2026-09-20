@@ -41,7 +41,6 @@ use crate::binding::BindingId;
 use crate::binding::SequenceBinding;
 use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
-use crate::hotkey::HotkeySequence;
 use crate::hotkey::Modifier;
 use crate::key::Key;
 use crate::key_state::KeyTransition;
@@ -184,7 +183,7 @@ pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, Binding>,
     binding_ids_by_hotkey: HashMap<BindingPattern, Vec<BindingId>>,
     sequence_bindings_by_id: BTreeMap<BindingId, SequenceBinding>,
-    sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
+    sequence_ids_by_value: HashMap<crate::sequence::BindingSequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
     layer_stack: Vec<LayerStackEntry>,
     active_sequences: Vec<ActiveSequence>,
@@ -372,6 +371,11 @@ impl Dispatcher {
     /// Logical-only presses cannot satisfy physical sequence steps, but take
     /// their mismatch/retry path and interrupt existing physical tap-holds.
     /// They never enroll a physical tap-hold trigger.
+    /// Mixed sequences advance at most one step per press. If all pending
+    /// candidates have already expired, a deferred standalone can consume this
+    /// event; drain [`pending_timeouts`](Self::pending_timeouts) before processing
+    /// input to resolve expiry separately. A live candidate's mismatch prevents
+    /// fallback and retries the current event against fresh bindings.
     /// Release/repeat behavior is identical to [`process`](Self::process).
     pub fn process_event(&mut self, event: &KeyboardObservation) -> MatchResult<'_> {
         self.process_internal(event, None)
@@ -552,7 +556,7 @@ impl Dispatcher {
             return BindingMatch::Ignored;
         }
 
-        if let Some(outcome) = self.match_active_sequences(event.physical_hotkey()) {
+        if let Some(outcome) = self.match_active_sequences(event) {
             return outcome;
         }
 

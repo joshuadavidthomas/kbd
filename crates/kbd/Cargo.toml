@@ -17,10 +17,8 @@ serde = ["dep:serde"]
 [dependencies]
 keyboard-types = { workspace = true }
 serde = { workspace = true, optional = true }
-thiserror = { workspace = true }
-
-[dev-dependencies]
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true

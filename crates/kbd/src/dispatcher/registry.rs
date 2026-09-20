@@ -11,6 +11,7 @@ use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
 use crate::observation::BindingPattern;
+use crate::sequence::BindingSequence;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 
@@ -44,6 +45,23 @@ impl From<&BindingOptions> for SourcePriority {
 }
 
 impl Dispatcher {
+    /// Register a mixed physical/logical input sequence with explicit options.
+    /// Legacy [`register_sequence`](Self::register_sequence) remains physical-only.
+    ///
+    /// # Errors
+    /// Returns `AlreadyRegistered` for an identical sequence, including a physical
+    /// sequence already registered through the legacy API.
+    pub fn register_sequence_pattern(
+        &mut self,
+        sequence: BindingSequence,
+        action: impl Into<Action>,
+        options: SequenceOptions,
+    ) -> Result<BindingId, crate::error::RegisterError> {
+        let id = BindingId::new();
+        self.register_sequence_binding(SequenceBinding::new(id, sequence, action.into(), options))?;
+        Ok(id)
+    }
+
     /// Register an explicit physical or logical immediate pattern.
     ///
     /// # Errors

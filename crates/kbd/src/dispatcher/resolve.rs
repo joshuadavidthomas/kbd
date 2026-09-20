@@ -1,42 +1,18 @@
 use super::DeviceContext;
 use crate::binding::Binding;
+#[cfg(test)]
 use crate::hotkey::Hotkey;
+#[cfg(test)]
 use crate::hotkey::HotkeySequence;
 use crate::layer::StoredLayer;
 use crate::observation::KeyboardObservation;
-
-/// Classification of a single sequence binding's first step against a hotkey.
-enum SequencePrefixKind {
-    /// The sequence's first step does not match the hotkey.
-    None,
-    /// The sequence is a single step and matches (immediate fire).
-    SingleStep,
-    /// The sequence has multiple steps and the first matches (enter pending).
-    MultiStep,
-}
-
-/// Classify whether a sequence's first step matches a given hotkey.
-fn classify_sequence_prefix(sequence: &HotkeySequence, hotkey: Hotkey) -> SequencePrefixKind {
-    if !sequence
-        .steps()
-        .first()
-        .is_some_and(|first_step| *first_step == hotkey)
-    {
-        return SequencePrefixKind::None;
-    }
-
-    if sequence.steps().len() == 1 {
-        SequencePrefixKind::SingleStep
-    } else {
-        SequencePrefixKind::MultiStep
-    }
-}
+use crate::sequence::BindingSequence;
 
 /// Result of classifying all sequence bindings within a scope against a hotkey.
 ///
 /// Encodes the precedence rule: single-step sequences win over multi-step.
 /// Indices refer to positions in the input iterator passed to
-/// [`classify_sequence_prefixes`].
+/// [`classify_observation_prefixes`].
 ///
 /// Used directly by the global-bindings path where immediate hotkey lookup
 /// is a separate `HashMap` operation. For layer scopes, prefer
@@ -86,32 +62,26 @@ pub(super) enum LayerMatch {
 /// highest-priority match: `SingleStep` wins over `MultiStep`, which
 /// wins over `None`. For `MultiStep`, all matching indices are
 /// collected so the runtime can start them as active sequences.
-pub(super) fn classify_sequence_prefixes<'a>(
-    sequences: impl Iterator<Item = &'a HotkeySequence>,
-    hotkey: Hotkey,
+pub(super) fn classify_observation_prefixes<'a>(
+    sequences: impl Iterator<Item = &'a BindingSequence>,
+    event: &KeyboardObservation,
 ) -> SequencePrefixMatch {
-    let mut single_step_index: Option<usize> = None;
-    let mut multi_step_indices: Vec<usize> = Vec::new();
+    let mut matches: Vec<_> = sequences
+        .enumerate()
+        .filter(|(_, sequence)| sequence.steps()[0].matches(event))
+        .collect();
+    // Stable sorting preserves the scope's declaration/BindingId order for ties.
+    // Only matching prefixes need ranking, not the entire sequence registry.
+    matches.sort_by(|(_, left), (_, right)| left.domain_cmp(right));
 
-    for (index, sequence) in sequences.enumerate() {
-        match classify_sequence_prefix(sequence, hotkey) {
-            SequencePrefixKind::None => {}
-            SequencePrefixKind::SingleStep => {
-                if single_step_index.is_none() {
-                    single_step_index = Some(index);
-                }
-            }
-            SequencePrefixKind::MultiStep => {
-                multi_step_indices.push(index);
-            }
-        }
-    }
-
-    if let Some(index) = single_step_index {
-        SequencePrefixMatch::SingleStep { index }
-    } else if !multi_step_indices.is_empty() {
+    if let Some((index, _)) = matches
+        .iter()
+        .find(|(_, sequence)| sequence.steps().len() == 1)
+    {
+        SequencePrefixMatch::SingleStep { index: *index }
+    } else if !matches.is_empty() {
         SequencePrefixMatch::MultiStep {
-            indices: multi_step_indices,
+            indices: matches.into_iter().map(|(index, _)| index).collect(),
         }
     } else {
         SequencePrefixMatch::None
@@ -132,15 +102,16 @@ fn classify_layer(
     )
 }
 
-pub(super) fn classify_observation_prefixes<'a>(
+#[cfg(test)]
+fn classify_sequence_prefixes<'a>(
     sequences: impl Iterator<Item = &'a HotkeySequence>,
-    event: &KeyboardObservation,
+    hotkey: Hotkey,
 ) -> SequencePrefixMatch {
-    event
-        .physical_hotkey()
-        .map_or(SequencePrefixMatch::None, |hotkey| {
-            classify_sequence_prefixes(sequences, hotkey)
-        })
+    let sequences: Vec<BindingSequence> = sequences.cloned().map(Into::into).collect();
+    classify_observation_prefixes(
+        sequences.iter(),
+        &KeyboardObservation::from_hotkey(hotkey, crate::key_state::KeyTransition::Press),
+    )
 }
 
 /// Classify a layer once for both identities: sequences before immediate

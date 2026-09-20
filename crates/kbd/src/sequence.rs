@@ -6,6 +6,125 @@ use crate::error::ParseHotkeyError;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::key::Key;
+use crate::observation::BindingPattern;
+use crate::observation::KeyboardObservation;
+use crate::observation::LogicalKey;
+use crate::observation::split_quoted;
+
+/// A non-empty sequence of physical and/or logical binding patterns.
+///
+/// Unlike [`HotkeySequence`], this is an input matching type, not a physical
+/// emission action. Commas outside quoted logical strings separate steps.
+///
+/// ```
+/// use kbd::sequence::BindingSequence;
+/// let sequence: BindingSequence = r#"Ctrl+physical:K, logical:",", logical:Enter"#.parse()?;
+/// assert_eq!(sequence.steps().len(), 3);
+/// # Ok::<(), kbd::error::ParseHotkeyError>(())
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BindingSequence {
+    steps: Vec<BindingPattern>,
+}
+
+impl BindingSequence {
+    /// Build a mixed-domain input sequence.
+    ///
+    /// # Errors
+    /// Returns [`ParseHotkeyError::Empty`] for an empty list.
+    pub fn new(steps: Vec<BindingPattern>) -> Result<Self, ParseHotkeyError> {
+        if steps.is_empty() {
+            return Err(ParseHotkeyError::Empty);
+        }
+        Ok(Self { steps })
+    }
+
+    /// Patterns in event order. One press can consume at most one step.
+    #[must_use]
+    pub fn steps(&self) -> &[BindingPattern] {
+        &self.steps
+    }
+
+    /// Physical wins at the earliest differing step, after scope/kind priority.
+    pub(crate) fn domain_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.steps
+            .iter()
+            .map(|step| step.hotkey().is_none())
+            .cmp(other.steps.iter().map(|step| step.hotkey().is_none()))
+    }
+}
+
+impl From<HotkeySequence> for BindingSequence {
+    fn from(sequence: HotkeySequence) -> Self {
+        Self {
+            steps: sequence
+                .steps()
+                .iter()
+                .copied()
+                .map(BindingPattern::Physical)
+                .collect(),
+        }
+    }
+}
+
+impl std::str::FromStr for BindingSequence {
+    type Err = ParseHotkeyError;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        Self::new(
+            split_quoted(input, ',')?
+                .into_iter()
+                .map(str::parse)
+                .collect::<Result<_, _>>()?,
+        )
+    }
+}
+
+impl std::fmt::Display for BindingSequence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (index, step) in self.steps.iter().enumerate() {
+            if index != 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{step}")?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for BindingSequence {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for BindingSequence {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let input = String::deserialize(deserializer)?;
+        input.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+/// Identity that cancels a pending sequence, independent of modifiers.
+/// An expected next step is matched before the abort identity is considered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SequenceAbortKey {
+    /// A physical key (the default is physical Escape).
+    Physical(Key),
+    /// An exact logical character string or named key.
+    Logical(LogicalKey),
+}
+
+impl SequenceAbortKey {
+    pub(crate) fn matches(&self, event: &KeyboardObservation) -> bool {
+        match self {
+            Self::Physical(key) => event.physical == Some(*key),
+            Self::Logical(key) => event.logical.as_ref() == Some(key),
+        }
+    }
+}
 
 mod private {
     pub trait Sealed {}
@@ -53,29 +172,32 @@ impl SequenceInput for &str {
 }
 
 /// Runtime options for sequence matching.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SequenceOptions {
     timeout: Duration,
-    abort_key: Key,
+    abort_key: SequenceAbortKey,
 }
 
 impl SequenceOptions {
     /// Create sequence options with explicit timeout and abort key.
     #[must_use]
     pub const fn new(timeout: Duration, abort_key: Key) -> Self {
-        Self { timeout, abort_key }
+        Self {
+            timeout,
+            abort_key: SequenceAbortKey::Physical(abort_key),
+        }
     }
 
     /// Timeout for each sequence step.
     #[must_use]
-    pub const fn timeout(self) -> Duration {
+    pub const fn timeout(&self) -> Duration {
         self.timeout
     }
 
     /// Key that aborts an in-progress sequence.
     #[must_use]
-    pub const fn abort_key(self) -> Key {
-        self.abort_key
+    pub const fn abort_key(&self) -> &SequenceAbortKey {
+        &self.abort_key
     }
 
     /// Set step timeout.
@@ -87,8 +209,16 @@ impl SequenceOptions {
 
     /// Set abort key.
     #[must_use]
-    pub const fn with_abort_key(mut self, abort_key: Key) -> Self {
-        self.abort_key = abort_key;
+    pub fn with_abort_key(mut self, abort_key: Key) -> Self {
+        self.abort_key = SequenceAbortKey::Physical(abort_key);
+        self
+    }
+
+    /// Use a logical abort identity instead of the default physical Escape.
+    /// Modifiers do not affect abort matching.
+    #[must_use]
+    pub fn with_logical_abort_key(mut self, key: impl Into<LogicalKey>) -> Self {
+        self.abort_key = SequenceAbortKey::Logical(key.into());
         self
     }
 }
@@ -97,7 +227,7 @@ impl Default for SequenceOptions {
     fn default() -> Self {
         Self {
             timeout: Duration::from_millis(1_000),
-            abort_key: Key::ESCAPE,
+            abort_key: SequenceAbortKey::Physical(Key::ESCAPE),
         }
     }
 }

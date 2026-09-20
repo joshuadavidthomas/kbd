@@ -303,7 +303,7 @@ impl Dispatcher {
                     LayerMatch::SingleStepSequence { index } => {
                         let sb = &stored.sequence_bindings[index];
                         return Some(BindingInfo {
-                            hotkey: sb.sequence.steps()[0].into(),
+                            hotkey: sb.sequence.steps()[0].clone(),
                             description: None,
                             source: None,
                             location: BindingLocation::Layer(entry.name.clone()),
@@ -345,7 +345,7 @@ impl Dispatcher {
             SequencePrefixMatch::SingleStep { index } => {
                 let binding = global_seqs[index];
                 return Some(BindingInfo {
-                    hotkey: binding.sequence.steps()[0].into(),
+                    hotkey: binding.sequence.steps()[0].clone(),
                     description: None,
                     source: None,
                     location: BindingLocation::Global,
@@ -989,10 +989,10 @@ mod tests {
         assert_eq!(
             summary,
             vec![
-                ("A".to_string(), None),
-                ("V".to_string(), Some("default".to_string())),
-                ("V".to_string(), Some("plugin".to_string())),
-                ("V".to_string(), Some("user".to_string())),
+                ("physical:A".to_string(), None),
+                ("physical:V".to_string(), Some("default".to_string())),
+                ("physical:V".to_string(), Some("plugin".to_string())),
+                ("physical:V".to_string(), Some("user".to_string())),
             ]
         );
     }
@@ -1033,10 +1033,10 @@ mod tests {
         assert_eq!(
             summary,
             vec![
-                ("alpha".to_string(), "B".to_string()),
-                ("alpha".to_string(), "A".to_string()),
-                ("zeta".to_string(), "Z".to_string()),
-                ("zeta".to_string(), "Y".to_string()),
+                ("alpha".to_string(), "physical:B".to_string()),
+                ("alpha".to_string(), "physical:A".to_string()),
+                ("zeta".to_string(), "physical:Z".to_string()),
+                ("zeta".to_string(), "physical:Y".to_string()),
             ]
         );
     }

@@ -25,6 +25,9 @@ pub enum ParseHotkeyError {
     /// The hotkey contained more than one non-modifier key.
     #[error("hotkey has multiple non-modifier keys")]
     MultipleKeys,
+    /// A quoted logical character string or its escape sequence was invalid.
+    #[error("invalid quoted logical key")]
+    InvalidQuotedKey,
 }
 
 /// Error returned when registering a binding fails.

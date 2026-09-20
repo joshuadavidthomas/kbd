@@ -130,11 +130,37 @@
 //! resolves both identities together, returning one action. No logical identity
 //! is inferred by the legacy physical APIs.
 //!
+//! Explicit patterns and mixed-domain sequences support string parsing and serde:
+//!
+//! ```
+//! use kbd::action::Action;
+//! use kbd::binding::BindingOptions;
+//! use kbd::dispatcher::Dispatcher;
+//! use kbd::observation::NamedKey;
+//! use kbd::sequence::SequenceOptions;
+//! let mut dispatcher = Dispatcher::new();
+//! dispatcher.register_pattern(r#"Ctrl+logical:"s""#.parse()?, Action::Suppress, BindingOptions::default())?;
+//! dispatcher.register_sequence_pattern(
+//!     r#"Ctrl+physical:K, logical:",", logical:Enter"#.parse()?,
+//!     Action::Suppress,
+//!     SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+//! )?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! Quoted logical values are exact character strings; `logical:"Enter"` differs
+//! from named `logical:Enter`. Quotes use JSON escapes and protect `+`/`,` delimiters.
+//! New [`BindingPattern`](observation::BindingPattern) and
+//! [`BindingSequence`](sequence::BindingSequence) values display with explicit
+//! domains; legacy physical serialization is unchanged. Sequence candidates consume
+//! at most one step per press. [`cancel_pending_sequence`](dispatcher::Dispatcher::cancel_pending_sequence)
+//! discards pending sequence state without resetting layers, tap-hold, or held keys.
+//!
 //! # Feature flags
 //!
 //! | Flag | Default | Effect |
 //! |------|---------|--------|
-//! | `serde` | off | Adds `Serialize` and `Deserialize` to key and hotkey-related types |
+//! | `serde` | off | Adds `Serialize` and `Deserialize` to key/hotkey types, binding patterns, and mixed sequences |
 //!
 //! # See also
 //!

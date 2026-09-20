@@ -300,6 +300,24 @@ impl Layer {
         self
     }
 
+    /// Add a mixed physical/logical input sequence with explicit options.
+    /// Legacy [`bind_sequence`](Self::bind_sequence) remains physical-only.
+    #[must_use]
+    pub fn bind_sequence_pattern(
+        mut self,
+        sequence: crate::sequence::BindingSequence,
+        action: impl Into<Action>,
+        options: SequenceOptions,
+    ) -> Self {
+        self.sequence_bindings.push(SequenceBinding::new(
+            BindingId::new(),
+            sequence,
+            action.into(),
+            options,
+        ));
+        self
+    }
+
     /// Add a multi-step sequence binding to this layer.
     ///
     /// # Errors
@@ -629,7 +647,7 @@ mod tests {
             .with_abort_key(Key::TAB);
 
         let layer = Layer::new("nav")
-            .bind_sequence_with_options("Ctrl+K, Ctrl+C", Action::Suppress, options)
+            .bind_sequence_with_options("Ctrl+K, Ctrl+C", Action::Suppress, options.clone())
             .unwrap();
 
         let (_, _, sequence_bindings, _) = layer.into_parts();

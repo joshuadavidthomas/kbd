@@ -12,6 +12,8 @@ use kbd::hotkey::Hotkey;
 use kbd::hotkey::HotkeySequence;
 use kbd::hotkey::Modifier;
 use kbd::key::Key;
+use kbd::observation::BindingPattern;
+use kbd::sequence::BindingSequence;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse single hotkeys from strings
@@ -69,6 +71,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (i, step) in seq.steps().iter().enumerate() {
         println!("    Step {}: {step}", i + 1);
     }
+    println!();
+
+    // Explicit domains preserve the difference between characters and named keys.
+    for input in [r#"Ctrl+logical:"a""#, "logical:Enter", r#"logical:"Enter""#] {
+        let pattern: BindingPattern = input.parse()?;
+        assert_eq!(pattern.to_string().parse::<BindingPattern>()?, pattern);
+        println!("Explicit pattern: {pattern}");
+    }
+    let mixed: BindingSequence = r#"Ctrl+physical:K, logical:",", logical:Enter"#.parse()?;
+    println!("Mixed input sequence: {mixed}");
+    assert_eq!(mixed.steps().len(), 3); // the quoted comma is one key, not a separator
     println!();
 
     // Round-trip: construct programmatically, display as string, parse back
