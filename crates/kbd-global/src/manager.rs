@@ -128,11 +128,7 @@ pub struct HotkeyManager {
 
 impl fmt::Debug for HotkeyManager {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let running = self
-            .runtime
-            .lock()
-            .map(|guard| guard.is_some())
-            .unwrap_or(false);
+        let running = self.runtime.lock().is_ok_and(|guard| guard.is_some());
 
         f.debug_struct("HotkeyManager")
             .field("backend", &self.backend)
