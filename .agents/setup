@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+SECONDS=0
+
+echo 'Installing missing Linux build dependencies...'
+packages=(build-essential pkg-config curl ca-certificates libgtk-3-dev libxkbcommon-dev libwayland-dev)
+missing=()
+for package in "${packages[@]}"; do
+    if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -qx 'install ok installed'; then
+        missing+=("$package")
+    fi
+done
+if ((${#missing[@]})); then
+    sudo apt-get update -qq
+    sudo apt-get install -y --no-install-recommends "${missing[@]}"
+fi
+echo "System dependencies ready (${SECONDS}s elapsed)."
+
+# Match CI's stable build toolchain and nightly formatter. Keep installed
+# channels on warm snapshots rather than checking for updates on every run.
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+if ! command -v rustup >/dev/null; then
+    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+fi
+for toolchain in stable nightly; do
+    if ! rustup run "$toolchain" rustc --version >/dev/null 2>&1; then
+        rustup toolchain install "$toolchain" --profile minimal --no-self-update
+    fi
+done
+rustup default stable
+rustup component add clippy --toolchain stable
+rustup component add rustfmt --toolchain nightly
+echo "Rust toolchains ready (${SECONDS}s elapsed)."
+
+if ! command -v just >/dev/null; then
+    mkdir -p "$HOME/.local/bin"
+    curl --proto '=https' --tlsv1.2 -fsSL https://just.systems/install.sh | bash -s -- --to "$HOME/.local/bin"
+fi
+
+# Make the tools available to future non-interactive login shells as well.
+profile_line='export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"'
+if ! grep -Fqx "$profile_line" "$HOME/.bash_profile" 2>/dev/null; then
+    printf '\n%s\n' "$profile_line" >> "$HOME/.bash_profile"
+fi
+
+# Cargo.lock is intentionally untracked for this library workspace. Cargo
+# preserves the generated lockfile and download cache in the orb snapshot.
+host="$(rustc -vV | sed -n 's/^host: //p')"
+echo "Fetching Cargo dependencies for $host..."
+cargo fetch -q --target "$host"
+echo "Setup complete (${SECONDS}s elapsed)."

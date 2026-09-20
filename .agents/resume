@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Toolchains and Cargo caches persist in the snapshot. This library workspace
+# needs no services, authentication, or dependency installation on resume.

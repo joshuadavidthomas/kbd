@@ -22,3 +22,6 @@ Cargo.lock
 
 # Profiling output
 profiles/
+
+# Orb portal metadata
+.amp/portals/*
