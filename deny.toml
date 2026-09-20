@@ -14,6 +14,11 @@ ignore = [
     { id = "RUSTSEC-2024-0419", reason = "transitive via tao → gtk3-rs, no fix available" },
     { id = "RUSTSEC-2024-0420", reason = "transitive via tao → gtk3-rs, no fix available" },
 
+    # ttf-parser is unmaintained — transitive via iced → cosmic-text → fontdb
+    # and egui → epaint → ab_glyph. Both paths are pinned by the iced 0.14 and
+    # egui 0.33 releases we depend on; no released version of either moves off it.
+    { id = "RUSTSEC-2026-0192", reason = "transitive via iced → cosmic-text → fontdb and egui → epaint → ab_glyph, no fix available" },
+
     # paste is unmaintained — transitive via iced → wgpu → metal
     { id = "RUSTSEC-2024-0436", reason = "transitive via iced → wgpu → metal, no fix available" },
 
