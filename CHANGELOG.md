@@ -21,6 +21,13 @@ _For multi-package releases, list package versions here_
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.2.1)
+
+### Changed
+
+- Updated egui and eframe dependencies to 0.34, migrating the egui example to the new `eframe::App` API. (`kbd-egui`)
+- Updated tao dependency to 0.35. (`kbd-tao`)
+
 ## [0.2.0](https://github.com/joshuadavidthomas/kbd/releases/tag/kbd-v0.2.0)
 
 ### Added
