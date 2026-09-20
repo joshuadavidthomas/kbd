@@ -91,7 +91,7 @@ Each successful step refreshes the timeout. A deferred standalone fires only whe
 
 The default abort remains **physical Escape**. `with_logical_abort_key` selects an exact logical identity for logical-only input; abort ignores modifiers, and a matching expected next step wins over abort. `SequenceOptions` is now `Clone`, not `Copy`, and `abort_key()` returns `&SequenceAbortKey` so logical aborts are represented truthfully.
 
-`cancel_pending_sequence()` silently and idempotently clears sequence candidates and their fallback. It does not clear registrations, layers, throttle history, tap-hold, or held-key/modifier state and does not revoke previously collected timeout tokens. Hosts can compose it into their own lifecycle reset.
+`cancel_pending_sequence()` silently and idempotently clears sequence candidates and their fallback and revokes previously collected sequence/fallback timeout tokens. It does not clear registrations, layers, throttle history, tap-hold, or held-key/modifier state; collected tap-hold timeout tokens remain valid. Hosts can compose it into their own lifecycle reset.
 
 ## Feature flags
 

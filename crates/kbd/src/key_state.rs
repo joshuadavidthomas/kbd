@@ -14,6 +14,16 @@ use crate::hotkey::Modifier;
 use crate::hotkey::ModifierSet;
 use crate::key::Key;
 
+/// Reliable physical identity within an input source. `None` denotes the
+/// single anonymous source used by legacy device-less dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HeldKey {
+    /// Input source, scoped to its connected lifetime.
+    pub source: Option<i32>,
+    /// Physical position, never inferred from logical text.
+    pub key: Key,
+}
+
 /// Whether a key was pressed, released, or repeated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -64,6 +74,11 @@ impl KeyState {
     /// Remove all key state for a disconnected device.
     pub fn disconnect_device(&mut self, device_id: i32) {
         self.pressed_by_device.remove(&device_id);
+    }
+
+    /// Forget all input without generating releases or actions.
+    pub fn reset(&mut self) {
+        self.pressed_by_device.clear();
     }
 
     /// Check whether a key is currently pressed on any device.

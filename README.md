@@ -30,6 +30,15 @@ You can mix sources — a Tauri app might use `kbd-tao` for in-window shortcuts 
 
 ## Input lifetime and modifier evidence
 
+Use `process_event_from_source` or `process_event_with_device` for independent
+input sources; device-less dispatch has one anonymous source. Tap-holds use the
+physical source/key identity, never logical text. Drain `pending_timeouts` and
+handle its results between events. `cancel_source` and `reset_input` cancel
+transient work without tap actions; call full reset on focus loss. Reset also
+revokes collected timeout tokens, preserves registrations/layers, and does not
+rewind actions already executed. Hosts maintaining their own key state must clear
+it too.
+
 `KeyboardObservation::modifier_observation` separates physical flags from optional
 semantic logical modifiers. `ModifierState` records active and known masks plus
 unrepresentable active extras. Exact matching compares known active flags; unknown

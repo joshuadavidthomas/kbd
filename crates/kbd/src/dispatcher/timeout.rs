@@ -6,6 +6,7 @@ use super::MatchResult;
 use super::sequence::StandaloneMatch;
 use crate::binding::BindingId;
 use crate::key::Key;
+use crate::key_state::HeldKey;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 
@@ -20,6 +21,7 @@ use crate::policy::RepeatPolicy;
 /// and pass it back to [`match_pending_timeout`](Dispatcher::match_pending_timeout).
 pub struct PendingTimeout {
     pub(super) kind: TimeoutKind,
+    pub(super) epoch: u64,
 }
 
 impl PendingTimeout {
@@ -29,6 +31,12 @@ impl PendingTimeout {
     /// (by timeout or interrupt), enabling correct repeat and release handling.
     #[must_use]
     pub fn tap_hold_key(&self) -> Option<Key> {
+        self.tap_hold_identity().map(|identity| identity.key)
+    }
+
+    /// Source-scoped physical press associated with a hold decision.
+    #[must_use]
+    pub fn tap_hold_identity(&self) -> Option<HeldKey> {
         match &self.kind {
             TimeoutKind::TapHoldHold { key, .. } => Some(*key),
             TimeoutKind::Standalone(_) => None,
@@ -38,7 +46,11 @@ impl PendingTimeout {
 
 pub(super) enum TimeoutKind {
     Standalone(StandaloneMatch),
-    TapHoldHold { key: Key, binding_id: BindingId },
+    TapHoldHold {
+        key: HeldKey,
+        binding_id: BindingId,
+        generation: u64,
+    },
 }
 
 impl Dispatcher {
@@ -107,8 +119,13 @@ impl Dispatcher {
             .check_timeouts(now)
             .into_iter()
             .chain(self.tap_hold.drain_resolved_holds())
-            .map(|(key, binding_id)| PendingTimeout {
-                kind: TimeoutKind::TapHoldHold { key, binding_id },
+            .map(|(key, binding_id, generation)| PendingTimeout {
+                kind: TimeoutKind::TapHoldHold {
+                    key,
+                    binding_id,
+                    generation,
+                },
+                epoch: self.input_epoch,
             })
             .collect();
 
@@ -127,12 +144,18 @@ impl Dispatcher {
     #[must_use]
     pub fn match_pending_timeout(&self, pending: &PendingTimeout) -> Option<MatchResult<'_>> {
         match &pending.kind {
-            TimeoutKind::Standalone(standalone) => Some(MatchResult::Matched {
-                action: self.resolve_binding(&standalone.binding_ref),
-                propagation: standalone.propagation,
-                repeat_policy: standalone.repeat_policy,
-            }),
-            TimeoutKind::TapHoldHold { binding_id, .. } => self
+            TimeoutKind::Standalone(standalone) if pending.epoch == self.input_epoch => {
+                Some(MatchResult::Matched {
+                    action: self.resolve_binding(&standalone.binding_ref),
+                    propagation: standalone.propagation,
+                    repeat_policy: standalone.repeat_policy,
+                })
+            }
+            TimeoutKind::TapHoldHold {
+                key,
+                binding_id,
+                generation,
+            } if self.tap_hold.is_current(*key, *binding_id, *generation) => self
                 .tap_hold
                 .hold_action(*binding_id)
                 .map(|action| MatchResult::Matched {
@@ -140,6 +163,7 @@ impl Dispatcher {
                     propagation: KeyPropagation::Stop,
                     repeat_policy: RepeatPolicy::Suppress,
                 }),
+            _ => None,
         }
     }
 }

@@ -193,6 +193,7 @@ pub struct Dispatcher {
     pending_standalone: Option<PendingStandalone>,
     throttle_tracker: ThrottleTracker,
     tap_hold: TapHoldState,
+    input_epoch: u64,
 }
 
 /// Internal reference to a matched binding, used to re-find the action
@@ -384,6 +385,35 @@ impl Dispatcher {
         self.process_internal(event, None)
     }
 
+    /// Process input from an identified source without inventing device metadata.
+    pub fn process_event_from_source(
+        &mut self,
+        event: &KeyboardObservation,
+        source: i32,
+    ) -> MatchResult<'_> {
+        self.process_scoped(event, None, Some(source))
+    }
+
+    /// Whether this physical press currently owns a tap-hold decision.
+    #[must_use]
+    pub fn is_active_tap_hold(&self, key: crate::key_state::HeldKey) -> bool {
+        self.tap_hold.is_active(key)
+    }
+
+    /// Cancel a source's tap-holds without resolving taps. Sequences currently
+    /// span sources, so cancel their pending work as well.
+    pub fn cancel_source(&mut self, source: Option<i32>) {
+        self.tap_hold.cancel_source(source);
+        self.cancel_pending_sequence();
+    }
+
+    /// Forget transient input on focus loss, without actions or registration changes.
+    /// Already collected timeout tokens become invalid.
+    pub fn reset_input(&mut self) {
+        self.tap_hold.reset();
+        self.cancel_pending_sequence();
+    }
+
     /// Process an observation with device identity and modifier isolation.
     pub fn process_event_with_device(
         &mut self,
@@ -398,6 +428,15 @@ impl Dispatcher {
         event: &KeyboardObservation,
         device: Option<&DeviceContext<'_>>,
     ) -> MatchResult<'_> {
+        self.process_scoped(event, device, device.map(DeviceContext::device_id))
+    }
+
+    fn process_scoped(
+        &mut self,
+        event: &KeyboardObservation,
+        device: Option<&DeviceContext<'_>>,
+        source: Option<i32>,
+    ) -> MatchResult<'_> {
         let transition = event.transition;
         // Fast path: non-Press events (Release, Repeat) with no active
         // tap-hold state are always Ignored. This skips tap-hold processing,
@@ -411,7 +450,7 @@ impl Dispatcher {
         // matching, similar to how speculative patterns (sequences) take
         // priority over immediate patterns (hotkeys).
         let tap_hold_outcome = if let Some(key) = event.physical {
-            self.process_tap_hold(key, transition)
+            self.process_tap_hold(crate::key_state::HeldKey { source, key }, transition)
         } else {
             if matches!(transition, KeyTransition::Press) {
                 self.tap_hold.resolve_pending_for_interrupt(None);
@@ -528,7 +567,11 @@ impl Dispatcher {
     /// here — hold actions resolved by interrupt are buffered in
     /// `TapHoldState` and drained through the `pending_timeouts` pipeline,
     /// where the engine handles them identically to timeout-resolved holds.
-    fn process_tap_hold(&mut self, key: Key, transition: KeyTransition) -> TapHoldOutcome {
+    fn process_tap_hold(
+        &mut self,
+        key: crate::key_state::HeldKey,
+        transition: KeyTransition,
+    ) -> TapHoldOutcome {
         // Fast path: skip all tap-hold work when no bindings are registered
         // and no keys are actively being tracked. This keeps the common case
         // (no tap-hold configured) essentially zero-cost.

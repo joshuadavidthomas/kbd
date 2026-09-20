@@ -68,11 +68,11 @@ impl Dispatcher {
     ///
     /// Idempotent and silent: no actions, layer effects, or synthetic releases.
     /// Registrations, layers, tap-hold state, and throttle history are unchanged.
-    /// This is not a full input reset. Resolve already collected timeout tokens
-    /// before mutating the dispatcher; cancellation does not revoke those tokens.
+    /// This is not a full input reset. Collected sequence timeout tokens are revoked.
     pub fn cancel_pending_sequence(&mut self) {
         self.active_sequences.clear();
         self.pending_standalone = None;
+        self.input_epoch += 1;
     }
 
     pub(super) fn match_active_sequences(
@@ -254,6 +254,7 @@ impl Dispatcher {
                 self.apply_layer_effect(&standalone.layer_effect);
                 return Some(PendingTimeout {
                     kind: TimeoutKind::Standalone(standalone.inner),
+                    epoch: self.input_epoch,
                 });
             }
 

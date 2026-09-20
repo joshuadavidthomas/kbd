@@ -13,6 +13,7 @@ use std::time::Instant;
 use crate::action::Action;
 use crate::binding::BindingId;
 use crate::key::Key;
+use crate::key_state::HeldKey;
 use crate::tap_hold::TapHoldOptions;
 
 /// A registered tap-hold binding.
@@ -38,6 +39,7 @@ struct ActiveTapHold {
     pressed_at: Instant,
     resolution: HoldResolution,
     binding_id: BindingId,
+    generation: u64,
 }
 
 /// State machine for tap-hold processing within the dispatcher.
@@ -46,10 +48,11 @@ pub(super) struct TapHoldState {
     /// Registered tap-hold bindings, keyed by trigger key.
     bindings: HashMap<Key, TapHoldBinding>,
     /// Currently active (pressed) tap-hold keys.
-    active: HashMap<Key, ActiveTapHold>,
+    active: HashMap<HeldKey, ActiveTapHold>,
     /// Holds resolved by interrupt, buffered for the engine to drain
     /// via the `pending_timeouts` pipeline.
-    resolved_holds: Vec<(Key, BindingId)>,
+    resolved_holds: Vec<(HeldKey, BindingId, u64)>,
+    generation: u64,
 }
 
 /// What the tap-hold state machine decided about an event.
@@ -74,7 +77,28 @@ impl TapHoldState {
     pub(super) fn unregister(&mut self, id: BindingId) {
         self.bindings.retain(|_, b| b.id != id);
         self.active.retain(|_, a| a.binding_id != id);
-        self.resolved_holds.retain(|(_, bid)| *bid != id);
+        self.resolved_holds.retain(|(_, bid, _)| *bid != id);
+    }
+
+    pub(super) fn cancel_source(&mut self, source: Option<i32>) {
+        self.active.retain(|key, _| key.source != source);
+        self.resolved_holds
+            .retain(|(key, _, _)| key.source != source);
+    }
+
+    pub(super) fn reset(&mut self) {
+        self.active.clear();
+        self.resolved_holds.clear();
+    }
+
+    pub(super) fn is_active(&self, key: HeldKey) -> bool {
+        self.active.contains_key(&key)
+    }
+
+    pub(super) fn is_current(&self, key: HeldKey, id: BindingId, generation: u64) -> bool {
+        self.active
+            .get(&key)
+            .is_some_and(|active| active.binding_id == id && active.generation == generation)
     }
 
     /// Returns `true` if any tap-hold bindings exist or any keys are
@@ -90,18 +114,19 @@ impl TapHoldState {
     }
 
     /// Process a key press event for tap-hold.
-    pub(super) fn on_press(&mut self, key: Key, now: Instant) -> TapHoldOutcome {
+    pub(super) fn on_press(&mut self, key: HeldKey, now: Instant) -> TapHoldOutcome {
         // Resolve any pending tap-holds that get interrupted by this press.
         // Resolved holds are buffered internally and drained via
         // `drain_resolved_holds` in the pending_timeouts pipeline.
         self.resolve_pending_for_interrupt(Some(key));
 
-        if let Some(binding) = self.bindings.get(&key) {
+        if let Some(binding) = self.bindings.get(&key.key) {
             let binding_id = binding.id;
 
             // If this key was already active (e.g., re-press without release),
             // clean up the old state.
             self.active.remove(&key);
+            self.generation += 1;
 
             self.active.insert(
                 key,
@@ -109,6 +134,7 @@ impl TapHoldState {
                     pressed_at: now,
                     resolution: HoldResolution::Pending,
                     binding_id,
+                    generation: self.generation,
                 },
             );
 
@@ -119,7 +145,7 @@ impl TapHoldState {
     }
 
     /// Process a key release event for tap-hold.
-    pub(super) fn on_release(&mut self, key: Key) -> TapHoldOutcome {
+    pub(super) fn on_release(&mut self, key: HeldKey) -> TapHoldOutcome {
         let Some(active) = self.active.remove(&key) else {
             return TapHoldOutcome::PassThrough;
         };
@@ -131,13 +157,13 @@ impl TapHoldState {
             HoldResolution::Resolved => {
                 // Hold was already resolved (by timeout or interrupt).
                 // The release just cleans up state — no new action.
-                TapHoldOutcome::PassThrough
+                TapHoldOutcome::Consumed
             }
         }
     }
 
     /// Process a repeat event for tap-hold.
-    pub(super) fn on_repeat(&self, key: Key) -> TapHoldOutcome {
+    pub(super) fn on_repeat(&self, key: HeldKey) -> TapHoldOutcome {
         if self.active.contains_key(&key) {
             TapHoldOutcome::RepeatConsumed
         } else {
@@ -147,7 +173,7 @@ impl TapHoldState {
 
     /// Check for tap-hold timeouts — resolve pending holds past their threshold.
     /// Returns `(key, binding_id)` pairs for newly resolved holds.
-    pub(super) fn check_timeouts(&mut self, now: Instant) -> Vec<(Key, BindingId)> {
+    pub(super) fn check_timeouts(&mut self, now: Instant) -> Vec<(HeldKey, BindingId, u64)> {
         let mut resolved = Vec::new();
 
         for (key, active) in &mut self.active {
@@ -155,14 +181,14 @@ impl TapHoldState {
                 continue;
             }
 
-            let Some(binding) = self.bindings.get(key) else {
+            let Some(binding) = self.bindings.get(&key.key) else {
                 continue;
             };
 
             let elapsed = now.saturating_duration_since(active.pressed_at);
             if elapsed >= binding.options.threshold() {
                 active.resolution = HoldResolution::Resolved;
-                resolved.push((*key, active.binding_id));
+                resolved.push((*key, active.binding_id, active.generation));
             }
         }
 
@@ -178,7 +204,7 @@ impl TapHoldState {
                 continue;
             }
 
-            let Some(binding) = self.bindings.get(key) else {
+            let Some(binding) = self.bindings.get(&key.key) else {
                 continue;
             };
 
@@ -212,7 +238,7 @@ impl TapHoldState {
     /// Drain interrupt-resolved holds. Returns `(key, binding_id)` pairs
     /// that should be wrapped as `PendingTimeout::TapHoldHold` and handled
     /// through the same pipeline as timeout-resolved holds.
-    pub(super) fn drain_resolved_holds(&mut self) -> Vec<(Key, BindingId)> {
+    pub(super) fn drain_resolved_holds(&mut self) -> Vec<(HeldKey, BindingId, u64)> {
         std::mem::take(&mut self.resolved_holds)
     }
 
@@ -220,14 +246,15 @@ impl TapHoldState {
     /// Excludes the specified physical key, if known. A logical-only press
     /// interrupts without enrolling any physical trigger. Resolved holds are
     /// buffered in `self.resolved_holds` for the engine to drain.
-    pub(super) fn resolve_pending_for_interrupt(&mut self, pressing_key: Option<Key>) {
+    pub(super) fn resolve_pending_for_interrupt(&mut self, pressing_key: Option<HeldKey>) {
         for (key, active) in &mut self.active {
             if Some(*key) == pressing_key {
                 continue;
             }
             if active.resolution == HoldResolution::Pending {
                 active.resolution = HoldResolution::Resolved;
-                self.resolved_holds.push((*key, active.binding_id));
+                self.resolved_holds
+                    .push((*key, active.binding_id, active.generation));
             }
         }
     }
