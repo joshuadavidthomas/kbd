@@ -13,21 +13,20 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use kbd::action::Action;
-use kbd::hotkey::Modifier;
-use kbd::key::Key;
+use kbd::key_state::HeldKey;
 use kbd::policy::RepeatPolicy;
 
 use super::types::KeyEventOutcome;
 
 /// Tracks engine decisions for keys that are currently held down.
 ///
-/// Each non-modifier key that is pressed gets an entry recording its
+/// Each key that is pressed gets an entry recording its
 /// [`KeyEventOutcome`] and optional [`RepeatState`]. The entry is removed
 /// on release, ensuring each press-release cycle has exactly one entry
 /// lifetime.
 ///
-/// Modifier keys are excluded — they don't go through binding matching.
-pub(super) struct HeldKeyState(HashMap<Key, HeldKeyStateEntry>);
+/// Modifier keys also need release and disconnect ownership.
+pub(super) struct HeldKeyState(HashMap<HeldKey, HeldKeyStateEntry>);
 
 impl HeldKeyState {
     pub(super) fn new() -> Self {
@@ -35,37 +34,38 @@ impl HeldKeyState {
     }
 
     /// Record a press outcome in the cache so release and repeat events
-    /// use the same disposition. Modifier keys are excluded — they don't
-    /// go through binding matching.
+    /// use the same disposition.
     pub(super) fn insert(
         &mut self,
-        key: Key,
+        key: HeldKey,
         outcome: KeyEventOutcome,
         repeat_state: Option<RepeatState>,
     ) {
-        if Modifier::from_key(key).is_none() {
-            self.0.insert(
-                key,
-                HeldKeyStateEntry {
-                    outcome,
-                    repeat_state,
-                },
-            );
-        }
+        self.0.insert(
+            key,
+            HeldKeyStateEntry {
+                outcome,
+                repeat_state,
+            },
+        );
+    }
+
+    pub(super) fn cancel_source(&mut self, source: i32) {
+        self.0.retain(|key, _| key.source != Some(source));
     }
 
     /// Remove and return the cached entry for a key (on release).
-    pub(super) fn remove(&mut self, key: Key) -> Option<HeldKeyStateEntry> {
+    pub(super) fn remove(&mut self, key: HeldKey) -> Option<HeldKeyStateEntry> {
         self.0.remove(&key)
     }
 
     /// Get the cached entry for a key (for repeat event handling).
-    pub(super) fn get(&self, key: Key) -> Option<&HeldKeyStateEntry> {
+    pub(super) fn get(&self, key: HeldKey) -> Option<&HeldKeyStateEntry> {
         self.0.get(&key)
     }
 
     /// Get a mutable reference to the cached entry (for updating repeat timing).
-    pub(super) fn get_mut(&mut self, key: Key) -> Option<&mut HeldKeyStateEntry> {
+    pub(super) fn get_mut(&mut self, key: HeldKey) -> Option<&mut HeldKeyStateEntry> {
         self.0.get_mut(&key)
     }
 }

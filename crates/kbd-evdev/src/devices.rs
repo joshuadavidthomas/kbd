@@ -340,17 +340,26 @@ impl DeviceManager {
             .map(|pollfd| (pollfd.fd, pollfd.revents))
             .collect();
 
+        // Read the polled device set before hotplug can close and reuse an fd.
+        // Newly opened devices must wait for a fresh poll snapshot.
+        let mut hotplug_ready = false;
         for (fd, revents) in ready_fds {
             if self
                 .inotify_fd
                 .as_ref()
                 .is_some_and(|inotify_fd| inotify_fd.as_raw_fd() == fd)
             {
-                self.process_hotplug_events(&mut disconnected_devices);
+                hotplug_ready = true;
             } else {
                 self.process_device_fd(fd, revents, &mut key_events, &mut disconnected_devices);
             }
         }
+        if hotplug_ready {
+            self.process_hotplug_events(&mut disconnected_devices);
+        }
+        // The caller cancels disconnected sources before handling events. Do
+        // not let buffered events from the retired lifetime recreate state.
+        key_events.retain(|event| !disconnected_devices.contains(&event.device_fd));
 
         PollResult {
             key_events,

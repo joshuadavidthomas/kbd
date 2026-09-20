@@ -79,6 +79,8 @@ let manager = HotkeyManager::builder()
 
 Grab mode requires write access to `/dev/uinput` in addition to read access on `/dev/input/`.
 
+If forwarding fails, including a synthetic release on disconnect, the engine stops and drops its device handles and virtual keyboard. It does not retry potentially partial writes or continue with uncertain held-key ownership. Subsequent manager operations report that the engine stopped; shutdown reports an engine failure. Create a new manager after resolving the device error to start a new session.
+
 ## Feature flags
 
 | Feature | Effect |

@@ -37,7 +37,8 @@ handle its results between events. `cancel_source` and `reset_input` cancel
 transient work without tap actions; call full reset on focus loss. Reset also
 revokes collected timeout tokens, preserves registrations/layers, and does not
 rewind actions already executed. Hosts maintaining their own key state must clear
-it too.
+it too. `kbd-global` handles disconnect cleanup and balances forwarded keys across
+devices sharing its virtual keyboard.
 
 `KeyboardObservation::modifier_observation` separates physical flags from optional
 semantic logical modifiers. `ModifierState` records active and known masks plus

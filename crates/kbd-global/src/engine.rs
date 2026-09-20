@@ -34,6 +34,7 @@
 //!
 //! Key state and matching logic live in `kbd` (`KeyState`, `Dispatcher`).
 
+use std::collections::HashSet;
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
@@ -45,9 +46,10 @@ use kbd::device::DeviceContext;
 use kbd::dispatcher::Dispatcher;
 use kbd::dispatcher::MatchResult;
 use kbd::hotkey::Hotkey;
-use kbd::key::Key;
+use kbd::key_state::HeldKey;
 use kbd::key_state::KeyState;
 use kbd::key_state::KeyTransition;
+use kbd::observation::KeyboardObservation;
 use kbd::policy::KeyPropagation;
 use kbd::policy::RepeatPolicy;
 
@@ -79,6 +81,7 @@ pub(crate) struct Engine {
     ///
     /// See [`HeldKeyState`] for full documentation.
     held_keys: HeldKeyState,
+    forwarded: HashSet<HeldKey>,
     devices: devices::DeviceManager,
     key_state: KeyState,
     grab_state: GrabState,
@@ -100,6 +103,7 @@ impl Engine {
         Self {
             dispatcher: Dispatcher::new(),
             held_keys: HeldKeyState::new(),
+            forwarded: HashSet::new(),
             devices: devices::DeviceManager::new(input_directory, device_grab_mode),
             key_state: KeyState::default(),
             grab_state,
@@ -281,39 +285,67 @@ impl Engine {
         }
     }
 
-    fn process_polled_events(&mut self, poll_fds: &[libc::pollfd]) {
+    fn process_polled_events(&mut self, poll_fds: &[libc::pollfd]) -> Result<(), ShutdownError> {
         let result = self.devices.process_polled_events(&poll_fds[1..]);
 
         for fd in result.disconnected_devices {
-            self.key_state.disconnect_device(fd);
+            self.disconnect_source(fd)?;
         }
 
         for event in result.key_events {
-            let _ = self.process_key_event(event);
+            self.process_key_event(event)?;
         }
+        Ok(())
     }
 
-    fn process_key_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
+    fn disconnect_source(&mut self, source: i32) -> Result<(), ShutdownError> {
+        self.dispatcher.cancel_source(Some(source));
+        self.key_state.disconnect_device(source);
+        self.held_keys.cancel_source(source);
+        let keys: Vec<_> = self
+            .forwarded
+            .iter()
+            .copied()
+            .filter(|key| key.source == Some(source))
+            .collect();
+        for key in keys {
+            self.forward_event(key, KeyTransition::Release)?;
+        }
+        Ok(())
+    }
+
+    fn process_key_event(
+        &mut self,
+        event: DeviceKeyEvent,
+    ) -> Result<KeyEventOutcome, ShutdownError> {
+        // Finish the preceding event's interrupt decision before another event
+        // can release or replace that press, including within one poll batch.
+        self.drain_pending_timeouts();
+        let identity = identity(event);
+        if matches!(event.transition, KeyTransition::Repeat)
+            && self.held_keys.get(identity).is_none()
+        {
+            return Ok(KeyEventOutcome::Ignored);
+        }
         self.key_state
             .apply_device_event(event.device_fd, event.key, event.transition);
 
         // Release: use cached disposition, remove cache entry.
-        // Exception: tap-hold keys bypass held-key state — their tap
-        // action resolves on release through the Dispatcher.
+        // A pending tap action resolves independently of forwarding ownership.
         if matches!(event.transition, KeyTransition::Release) {
-            if self.dispatcher.is_tap_hold_key(event.key) {
-                self.held_keys.remove(event.key);
-                return self.process_tap_hold_release(event);
+            if self.dispatcher.is_active_tap_hold(identity) {
+                self.process_tap_hold_release(event);
             }
-            if let Some(cached) = self.held_keys.remove(event.key) {
+            if let Some(cached) = self.held_keys.remove(identity) {
                 match cached.outcome {
                     KeyEventOutcome::MatchedForwarded | KeyEventOutcome::UnmatchedForwarded => {
-                        self.forward_event(event.key, event.transition);
+                        self.forward_event(identity, event.transition)?;
                     }
                     KeyEventOutcome::MatchedConsumed | KeyEventOutcome::Ignored => {}
                 }
-                return cached.outcome;
+                return Ok(cached.outcome);
             }
+            return Ok(KeyEventOutcome::Ignored);
         }
 
         // Repeat: use cached disposition for forwarding, check repeat
@@ -327,10 +359,13 @@ impl Engine {
     }
 
     /// Handle a repeat event using held-key state and repeat policy.
-    fn handle_repeat_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let Some(cached) = self.held_keys.get(event.key) else {
-            // No cache entry — modifier key or key pressed before cache.
-            return KeyEventOutcome::Ignored;
+    fn handle_repeat_event(
+        &mut self,
+        event: DeviceKeyEvent,
+    ) -> Result<KeyEventOutcome, ShutdownError> {
+        let Some(cached) = self.held_keys.get(identity(event)) else {
+            // No cache entry — key pressed before observation or since cancelled.
+            return Ok(KeyEventOutcome::Ignored);
         };
 
         // Extract what we need from the cache before any mutable borrows.
@@ -363,7 +398,7 @@ impl Engine {
             // effects are not triggered.
             if let Some(cb) = self
                 .held_keys
-                .get(event.key)
+                .get(identity(event))
                 .and_then(|e| e.repeat_state.as_ref())
                 .and_then(|state| state.callback.as_ref())
             {
@@ -371,7 +406,7 @@ impl Engine {
             }
 
             // Update last repeat fire time for Custom rate tracking.
-            if let Some(entry) = self.held_keys.get_mut(event.key) {
+            if let Some(entry) = self.held_keys.get_mut(identity(event)) {
                 if let Some(ref mut state) = entry.repeat_state {
                     state.last_repeat_fire = Some(Instant::now());
                 }
@@ -381,15 +416,18 @@ impl Engine {
         // Forwarding follows the original press disposition
         match outcome {
             KeyEventOutcome::MatchedForwarded | KeyEventOutcome::UnmatchedForwarded => {
-                self.forward_event(event.key, event.transition);
+                self.forward_event(identity(event), event.transition)?;
             }
             KeyEventOutcome::MatchedConsumed | KeyEventOutcome::Ignored => {}
         }
-        outcome
+        Ok(outcome)
     }
 
     /// Process a key press event through the Dispatcher.
-    fn process_press_event(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
+    fn process_press_event(
+        &mut self,
+        event: DeviceKeyEvent,
+    ) -> Result<KeyEventOutcome, ShutdownError> {
         let result = self.dispatch(event);
 
         let (match_outcome, repeat_state) = match result {
@@ -417,44 +455,20 @@ impl Engine {
             _ => (MatchOutcome::Unmatched, None),
         };
 
-        let outcome = self.resolve_outcome(match_outcome, event.key, event.transition);
-        self.held_keys.insert(event.key, outcome, repeat_state);
+        let outcome = self.resolve_outcome(match_outcome, identity(event), event.transition)?;
+        self.held_keys
+            .insert(identity(event), outcome, repeat_state);
 
-        outcome
+        Ok(outcome)
     }
 
     /// Process a release event for a tap-hold key through the Dispatcher.
     ///
-    /// Tap-hold keys bypass held-key state for releases because the tap
-    /// action resolves on release. The Dispatcher's `process_tap_hold`
-    /// determines whether this is a tap (released before threshold) or a
-    /// hold cleanup (hold already resolved by timeout or interrupt).
-    ///
-    /// The result flows through the same `MatchResult → MatchOutcome →
-    /// KeyEventOutcome` reduction as normal presses, so the propagation
-    /// policy is determined solely by the dispatcher.
-    fn process_tap_hold_release(&mut self, event: DeviceKeyEvent) -> KeyEventOutcome {
-        let result = self.dispatch(event);
-
-        let outcome = match result {
-            MatchResult::Matched {
-                action,
-                propagation,
-                ..
-            } => {
-                execute_action(action);
-                MatchOutcome::Matched { propagation }
-            }
-            MatchResult::Pending { .. } | MatchResult::Suppressed => MatchOutcome::Consumed,
-            MatchResult::NoMatch | MatchResult::Ignored | MatchResult::Throttled { .. } => {
-                MatchOutcome::Unmatched
-            }
-            // MatchResult is #[non_exhaustive]
-            #[allow(clippy::match_same_arms)]
-            _ => MatchOutcome::Unmatched,
-        };
-
-        self.resolve_outcome(outcome, event.key, event.transition)
+    /// Action resolution never changes the cached press disposition.
+    fn process_tap_hold_release(&mut self, event: DeviceKeyEvent) {
+        if let MatchResult::Matched { action, .. } = self.dispatch(event) {
+            execute_action(action);
+        }
     }
 
     /// Dispatch a key event through the Dispatcher, building the device
@@ -472,7 +486,10 @@ impl Engine {
                 self.dispatcher
                     .process_with_device(candidate, event.transition, &ctx)
             }
-            None => self.dispatcher.process(candidate, event.transition),
+            None => self.dispatcher.process_event_from_source(
+                &KeyboardObservation::from_hotkey(candidate, event.transition),
+                event.device_fd,
+            ),
         }
     }
 
@@ -481,15 +498,15 @@ impl Engine {
     fn resolve_outcome(
         &mut self,
         outcome: MatchOutcome,
-        key: Key,
+        key: HeldKey,
         transition: KeyTransition,
-    ) -> KeyEventOutcome {
-        match outcome {
+    ) -> Result<KeyEventOutcome, ShutdownError> {
+        Ok(match outcome {
             MatchOutcome::Matched { propagation } => match propagation {
                 KeyPropagation::Continue
                     if matches!(self.grab_state, GrabState::Enabled { .. }) =>
                 {
-                    self.forward_event(key, transition);
+                    self.forward_event(key, transition)?;
                     KeyEventOutcome::MatchedForwarded
                 }
                 KeyPropagation::Continue | KeyPropagation::Stop => KeyEventOutcome::MatchedConsumed,
@@ -500,21 +517,79 @@ impl Engine {
             MatchOutcome::Consumed => KeyEventOutcome::MatchedConsumed,
             MatchOutcome::Unmatched => {
                 if matches!(self.grab_state, GrabState::Enabled { .. }) {
-                    self.forward_event(key, transition);
+                    self.forward_event(key, transition)?;
                     KeyEventOutcome::UnmatchedForwarded
                 } else {
                     KeyEventOutcome::Ignored
                 }
             }
-        }
+        })
     }
 
-    fn forward_event(&mut self, key: Key, transition: KeyTransition) {
-        if let GrabState::Enabled { forwarder } = &mut self.grab_state
-            && let Err(error) = forwarder.forward_key(key, transition)
-        {
-            tracing::error!(%error, "failed to forward key event through virtual device");
+    fn forward_event(
+        &mut self,
+        key: HeldKey,
+        transition: KeyTransition,
+    ) -> Result<(), ShutdownError> {
+        let owned = self.forwarded.contains(&key);
+        let another = self
+            .forwarded
+            .iter()
+            .any(|other| other.key == key.key && *other != key);
+        let emit = match transition {
+            KeyTransition::Press => !owned && !another,
+            KeyTransition::Release => owned && !another,
+            KeyTransition::Repeat => owned,
+            _ => false,
+        };
+        if emit {
+            let GrabState::Enabled { forwarder } = &mut self.grab_state else {
+                return Ok(());
+            };
+            if let Err(error) = forwarder.forward_key(key.key, transition) {
+                // A write may have partially succeeded. Stop the session rather
+                // than keep grabbing input with uncertain output ownership.
+                tracing::error!(%error, "failed to forward key event; stopping grab session");
+                return Err(ShutdownError::Engine);
+            }
         }
+        match transition {
+            KeyTransition::Press => {
+                self.forwarded.insert(key);
+            }
+            KeyTransition::Release => {
+                self.forwarded.remove(&key);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn drain_pending_timeouts(&mut self) {
+        let pending = self.dispatcher.pending_timeouts();
+        for pending in &pending {
+            if let Some(MatchResult::Matched {
+                action,
+                repeat_policy,
+                ..
+            }) = self.dispatcher.match_pending_timeout(pending)
+            {
+                let repeat_state = RepeatState::for_action(action, repeat_policy);
+                execute_action(action);
+                if let Some(key) = pending.tap_hold_identity() {
+                    if let Some(entry) = self.held_keys.get_mut(key) {
+                        entry.repeat_state = Some(repeat_state);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn identity(event: DeviceKeyEvent) -> HeldKey {
+    HeldKey {
+        source: Some(event.device_fd),
+        key: event.key,
     }
 }
 
@@ -565,36 +640,8 @@ pub(crate) fn run(mut engine: Engine) -> Result<(), ShutdownError> {
             return Ok(());
         }
 
-        engine.process_polled_events(&poll_fds);
-        let pending = engine.dispatcher.pending_timeouts();
-        for pending in &pending {
-            if let Some(MatchResult::Matched {
-                action,
-                propagation,
-                repeat_policy,
-            }) = engine.dispatcher.match_pending_timeout(pending)
-            {
-                // Build repeat state before executing the action so
-                // Custom repeat delay is measured from resolution time,
-                // not from after callback completion.
-                let repeat_state = pending
-                    .tap_hold_key()
-                    .map(|_| RepeatState::for_action(action, repeat_policy));
-
-                execute_action(action);
-
-                // Tap-hold hold resolutions need held-key state updates so
-                // repeat and release events use the correct disposition.
-                if let Some(key) = pending.tap_hold_key() {
-                    let outcome = engine.resolve_outcome(
-                        MatchOutcome::Matched { propagation },
-                        key,
-                        KeyTransition::Press,
-                    );
-                    engine.held_keys.insert(key, outcome, repeat_state);
-                }
-            }
-        }
+        engine.process_polled_events(&poll_fds)?;
+        engine.drain_pending_timeouts();
     }
 }
 
@@ -624,7 +671,6 @@ mod tests {
     use super::EngineRuntime;
     use super::GrabState;
     use super::KeyEventOutcome;
-    use super::MatchResult;
     use super::devices;
     use super::devices::DeviceKeyEvent;
     use super::wake::WakeFd;
@@ -796,54 +842,39 @@ mod tests {
     }
 
     fn press_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventOutcome {
-        engine.process_key_event(DeviceKeyEvent {
-            device_fd,
-            key,
-            transition: KeyTransition::Press,
-        })
+        engine
+            .process_key_event(DeviceKeyEvent {
+                device_fd,
+                key,
+                transition: KeyTransition::Press,
+            })
+            .unwrap()
     }
 
     fn release_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventOutcome {
-        engine.process_key_event(DeviceKeyEvent {
-            device_fd,
-            key,
-            transition: KeyTransition::Release,
-        })
+        engine
+            .process_key_event(DeviceKeyEvent {
+                device_fd,
+                key,
+                transition: KeyTransition::Release,
+            })
+            .unwrap()
     }
 
     fn repeat_key(engine: &mut Engine, key: Key, device_fd: i32) -> KeyEventOutcome {
-        engine.process_key_event(DeviceKeyEvent {
-            device_fd,
-            key,
-            transition: KeyTransition::Repeat,
-        })
+        engine
+            .process_key_event(DeviceKeyEvent {
+                device_fd,
+                key,
+                transition: KeyTransition::Repeat,
+            })
+            .unwrap()
     }
 
     /// Drain pending timeouts through the engine, executing actions and
     /// updating held-key state — mirrors the real event loop's behavior.
     fn drain_pending_timeouts(engine: &mut Engine) {
-        let pending = engine.dispatcher.pending_timeouts();
-        for p in &pending {
-            if let Some(MatchResult::Matched {
-                action,
-                propagation,
-                repeat_policy,
-            }) = engine.dispatcher.match_pending_timeout(p)
-            {
-                let repeat_state = p
-                    .tap_hold_key()
-                    .map(|_| super::held_keys::RepeatState::for_action(action, repeat_policy));
-                super::execute_action(action);
-                if let Some(key) = p.tap_hold_key() {
-                    let outcome = engine.resolve_outcome(
-                        super::types::MatchOutcome::Matched { propagation },
-                        key,
-                        KeyTransition::Press,
-                    );
-                    engine.held_keys.insert(key, outcome, repeat_state);
-                }
-            }
-        }
+        engine.drain_pending_timeouts();
     }
 
     #[test]
@@ -2379,7 +2410,7 @@ mod tests {
             key: Key::C,
             transition: KeyTransition::Repeat,
         });
-        assert_eq!(disposition, KeyEventOutcome::MatchedConsumed);
+        assert_eq!(disposition.unwrap(), KeyEventOutcome::MatchedConsumed);
 
         let release_disposition = release_key(&mut engine, Key::C, 10);
         assert_eq!(release_disposition, KeyEventOutcome::MatchedConsumed);
@@ -2417,7 +2448,7 @@ mod tests {
             key: Key::C,
             transition: KeyTransition::Repeat,
         });
-        assert_eq!(disposition, KeyEventOutcome::MatchedForwarded);
+        assert_eq!(disposition.unwrap(), KeyEventOutcome::MatchedForwarded);
 
         let events = forwarded.lock().unwrap();
         let c_events: Vec<_> = events.iter().filter(|(key, _)| *key == Key::C).collect();
@@ -3336,6 +3367,281 @@ mod tests {
         press_key(&mut engine, Key::CAPS_LOCK, 10);
         release_key(&mut engine, Key::CAPS_LOCK, 10);
         assert_eq!(tap_counter.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn source_scoped_disposition_survives_unregister_and_modifier_changes() {
+        let (grab, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab);
+        let id = engine
+            .dispatcher
+            .register(Key::A, Action::Suppress)
+            .unwrap();
+        press_key(&mut engine, Key::A, 10);
+        engine.dispatcher.unregister(id);
+        press_key(&mut engine, Key::A, 11);
+        press_key(&mut engine, Key::SHIFT_LEFT, 11);
+        assert_eq!(
+            release_key(&mut engine, Key::A, 10),
+            KeyEventOutcome::MatchedConsumed
+        );
+        assert_eq!(
+            release_key(&mut engine, Key::A, 11),
+            KeyEventOutcome::UnmatchedForwarded
+        );
+        assert_eq!(
+            *forwarded.lock().unwrap(),
+            vec![
+                (Key::A, KeyTransition::Press),
+                (Key::SHIFT_LEFT, KeyTransition::Press),
+                (Key::A, KeyTransition::Release),
+            ]
+        );
+    }
+
+    #[test]
+    fn two_sources_keep_original_repeat_callbacks_after_rebinding() {
+        let mut engine = test_engine();
+        let first = Arc::new(AtomicUsize::new(0));
+        let second = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&first);
+        let options = BindingOptions::default().with_repeat_policy(RepeatPolicy::Allow);
+        let id = engine
+            .dispatcher
+            .register_with_options(
+                Key::A,
+                move || {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                },
+                options.clone(),
+            )
+            .unwrap();
+        press_key(&mut engine, Key::A, 10);
+        engine.dispatcher.unregister(id);
+        let counter = Arc::clone(&second);
+        engine
+            .dispatcher
+            .register_with_options(
+                Key::A,
+                move || {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                },
+                options,
+            )
+            .unwrap();
+        press_key(&mut engine, Key::A, 11);
+        repeat_key(&mut engine, Key::A, 10);
+        repeat_key(&mut engine, Key::A, 11);
+        release_key(&mut engine, Key::A, 10);
+        repeat_key(&mut engine, Key::A, 10);
+        repeat_key(&mut engine, Key::A, 11);
+        assert_eq!(first.load(Ordering::Relaxed), 2);
+        assert_eq!(second.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn disconnect_balances_only_last_forwarded_owner_including_modifiers() {
+        let (grab, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab);
+        for source in [10, 11] {
+            press_key(&mut engine, Key::A, source);
+            press_key(&mut engine, Key::CONTROL_LEFT, source);
+        }
+        engine.disconnect_source(10).unwrap();
+        assert_eq!(forwarded.lock().unwrap().len(), 2);
+        assert!(engine.key_state.is_pressed(Key::A));
+        release_key(&mut engine, Key::A, 11);
+        release_key(&mut engine, Key::CONTROL_LEFT, 11);
+        assert_eq!(
+            *forwarded.lock().unwrap(),
+            vec![
+                (Key::A, KeyTransition::Press),
+                (Key::CONTROL_LEFT, KeyTransition::Press),
+                (Key::A, KeyTransition::Release),
+                (Key::CONTROL_LEFT, KeyTransition::Release),
+            ]
+        );
+        assert!(engine.forwarded.is_empty());
+        // A reused source must not inherit its old repeat/cache state.
+        assert_eq!(
+            repeat_key(&mut engine, Key::A, 10),
+            KeyEventOutcome::Ignored
+        );
+        press_key(&mut engine, Key::A, 10);
+        engine.disconnect_source(10).unwrap();
+        assert_eq!(
+            &forwarded.lock().unwrap()[4..],
+            &[
+                (Key::A, KeyTransition::Press),
+                (Key::A, KeyTransition::Release),
+            ]
+        );
+    }
+
+    #[test]
+    fn forwarding_failures_propagate_including_disconnect_releases() {
+        struct FailOnce {
+            transition: Option<KeyTransition>,
+            attempts: Arc<AtomicUsize>,
+        }
+        impl super::forwarder::ForwardSink for FailOnce {
+            fn forward_key(
+                &mut self,
+                _: Key,
+                transition: KeyTransition,
+            ) -> Result<(), kbd_evdev::error::Error> {
+                self.attempts.fetch_add(1, Ordering::Relaxed);
+                if self.transition == Some(transition) {
+                    self.transition = None;
+                    return Err(kbd_evdev::error::Error::Uinput(std::io::Error::other(
+                        "injected write failure",
+                    )));
+                }
+                Ok(())
+            }
+        }
+        for (transition, disconnect) in [
+            (KeyTransition::Press, false),
+            (KeyTransition::Repeat, false),
+            (KeyTransition::Release, false),
+            (KeyTransition::Release, true),
+        ] {
+            let attempts = Arc::new(AtomicUsize::new(0));
+            let mut engine = test_engine_with_grab(GrabState::Enabled {
+                forwarder: Box::new(FailOnce {
+                    transition: Some(transition),
+                    attempts: Arc::clone(&attempts),
+                }),
+            });
+            if transition != KeyTransition::Press {
+                press_key(&mut engine, Key::CONTROL_LEFT, 10);
+            }
+            let result = if disconnect {
+                engine.disconnect_source(10)
+            } else {
+                engine
+                    .process_key_event(DeviceKeyEvent {
+                        device_fd: 10,
+                        key: Key::CONTROL_LEFT,
+                        transition,
+                    })
+                    .map(|_| ())
+            };
+            assert!(matches!(result, Err(crate::error::ShutdownError::Engine)));
+            // The handler returns the failure without retrying, even though
+            // this sink would recover on the next attempt.
+            assert_eq!(
+                attempts.load(Ordering::Relaxed),
+                if transition == KeyTransition::Press {
+                    1
+                } else {
+                    2
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn resolved_holds_never_forward_or_resurrect_a_released_press() {
+        for timeout in [false, true] {
+            let (grab, forwarded) = test_grab_state();
+            let mut engine = test_engine_with_grab(grab);
+            let holds = Arc::new(AtomicUsize::new(0));
+            let counter = Arc::clone(&holds);
+            engine
+                .dispatcher
+                .register_tap_hold(
+                    Key::CAPS_LOCK,
+                    Action::Suppress,
+                    Action::from(move || {
+                        counter.fetch_add(1, Ordering::Relaxed);
+                    }),
+                    kbd::tap_hold::TapHoldOptions::default().with_threshold(if timeout {
+                        Duration::ZERO
+                    } else {
+                        Duration::from_secs(60)
+                    }),
+                )
+                .unwrap();
+            press_key(&mut engine, Key::CAPS_LOCK, 10);
+            if !timeout {
+                press_key(&mut engine, Key::B, 10);
+            }
+            // No manual drain: this is the consecutive-events-in-one-batch path.
+            assert_eq!(
+                release_key(&mut engine, Key::CAPS_LOCK, 10),
+                KeyEventOutcome::MatchedConsumed
+            );
+            drain_pending_timeouts(&mut engine);
+            assert_eq!(holds.load(Ordering::Relaxed), 1);
+            assert!(
+                engine
+                    .held_keys
+                    .get(kbd::key_state::HeldKey {
+                        source: Some(10),
+                        key: Key::CAPS_LOCK
+                    })
+                    .is_none()
+            );
+            assert!(
+                forwarded
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .all(|(key, _)| *key != Key::CAPS_LOCK)
+            );
+        }
+    }
+
+    #[test]
+    fn disconnect_and_rebind_do_not_resolve_pending_taps() {
+        let (grab, forwarded) = test_grab_state();
+        let mut engine = test_engine_with_grab(grab);
+        let taps = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&taps);
+        let id = engine
+            .dispatcher
+            .register_tap_hold(
+                Key::A,
+                Action::from(move || {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::Suppress,
+                kbd::tap_hold::TapHoldOptions::default(),
+            )
+            .unwrap();
+        press_key(&mut engine, Key::A, 10);
+        engine.dispatcher.unregister(id);
+        let counter = Arc::clone(&taps);
+        engine
+            .dispatcher
+            .register_tap_hold(
+                Key::A,
+                Action::from(move || {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                }),
+                Action::Suppress,
+                kbd::tap_hold::TapHoldOptions::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            release_key(&mut engine, Key::A, 10),
+            KeyEventOutcome::MatchedConsumed
+        );
+        assert_eq!(taps.load(Ordering::Relaxed), 0);
+        press_key(&mut engine, Key::A, 10);
+        engine.disconnect_source(10).unwrap();
+        assert!(
+            !engine
+                .dispatcher
+                .is_active_tap_hold(kbd::key_state::HeldKey {
+                    source: Some(10),
+                    key: Key::A,
+                })
+        );
+        drain_pending_timeouts(&mut engine);
+        assert_eq!(taps.load(Ordering::Relaxed), 0);
+        assert!(forwarded.lock().unwrap().is_empty());
     }
 
     #[test]
