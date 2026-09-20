@@ -1,0 +1,111 @@
+// Purpose-built US/AZERTY/QWERTZ subset, not an installed desktop keymap.
+// Every component is self-contained; no system includes or RMLVO lookup.
+xkb_keymap {
+    xkb_keycodes "fixture" {
+        minimum = 8;
+        maximum = 255;
+        <AE01> = 10;
+        <TAB> = 23;
+        <AD01> = 24;
+        <AD06> = 29;
+        <RTRN> = 36;
+        <LCTL> = 37;
+        <AC01> = 38;
+        <LFSH> = 50;
+        <LALT> = 64;
+        <CAPS> = 66;
+        <RALT> = 108;
+        <LWIN> = 133;
+        <DEAD> = 200;
+        <NONE> = 201;
+        <MULT> = 202;
+        <UNKN> = 203;
+        <UNIC> = 204;
+        <PRES> = 205;
+        <MEDI> = 206;
+        <KPNV> = 207;
+        <KPNM> = 208;
+        <FKEY> = 209;
+    };
+    xkb_types "fixture" {
+        type "ONE_LEVEL" { modifiers = None; map[None] = Level1; };
+        type "TWO_LEVEL" {
+            modifiers = Shift;
+            map[None] = Level1;
+            map[Shift] = Level2;
+        };
+        type "ALPHABETIC" {
+            modifiers = Shift+Lock;
+            map[None] = Level1;
+            map[Shift] = Level2;
+            map[Lock] = Level2;
+            map[Shift+Lock] = Level1;
+        };
+        type "FOUR_LEVEL" {
+            modifiers = Shift+Mod5;
+            map[None] = Level1;
+            map[Shift] = Level2;
+            map[Mod5] = Level3;
+            map[Shift+Mod5] = Level4;
+        };
+        type "PRESERVE_SHIFT" {
+            modifiers = Shift;
+            map[None] = Level1;
+            map[Shift] = Level2;
+            preserve[Shift] = Shift;
+        };
+    };
+    xkb_compatibility "fixture" {
+        interpret Shift_L+AnyOf(all) { action = SetMods(modifiers=Shift); };
+        interpret Control_L+AnyOf(all) { action = SetMods(modifiers=Control); };
+        interpret Alt_L+AnyOf(all) { action = SetMods(modifiers=Mod1); };
+        interpret Super_L+AnyOf(all) { action = SetMods(modifiers=Mod4); };
+        interpret ISO_Level3_Shift+AnyOf(all) { action = SetMods(modifiers=Mod5); };
+        interpret Caps_Lock+AnyOf(all) { action = LockMods(modifiers=Lock); };
+    };
+    xkb_symbols "fixture" {
+        name[Group1] = "US subset";
+        name[Group2] = "AZERTY subset";
+        name[Group3] = "QWERTZ subset";
+        key <AD01> {
+            type[Group1] = "ALPHABETIC", symbols[Group1] = [ q, Q ],
+            type[Group2] = "ALPHABETIC", symbols[Group2] = [ a, A ],
+            type[Group3] = "FOUR_LEVEL", symbols[Group3] = [ q, Q, at, Greek_OMEGA ]
+        };
+        key <AD06> {
+            type[Group1] = "ALPHABETIC", symbols[Group1] = [ y, Y ],
+            type[Group2] = "ALPHABETIC", symbols[Group2] = [ y, Y ],
+            type[Group3] = "ALPHABETIC", symbols[Group3] = [ z, Z ]
+        };
+        key <AC01> {
+            type[Group1] = "ALPHABETIC", symbols[Group1] = [ a, A ],
+            type[Group2] = "ALPHABETIC", symbols[Group2] = [ q, Q ],
+            type[Group3] = "ALPHABETIC", symbols[Group3] = [ a, A ]
+        };
+        key <AE01> { type = "TWO_LEVEL", [ 1, exclam ] };
+        key <TAB> { type = "TWO_LEVEL", [ Tab, ISO_Left_Tab ] };
+        key <PRES> { type = "PRESERVE_SHIFT", [ Tab, ISO_Left_Tab ] };
+        key <RTRN> { type = "ONE_LEVEL", [ Return ] };
+        key <LFSH> { type = "ONE_LEVEL", [ Shift_L ] };
+        key <LCTL> { type = "ONE_LEVEL", [ Control_L ] };
+        key <LALT> { type = "ONE_LEVEL", [ Alt_L ] };
+        key <LWIN> { type = "ONE_LEVEL", [ Super_L ] };
+        key <RALT> { type = "ONE_LEVEL", [ ISO_Level3_Shift ] };
+        key <CAPS> { type = "ONE_LEVEL", [ Caps_Lock ] };
+        key <DEAD> { type = "ONE_LEVEL", [ dead_acute ] };
+        key <NONE> { type = "ONE_LEVEL", [ NoSymbol ] };
+        key <MULT> { type = "ONE_LEVEL", [ { a, b } ] };
+        key <UNKN> { type = "ONE_LEVEL", [ 0x1008ffff ] };
+        key <UNIC> { type = "ONE_LEVEL", [ U1F642 ] };
+        key <MEDI> { type = "ONE_LEVEL", [ XF86AudioPlay ] };
+        key <KPNV> { type = "ONE_LEVEL", [ KP_Left ] };
+        key <KPNM> { type = "ONE_LEVEL", [ KP_1 ] };
+        key <FKEY> { type = "ONE_LEVEL", [ F35 ] };
+        modifier_map Shift { <LFSH> };
+        modifier_map Control { <LCTL> };
+        modifier_map Mod1 { <LALT> };
+        modifier_map Mod4 { <LWIN> };
+        modifier_map Mod5 { <RALT> };
+        modifier_map Lock { <CAPS> };
+    };
+};
