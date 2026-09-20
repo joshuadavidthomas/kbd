@@ -12,8 +12,8 @@
 //! iced defines its own W3C-derived key types: [`key::Code`] for physical
 //! key positions and [`key::Physical`] wrapping `Code` with an unidentified
 //! fallback. iced also has a logical key type for character/named key
-//! identity, but this crate only converts physical keys — they are
-//! layout-independent and match `kbd`'s model.
+//! identity. [`IcedEventExt::to_observation`] preserves both domains;
+//! the legacy hotkey conversion continues to use physical keys.
 //!
 //! # Extension traits
 //!
@@ -421,9 +421,30 @@ pub trait IcedEventExt: private::Sealed {
     /// ```
     #[must_use]
     fn to_hotkey(&self) -> Option<Hotkey>;
+
+    /// Observe independent identities, reported modifiers and transition.
+    ///
+    /// Logical identity comes from `modified_key`, not modifier-stripped `key`
+    /// or produced text. Character strings retain exact case and Unicode.
+    /// Generic physical `Meta` is omitted rather than assigned a side. Modifier
+    /// triggers retain their reported modifiers, unlike legacy `to_hotkey`.
+    /// Returns `None` only for `ModifiersChanged`; unknown identities stay absent.
+    ///
+    /// Keep the event for location, the unmodified key and press text. Iced
+    /// releases carry no text/repeat and iced has already erased dead-key detail.
+    /// IME is a separate input-method stream. The four aggregate modifier flags
+    /// do not convey complete knowledge, sides, `AltGr` or Fn state.
+    #[must_use]
+    fn to_observation(&self) -> Option<kbd::observation::KeyboardObservation>;
 }
 
+mod observation;
+
 impl IcedEventExt for Event {
+    fn to_observation(&self) -> Option<kbd::observation::KeyboardObservation> {
+        observation::convert(self)
+    }
+
     fn to_hotkey(&self) -> Option<Hotkey> {
         let (physical_key, modifiers) = match self {
             Event::KeyPressed {

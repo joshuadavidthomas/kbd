@@ -399,6 +399,8 @@ impl WinitKeyExt for PhysicalKey {
     }
 }
 
+mod observation;
+
 /// Convert winit [`ModifiersState`] bitflags to a [`ModifierSet`].
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
@@ -502,11 +504,47 @@ pub trait WinitEventExt: private::Sealed {
     /// ```
     #[must_use]
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey>;
+
+    /// Observe independent physical/logical identities and the reported transition.
+    ///
+    /// Character strings retain exact case and Unicode; no text or layout inference
+    /// is performed. Unlike `to_hotkey`, generic physical `Meta` is omitted rather
+    /// than assigned a side, and modifier triggers retain their reported modifiers.
+    /// Unknown identities are absent, not a conversion failure.
+    ///
+    /// Keep this event for location, text, dead-key accents and native identifiers,
+    /// and retain the full `WindowEvent::ModifiersChanged` value for side metadata.
+    /// The supplied aggregate modifiers cannot establish AltGr/Fn state or complete
+    /// modifier knowledge. IME events remain separate from keyboard observations.
+    ///
+    /// ```
+    /// use kbd::dispatcher::Dispatcher;
+    /// use kbd_winit::WinitEventExt;
+    /// use winit::event::{KeyEvent, Modifiers};
+    ///
+    /// fn on_key(dispatcher: &mut Dispatcher, event: &KeyEvent, modifiers: &Modifiers) {
+    ///     let observation = event.to_observation(modifiers.state());
+    ///     let _result = dispatcher.process_event(&observation);
+    ///     // `event.text`, `event.location` and modifier side metadata remain available.
+    /// }
+    /// ```
+    #[must_use]
+    fn to_observation(&self, modifiers: ModifiersState) -> kbd::observation::KeyboardObservation;
 }
 
 impl WinitEventExt for KeyEvent {
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey> {
         winit_key_to_hotkey(self.physical_key, modifiers)
+    }
+
+    fn to_observation(&self, modifiers: ModifiersState) -> kbd::observation::KeyboardObservation {
+        observation::from_parts(
+            self.physical_key,
+            &self.logical_key,
+            modifiers,
+            self.state,
+            self.repeat,
+        )
     }
 }
 

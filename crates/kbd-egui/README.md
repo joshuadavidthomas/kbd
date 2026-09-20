@@ -29,6 +29,30 @@ Once converted, the `Hotkey` works with everything in `kbd` — string-based reg
 
 Egui doesn't expose the full W3C physical-key space. Logical or shifted keys like `Colon` or `Plus` don't have a single physical-key mapping, so `to_hotkey()` returns `None` for those.
 
+## Conservative keyboard observations
+
+`event.to_observation()` borrows an `egui::Event` and returns
+`Some(KeyboardObservation)` for key events, even when both identities are absent.
+Pass the observation to `Dispatcher::process_event`.
+
+**Logical identity is always omitted.** Egui's shortcut `key` folds letter case
+and may be a physical fallback for non-Latin layouts. Its provenance is unavailable,
+so this API does not claim exact logical strings or named-key identity. For exact
+logical shortcuts, convert the underlying window-system event before egui loses
+that information; do not reconstruct keys from `Event::Text`.
+
+Physical identity comes only from `physical_key`, never from `key`. Digits,
+Enter, Slash and Minus are omitted because egui merges main-row and numpad codes.
+Shifted-only labels and unmapped codes also stay absent. Other supported positions,
+such as an explicitly reported physical Q, retain that position regardless of the
+shortcut label. These restrictions do not change legacy `to_hotkey()` behavior.
+
+Press/release/repeat are preserved as reported. Egui-winit initially supplies
+`repeat=false`, which egui updates during input processing. Modifier knowledge is
+incomplete: `command` is an alias, `mac_cmd` does not report non-Mac Super, and
+AltGr/Fn/sides are unavailable. Text, Paste and Ime return `None`; retain and handle
+those source events separately. No location or original casing can be recovered.
+
 ## License
 
 kbd-egui is licensed under the MIT license. See the [`LICENSE`](../../LICENSE) file for more information.

@@ -203,9 +203,53 @@ pub trait CrosstermEventExt: private::Sealed {
     /// ```
     #[must_use]
     fn to_hotkey(&self) -> Option<Hotkey>;
+
+    /// Observe the reported logical key, modifiers and press/repeat/release kind.
+    ///
+    /// Physical identity is always absent: even ASCII characters and keypad flags
+    /// do not identify hardware positions. Characters retain their exact case;
+    /// this does not use crossterm's case-normalizing event equality. Unsupported
+    /// logical keys are absent, not a conversion failure. `BackTab`, `Null`,
+    /// `KeypadBegin`, media Reverse and ISO level 5 have no exact logical mapping.
+    ///
+    /// Modifiers are not self-stripped. Hyper/Meta flags cannot be represented by
+    /// the current modifier set; AltGr/Fn state is unavailable. Missing flags and
+    /// default Press events do not prove complete terminal protocol support.
+    /// Keep the source for keypad/lock state and handle paste separately; neither
+    /// characters nor paste are synthesized into text/IME or physical key events.
+    ///
+    /// ```
+    /// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    /// use kbd::action::Action;
+    /// use kbd::binding::BindingOptions;
+    /// use kbd::dispatcher::{Dispatcher, MatchResult};
+    /// use kbd::hotkey::ModifierSet;
+    /// use kbd::observation::{BindingPattern, LogicalKeyValue};
+    /// use kbd_crossterm::CrosstermEventExt;
+    ///
+    /// let mut dispatcher = Dispatcher::new();
+    /// dispatcher.register_pattern(
+    ///     BindingPattern::logical(LogicalKeyValue::Character("+".into()), ModifierSet::NONE),
+    ///     Action::Suppress,
+    ///     BindingOptions::default(),
+    /// ).unwrap();
+    /// let source = KeyEvent::new(KeyCode::Char('+'), KeyModifiers::NONE);
+    /// let observation = source.to_observation();
+    /// assert!(observation.physical.is_none());
+    /// assert!(matches!(dispatcher.process_event(&observation), MatchResult::Matched { .. }));
+    /// assert!(source.to_hotkey().is_none()); // unchanged legacy projection
+    /// ```
+    #[must_use]
+    fn to_observation(&self) -> kbd::observation::KeyboardObservation;
 }
 
+mod observation;
+
 impl CrosstermEventExt for KeyEvent {
+    fn to_observation(&self) -> kbd::observation::KeyboardObservation {
+        observation::convert(self)
+    }
+
     fn to_hotkey(&self) -> Option<Hotkey> {
         let key = self.code.to_key()?;
         let mut flags = self.modifiers;

@@ -482,11 +482,57 @@ pub trait TaoEventExt: private::Sealed {
     /// instead.
     #[must_use]
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey>;
+
+    /// Observe independent physical/logical identities and the reported transition.
+    ///
+    /// Logical character strings retain exact case and Unicode; no layout or text
+    /// inference is performed. Physical `Plus` is omitted rather than treated as
+    /// `Equal`. Unknown identities stay absent. Unlike `to_hotkey`, modifier
+    /// triggers retain their reported modifier flags.
+    /// Returns `None` for an unsupported future tao element state.
+    ///
+    /// Keep the source for location, text, dead-key accents and native identifiers;
+    /// the observation only retains generic logical Dead. Handle `ReceivedImeText`
+    /// separately. Supplied modifiers are incomplete: sides, `AltGr` and Fn state
+    /// are unavailable, and Ctrl+Alt must not be assumed to mean `AltGr`.
+    ///
+    /// ```
+    /// use kbd::dispatcher::Dispatcher;
+    /// use kbd_tao::TaoEventExt;
+    /// use tao::{event::KeyEvent, keyboard::ModifiersState};
+    ///
+    /// fn on_key(dispatcher: &mut Dispatcher, event: &KeyEvent, modifiers: ModifiersState) {
+    ///     if let Some(observation) = event.to_observation(modifiers) {
+    ///         let _result = dispatcher.process_event(&observation);
+    ///     }
+    ///     // The caller still owns `event`, including its text and location.
+    /// }
+    /// ```
+    #[must_use]
+    fn to_observation(
+        &self,
+        modifiers: ModifiersState,
+    ) -> Option<kbd::observation::KeyboardObservation>;
 }
+
+mod observation;
 
 impl TaoEventExt for KeyEvent {
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey> {
         tao_key_to_hotkey(self.physical_key, modifiers)
+    }
+
+    fn to_observation(
+        &self,
+        modifiers: ModifiersState,
+    ) -> Option<kbd::observation::KeyboardObservation> {
+        observation::from_parts(
+            self.physical_key,
+            &self.logical_key,
+            modifiers,
+            self.state,
+            self.repeat,
+        )
     }
 }
 

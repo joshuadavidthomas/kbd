@@ -326,9 +326,31 @@ pub trait EguiEventExt: private::Sealed {
     /// ```
     #[must_use]
     fn to_hotkey(&self) -> Option<Hotkey>;
+
+    /// Observe only unambiguous physical identity and reported modifiers/transition.
+    ///
+    /// `logical` is always absent: egui's shortcut `key` normalizes letter case
+    /// and can be a physical fallback, without recording that provenance.
+    /// `physical` uses only `physical_key`, never `key`. Digits, Enter, Slash and
+    /// Minus are omitted because egui merges main-row and numpad positions;
+    /// shifted-only labels are also omitted. Other unmapped positions stay absent.
+    ///
+    /// Returns `None` for non-key events, including Text, Paste and Ime. Keep the
+    /// source for these streams; text must not be synthesized into key identity.
+    /// Modifiers remain incomplete: `command` is an alias, `mac_cmd` only conveys
+    /// macOS Meta, and AltGr/Fn and modifier sides are unavailable. Repeat is the
+    /// supplied egui value (integrations may leave it false until input processing).
+    #[must_use]
+    fn to_observation(&self) -> Option<kbd::observation::KeyboardObservation>;
 }
 
+mod observation;
+
 impl EguiEventExt for egui::Event {
+    fn to_observation(&self) -> Option<kbd::observation::KeyboardObservation> {
+        observation::convert(self)
+    }
+
     fn to_hotkey(&self) -> Option<Hotkey> {
         if let egui::Event::Key { key, modifiers, .. } = self {
             let kbd_key = key.to_key()?;
