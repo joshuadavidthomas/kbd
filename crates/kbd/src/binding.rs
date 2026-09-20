@@ -17,6 +17,7 @@ use crate::action::Action;
 use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
+use crate::observation::BindingPattern;
 use crate::policy::KeyPropagation;
 use crate::policy::RateLimit;
 use crate::policy::RepeatPolicy;
@@ -347,13 +348,13 @@ impl BindingOptions {
     }
 }
 
-/// A binding: hotkey + action + options.
+/// An immediate binding: explicit identity pattern + action + options.
 ///
 /// Used for both global bindings (stored in the dispatcher's registry)
 /// and layer bindings (stored within layer definitions).
 pub struct Binding {
     id: BindingId,
-    hotkey: Hotkey,
+    pattern: BindingPattern,
     action: Action,
     options: BindingOptions,
 }
@@ -361,10 +362,10 @@ pub struct Binding {
 impl Binding {
     /// Create a registered binding with default options.
     #[must_use]
-    pub fn new(id: BindingId, hotkey: Hotkey, action: Action) -> Self {
+    pub fn new(id: BindingId, pattern: impl Into<BindingPattern>, action: Action) -> Self {
         Self {
             id,
-            hotkey,
+            pattern: pattern.into(),
             action,
             options: BindingOptions::default(),
         }
@@ -390,10 +391,16 @@ impl Binding {
         self.id
     }
 
-    /// The hotkey pattern that triggers this binding.
+    /// The physical hotkey, if this binding targets physical positions.
     #[must_use]
-    pub fn hotkey(&self) -> Hotkey {
-        self.hotkey
+    pub const fn hotkey(&self) -> Option<Hotkey> {
+        self.pattern.hotkey()
+    }
+
+    /// The exact identity domain and pattern that triggers this binding.
+    #[must_use]
+    pub const fn pattern(&self) -> &BindingPattern {
+        &self.pattern
     }
 
     /// The action to execute when this binding matches.
@@ -546,7 +553,7 @@ mod tests {
         let binding = Binding::new(id, hotkey, Action::Suppress);
 
         assert_eq!(binding.id(), id);
-        assert_eq!(binding.hotkey(), hotkey);
+        assert_eq!(binding.hotkey(), Some(hotkey));
         assert_eq!(binding.propagation(), KeyPropagation::Stop);
     }
 

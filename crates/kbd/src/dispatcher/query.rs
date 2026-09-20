@@ -1,9 +1,11 @@
 use super::Dispatcher;
+use super::MatchedBindingRef;
 use super::resolve;
 use super::resolve::LayerMatch;
 use super::resolve::SequencePrefixMatch;
 use crate::binding::BindingId;
 use crate::binding::SequenceBinding;
+use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
 use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
@@ -11,8 +13,11 @@ use crate::introspection::BindingInfo;
 use crate::introspection::BindingLocation;
 use crate::introspection::ConflictInfo;
 use crate::introspection::ShadowedStatus;
+use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::UnmatchedKeys;
+use crate::observation::BindingPattern;
+use crate::observation::KeyboardObservation;
 
 enum HotkeyClaim {
     LayerImmediate { layer: LayerName, index: usize },
@@ -29,6 +34,11 @@ impl Dispatcher {
     /// and [`pending_sequence`](crate::dispatcher::Dispatcher::pending_sequence), but
     /// sequence prefixes still affect whether an immediate binding is currently active
     /// or shadowed.
+    ///
+    /// Status is evaluated in each pattern's identity domain. This cannot infer
+    /// layout-dependent physical/logical overlap; use [`bindings_for_event`](Self::bindings_for_event)
+    /// when both identities are known. No device or in-progress lifecycle state
+    /// is simulated.
     ///
     /// Results are returned in a deterministic order: global bindings are
     /// grouped by hotkey and then by precedence tier, followed by layer
@@ -68,7 +78,7 @@ impl Dispatcher {
                     continue;
                 };
 
-                let shadowed = match self.active_layer_claim(binding.hotkey()) {
+                let shadowed = match self.active_layer_claim(&binding.pattern().observation()) {
                     Some(HotkeyClaim::LayerImmediate { layer, .. }) => {
                         ShadowedStatus::ShadowedBy(layer)
                     }
@@ -84,14 +94,14 @@ impl Dispatcher {
                     None if binding.options().device().is_some() => {
                         // Device-filtered bindings can be shadowed by sequences but
                         // not by non-device-filtered immediate bindings (different scope).
-                        match self.global_claim(binding.hotkey(), global_sequences) {
+                        match self.global_claim(binding.pattern(), global_sequences) {
                             Some(HotkeyClaim::GlobalSequence) => {
                                 ShadowedStatus::ShadowedBySequence(BindingLocation::Global)
                             }
                             _ => ShadowedStatus::Active,
                         }
                     }
-                    None => match self.global_claim(binding.hotkey(), global_sequences) {
+                    None => match self.global_claim(binding.pattern(), global_sequences) {
                         Some(HotkeyClaim::GlobalImmediate { id }) if id == binding.id() => {
                             ShadowedStatus::Active
                         }
@@ -111,7 +121,7 @@ impl Dispatcher {
                 };
 
                 results.push(BindingInfo {
-                    hotkey: binding.hotkey(),
+                    hotkey: binding.pattern().clone(),
                     description: binding.options().description().map(Box::from),
                     source: binding.options().source().cloned(),
                     location: BindingLocation::Global,
@@ -126,18 +136,18 @@ impl Dispatcher {
 
     fn global_claim(
         &self,
-        hotkey: Hotkey,
+        pattern: &BindingPattern,
         global_sequences: &[&SequenceBinding],
     ) -> Option<HotkeyClaim> {
-        match resolve::classify_sequence_prefixes(
+        match resolve::classify_observation_prefixes(
             global_sequences.iter().map(|binding| &binding.sequence),
-            hotkey,
+            &pattern.observation(),
         ) {
             SequencePrefixMatch::SingleStep { .. } | SequencePrefixMatch::MultiStep { .. } => {
                 Some(HotkeyClaim::GlobalSequence)
             }
             SequencePrefixMatch::None => self
-                .active_global_binding_id(hotkey)
+                .active_global_binding_id(pattern)
                 .map(|id| HotkeyClaim::GlobalImmediate { id }),
         }
     }
@@ -163,7 +173,7 @@ impl Dispatcher {
 
             for (index, binding) in stored.bindings.iter().enumerate() {
                 let shadowed = if is_active {
-                    match self.active_layer_claim(binding.hotkey()) {
+                    match self.active_layer_claim(&binding.pattern().observation()) {
                         Some(HotkeyClaim::LayerImmediate {
                             layer,
                             index: active_index,
@@ -189,7 +199,7 @@ impl Dispatcher {
                 };
 
                 results.push(BindingInfo {
-                    hotkey: binding.hotkey(),
+                    hotkey: binding.pattern().clone(),
                     description: binding.options().description().map(Box::from),
                     source: binding.options().source().cloned(),
                     location: BindingLocation::Layer(layer_name.clone()),
@@ -202,13 +212,13 @@ impl Dispatcher {
         results
     }
 
-    fn active_layer_claim(&self, hotkey: Hotkey) -> Option<HotkeyClaim> {
+    fn active_layer_claim(&self, event: &KeyboardObservation) -> Option<HotkeyClaim> {
         for entry in self.layer_stack.iter().rev() {
             let Some(stored) = self.layers.get(&entry.name) else {
                 continue;
             };
 
-            match resolve::classify_layer(stored, hotkey, None) {
+            match resolve::classify_observation(stored, event, None) {
                 LayerMatch::SingleStepSequence { .. } | LayerMatch::MultiStepSequences { .. } => {
                     return Some(HotkeyClaim::LayerSequence {
                         layer: entry.name.clone(),
@@ -241,22 +251,59 @@ impl Dispatcher {
     /// sequence prefixes that would enter a pending state).
     #[must_use]
     pub fn bindings_for_key(&self, hotkey: Hotkey) -> Option<BindingInfo> {
+        self.bindings_for_event(&KeyboardObservation::from_hotkey(
+            hotkey,
+            KeyTransition::Press,
+        ))
+    }
+
+    /// Query a pattern in isolation; this cannot infer cross-domain overlap.
+    #[must_use]
+    pub fn bindings_for_pattern(&self, pattern: &BindingPattern) -> Option<BindingInfo> {
+        self.bindings_for_event(&pattern.observation())
+    }
+
+    /// Query fresh-event resolution using both identities without changing state.
+    /// Like `bindings_for_key`, this does not simulate pending sequences, tap-hold,
+    /// or throttling. Releases and repeats have no immediate match.
+    #[must_use]
+    pub fn bindings_for_event(&self, event: &KeyboardObservation) -> Option<BindingInfo> {
+        self.bindings_for_event_internal(event, None)
+    }
+
+    /// Query fresh-event resolution with device filtering and modifier isolation.
+    #[must_use]
+    pub fn bindings_for_event_with_device(
+        &self,
+        event: &KeyboardObservation,
+        device: &DeviceContext<'_>,
+    ) -> Option<BindingInfo> {
+        self.bindings_for_event_internal(event, Some(device))
+    }
+
+    fn bindings_for_event_internal(
+        &self,
+        event: &KeyboardObservation,
+        device: Option<&DeviceContext<'_>>,
+    ) -> Option<BindingInfo> {
         // Modifier-only keys never fire bindings in the real dispatcher,
         // so they can't match here either.
-        if Modifier::from_key(hotkey.key()).is_some() {
+        if !matches!(event.transition, KeyTransition::Press)
+            || event.physical.and_then(Modifier::from_key).is_some()
+        {
             return None;
         }
 
         // Walk layer stack top-down, same as the dispatcher.
-        // classify_layer checks sequences before immediate hotkeys.
+        // classify_observation checks sequences before immediate patterns.
         for entry in self.layer_stack.iter().rev() {
             if let Some(stored) = self.layers.get(&entry.name) {
-                let layer_match = resolve::classify_layer(stored, hotkey, None);
+                let layer_match = resolve::classify_observation(stored, event, device);
                 match layer_match {
                     LayerMatch::SingleStepSequence { index } => {
                         let sb = &stored.sequence_bindings[index];
                         return Some(BindingInfo {
-                            hotkey: sb.sequence.steps()[0],
+                            hotkey: sb.sequence.steps()[0].into(),
                             description: None,
                             source: None,
                             location: BindingLocation::Layer(entry.name.clone()),
@@ -270,7 +317,7 @@ impl Dispatcher {
                     LayerMatch::Immediate { index } => {
                         let lb = &stored.bindings[index];
                         return Some(BindingInfo {
-                            hotkey: lb.hotkey(),
+                            hotkey: lb.pattern().clone(),
                             description: lb.options().description().map(Box::from),
                             source: lb.options().source().cloned(),
                             location: BindingLocation::Layer(entry.name.clone()),
@@ -292,13 +339,13 @@ impl Dispatcher {
         // Global sequences are checked before global hotkeys, matching process().
         let global_seqs: Vec<_> = self.sequence_bindings_by_id.values().collect();
         let prefix_match =
-            resolve::classify_sequence_prefixes(global_seqs.iter().map(|b| &b.sequence), hotkey);
+            resolve::classify_observation_prefixes(global_seqs.iter().map(|b| &b.sequence), event);
 
         match prefix_match {
             SequencePrefixMatch::SingleStep { index } => {
                 let binding = global_seqs[index];
                 return Some(BindingInfo {
-                    hotkey: binding.sequence.steps()[0],
+                    hotkey: binding.sequence.steps()[0].into(),
                     description: None,
                     source: None,
                     location: BindingLocation::Global,
@@ -313,11 +360,16 @@ impl Dispatcher {
         }
 
         // Fall through to global immediate bindings.
-        if let Some(id) = self.active_global_binding_id(hotkey)
-            && let Some(binding) = self.bindings_by_id.get(&id)
-        {
+        let binding = self.match_global_event(event, device).and_then(|matched| {
+            if let (MatchedBindingRef::Global(id), _, _) = matched {
+                self.bindings_by_id.get(&id)
+            } else {
+                None
+            }
+        });
+        if let Some(binding) = binding {
             return Some(BindingInfo {
-                hotkey: binding.hotkey(),
+                hotkey: binding.pattern().clone(),
                 description: binding.options().description().map(Box::from),
                 source: binding.options().source().cloned(),
                 location: BindingLocation::Global,
@@ -368,7 +420,7 @@ impl Dispatcher {
                     })
                     .cloned(),
                 ShadowedStatus::ShadowedBySequence(location) => Some(BindingInfo {
-                    hotkey: shadowed.hotkey,
+                    hotkey: shadowed.hotkey.clone(),
                     description: None,
                     source: None,
                     location: location.clone(),
@@ -382,7 +434,7 @@ impl Dispatcher {
 
             if let Some(shadowing) = shadowing {
                 conflicts.push(ConflictInfo {
-                    hotkey: shadowed.hotkey,
+                    hotkey: shadowed.hotkey.clone(),
                     shadowed_binding: shadowed.clone(),
                     shadowing_binding: shadowing,
                 });

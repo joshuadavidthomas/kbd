@@ -94,7 +94,7 @@ impl TapHoldState {
         // Resolve any pending tap-holds that get interrupted by this press.
         // Resolved holds are buffered internally and drained via
         // `drain_resolved_holds` in the pending_timeouts pipeline.
-        self.resolve_pending_for_interrupt(key);
+        self.resolve_pending_for_interrupt(Some(key));
 
         if let Some(binding) = self.bindings.get(&key) {
             let binding_id = binding.id;
@@ -217,11 +217,12 @@ impl TapHoldState {
     }
 
     /// Resolve all pending tap-holds as holds (used by interrupting keypresses).
-    /// Excludes the specified key (the one being pressed). Resolved holds are
+    /// Excludes the specified physical key, if known. A logical-only press
+    /// interrupts without enrolling any physical trigger. Resolved holds are
     /// buffered in `self.resolved_holds` for the engine to drain.
-    fn resolve_pending_for_interrupt(&mut self, pressing_key: Key) {
+    pub(super) fn resolve_pending_for_interrupt(&mut self, pressing_key: Option<Key>) {
         for (key, active) in &mut self.active {
-            if *key == pressing_key {
+            if Some(*key) == pressing_key {
                 continue;
             }
             if active.resolution == HoldResolution::Pending {

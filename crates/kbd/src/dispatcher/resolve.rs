@@ -3,6 +3,7 @@ use crate::binding::Binding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeySequence;
 use crate::layer::StoredLayer;
+use crate::observation::KeyboardObservation;
 
 /// Classification of a single sequence binding's first step against a hotkey.
 enum SequencePrefixKind {
@@ -39,7 +40,7 @@ fn classify_sequence_prefix(sequence: &HotkeySequence, hotkey: Hotkey) -> Sequen
 ///
 /// Used directly by the global-bindings path where immediate hotkey lookup
 /// is a separate `HashMap` operation. For layer scopes, prefer
-/// [`classify_layer`] which combines sequence and immediate
+/// [`classify_observation`] which combines sequence and immediate
 /// classification into [`LayerMatch`].
 #[derive(Debug, PartialEq)]
 pub(super) enum SequencePrefixMatch {
@@ -117,41 +118,61 @@ pub(super) fn classify_sequence_prefixes<'a>(
     }
 }
 
-/// Classify all bindings (sequences + immediate hotkeys) in a layer scope.
-///
-/// Applies the precedence rule: sequences are checked before immediate
-/// hotkeys. When multi-step sequences match, the immediate hotkey index
-/// is also recorded for standalone-fallback on sequence timeout.
-///
-/// Both the runtime and query paths call this function, ensuring
-/// consistent classification. When a new match type is added (e.g.,
-/// tap-hold), adding a variant to [`LayerMatch`] forces both paths
-/// to handle it.
-pub(super) fn classify_layer(
+/// Physical-only helper for the existing classification tests.
+#[cfg(test)]
+fn classify_layer(
     stored: &StoredLayer,
     hotkey: Hotkey,
     device: Option<&DeviceContext<'_>>,
 ) -> LayerMatch {
+    classify_observation(
+        stored,
+        &KeyboardObservation::from_hotkey(hotkey, crate::key_state::KeyTransition::Press),
+        device,
+    )
+}
+
+pub(super) fn classify_observation_prefixes<'a>(
+    sequences: impl Iterator<Item = &'a HotkeySequence>,
+    event: &KeyboardObservation,
+) -> SequencePrefixMatch {
+    event
+        .physical_hotkey()
+        .map_or(SequencePrefixMatch::None, |hotkey| {
+            classify_sequence_prefixes(sequences, hotkey)
+        })
+}
+
+/// Classify a layer once for both identities: sequences before immediate
+/// patterns, retaining the best immediate match for standalone fallback.
+/// Runtime and query paths share this classification.
+pub(super) fn classify_observation(
+    stored: &StoredLayer,
+    event: &KeyboardObservation,
+    device: Option<&DeviceContext<'_>>,
+) -> LayerMatch {
     let seq_match =
-        classify_sequence_prefixes(stored.sequence_bindings.iter().map(|b| &b.sequence), hotkey);
+        classify_observation_prefixes(stored.sequence_bindings.iter().map(|b| &b.sequence), event);
 
     match seq_match {
         SequencePrefixMatch::SingleStep { index } => LayerMatch::SingleStepSequence { index },
         SequencePrefixMatch::MultiStep { indices } => {
-            let immediate_index = find_immediate_in_layer(stored, hotkey, device);
+            let immediate_index = find_immediate_in_layer(stored, event, device);
             LayerMatch::MultiStepSequences {
                 indices,
                 immediate_index,
             }
         }
-        SequencePrefixMatch::None => match find_immediate_in_layer(stored, hotkey, device) {
+        SequencePrefixMatch::None => match find_immediate_in_layer(stored, event, device) {
             Some(index) => LayerMatch::Immediate { index },
             None => LayerMatch::None,
         },
     }
 }
 
-/// Find the first immediate hotkey binding in a layer that matches a hotkey.
+/// Find the best immediate pattern in a layer.
+/// Physical wins within the layer; declaration order breaks same-domain ties.
+/// Source labels do not rank layer bindings (the existing layer contract).
 ///
 /// When device context is provided, bindings with a device filter are only
 /// considered if the device matches the filter. Per-device modifier isolation
@@ -160,24 +181,27 @@ pub(super) fn classify_layer(
 /// Returns the index into `stored.bindings`.
 fn find_immediate_in_layer(
     stored: &StoredLayer,
-    hotkey: Hotkey,
+    event: &KeyboardObservation,
     device: Option<&DeviceContext<'_>>,
 ) -> Option<usize> {
     stored
         .bindings
         .iter()
-        .position(|binding| binding_matches_hotkey(binding, hotkey, device))
+        .enumerate()
+        .filter(|(_, binding)| binding_matches_observation(binding, event, device))
+        .min_by_key(|(index, binding)| (binding.hotkey().is_none(), *index))
+        .map(|(index, _)| index)
 }
 
 /// Check whether a binding matches a hotkey, respecting device filters.
-fn binding_matches_hotkey(
+pub(super) fn binding_matches_observation(
     binding: &Binding,
-    hotkey: Hotkey,
+    event: &KeyboardObservation,
     device: Option<&DeviceContext<'_>>,
 ) -> bool {
     let Some(filter) = binding.options().device() else {
         // No device filter — match against aggregate hotkey
-        return binding.hotkey() == hotkey;
+        return binding.pattern().matches(event);
     };
 
     // Binding has a device filter — need device context
@@ -192,11 +216,12 @@ fn binding_matches_hotkey(
 
     // Build device-specific hotkey for modifier isolation
     if let Some(device_mods) = ctx.device_modifiers() {
-        let device_hotkey = Hotkey::with_modifiers(hotkey.key(), device_mods);
-        binding.hotkey() == device_hotkey
+        let mut event = event.clone();
+        event.modifiers = device_mods;
+        binding.pattern().matches(&event)
     } else {
         // No device modifiers — use aggregate
-        binding.hotkey() == hotkey
+        binding.pattern().matches(event)
     }
 }
 

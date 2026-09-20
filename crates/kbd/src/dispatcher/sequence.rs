@@ -64,7 +64,10 @@ pub(super) enum SequenceStartCandidate {
 }
 
 impl Dispatcher {
-    pub(super) fn match_active_sequences(&mut self, hotkey: Hotkey) -> Option<BindingMatch> {
+    pub(super) fn match_active_sequences(
+        &mut self,
+        hotkey: Option<Hotkey>,
+    ) -> Option<BindingMatch> {
         if self.active_sequences.is_empty() {
             return None;
         }
@@ -82,7 +85,9 @@ impl Dispatcher {
                 continue;
             }
 
-            if self.sequence_step_matches(&active.binding_ref, active.next_step_index, hotkey) {
+            if hotkey.is_some_and(|hotkey| {
+                self.sequence_step_matches(&active.binding_ref, active.next_step_index, hotkey)
+            }) {
                 active.next_step_index += 1;
                 let total = self.sequence_step_count(&active.binding_ref);
                 if active.next_step_index >= total {
@@ -94,7 +99,9 @@ impl Dispatcher {
                 continue;
             }
 
-            if self.sequence_options(&active.binding_ref).abort_key() == hotkey.key() {
+            if hotkey.is_some_and(|hotkey| {
+                self.sequence_options(&active.binding_ref).abort_key() == hotkey.key()
+            }) {
                 aborted = true;
             }
         }
@@ -129,7 +136,7 @@ impl Dispatcher {
             return Some(BindingMatch::NoMatch);
         }
 
-        if expired && let Some(standalone) = self.pending_standalone.take() {
+        if let Some(standalone) = self.pending_standalone.take().filter(|_| expired) {
             return Some(BindingMatch::Matched {
                 binding_ref: standalone.inner.binding_ref,
                 layer_effect: standalone.layer_effect,

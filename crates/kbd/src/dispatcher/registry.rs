@@ -10,6 +10,7 @@ use crate::binding::SequenceBinding;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
+use crate::observation::BindingPattern;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 
@@ -43,6 +44,21 @@ impl From<&BindingOptions> for SourcePriority {
 }
 
 impl Dispatcher {
+    /// Register an explicit physical or logical immediate pattern.
+    ///
+    /// # Errors
+    /// Returns `AlreadyRegistered` for the same pattern, source tier and device scope.
+    pub fn register_pattern(
+        &mut self,
+        pattern: BindingPattern,
+        action: impl Into<Action>,
+        options: BindingOptions,
+    ) -> Result<BindingId, crate::error::RegisterError> {
+        let id = BindingId::new();
+        self.register_binding(Binding::new(id, pattern, action.into()).with_options(options))?;
+        Ok(id)
+    }
+
     /// Register a binding. Returns the assigned [`BindingId`].
     ///
     /// Accepts any type implementing [`HotkeyInput`]: a [`Hotkey`], a
@@ -155,7 +171,7 @@ impl Dispatcher {
         binding: Binding,
     ) -> Result<(), crate::error::RegisterError> {
         let id = binding.id();
-        let hotkey = binding.hotkey();
+        let hotkey = binding.pattern().clone();
         let new_priority = SourcePriority::from(binding.options());
         let new_device = binding.options().device();
 
@@ -212,7 +228,7 @@ impl Dispatcher {
     pub fn unregister(&mut self, id: BindingId) {
         self.throttle_tracker.remove(id);
         if let Some(binding) = self.bindings_by_id.remove(&id) {
-            let hotkey = binding.hotkey();
+            let hotkey = binding.pattern().clone();
             let remove_hotkey_entry =
                 if let Some(ids_for_hotkey) = self.binding_ids_by_hotkey.get_mut(&hotkey) {
                     ids_for_hotkey.retain(|existing_id| *existing_id != id);
@@ -253,7 +269,13 @@ impl Dispatcher {
     /// Check whether a hotkey has a registered global binding.
     #[must_use]
     pub fn is_registered(&self, hotkey: Hotkey) -> bool {
-        self.binding_ids_by_hotkey.contains_key(&hotkey)
+        self.is_pattern_registered(&hotkey.into())
+    }
+
+    /// Check whether an exact immediate pattern is registered globally.
+    #[must_use]
+    pub fn is_pattern_registered(&self, pattern: &BindingPattern) -> bool {
+        self.binding_ids_by_hotkey.contains_key(pattern)
     }
 }
 

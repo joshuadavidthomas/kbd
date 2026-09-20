@@ -48,6 +48,8 @@ use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
+use crate::observation::BindingPattern;
+use crate::observation::KeyboardObservation;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
 use crate::sequence::PendingSequenceInfo;
@@ -180,7 +182,7 @@ pub enum MatchResult<'a> {
 #[derive(Default)]
 pub struct Dispatcher {
     bindings_by_id: HashMap<BindingId, Binding>,
-    binding_ids_by_hotkey: HashMap<Hotkey, Vec<BindingId>>,
+    binding_ids_by_hotkey: HashMap<BindingPattern, Vec<BindingId>>,
     sequence_bindings_by_id: BTreeMap<BindingId, SequenceBinding>,
     sequence_ids_by_value: HashMap<HotkeySequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
@@ -331,7 +333,7 @@ impl Dispatcher {
     /// return `MatchResult::Ignored`. Modifier-only presses also return
     /// `MatchResult::Ignored`.
     pub fn process(&mut self, hotkey: Hotkey, transition: KeyTransition) -> MatchResult<'_> {
-        self.process_internal(hotkey, transition, None)
+        self.process_event(&KeyboardObservation::from_hotkey(hotkey, transition))
     }
 
     /// Process a key event with device context.
@@ -354,15 +356,42 @@ impl Dispatcher {
         transition: KeyTransition,
         device: &DeviceContext<'_>,
     ) -> MatchResult<'_> {
-        self.process_internal(hotkey, transition, Some(device))
+        self.process_event_with_device(
+            &KeyboardObservation::from_hotkey(hotkey, transition),
+            device,
+        )
+    }
+
+    /// Process both observed identities in one resolution and side-effect pass.
+    ///
+    /// Layers outrank globals and sequences precede immediate patterns in each
+    /// scope. Within a layer, physical beats logical and same-domain ties use
+    /// declaration order. Globals rank device-specific matches, then source,
+    /// then physical over logical, then registration order.
+    ///
+    /// Logical-only presses cannot satisfy physical sequence steps, but take
+    /// their mismatch/retry path and interrupt existing physical tap-holds.
+    /// They never enroll a physical tap-hold trigger.
+    /// Release/repeat behavior is identical to [`process`](Self::process).
+    pub fn process_event(&mut self, event: &KeyboardObservation) -> MatchResult<'_> {
+        self.process_internal(event, None)
+    }
+
+    /// Process an observation with device identity and modifier isolation.
+    pub fn process_event_with_device(
+        &mut self,
+        event: &KeyboardObservation,
+        device: &DeviceContext<'_>,
+    ) -> MatchResult<'_> {
+        self.process_internal(event, Some(device))
     }
 
     fn process_internal(
         &mut self,
-        hotkey: Hotkey,
-        transition: KeyTransition,
+        event: &KeyboardObservation,
         device: Option<&DeviceContext<'_>>,
     ) -> MatchResult<'_> {
+        let transition = event.transition;
         // Fast path: non-Press events (Release, Repeat) with no active
         // tap-hold state are always Ignored. This skips tap-hold processing,
         // match_binding, throttle checks, and the final outcome match —
@@ -374,7 +403,14 @@ impl Dispatcher {
         // Tap-hold is checked first — it intercepts events before normal
         // matching, similar to how speculative patterns (sequences) take
         // priority over immediate patterns (hotkeys).
-        let tap_hold_outcome = self.process_tap_hold(hotkey.key(), transition);
+        let tap_hold_outcome = if let Some(key) = event.physical {
+            self.process_tap_hold(key, transition)
+        } else {
+            if matches!(transition, KeyTransition::Press) {
+                self.tap_hold.resolve_pending_for_interrupt(None);
+            }
+            TapHoldOutcome::PassThrough
+        };
 
         match tap_hold_outcome {
             TapHoldOutcome::Consumed | TapHoldOutcome::RepeatConsumed => {
@@ -399,7 +435,7 @@ impl Dispatcher {
             }
         }
 
-        let outcome = self.match_binding(hotkey, transition, device);
+        let outcome = self.match_binding(event, device);
 
         // Check debounce/rate-limit for matched bindings.
         // Throttled matches do NOT apply layer effects — if a PushLayer
@@ -505,35 +541,34 @@ impl Dispatcher {
 
     fn match_binding(
         &mut self,
-        hotkey: Hotkey,
-        transition: KeyTransition,
+        event: &KeyboardObservation,
         device: Option<&DeviceContext<'_>>,
     ) -> BindingMatch {
-        if !matches!(transition, KeyTransition::Press) {
+        if !matches!(event.transition, KeyTransition::Press) {
             return BindingMatch::Ignored;
         }
 
-        if Modifier::from_key(hotkey.key()).is_some() {
+        if event.physical.and_then(Modifier::from_key).is_some() {
             return BindingMatch::Ignored;
         }
 
-        if let Some(outcome) = self.match_active_sequences(hotkey) {
+        if let Some(outcome) = self.match_active_sequences(event.physical_hotkey()) {
             return outcome;
         }
 
         let now = Instant::now();
         let mut next_priority = 0usize;
 
-        if let Some(outcome) = self.match_layers(hotkey, now, &mut next_priority, device) {
+        if let Some(outcome) = self.match_layers(event, now, &mut next_priority, device) {
             return outcome;
         }
 
-        self.match_globals(hotkey, now, next_priority, device)
+        self.match_globals(event, now, next_priority, device)
     }
 
     fn match_layers(
         &mut self,
-        hotkey: Hotkey,
+        event: &KeyboardObservation,
         now: Instant,
         next_priority: &mut usize,
         device: Option<&DeviceContext<'_>>,
@@ -550,7 +585,7 @@ impl Dispatcher {
                 continue;
             };
 
-            let layer_match = resolve::classify_layer(stored, hotkey, device);
+            let layer_match = resolve::classify_observation(stored, event, device);
             let swallow_unmatched = matches!(stored.options.unmatched(), UnmatchedKeys::Swallow);
 
             match layer_match {
@@ -644,16 +679,16 @@ impl Dispatcher {
 
     fn match_globals(
         &mut self,
-        hotkey: Hotkey,
+        event: &KeyboardObservation,
         now: Instant,
         mut next_priority: usize,
         device: Option<&DeviceContext<'_>>,
     ) -> BindingMatch {
         let candidates: Vec<SequenceStartCandidate> = {
             let global_seqs: Vec<_> = self.sequence_bindings_by_id.values().collect();
-            let prefix_match = resolve::classify_sequence_prefixes(
+            let prefix_match = resolve::classify_observation_prefixes(
                 global_seqs.iter().map(|b| &b.sequence),
-                hotkey,
+                event,
             );
             match prefix_match {
                 SequencePrefixMatch::SingleStep { index } => {
@@ -681,7 +716,7 @@ impl Dispatcher {
 
         if !candidates.is_empty() {
             let pending_standalone =
-                self.pending_standalone_from_match(self.match_global_hotkey(hotkey, device));
+                self.pending_standalone_from_match(self.match_global_event(event, device));
             if let Some(outcome) =
                 self.start_sequences(candidates, now, &mut next_priority, pending_standalone)
             {
@@ -690,7 +725,7 @@ impl Dispatcher {
         }
 
         if let Some((binding_ref, propagation, repeat_policy)) =
-            self.match_global_hotkey(hotkey, device)
+            self.match_global_event(event, device)
         {
             return BindingMatch::Matched {
                 layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
@@ -708,8 +743,8 @@ impl Dispatcher {
     /// Used exclusively by the introspection/query path (not the runtime
     /// matching path). Device-filtered bindings are skipped because without
     /// a [`DeviceContext`] we cannot determine whether they would fire.
-    fn active_global_binding_id(&self, hotkey: Hotkey) -> Option<BindingId> {
-        self.binding_ids_by_hotkey.get(&hotkey).and_then(|ids| {
+    fn active_global_binding_id(&self, pattern: &BindingPattern) -> Option<BindingId> {
+        self.binding_ids_by_hotkey.get(pattern).and_then(|ids| {
             ids.iter()
                 .rev()
                 .find(|id| {
@@ -721,69 +756,50 @@ impl Dispatcher {
         })
     }
 
-    fn match_global_hotkey(
+    fn match_global_event(
         &self,
-        hotkey: Hotkey,
+        event: &KeyboardObservation,
         device: Option<&DeviceContext<'_>>,
     ) -> Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)> {
-        // First, try device-filtered bindings if we have device context.
-        // These use per-device modifier isolation.
-        if let Some(ctx) = device {
-            if let Some(result) = self.match_device_filtered_global(hotkey, ctx) {
-                return Some(result);
-            }
-        }
-
-        // Fall through to non-device-filtered bindings (aggregate modifiers).
-        // Walk from highest precedence to lowest, skipping device-filtered
-        // bindings — they were already checked above with modifier isolation.
-        let ids = self.binding_ids_by_hotkey.get(&hotkey)?;
-        for id in ids.iter().rev() {
-            if let Some(binding) = self.bindings_by_id.get(id) {
-                if binding.options().device().is_none() {
-                    return Some((
-                        MatchedBindingRef::Global(*id),
-                        binding.propagation(),
-                        binding.options().repeat_policy(),
-                    ));
-                }
-            }
-        }
-        None
-    }
-
-    /// Match device-filtered global bindings using per-device modifier isolation.
-    fn match_device_filtered_global(
-        &self,
-        hotkey: Hotkey,
-        device: &DeviceContext<'_>,
-    ) -> Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)> {
-        // Build the device-specific candidate hotkey for modifier isolation.
-        // Hotkey is Copy, so no allocation needed.
-        let lookup_key = if let Some(device_mods) = device.device_modifiers() {
-            Hotkey::with_modifiers(hotkey.key(), device_mods)
-        } else {
-            hotkey
-        };
-
-        // Look up bindings registered for the device-specific hotkey.
-        // Walk from highest precedence to lowest for deterministic ordering.
-        let ids = self.binding_ids_by_hotkey.get(&lookup_key)?;
-        for id in ids.iter().rev() {
-            if let Some(binding) = self.bindings_by_id.get(id) {
-                if let Some(filter) = binding.options().device() {
-                    if filter.matches(device.info()) {
-                        return Some((
-                            MatchedBindingRef::Global(*id),
-                            binding.propagation(),
-                            binding.options().repeat_policy(),
-                        ));
-                    }
-                }
-            }
-        }
-
-        None
+        // Only look up the observed identities, with aggregate and (if different)
+        // device-local modifiers. Do not scan unrelated registered bindings.
+        let device_modifiers = device
+            .and_then(DeviceContext::device_modifiers)
+            .filter(|modifiers| *modifiers != event.modifiers);
+        [Some(event.modifiers), device_modifiers]
+            .into_iter()
+            .flatten()
+            .flat_map(|modifiers| {
+                [
+                    event.physical.map(|key| {
+                        BindingPattern::Physical(Hotkey::with_modifiers(key, modifiers))
+                    }),
+                    event
+                        .logical
+                        .clone()
+                        .map(|key| BindingPattern::Logical { key, modifiers }),
+                ]
+            })
+            .flatten()
+            .filter_map(|pattern| self.binding_ids_by_hotkey.get(&pattern))
+            .flat_map(|ids| ids.iter().enumerate())
+            .filter_map(|(index, id)| self.bindings_by_id.get(id).map(|binding| (index, binding)))
+            .filter(|(_, binding)| resolve::binding_matches_observation(binding, event, device))
+            .max_by_key(|(index, binding)| {
+                (
+                    binding.options().device().is_some(),
+                    registry::SourcePriority::from(binding.options()),
+                    binding.hotkey().is_some(),
+                    *index,
+                )
+            })
+            .map(|(_, binding)| {
+                (
+                    MatchedBindingRef::Global(binding.id()),
+                    binding.propagation(),
+                    binding.options().repeat_policy(),
+                )
+            })
     }
 
     /// Resolve a binding reference back to its action.

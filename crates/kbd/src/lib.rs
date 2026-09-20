@@ -116,13 +116,19 @@
 //!
 //! # Physical keys
 //!
-//! `kbd` matches physical key positions, not characters. `Key::A` means
+//! Legacy hotkeys and strings match physical positions, not characters. `Key::A` means
 //! "the key in the A position on a QWERTY layout" regardless of whether
 //! the user's layout is AZERTY, Dvorak, or Colemak. This is the W3C
 //! [`KeyboardEvent.code`](https://www.w3.org/TR/uievents-code/) model.
 //!
 //! Physical keys are layout-independent and predictable — the same binding
 //! works on any layout without knowing which one is active.
+//!
+//! For layout-sensitive shortcuts, [`observation`] provides exact logical
+//! character/named-key patterns and observations carrying either or both
+//! identities. [`Dispatcher::process_event`](dispatcher::Dispatcher::process_event)
+//! resolves both identities together, returning one action. No logical identity
+//! is inferred by the legacy physical APIs.
 //!
 //! # Feature flags
 //!
@@ -148,6 +154,7 @@ pub mod introspection;
 pub mod key;
 pub mod key_state;
 pub mod layer;
+pub mod observation;
 pub mod policy;
 pub mod sequence;
 pub mod tap_hold;

@@ -491,8 +491,9 @@ fn parse_key_token(token: &str) -> Option<Key> {
 
     let upper = trimmed.to_ascii_uppercase();
 
-    if let Some(function_number) = upper.strip_prefix('F')
-        && let Ok(number) = function_number.parse::<u8>()
+    if let Some(number) = upper
+        .strip_prefix('F')
+        .and_then(|function_number| function_number.parse::<u8>().ok())
     {
         return match number {
             1 => Some(Key::F1),

@@ -35,8 +35,8 @@
 
 use crate::binding::BindingSource;
 use crate::binding::OverlayVisibility;
-use crate::hotkey::Hotkey;
 use crate::layer::LayerName;
+use crate::observation::BindingPattern;
 
 /// Where a binding lives in the registration hierarchy.
 ///
@@ -111,8 +111,8 @@ pub enum ShadowedStatus {
 /// [`Dispatcher::bindings_for_key`](crate::dispatcher::Dispatcher::bindings_for_key).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindingInfo {
-    /// The hotkey (key + modifiers) that triggers this binding.
-    pub hotkey: Hotkey,
+    /// The explicit physical or logical pattern (legacy field name retained).
+    pub hotkey: BindingPattern,
     /// Human-readable label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
     pub description: Option<Box<str>>,
     /// Provenance label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
@@ -123,6 +123,14 @@ pub struct BindingInfo {
     pub shadowed: ShadowedStatus,
     /// Whether this binding appears in hotkey overlays.
     pub overlay_visibility: OverlayVisibility,
+}
+
+impl BindingInfo {
+    /// The explicit binding pattern. Prefer this over the legacy `hotkey` field.
+    #[must_use]
+    pub const fn pattern(&self) -> &BindingPattern {
+        &self.hotkey
+    }
 }
 
 /// Snapshot of an active layer on the stack.
@@ -194,10 +202,18 @@ pub struct ActiveLayerInfo {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictInfo {
-    /// The hotkey at the center of the conflict.
-    pub hotkey: Hotkey,
+    /// The explicit pattern at the center of the conflict.
+    pub hotkey: BindingPattern,
     /// The binding that is being shadowed (lower priority).
     pub shadowed_binding: BindingInfo,
     /// The binding that is doing the shadowing (higher priority).
     pub shadowing_binding: BindingInfo,
+}
+
+impl ConflictInfo {
+    /// The explicit conflicting pattern. Prefer this over the legacy `hotkey` field.
+    #[must_use]
+    pub const fn pattern(&self) -> &BindingPattern {
+        &self.hotkey
+    }
 }
