@@ -67,7 +67,9 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
         // Process keyboard events
         for event in &ctx.input(|i| i.events.clone()) {
             let egui::Event::Key {
@@ -97,7 +99,7 @@ impl eframe::App for App {
             self.log.push(line);
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("kbd-egui example");
             ui.separator();
 
