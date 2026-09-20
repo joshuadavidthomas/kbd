@@ -22,6 +22,11 @@ ignore = [
     # paste is unmaintained — transitive via iced → wgpu → metal
     { id = "RUSTSEC-2024-0436", reason = "transitive via iced → wgpu → metal, no fix available" },
 
+    # ttf-parser is unmaintained — transitive via fontdb → cosmic-text → iced and
+    # owned_ttf_parser → ab_glyph → egui. Skrifa is the suggested replacement, but no
+    # safe upgrade exists for us until iced/egui migrate off it.
+    { id = "RUSTSEC-2026-0192", reason = "transitive via iced (fontdb → cosmic-text) and egui (ab_glyph → owned_ttf_parser), no fix available" },
+
     # proc-macro-error is unmaintained — transitive via tao → gtk3-rs
     { id = "RUSTSEC-2024-0370", reason = "transitive via tao → gtk3-rs, no fix available" },
 ]
