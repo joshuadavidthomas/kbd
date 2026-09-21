@@ -111,8 +111,8 @@ pub enum ShadowedStatus {
 /// [`Dispatcher::bindings_for_key`](crate::dispatcher::Dispatcher::bindings_for_key).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindingInfo {
-    /// The explicit physical or logical pattern (legacy field name retained).
-    pub hotkey: BindingPattern,
+    /// The explicit physical or logical pattern.
+    pub pattern: BindingPattern,
     /// Human-readable label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
     pub description: Option<Box<str>>,
     /// Provenance label, if one was set via [`BindingOptions`](crate::binding::BindingOptions).
@@ -123,14 +123,6 @@ pub struct BindingInfo {
     pub shadowed: ShadowedStatus,
     /// Whether this binding appears in hotkey overlays.
     pub overlay_visibility: OverlayVisibility,
-}
-
-impl BindingInfo {
-    /// The explicit binding pattern. Prefer this over the legacy `hotkey` field.
-    #[must_use]
-    pub const fn pattern(&self) -> &BindingPattern {
-        &self.hotkey
-    }
 }
 
 /// Snapshot of an active layer on the stack.
@@ -196,24 +188,16 @@ pub struct ActiveLayerInfo {
 ///
 /// let conflicts = dispatcher.conflicts();
 /// assert_eq!(conflicts.len(), 1);
-/// assert_eq!(conflicts[0].hotkey, Hotkey::new(Key::H));
+/// assert_eq!(conflicts[0].pattern, Hotkey::new(Key::H));
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictInfo {
     /// The explicit pattern at the center of the conflict.
-    pub hotkey: BindingPattern,
+    pub pattern: BindingPattern,
     /// The binding that is being shadowed (lower priority).
     pub shadowed_binding: BindingInfo,
     /// The binding that is doing the shadowing (higher priority).
     pub shadowing_binding: BindingInfo,
-}
-
-impl ConflictInfo {
-    /// The explicit conflicting pattern. Prefer this over the legacy `hotkey` field.
-    #[must_use]
-    pub const fn pattern(&self) -> &BindingPattern {
-        &self.hotkey
-    }
 }

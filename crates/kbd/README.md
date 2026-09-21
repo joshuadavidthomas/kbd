@@ -73,7 +73,7 @@ dispatcher.register_pattern(
 dispatcher.register_sequence_pattern(
     r#"Ctrl+physical:K, logical:",", logical:Enter"#.parse()?,
     Action::Suppress,
-    SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+    SequenceOptions::default().with_abort_key(NamedKey::Escape),
 )?;
 ```
 
@@ -89,7 +89,7 @@ dispatcher.register_sequence_pattern(
 
 Each successful step refreshes the timeout. A deferred standalone fires only when all remaining candidates expire while waiting for step 2. Progress, a live mismatch, abort, unregister, or layer removal never fires that fallback. A mismatch retries the current event against fresh bindings. For compatibility, if all candidates are already expired when an event arrives, returning the fallback consumes that event; poll `pending_timeouts` **before** input processing to resolve expiry separately. Resolve collected timeout tokens before mutating registrations/state.
 
-The default abort remains **physical Escape**. `with_logical_abort_key` selects an exact logical identity for logical-only input; abort ignores modifiers, and a matching expected next step wins over abort. `SequenceOptions` is now `Clone`, not `Copy`, and `abort_key()` returns `&SequenceAbortKey` so logical aborts are represented truthfully.
+The default abort remains **physical Escape**. `with_abort_key` accepts a physical `Key` or an exact logical identity (`LogicalKey`, `LogicalKeyValue`, or `NamedKey`); abort ignores modifiers, and a matching expected next step wins over abort. `SequenceOptions` is now `Clone`, not `Copy`, and `abort_key()` returns `&SequenceAbortKey` so logical aborts are represented truthfully.
 
 `cancel_pending_sequence()` silently and idempotently clears sequence candidates and their fallback and revokes previously collected sequence/fallback timeout tokens. It does not clear registrations, layers, throttle history, tap-hold, or held-key/modifier state; collected tap-hold timeout tokens remain valid. Hosts can compose it into their own lifecycle reset.
 

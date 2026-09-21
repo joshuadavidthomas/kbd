@@ -145,7 +145,7 @@ fn register_with_options_sets_metadata() {
     let bindings = manager.list_bindings().expect("query should succeed");
     let save = bindings
         .iter()
-        .find(|b| b.hotkey == hotkey)
+        .find(|b| b.pattern == hotkey)
         .expect("should find binding");
     assert_eq!(save.description.as_deref(), Some("Save file"));
 }
@@ -259,7 +259,7 @@ fn bindings_for_key_finds_registered_hotkey() {
         .bindings_for_key(hotkey)
         .unwrap()
         .expect("should find binding");
-    assert_eq!(info.hotkey, Hotkey::new(Key::S).modifier(Modifier::Ctrl));
+    assert_eq!(info.pattern, Hotkey::new(Key::S).modifier(Modifier::Ctrl));
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn conflicts_detected_when_layer_shadows_global() {
 
     let conflicts = manager.conflicts().unwrap();
     assert_eq!(conflicts.len(), 1);
-    assert_eq!(conflicts[0].hotkey, Hotkey::new(Key::H));
+    assert_eq!(conflicts[0].pattern, Hotkey::new(Key::H));
 }
 
 // Shutdown

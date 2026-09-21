@@ -971,7 +971,7 @@ mod observation_tests {
                 ],
             );
             let prefix = event(Some(Key::K), Some("k"));
-            assert_eq!(d.bindings_for_event(&prefix).unwrap().pattern(), &c("k"));
+            assert_eq!(d.bindings_for_event(&prefix).unwrap().pattern, c("k"));
             assert_eq!(emitted(d.process_event(&prefix)), Key::Y);
             assert!(d.pending_sequence().is_none());
         }
@@ -986,7 +986,7 @@ mod observation_tests {
             d.register_sequence_pattern(
                 seq(vec![c("k"), next]),
                 emit(Key::X),
-                SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+                SequenceOptions::default().with_abort_key(NamedKey::Escape),
             )
             .unwrap();
             d.register_pattern(named.clone(), emit(Key::Y), BindingOptions::default())
@@ -1038,8 +1038,7 @@ mod observation_tests {
         d.register_sequence_pattern(
             seq(vec![c("k"), p(Key::C)]),
             emit(Key::X),
-            SequenceOptions::default()
-                .with_logical_abort_key(LogicalKeyValue::Character("x".into())),
+            SequenceOptions::default().with_abort_key(LogicalKeyValue::Character("x".into())),
         )
         .unwrap();
         d.register_sequence_pattern(

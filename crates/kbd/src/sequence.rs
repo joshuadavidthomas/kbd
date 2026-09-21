@@ -9,6 +9,8 @@ use crate::key::Key;
 use crate::observation::BindingPattern;
 use crate::observation::KeyboardObservation;
 use crate::observation::LogicalKey;
+use crate::observation::LogicalKeyValue;
+use crate::observation::NamedKey;
 use crate::observation::split_quoted;
 
 /// A non-empty sequence of physical and/or logical binding patterns.
@@ -117,6 +119,30 @@ pub enum SequenceAbortKey {
     Logical(LogicalKey),
 }
 
+impl From<Key> for SequenceAbortKey {
+    fn from(key: Key) -> Self {
+        Self::Physical(key)
+    }
+}
+
+impl From<LogicalKey> for SequenceAbortKey {
+    fn from(key: LogicalKey) -> Self {
+        Self::Logical(key)
+    }
+}
+
+impl From<NamedKey> for SequenceAbortKey {
+    fn from(key: NamedKey) -> Self {
+        Self::Logical(key.into())
+    }
+}
+
+impl From<LogicalKeyValue> for SequenceAbortKey {
+    fn from(key: LogicalKeyValue) -> Self {
+        Self::Logical(key.into())
+    }
+}
+
 impl SequenceAbortKey {
     pub(crate) fn matches(&self, event: &KeyboardObservation) -> bool {
         match self {
@@ -207,18 +233,10 @@ impl SequenceOptions {
         self
     }
 
-    /// Set abort key.
+    /// Set a physical or logical abort identity. Modifiers do not affect matching.
     #[must_use]
-    pub fn with_abort_key(mut self, abort_key: Key) -> Self {
-        self.abort_key = SequenceAbortKey::Physical(abort_key);
-        self
-    }
-
-    /// Use a logical abort identity instead of the default physical Escape.
-    /// Modifiers do not affect abort matching.
-    #[must_use]
-    pub fn with_logical_abort_key(mut self, key: impl Into<LogicalKey>) -> Self {
-        self.abort_key = SequenceAbortKey::Logical(key.into());
+    pub fn with_abort_key(mut self, abort_key: impl Into<SequenceAbortKey>) -> Self {
+        self.abort_key = abort_key.into();
         self
     }
 }

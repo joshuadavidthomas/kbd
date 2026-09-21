@@ -7,10 +7,13 @@ use crate::binding::BindingId;
 use crate::binding::BindingOptions;
 use crate::binding::BindingSource;
 use crate::binding::SequenceBinding;
+use crate::error::RegisterError;
 use crate::hotkey::Hotkey;
 use crate::hotkey::HotkeyInput;
 use crate::hotkey::HotkeySequence;
 use crate::observation::BindingPattern;
+use crate::observation::ConfiguredPattern;
+use crate::policy::PrimaryModifier;
 use crate::sequence::BindingSequence;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
@@ -52,11 +55,11 @@ impl Dispatcher {
     /// Returns `AlreadyRegistered` for a conflicting resolved pattern.
     pub fn register_configured_pattern(
         &mut self,
-        pattern: &crate::observation::ConfiguredPattern,
-        primary: crate::policy::PrimaryModifier,
+        pattern: &ConfiguredPattern,
+        primary: PrimaryModifier,
         action: impl Into<Action>,
         options: BindingOptions,
-    ) -> Result<BindingId, crate::error::RegisterError> {
+    ) -> Result<BindingId, RegisterError> {
         self.register_pattern(pattern.resolve(primary), action, options)
     }
 
@@ -71,7 +74,7 @@ impl Dispatcher {
         sequence: BindingSequence,
         action: impl Into<Action>,
         options: SequenceOptions,
-    ) -> Result<BindingId, crate::error::RegisterError> {
+    ) -> Result<BindingId, RegisterError> {
         let id = BindingId::new();
         self.register_sequence_binding(SequenceBinding::new(id, sequence, action.into(), options))?;
         Ok(id)
@@ -86,7 +89,7 @@ impl Dispatcher {
         pattern: BindingPattern,
         action: impl Into<Action>,
         options: BindingOptions,
-    ) -> Result<BindingId, crate::error::RegisterError> {
+    ) -> Result<BindingId, RegisterError> {
         let id = BindingId::new();
         self.register_binding(Binding::new(id, pattern, action.into()).with_options(options))?;
         Ok(id)
@@ -99,16 +102,16 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when string
+    /// Returns [`RegisterError::Parse`] when string
     /// input conversion fails, or
-    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`]
     /// if a binding for the same hotkey already exists in the standard
     /// precedence tier.
     pub fn register(
         &mut self,
         hotkey: impl HotkeyInput,
         action: impl Into<Action>,
-    ) -> Result<BindingId, crate::error::RegisterError> {
+    ) -> Result<BindingId, RegisterError> {
         self.register_with_options(hotkey, action, BindingOptions::default())
     }
 
@@ -120,9 +123,9 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when string
+    /// Returns [`RegisterError::Parse`] when string
     /// input conversion fails, or
-    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`]
     /// if a binding for the same hotkey already exists in the same precedence
     /// tier.
     pub fn register_with_options(
@@ -130,7 +133,7 @@ impl Dispatcher {
         hotkey: impl HotkeyInput,
         action: impl Into<Action>,
         options: BindingOptions,
-    ) -> Result<BindingId, crate::error::RegisterError> {
+    ) -> Result<BindingId, RegisterError> {
         let id = BindingId::new();
         let hotkey = hotkey.into_hotkey()?;
         let binding = Binding::new(id, hotkey, action.into()).with_options(options);
@@ -142,15 +145,15 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when sequence input
+    /// Returns [`RegisterError::Parse`] when sequence input
     /// conversion fails, or
-    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`]
     /// if a binding for the same sequence already exists.
     pub fn register_sequence(
         &mut self,
         sequence: impl SequenceInput,
         action: impl Into<Action>,
-    ) -> Result<BindingId, crate::error::RegisterError> {
+    ) -> Result<BindingId, RegisterError> {
         self.register_sequence_with_options(sequence, action, SequenceOptions::default())
     }
 
@@ -158,16 +161,16 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::Parse`](crate::error::RegisterError::Parse) when sequence input
+    /// Returns [`RegisterError::Parse`] when sequence input
     /// conversion fails, or
-    /// [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// [`RegisterError::AlreadyRegistered`]
     /// if a binding for the same sequence already exists.
     pub fn register_sequence_with_options(
         &mut self,
         sequence: impl SequenceInput,
         action: impl Into<Action>,
         options: SequenceOptions,
-    ) -> Result<BindingId, crate::error::RegisterError> {
+    ) -> Result<BindingId, RegisterError> {
         let id = BindingId::new();
         let sequence = sequence.into_sequence()?;
         self.register_sequence_binding_with_id(id, sequence, action.into(), options)?;
@@ -186,7 +189,7 @@ impl Dispatcher {
         sequence: HotkeySequence,
         action: Action,
         options: SequenceOptions,
-    ) -> Result<(), crate::error::RegisterError> {
+    ) -> Result<(), RegisterError> {
         let binding = SequenceBinding::new(id, sequence, action, options);
         self.register_sequence_binding(binding)
     }
@@ -195,21 +198,18 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`RegisterError::AlreadyRegistered`](crate::error::RegisterError::AlreadyRegistered)
+    /// Returns [`RegisterError::AlreadyRegistered`]
     /// if a binding for the same hotkey already exists in the same precedence
     /// tier and device scope. Bindings with different device filters (or one
     /// with a filter and one without) can coexist for the same hotkey and tier.
-    pub fn register_binding(
-        &mut self,
-        binding: Binding,
-    ) -> Result<(), crate::error::RegisterError> {
+    pub fn register_binding(&mut self, binding: Binding) -> Result<(), RegisterError> {
         let id = binding.id();
         let hotkey = binding.pattern().clone();
         let new_priority = SourcePriority::from(binding.options());
         let new_device = binding.options().device();
 
         if self.bindings_by_id.contains_key(&id) || self.sequence_bindings_by_id.contains_key(&id) {
-            return Err(crate::error::RegisterError::AlreadyRegistered);
+            return Err(RegisterError::AlreadyRegistered);
         }
 
         let ids_for_hotkey = self.binding_ids_by_hotkey.entry(hotkey).or_default();
@@ -221,7 +221,7 @@ impl Dispatcher {
                         && existing.options().device() == new_device
                 })
         }) {
-            return Err(crate::error::RegisterError::AlreadyRegistered);
+            return Err(RegisterError::AlreadyRegistered);
         }
 
         let insert_at = ids_for_hotkey
@@ -241,10 +241,7 @@ impl Dispatcher {
         Ok(())
     }
 
-    fn register_sequence_binding(
-        &mut self,
-        binding: SequenceBinding,
-    ) -> Result<(), crate::error::RegisterError> {
+    fn register_sequence_binding(&mut self, binding: SequenceBinding) -> Result<(), RegisterError> {
         let id = binding.id;
         let sequence = binding.sequence.clone();
 
@@ -252,7 +249,7 @@ impl Dispatcher {
             || self.bindings_by_id.contains_key(&id)
             || self.sequence_ids_by_value.contains_key(&sequence)
         {
-            return Err(crate::error::RegisterError::AlreadyRegistered);
+            return Err(RegisterError::AlreadyRegistered);
         }
 
         self.sequence_ids_by_value.insert(sequence, id);

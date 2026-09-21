@@ -6,6 +6,8 @@
 //! per-device modifier state for device-aware dispatch.
 
 use crate::hotkey::ModifierSet;
+use crate::observation::KeyboardObservation;
+use crate::observation::ModifierObservation;
 
 /// Metadata for an input device.
 ///
@@ -185,7 +187,7 @@ pub struct DeviceContext<'a> {
     device_id: i32,
     info: &'a DeviceInfo,
     device_modifiers: Option<ModifierSet>,
-    modifier_observation: Option<crate::observation::ModifierObservation>,
+    modifier_observation: Option<ModifierObservation>,
 }
 
 impl<'a> DeviceContext<'a> {
@@ -218,19 +220,13 @@ impl<'a> DeviceContext<'a> {
 
     /// Supply source-local physical and semantic modifier evidence.
     #[must_use]
-    pub fn with_modifier_observation(
-        mut self,
-        observation: crate::observation::ModifierObservation,
-    ) -> Self {
+    pub fn with_modifier_observation(mut self, observation: ModifierObservation) -> Self {
         self.device_modifiers = Some(observation.physical.active());
         self.modifier_observation = Some(observation);
         self
     }
 
-    pub(crate) fn scoped_event(
-        &self,
-        event: &crate::observation::KeyboardObservation,
-    ) -> Option<crate::observation::KeyboardObservation> {
+    pub(crate) fn scoped_event(&self, event: &KeyboardObservation) -> Option<KeyboardObservation> {
         let mut event = event.clone();
         event.modifiers = self.device_modifiers?;
         event.modifier_observation = self.modifier_observation;

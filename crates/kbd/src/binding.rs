@@ -18,6 +18,7 @@ use crate::device::DeviceFilter;
 use crate::hotkey::Hotkey;
 use crate::observation::BindingPattern;
 use crate::policy::KeyPropagation;
+use crate::policy::LogicalMatchPolicy;
 use crate::policy::RateLimit;
 use crate::policy::RepeatPolicy;
 use crate::sequence::BindingSequence;
@@ -216,24 +217,21 @@ pub struct BindingOptions {
     /// How OS auto-repeat events are handled for this binding.
     repeat_policy: RepeatPolicy,
     #[cfg_attr(feature = "serde", serde(default))]
-    logical_match_policy: crate::policy::LogicalMatchPolicy,
+    logical_match_policy: LogicalMatchPolicy,
 }
 
 impl BindingOptions {
     /// Set the opt-in logical modifier consumption policy. Physical matching
     /// is always exact; this does not change sequence step matching.
     #[must_use]
-    pub const fn with_logical_match_policy(
-        mut self,
-        policy: crate::policy::LogicalMatchPolicy,
-    ) -> Self {
+    pub const fn with_logical_match_policy(mut self, policy: LogicalMatchPolicy) -> Self {
         self.logical_match_policy = policy;
         self
     }
 
     /// Logical modifier matching policy.
     #[must_use]
-    pub const fn logical_match_policy(&self) -> crate::policy::LogicalMatchPolicy {
+    pub const fn logical_match_policy(&self) -> LogicalMatchPolicy {
         self.logical_match_policy
     }
 

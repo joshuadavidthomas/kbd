@@ -45,10 +45,24 @@ use crate::hotkey::Modifier;
 use crate::hotkey::ModifierSet;
 use crate::key::Key;
 use crate::key_state::KeyTransition;
+use crate::policy::LogicalMatchPolicy;
+use crate::policy::PrimaryModifier;
 
 /// A logical key identity, distinct from the physical [`Key`] domain.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LogicalKey(pub LogicalKeyValue);
+pub struct LogicalKey(LogicalKeyValue);
+
+impl AsRef<LogicalKeyValue> for LogicalKey {
+    fn as_ref(&self) -> &LogicalKeyValue {
+        &self.0
+    }
+}
+
+impl From<LogicalKey> for LogicalKeyValue {
+    fn from(key: LogicalKey) -> Self {
+        key.0
+    }
+}
 
 impl From<LogicalKeyValue> for LogicalKey {
     fn from(value: LogicalKeyValue) -> Self {
@@ -264,7 +278,7 @@ impl BindingPattern {
     /// The dispatcher applies those policies when processing the event.
     #[must_use]
     pub fn matches(&self, event: &KeyboardObservation) -> bool {
-        self.matches_with_policy(event, crate::policy::LogicalMatchPolicy::Exact)
+        self.matches_with_policy(event, LogicalMatchPolicy::Exact)
     }
 
     /// Match once, with an explicit policy for logical consumed modifiers.
@@ -272,7 +286,7 @@ impl BindingPattern {
     pub fn matches_with_policy(
         &self,
         event: &KeyboardObservation,
-        policy: crate::policy::LogicalMatchPolicy,
+        policy: LogicalMatchPolicy,
     ) -> bool {
         match self {
             Self::Physical(hotkey) => {
@@ -284,8 +298,8 @@ impl BindingPattern {
             Self::Logical { key, modifiers } => {
                 let logical = event.logical_modifiers();
                 let consumed = match policy {
-                    crate::policy::LogicalMatchPolicy::Exact => None,
-                    crate::policy::LogicalMatchPolicy::Consumed => logical.consumed,
+                    LogicalMatchPolicy::Exact => None,
+                    LogicalMatchPolicy::Consumed => logical.consumed,
                 };
                 event.logical.as_ref() == Some(key) && logical.state.matches(*modifiers, consumed)
             }
@@ -327,12 +341,12 @@ pub struct ConfiguredPattern {
 impl ConfiguredPattern {
     /// Resolve the alias before registration and conflict checking.
     #[must_use]
-    pub fn resolve(&self, policy: crate::policy::PrimaryModifier) -> BindingPattern {
+    pub fn resolve(&self, policy: PrimaryModifier) -> BindingPattern {
         let mut pattern = self.pattern.clone();
         if self.primary {
             let modifier = match policy {
-                crate::policy::PrimaryModifier::Ctrl => Modifier::Ctrl,
-                crate::policy::PrimaryModifier::Super => Modifier::Super,
+                PrimaryModifier::Ctrl => Modifier::Ctrl,
+                PrimaryModifier::Super => Modifier::Super,
             };
             match &mut pattern {
                 BindingPattern::Physical(hotkey) => *hotkey = hotkey.modifier(modifier),

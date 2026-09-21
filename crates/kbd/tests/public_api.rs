@@ -339,7 +339,7 @@ fn introspection_full_picture() {
     let conflicts = dispatcher.conflicts();
     assert_eq!(conflicts.len(), 1);
     assert_eq!(
-        conflicts[0].hotkey,
+        conflicts[0].pattern,
         Hotkey::new(Key::C).modifier(Modifier::Ctrl)
     );
 
@@ -720,7 +720,7 @@ mod observations {
             let mut observed = event(Some(Key::CONTROL_LEFT), "");
             observed.logical = Some(kbd::observation::NamedKey::Escape.into());
             assert_eq!(
-                dispatcher.bindings_for_event(&observed).unwrap().pattern(),
+                &dispatcher.bindings_for_event(&observed).unwrap().pattern,
                 &pattern
             );
             assert_eq!(emitted(dispatcher.process_event(&observed)), Key::Y);
@@ -743,7 +743,7 @@ mod observations {
             .register_sequence_pattern(
                 "A, logical:Escape".parse().unwrap(),
                 emit(Key::Y),
-                SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+                SequenceOptions::default().with_abort_key(NamedKey::Escape),
             )
             .unwrap();
         dispatcher
@@ -773,7 +773,7 @@ mod observations {
             .register_sequence_pattern(
                 "B, C".parse().unwrap(),
                 emit(Key::Z),
-                SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+                SequenceOptions::default().with_abort_key(NamedKey::Escape),
             )
             .unwrap();
         dispatcher.process(Hotkey::new(Key::B), KeyTransition::Press);
@@ -836,14 +836,14 @@ mod observations {
         assert_eq!(emitted(dispatcher.process_event(&event(None, "a"))), Key::Y);
         assert!(dispatcher.bindings_for_key(Hotkey::new(Key::Q)).is_none());
         assert_eq!(
-            dispatcher.bindings_for_event(&observed).unwrap().pattern(),
+            &dispatcher.bindings_for_event(&observed).unwrap().pattern,
             &logical("a")
         );
         assert_eq!(
-            dispatcher
+            &dispatcher
                 .bindings_for_pattern(&logical("a"))
                 .unwrap()
-                .pattern(),
+                .pattern,
             &logical("a")
         );
         assert!(dispatcher.is_pattern_registered(&logical("a")));
@@ -910,7 +910,7 @@ mod observations {
             dispatcher
                 .list_bindings()
                 .iter()
-                .filter(|b| b.pattern() == &named)
+                .filter(|b| b.pattern == named)
                 .count(),
             1
         );
@@ -939,7 +939,7 @@ mod observations {
             }
             let observed = event(Some(Key::Q), "a");
             assert_eq!(
-                dispatcher.bindings_for_event(&observed).unwrap().pattern(),
+                &dispatcher.bindings_for_event(&observed).unwrap().pattern,
                 &BindingPattern::Physical(Hotkey::new(Key::Q))
             );
             let MatchResult::Matched {
@@ -978,7 +978,7 @@ mod observations {
         let observed = event(Some(Key::Q), "a");
         assert_eq!(emitted(dispatcher.process_event(&observed)), Key::Y);
         assert_eq!(
-            dispatcher.bindings_for_event(&observed).unwrap().pattern(),
+            &dispatcher.bindings_for_event(&observed).unwrap().pattern,
             &logical("a")
         );
 
@@ -1009,10 +1009,10 @@ mod observations {
             Key::Z
         );
         assert_eq!(
-            dispatcher
+            &dispatcher
                 .bindings_for_event_with_device(&observed, &device)
                 .unwrap()
-                .pattern(),
+                .pattern,
             &device_pattern
         );
         let other = DeviceInfo::new("keyboard", 1, 3);
@@ -1062,7 +1062,7 @@ mod observations {
             dispatcher.push_layer("top").unwrap();
             let observed = event(Some(Key::Q), "a");
             assert_eq!(
-                dispatcher.bindings_for_event(&observed).unwrap().pattern(),
+                &dispatcher.bindings_for_event(&observed).unwrap().pattern,
                 &top
             );
             assert_eq!(emitted(dispatcher.process_event(&observed)), Key::Z);
@@ -1273,7 +1273,7 @@ mod observations {
             Err(RegisterError::AlreadyRegistered)
         ));
         assert_eq!(dispatcher.conflicts().len(), 1);
-        assert_eq!(dispatcher.conflicts()[0].pattern(), &pattern);
+        assert_eq!(&dispatcher.conflicts()[0].pattern, &pattern);
         dispatcher.unregister(user);
         assert_eq!(emitted(dispatcher.process_event(&event(None, "é"))), Key::X);
         dispatcher

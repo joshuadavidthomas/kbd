@@ -21,6 +21,8 @@ use crate::binding::BindingOptions;
 use crate::binding::SequenceBinding;
 use crate::error::ParseHotkeyError;
 use crate::hotkey::HotkeyInput;
+use crate::observation::BindingPattern;
+use crate::sequence::BindingSequence;
 use crate::sequence::SequenceInput;
 use crate::sequence::SequenceOptions;
 
@@ -291,7 +293,7 @@ impl Layer {
     #[must_use]
     pub fn bind_pattern(
         mut self,
-        pattern: crate::observation::BindingPattern,
+        pattern: BindingPattern,
         action: impl Into<Action>,
         options: BindingOptions,
     ) -> Self {
@@ -305,7 +307,7 @@ impl Layer {
     #[must_use]
     pub fn bind_sequence_pattern(
         mut self,
-        sequence: crate::sequence::BindingSequence,
+        sequence: BindingSequence,
         action: impl Into<Action>,
         options: SequenceOptions,
     ) -> Self {

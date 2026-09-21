@@ -32,7 +32,7 @@ pub(super) fn binding_event(event: &KeyboardObservation) -> Option<Cow<'_, Keybo
         return event.physical.is_none().then_some(Cow::Borrowed(event));
     };
     if matches!(
-        logical.0,
+        logical.as_ref(),
         LogicalKeyValue::Named(
             NamedKey::Alt
                 | NamedKey::AltGraph
@@ -145,7 +145,7 @@ fn classify_layer(
 ) -> LayerMatch {
     classify_observation(
         stored,
-        &KeyboardObservation::from_hotkey(hotkey, crate::key_state::KeyTransition::Press),
+        &KeyboardObservation::from_hotkey(hotkey, KeyTransition::Press),
         device,
     )
 }
@@ -158,7 +158,7 @@ fn classify_sequence_prefixes<'a>(
     let sequences: Vec<BindingSequence> = sequences.cloned().map(Into::into).collect();
     classify_observation_prefixes(
         sequences.iter(),
-        &KeyboardObservation::from_hotkey(hotkey, crate::key_state::KeyTransition::Press),
+        &KeyboardObservation::from_hotkey(hotkey, KeyTransition::Press),
     )
 }
 

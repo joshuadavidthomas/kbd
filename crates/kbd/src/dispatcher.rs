@@ -40,9 +40,13 @@ use crate::binding::Binding;
 use crate::binding::BindingId;
 use crate::binding::SequenceBinding;
 use crate::device::DeviceContext;
+use crate::error::LayerError;
+use crate::error::RegisterError;
 use crate::hotkey::Hotkey;
 use crate::key::Key;
+use crate::key_state::HeldKey;
 use crate::key_state::KeyTransition;
+use crate::layer::Layer;
 use crate::layer::LayerName;
 use crate::layer::StoredLayer;
 use crate::layer::UnmatchedKeys;
@@ -50,6 +54,7 @@ use crate::observation::BindingPattern;
 use crate::observation::KeyboardObservation;
 use crate::policy::KeyPropagation;
 use crate::policy::RepeatPolicy;
+use crate::sequence::BindingSequence;
 use crate::sequence::PendingSequenceInfo;
 use crate::tap_hold::TapHoldOptions;
 
@@ -185,7 +190,7 @@ pub struct Dispatcher {
     registration_order_by_id: HashMap<BindingId, u64>,
     next_registration_order: u64,
     sequence_bindings_by_id: BTreeMap<BindingId, SequenceBinding>,
-    sequence_ids_by_value: HashMap<crate::sequence::BindingSequence, BindingId>,
+    sequence_ids_by_value: HashMap<BindingSequence, BindingId>,
     layers: HashMap<LayerName, StoredLayer>,
     layer_stack: Vec<LayerStackEntry>,
     active_sequences: Vec<ActiveSequence>,
@@ -273,9 +278,9 @@ impl Dispatcher {
         tap_action: impl Into<Action>,
         hold_action: impl Into<Action>,
         options: TapHoldOptions,
-    ) -> Result<BindingId, crate::error::RegisterError> {
+    ) -> Result<BindingId, RegisterError> {
         if self.tap_hold.is_registered(key) {
-            return Err(crate::error::RegisterError::AlreadyRegistered);
+            return Err(RegisterError::AlreadyRegistered);
         }
         let id = BindingId::new();
         self.tap_hold.register(TapHoldBinding {
@@ -302,17 +307,12 @@ impl Dispatcher {
     ///
     /// # Errors
     ///
-    /// Returns [`LayerError::AlreadyDefined`](crate::error::LayerError::AlreadyDefined)
+    /// Returns [`LayerError::AlreadyDefined`]
     /// if a layer with the same name exists.
-    pub fn define_layer(
-        &mut self,
-        layer: crate::layer::Layer,
-    ) -> Result<(), crate::error::LayerError> {
+    pub fn define_layer(&mut self, layer: Layer) -> Result<(), LayerError> {
         let (name, bindings, sequence_bindings, options) = layer.into_parts();
         match self.layers.entry(name) {
-            std::collections::hash_map::Entry::Occupied(_) => {
-                Err(crate::error::LayerError::AlreadyDefined)
-            }
+            std::collections::hash_map::Entry::Occupied(_) => Err(LayerError::AlreadyDefined),
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(StoredLayer {
                     bindings,
@@ -395,7 +395,7 @@ impl Dispatcher {
 
     /// Whether this physical press currently owns a tap-hold decision.
     #[must_use]
-    pub fn is_active_tap_hold(&self, key: crate::key_state::HeldKey) -> bool {
+    pub fn is_active_tap_hold(&self, key: HeldKey) -> bool {
         self.tap_hold.is_active(key)
     }
 
@@ -449,7 +449,7 @@ impl Dispatcher {
         // matching, similar to how speculative patterns (sequences) take
         // priority over immediate patterns (hotkeys).
         let tap_hold_outcome = if let Some(key) = event.physical {
-            self.process_tap_hold(crate::key_state::HeldKey { source, key }, transition)
+            self.process_tap_hold(HeldKey { source, key }, transition)
         } else {
             if matches!(transition, KeyTransition::Press) {
                 self.tap_hold.resolve_pending_for_interrupt(None);
@@ -566,11 +566,7 @@ impl Dispatcher {
     /// here — hold actions resolved by interrupt are buffered in
     /// `TapHoldState` and drained through the `pending_timeouts` pipeline,
     /// where the engine handles them identically to timeout-resolved holds.
-    fn process_tap_hold(
-        &mut self,
-        key: crate::key_state::HeldKey,
-        transition: KeyTransition,
-    ) -> TapHoldOutcome {
+    fn process_tap_hold(&mut self, key: HeldKey, transition: KeyTransition) -> TapHoldOutcome {
         // Fast path: skip all tap-hold work when no bindings are registered
         // and no keys are actively being tracked. This keeps the common case
         // (no tap-hold configured) essentially zero-cost.

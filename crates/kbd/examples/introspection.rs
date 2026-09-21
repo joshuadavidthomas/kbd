@@ -85,7 +85,7 @@ fn main() {
         for conflict in &conflicts {
             println!(
                 "  {} — {} shadows {}",
-                conflict.hotkey,
+                conflict.pattern,
                 format_location(&conflict.shadowing_binding),
                 format_location(&conflict.shadowed_binding),
             );
@@ -133,7 +133,7 @@ fn main() {
     let save_conflicts: Vec<_> = dispatcher
         .conflicts()
         .into_iter()
-        .filter(|c| c.hotkey == save_hotkey)
+        .filter(|c| c.pattern == save_hotkey)
         .collect();
     for conflict in &save_conflicts {
         println!(
@@ -196,7 +196,7 @@ fn format_binding(b: &BindingInfo) -> String {
     };
     format!(
         "{:20} {:30} [{}, {}{source}]{vis}",
-        b.hotkey.to_string(),
+        b.pattern.to_string(),
         desc,
         format_location(b),
         shadow,

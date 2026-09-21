@@ -3,6 +3,7 @@ use super::resolve;
 use super::resolve::LayerMatch;
 use super::resolve::SequencePrefixMatch;
 use crate::binding::BindingId;
+use crate::binding::OverlayVisibility;
 use crate::binding::SequenceBinding;
 use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
@@ -119,7 +120,7 @@ impl Dispatcher {
                 };
 
                 results.push(BindingInfo {
-                    hotkey: binding.pattern().clone(),
+                    pattern: binding.pattern().clone(),
                     description: binding.options().description().map(Box::from),
                     source: binding.options().source().cloned(),
                     location: BindingLocation::Global,
@@ -197,7 +198,7 @@ impl Dispatcher {
                 };
 
                 results.push(BindingInfo {
-                    hotkey: binding.pattern().clone(),
+                    pattern: binding.pattern().clone(),
                     description: binding.options().description().map(Box::from),
                     source: binding.options().source().cloned(),
                     location: BindingLocation::Layer(layer_name.clone()),
@@ -296,12 +297,12 @@ impl Dispatcher {
                     LayerMatch::SingleStepSequence { index } => {
                         let sb = &stored.sequence_bindings[index];
                         return Some(BindingInfo {
-                            hotkey: sb.sequence.steps()[0].clone(),
+                            pattern: sb.sequence.steps()[0].clone(),
                             description: None,
                             source: None,
                             location: BindingLocation::Layer(entry.name.clone()),
                             shadowed: ShadowedStatus::Active,
-                            overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                            overlay_visibility: OverlayVisibility::Visible,
                         });
                     }
                     LayerMatch::MultiStepSequences { .. } => {
@@ -310,7 +311,7 @@ impl Dispatcher {
                     LayerMatch::Immediate { index } => {
                         let lb = &stored.bindings[index];
                         return Some(BindingInfo {
-                            hotkey: lb.pattern().clone(),
+                            pattern: lb.pattern().clone(),
                             description: lb.options().description().map(Box::from),
                             source: lb.options().source().cloned(),
                             location: BindingLocation::Layer(entry.name.clone()),
@@ -338,12 +339,12 @@ impl Dispatcher {
             SequencePrefixMatch::SingleStep { index } => {
                 let binding = global_seqs[index];
                 return Some(BindingInfo {
-                    hotkey: binding.sequence.steps()[0].clone(),
+                    pattern: binding.sequence.steps()[0].clone(),
                     description: None,
                     source: None,
                     location: BindingLocation::Global,
                     shadowed: ShadowedStatus::Active,
-                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                    overlay_visibility: OverlayVisibility::Visible,
                 });
             }
             SequencePrefixMatch::MultiStep { .. } => {
@@ -355,7 +356,7 @@ impl Dispatcher {
         // Fall through to global immediate bindings.
         if let Some(binding) = self.match_global_event(event, device) {
             return Some(BindingInfo {
-                hotkey: binding.pattern().clone(),
+                pattern: binding.pattern().clone(),
                 description: binding.options().description().map(Box::from),
                 source: binding.options().source().cloned(),
                 location: BindingLocation::Global,
@@ -392,7 +393,7 @@ impl Dispatcher {
             let shadowing = match &shadowed.shadowed {
                 ShadowedStatus::ShadowedBy(shadowing_layer) => {
                     all_bindings.iter().find(|binding| {
-                        binding.hotkey == shadowed.hotkey
+                        binding.pattern == shadowed.pattern
                             && matches!(&binding.location, BindingLocation::Layer(name) if name == shadowing_layer)
                             && matches!(binding.shadowed, ShadowedStatus::Active)
                     }).cloned()
@@ -400,18 +401,18 @@ impl Dispatcher {
                 ShadowedStatus::ShadowedByGlobal => all_bindings
                     .iter()
                     .find(|binding| {
-                        binding.hotkey == shadowed.hotkey
+                        binding.pattern == shadowed.pattern
                             && binding.location == BindingLocation::Global
                             && matches!(binding.shadowed, ShadowedStatus::Active)
                     })
                     .cloned(),
                 ShadowedStatus::ShadowedBySequence(location) => Some(BindingInfo {
-                    hotkey: shadowed.hotkey.clone(),
+                    pattern: shadowed.pattern.clone(),
                     description: None,
                     source: None,
                     location: location.clone(),
                     shadowed: ShadowedStatus::Active,
-                    overlay_visibility: crate::binding::OverlayVisibility::Visible,
+                    overlay_visibility: OverlayVisibility::Visible,
                 }),
                 ShadowedStatus::Active
                 | ShadowedStatus::SuppressedBy(_)
@@ -420,7 +421,7 @@ impl Dispatcher {
 
             if let Some(shadowing) = shadowing {
                 conflicts.push(ConflictInfo {
-                    hotkey: shadowed.hotkey.clone(),
+                    pattern: shadowed.pattern.clone(),
                     shadowed_binding: shadowed.clone(),
                     shadowing_binding: shadowing,
                 });
@@ -551,7 +552,7 @@ mod tests {
             .bindings_for_key(Hotkey::new(Key::K).modifier(Modifier::Ctrl))
             .expect("single-step sequence should match immediately");
 
-        assert_eq!(result.hotkey, Hotkey::new(Key::K).modifier(Modifier::Ctrl));
+        assert_eq!(result.pattern, Hotkey::new(Key::K).modifier(Modifier::Ctrl));
         assert_eq!(result.location, BindingLocation::Global);
     }
 
@@ -966,7 +967,7 @@ mod tests {
             .into_iter()
             .map(|binding| {
                 (
-                    binding.hotkey.to_string(),
+                    binding.pattern.to_string(),
                     binding.source.map(|source| source.to_string()),
                 )
             })
@@ -1012,7 +1013,7 @@ mod tests {
                 let BindingLocation::Layer(name) = binding.location else {
                     panic!("expected only layer bindings in this test");
                 };
-                (name.to_string(), binding.hotkey.to_string())
+                (name.to_string(), binding.pattern.to_string())
             })
             .collect();
 

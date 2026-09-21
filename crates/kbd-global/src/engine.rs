@@ -2481,7 +2481,7 @@ mod tests {
         assert_eq!(bindings.len(), 1);
 
         let info = &bindings[0];
-        assert_eq!(info.hotkey, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
+        assert_eq!(info.pattern, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert_eq!(info.description.as_deref(), Some("Copy"));
         assert_eq!(info.location, kbd::introspection::BindingLocation::Global);
         assert_eq!(info.shadowed, kbd::introspection::ShadowedStatus::Active);
@@ -2518,7 +2518,7 @@ mod tests {
         let bindings = engine.dispatcher.list_bindings();
         let nav_binding = bindings
             .iter()
-            .find(|b| b.hotkey == Hotkey::new(Key::H))
+            .find(|b| b.pattern == Hotkey::new(Key::H))
             .expect("should find H binding");
         assert_eq!(
             nav_binding.shadowed,
@@ -2553,7 +2553,7 @@ mod tests {
         let global_h = bindings
             .iter()
             .find(|b| {
-                b.hotkey == Hotkey::new(Key::H)
+                b.pattern == Hotkey::new(Key::H)
                     && matches!(b.location, kbd::introspection::BindingLocation::Global)
             })
             .expect("should find global H");
@@ -2565,7 +2565,7 @@ mod tests {
         let layer_h = bindings
             .iter()
             .find(|b| {
-                b.hotkey == Hotkey::new(Key::H)
+                b.pattern == Hotkey::new(Key::H)
                     && matches!(b.location, kbd::introspection::BindingLocation::Layer(_))
             })
             .expect("should find layer H");
@@ -2600,7 +2600,7 @@ mod tests {
         let layer1_h = bindings
             .iter()
             .find(|b| {
-                b.hotkey == Hotkey::new(Key::H)
+                b.pattern == Hotkey::new(Key::H)
                     && b.location
                         == kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from(
                             "layer1",
@@ -2615,7 +2615,7 @@ mod tests {
         let layer2_h = bindings
             .iter()
             .find(|b| {
-                b.hotkey == Hotkey::new(Key::H)
+                b.pattern == Hotkey::new(Key::H)
                     && b.location
                         == kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from(
                             "layer2",
@@ -2650,7 +2650,7 @@ mod tests {
         assert!(result.is_some());
 
         let info = result.unwrap();
-        assert_eq!(info.hotkey, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
+        assert_eq!(info.pattern, Hotkey::new(Key::C).modifier(Modifier::Ctrl));
         assert_eq!(info.description.as_deref(), Some("Copy"));
         assert_eq!(info.location, kbd::introspection::BindingLocation::Global);
     }
@@ -2795,7 +2795,7 @@ mod tests {
         assert_eq!(conflicts.len(), 1);
 
         let conflict = &conflicts[0];
-        assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
+        assert_eq!(conflict.pattern, Hotkey::new(Key::H));
         assert_eq!(
             conflict.shadowed_binding.location,
             kbd::introspection::BindingLocation::Global
@@ -2833,7 +2833,7 @@ mod tests {
         assert_eq!(conflicts.len(), 1);
 
         let conflict = &conflicts[0];
-        assert_eq!(conflict.hotkey, Hotkey::new(Key::H));
+        assert_eq!(conflict.pattern, Hotkey::new(Key::H));
         assert_eq!(
             conflict.shadowed_binding.location,
             kbd::introspection::BindingLocation::Layer(kbd::layer::LayerName::from("layer1"))

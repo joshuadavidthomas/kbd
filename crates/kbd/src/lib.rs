@@ -143,7 +143,7 @@
 //! dispatcher.register_sequence_pattern(
 //!     r#"Ctrl+physical:K, logical:",", logical:Enter"#.parse()?,
 //!     Action::Suppress,
-//!     SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+//!     SequenceOptions::default().with_abort_key(NamedKey::Escape),
 //! )?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
