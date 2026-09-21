@@ -20,8 +20,8 @@
 //! - [`IcedKeyExt`] — converts an iced [`key::Code`] or [`key::Physical`]
 //!   to a [`kbd::key::Key`].
 //! - [`IcedModifiersExt`] — converts iced [`Modifiers`] to a
-//!   [`ModifierSet`](kbd::hotkey::ModifierSet).
-//! - [`IcedEventExt`] — converts an iced keyboard [`Event`] to a
+//!   [`ModifierSet`].
+//! - [`IcedEventExt`] — converts an iced keyboard [`iced_core::keyboard::Event`] to a
 //!   [`kbd::hotkey::Hotkey`].
 //!
 //! # Key mapping
@@ -67,12 +67,15 @@
 //! assert_eq!(mods.len(), 1);
 //! ```
 
-use iced_core::keyboard::Event;
 use iced_core::keyboard::Modifiers;
 use iced_core::keyboard::key;
-use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
+use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
+
+mod observation;
+
+pub use observation::IcedEventExt;
 
 mod private {
     pub trait Sealed {}
@@ -348,14 +351,14 @@ impl IcedKeyExt for key::Physical {
     }
 }
 
-/// Convert iced [`Modifiers`] bitflags to a kbd [`ModifierSet`](kbd::hotkey::ModifierSet).
+/// Convert iced [`Modifiers`] bitflags to a kbd [`ModifierSet`].
 ///
 /// Iced uses `LOGO` for the Super/Meta/Windows key. This maps to
 /// `Modifier::Super` in `kbd`.
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait IcedModifiersExt: private::Sealed {
-    /// Convert these iced modifier flags to a kbd [`ModifierSet`](kbd::hotkey::ModifierSet).
+    /// Convert these iced modifier flags to a kbd [`ModifierSet`].
     ///
     /// # Examples
     ///
@@ -369,106 +372,17 @@ pub trait IcedModifiersExt: private::Sealed {
     /// assert!(mods.contains(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet;
+    fn to_modifiers(&self) -> ModifierSet;
 }
 
 impl IcedModifiersExt for Modifiers {
-    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet {
+    fn to_modifiers(&self) -> ModifierSet {
         Modifier::collect_active([
             (self.control(), Modifier::Ctrl),
             (self.shift(), Modifier::Shift),
             (self.alt(), Modifier::Alt),
             (self.logo(), Modifier::Super),
         ])
-    }
-}
-
-/// Convert an iced keyboard [`Event`] to a `kbd` [`Hotkey`].
-///
-/// Uses the physical key from the event for layout-independent matching.
-/// Returns `None` for `ModifiersChanged` events (no key trigger) and
-/// for events with unidentified physical keys.
-///
-/// When the key is itself a modifier (e.g., `ControlLeft`), the
-/// corresponding modifier flag is stripped from the modifiers — iced
-/// includes the pressed modifier key in its own modifier state, but
-/// `kbd` treats the key as the trigger, not as a modifier of itself.
-/// This trait is sealed and cannot be implemented outside this crate.
-pub trait IcedEventExt: private::Sealed {
-    /// Convert this keyboard event to a [`Hotkey`], or `None` if unmappable.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use iced_core::keyboard::{Event, Location, Modifiers, key};
-    /// use kbd::hotkey::{Hotkey, Modifier};
-    /// use kbd::key::Key;
-    /// use kbd_iced::IcedEventExt;
-    ///
-    /// let event = Event::KeyPressed {
-    ///     key: iced_core::keyboard::Key::Unidentified,
-    ///     modified_key: iced_core::keyboard::Key::Unidentified,
-    ///     physical_key: key::Physical::Code(key::Code::KeyS),
-    ///     location: Location::Standard,
-    ///     modifiers: Modifiers::CTRL,
-    ///     text: None,
-    ///     repeat: false,
-    /// };
-    /// assert_eq!(
-    ///     event.to_hotkey(),
-    ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
-    /// );
-    /// ```
-    #[must_use]
-    fn to_hotkey(&self) -> Option<Hotkey>;
-
-    /// Observe independent identities, reported modifiers and transition.
-    ///
-    /// Logical identity comes from `modified_key`, not modifier-stripped `key`
-    /// or produced text. Character strings retain exact case and Unicode.
-    /// Generic physical `Meta` is omitted rather than assigned a side. Modifier
-    /// triggers retain their reported modifiers, unlike legacy `to_hotkey`.
-    /// Returns `None` only for `ModifiersChanged`; unknown identities stay absent.
-    ///
-    /// Keep the event for location, the unmodified key and press text. Iced
-    /// releases carry no text/repeat and iced has already erased dead-key detail.
-    /// IME is a separate input-method stream. The four aggregate modifier flags
-    /// do not convey complete knowledge, sides, `AltGr` or Fn state.
-    #[must_use]
-    fn to_observation(&self) -> Option<kbd::observation::KeyboardObservation>;
-}
-
-mod observation;
-
-impl IcedEventExt for Event {
-    fn to_observation(&self) -> Option<kbd::observation::KeyboardObservation> {
-        observation::convert(self)
-    }
-
-    fn to_hotkey(&self) -> Option<Hotkey> {
-        let (physical_key, modifiers) = match self {
-            Event::KeyPressed {
-                physical_key,
-                modifiers,
-                ..
-            }
-            | Event::KeyReleased {
-                physical_key,
-                modifiers,
-                ..
-            } => (physical_key, modifiers),
-            Event::ModifiersChanged(_) => return None,
-        };
-
-        let key = physical_key.to_key()?;
-        let mut mods = modifiers.to_modifiers();
-
-        // Strip the modifier that corresponds to the key itself.
-        if let Some(self_modifier) = Modifier::from_key(key) {
-            mods = mods.without(self_modifier);
-        }
-
-        Some(Hotkey::with_modifiers(key, mods))
     }
 }
 

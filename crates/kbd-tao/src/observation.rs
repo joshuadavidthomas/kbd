@@ -1,7 +1,10 @@
+use kbd::hotkey::ModifierSet;
 use kbd::key_state::KeyTransition;
 use kbd::observation::KeyboardObservation;
 use kbd::observation::LogicalKey;
 use kbd::observation::LogicalKeyValue;
+use kbd::observation::ModifierObservation;
+use kbd::observation::ModifierState;
 use kbd::observation::NamedKey;
 use tao::event::ElementState;
 use tao::keyboard::Key;
@@ -11,34 +14,50 @@ use tao::keyboard::ModifiersState;
 use crate::TaoKeyExt;
 use crate::TaoModifiersExt;
 
-pub(super) fn from_parts(
-    physical: KeyCode,
-    logical: &Key<'_>,
-    modifiers: ModifiersState,
-    state: ElementState,
-    repeat: bool,
-) -> Option<KeyboardObservation> {
-    Some(KeyboardObservation {
-        physical: match physical {
-            KeyCode::Plus => None,
-            _ => physical.to_key(),
-        },
-        logical: logical_key(logical),
-        modifiers: modifiers.to_modifiers(),
-        modifier_observation: Some(kbd::observation::ModifierObservation {
-            physical: kbd::observation::ModifierState::new(
-                modifiers.to_modifiers(),
-                kbd::hotkey::ModifierSet::STANDARD,
-            ),
-            logical: None,
-        }),
-        transition: match (state, repeat) {
-            (ElementState::Released, _) => KeyTransition::Release,
-            (ElementState::Pressed, true) => KeyTransition::Repeat,
-            (ElementState::Pressed, false) => KeyTransition::Press,
-            _ => return None,
-        },
-    })
+/// Construct a [`KeyboardObservation`] from tao's independent input facts.
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait TaoObservationExt: crate::private::Sealed + Sized {
+    /// Preserve the supplied identities, modifier state, and transition.
+    /// Returns `None` for unsupported future element states. Text, IME,
+    /// location, and native unidentified-key details stay with the caller.
+    #[must_use]
+    fn from_tao(
+        physical: KeyCode,
+        logical: &Key<'_>,
+        modifiers: ModifiersState,
+        state: ElementState,
+        repeat: bool,
+    ) -> Option<Self>;
+}
+
+impl TaoObservationExt for KeyboardObservation {
+    fn from_tao(
+        physical: KeyCode,
+        logical: &Key<'_>,
+        modifiers: ModifiersState,
+        state: ElementState,
+        repeat: bool,
+    ) -> Option<KeyboardObservation> {
+        Some(KeyboardObservation {
+            physical: match physical {
+                KeyCode::Plus => None,
+                _ => physical.to_key(),
+            },
+            logical: logical_key(logical),
+            modifiers: modifiers.to_modifiers(),
+            modifier_observation: Some(ModifierObservation {
+                physical: ModifierState::new(modifiers.to_modifiers(), ModifierSet::STANDARD),
+                logical: None,
+            }),
+            transition: match (state, repeat) {
+                (ElementState::Released, _) => KeyTransition::Release,
+                (ElementState::Pressed, true) => KeyTransition::Repeat,
+                (ElementState::Pressed, false) => KeyTransition::Press,
+                _ => return None,
+            },
+        })
+    }
 }
 
 #[allow(deprecated)] // Preserve explicitly reported legacy Hyper.
@@ -375,7 +394,7 @@ mod tests {
     fn exact_strings_and_dead_keys_are_not_physical_positions() {
         for text in ["a", "A", "@", "é", "e\u{301}", "👩‍💻", "Enter"] {
             let source = Key::Character(text);
-            let observed = from_parts(
+            let observed = KeyboardObservation::from_tao(
                 KeyCode::KeyQ,
                 &source,
                 ModifiersState::SHIFT,
@@ -415,7 +434,7 @@ mod tests {
             KeyCode::Plus,
             KeyCode::Unidentified(NativeKeyCode::Unidentified),
         ] {
-            let observed = from_parts(
+            let observed = KeyboardObservation::from_tao(
                 physical,
                 &Key::Character("+"),
                 ModifiersState::empty(),
@@ -430,7 +449,7 @@ mod tests {
             );
         }
         assert_eq!(
-            from_parts(
+            KeyboardObservation::from_tao(
                 KeyCode::Equal,
                 &Key::Character("+"),
                 ModifiersState::SHIFT,
@@ -452,7 +471,7 @@ mod tests {
             (ElementState::Pressed, true, KeyTransition::Repeat),
             (ElementState::Released, true, KeyTransition::Release),
         ] {
-            let observed = from_parts(
+            let observed = KeyboardObservation::from_tao(
                 KeyCode::ControlRight,
                 &Key::Control,
                 ModifiersState::CONTROL,
@@ -466,7 +485,7 @@ mod tests {
             assert_eq!(observed.physical_modifiers().known(), ModifierSet::STANDARD);
             assert_eq!(observed.logical_modifiers().consumed, None);
         }
-        let observed = from_parts(
+        let observed = KeyboardObservation::from_tao(
             KeyCode::NumpadEnter,
             &Key::Unidentified(NativeKeyCode::Unidentified),
             ModifiersState::empty(),

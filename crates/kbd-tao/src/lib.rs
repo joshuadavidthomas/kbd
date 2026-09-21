@@ -99,15 +99,21 @@ use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
+use kbd::observation::KeyboardObservation;
 use tao::event::KeyEvent;
 use tao::keyboard::KeyCode;
 use tao::keyboard::ModifiersState;
+
+mod observation;
+
+pub use observation::TaoObservationExt;
 
 mod private {
     pub trait Sealed {}
     impl Sealed for tao::keyboard::KeyCode {}
     impl Sealed for tao::keyboard::ModifiersState {}
     impl Sealed for tao::event::KeyEvent {}
+    impl Sealed for kbd::observation::KeyboardObservation {}
 }
 
 /// Convert a tao key type to a `kbd` [`Key`].
@@ -509,24 +515,16 @@ pub trait TaoEventExt: private::Sealed {
     /// }
     /// ```
     #[must_use]
-    fn to_observation(
-        &self,
-        modifiers: ModifiersState,
-    ) -> Option<kbd::observation::KeyboardObservation>;
+    fn to_observation(&self, modifiers: ModifiersState) -> Option<KeyboardObservation>;
 }
-
-mod observation;
 
 impl TaoEventExt for KeyEvent {
     fn to_hotkey(&self, modifiers: ModifiersState) -> Option<Hotkey> {
         tao_key_to_hotkey(self.physical_key, modifiers)
     }
 
-    fn to_observation(
-        &self,
-        modifiers: ModifiersState,
-    ) -> Option<kbd::observation::KeyboardObservation> {
-        observation::from_parts(
+    fn to_observation(&self, modifiers: ModifiersState) -> Option<KeyboardObservation> {
+        KeyboardObservation::from_tao(
             self.physical_key,
             &self.logical_key,
             modifiers,

@@ -1,7 +1,10 @@
+use kbd::hotkey::ModifierSet;
 use kbd::key_state::KeyTransition;
 use kbd::observation::KeyboardObservation;
 use kbd::observation::LogicalKey;
 use kbd::observation::LogicalKeyValue;
+use kbd::observation::ModifierObservation;
+use kbd::observation::ModifierState;
 use kbd::observation::NamedKey;
 use winit::event::ElementState;
 use winit::keyboard::Key;
@@ -12,33 +15,48 @@ use winit::keyboard::PhysicalKey;
 use crate::WinitKeyExt;
 use crate::WinitModifiersExt;
 
-pub(super) fn from_parts(
-    physical: PhysicalKey,
-    logical: &Key,
-    modifiers: ModifiersState,
-    state: ElementState,
-    repeat: bool,
-) -> KeyboardObservation {
-    KeyboardObservation {
-        // The legacy mapping assigns this unsided code to MetaLeft.
-        physical: match physical {
-            PhysicalKey::Code(KeyCode::Meta) => None,
-            _ => physical.to_key(),
-        },
-        logical: logical_key(logical),
-        modifiers: modifiers.to_modifiers(),
-        modifier_observation: Some(kbd::observation::ModifierObservation {
-            physical: kbd::observation::ModifierState::new(
-                modifiers.to_modifiers(),
-                kbd::hotkey::ModifierSet::STANDARD,
-            ),
-            logical: None,
-        }),
-        transition: match (state, repeat) {
-            (ElementState::Released, _) => KeyTransition::Release,
-            (ElementState::Pressed, true) => KeyTransition::Repeat,
-            (ElementState::Pressed, false) => KeyTransition::Press,
-        },
+/// Construct a [`KeyboardObservation`] from winit's independent input facts.
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait WinitObservationExt: crate::private::Sealed + Sized {
+    /// Preserve the supplied identities, modifier state, and transition.
+    /// Text, IME, location, and native unidentified-key details stay with the caller.
+    #[must_use]
+    fn from_winit(
+        physical: PhysicalKey,
+        logical: &Key,
+        modifiers: ModifiersState,
+        state: ElementState,
+        repeat: bool,
+    ) -> Self;
+}
+
+impl WinitObservationExt for KeyboardObservation {
+    fn from_winit(
+        physical: PhysicalKey,
+        logical: &Key,
+        modifiers: ModifiersState,
+        state: ElementState,
+        repeat: bool,
+    ) -> KeyboardObservation {
+        KeyboardObservation {
+            // The legacy mapping assigns this unsided code to MetaLeft.
+            physical: match physical {
+                PhysicalKey::Code(KeyCode::Meta) => None,
+                _ => physical.to_key(),
+            },
+            logical: logical_key(logical),
+            modifiers: modifiers.to_modifiers(),
+            modifier_observation: Some(ModifierObservation {
+                physical: ModifierState::new(modifiers.to_modifiers(), ModifierSet::STANDARD),
+                logical: None,
+            }),
+            transition: match (state, repeat) {
+                (ElementState::Released, _) => KeyTransition::Release,
+                (ElementState::Pressed, true) => KeyTransition::Repeat,
+                (ElementState::Pressed, false) => KeyTransition::Press,
+            },
+        }
     }
 }
 
@@ -387,7 +405,7 @@ mod tests {
     fn characters_and_physical_positions_are_independent() {
         for text in ["a", "A", "@", "é", "e\u{301}", "👩‍💻", "Enter"] {
             let logical = Key::Character(text.into());
-            let observed = from_parts(
+            let observed = KeyboardObservation::from_winit(
                 PhysicalKey::Code(KeyCode::KeyQ),
                 &logical,
                 ModifiersState::SHIFT,
@@ -406,7 +424,7 @@ mod tests {
     #[test]
     fn unknown_physical_and_dead_details_do_not_fabricate_identity() {
         let unknown = PhysicalKey::Unidentified(NativeKeyCode::Xkb(248));
-        let event = from_parts(
+        let event = KeyboardObservation::from_winit(
             unknown,
             &Key::Character("λ".into()),
             ModifiersState::empty(),
@@ -444,7 +462,7 @@ mod tests {
             (ElementState::Pressed, true, KeyTransition::Repeat),
             (ElementState::Released, true, KeyTransition::Release),
         ] {
-            let observed = from_parts(
+            let observed = KeyboardObservation::from_winit(
                 PhysicalKey::Code(KeyCode::ShiftLeft),
                 &Key::Named(Named::Shift),
                 ModifiersState::SHIFT,
@@ -463,7 +481,7 @@ mod tests {
             (KeyCode::NumpadEnter, Some(Physical::NUMPAD_ENTER)),
         ] {
             assert_eq!(
-                from_parts(
+                KeyboardObservation::from_winit(
                     PhysicalKey::Code(code),
                     &Key::Named(Named::Enter),
                     ModifiersState::empty(),

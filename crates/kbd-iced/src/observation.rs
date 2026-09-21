@@ -1,66 +1,152 @@
 use iced_core::keyboard::Event;
 use iced_core::keyboard::Key;
 use iced_core::keyboard::key;
+use kbd::hotkey::Hotkey;
+use kbd::hotkey::Modifier;
+use kbd::hotkey::ModifierSet;
 use kbd::key_state::KeyTransition;
 use kbd::observation::KeyboardObservation;
 use kbd::observation::LogicalKey;
 use kbd::observation::LogicalKeyValue;
+use kbd::observation::ModifierObservation;
+use kbd::observation::ModifierState;
 use kbd::observation::NamedKey;
 
 use crate::IcedKeyExt;
 use crate::IcedModifiersExt;
+use crate::private;
 
-pub(super) fn convert(event: &Event) -> Option<KeyboardObservation> {
-    let (physical, logical, modifiers, transition) = match event {
-        Event::KeyPressed {
-            physical_key,
-            modified_key,
-            modifiers,
-            repeat,
-            ..
-        } => (
-            physical_key,
-            modified_key,
-            modifiers,
-            if *repeat {
-                KeyTransition::Repeat
-            } else {
-                KeyTransition::Press
-            },
-        ),
-        Event::KeyReleased {
-            physical_key,
-            modified_key,
-            modifiers,
-            ..
-        } => (
-            physical_key,
-            modified_key,
-            modifiers,
-            KeyTransition::Release,
-        ),
-        Event::ModifiersChanged(_) => return None,
-    };
-    Some(KeyboardObservation {
-        physical: match physical {
-            key::Physical::Code(key::Code::Meta) => None,
-            _ => physical.to_key(),
-        },
-        logical: match logical {
-            Key::Character(text) => Some(LogicalKeyValue::Character(text.to_string()).into()),
-            Key::Named(named) => named_key(*named),
-            Key::Unidentified => None,
-        },
-        modifiers: modifiers.to_modifiers(),
-        modifier_observation: Some(kbd::observation::ModifierObservation {
-            physical: kbd::observation::ModifierState::new(
-                modifiers.to_modifiers(),
-                kbd::hotkey::ModifierSet::STANDARD,
+/// Convert an iced keyboard [`Event`] to a `kbd` [`Hotkey`].
+///
+/// Uses the physical key from the event for layout-independent matching.
+/// Returns `None` for `ModifiersChanged` events (no key trigger) and
+/// for events with unidentified physical keys.
+///
+/// When the key is itself a modifier (e.g., `ControlLeft`), the
+/// corresponding modifier flag is stripped from the modifiers — iced
+/// includes the pressed modifier key in its own modifier state, but
+/// `kbd` treats the key as the trigger, not as a modifier of itself.
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait IcedEventExt: private::Sealed {
+    /// Convert this keyboard event to a [`Hotkey`], or `None` if unmappable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use iced_core::keyboard::{Event, Location, Modifiers, key};
+    /// use kbd::hotkey::{Hotkey, Modifier};
+    /// use kbd::key::Key;
+    /// use kbd_iced::IcedEventExt;
+    ///
+    /// let event = Event::KeyPressed {
+    ///     key: iced_core::keyboard::Key::Unidentified,
+    ///     modified_key: iced_core::keyboard::Key::Unidentified,
+    ///     physical_key: key::Physical::Code(key::Code::KeyS),
+    ///     location: Location::Standard,
+    ///     modifiers: Modifiers::CTRL,
+    ///     text: None,
+    ///     repeat: false,
+    /// };
+    /// assert_eq!(
+    ///     event.to_hotkey(),
+    ///     Some(Hotkey::new(Key::S).modifier(Modifier::Ctrl)),
+    /// );
+    /// ```
+    #[must_use]
+    fn to_hotkey(&self) -> Option<Hotkey>;
+
+    /// Observe independent identities, reported modifiers and transition.
+    ///
+    /// Logical identity comes from `modified_key`, not modifier-stripped `key`
+    /// or produced text. Character strings retain exact case and Unicode.
+    /// Generic physical `Meta` is omitted rather than assigned a side. Modifier
+    /// triggers retain their reported modifiers, unlike legacy `to_hotkey`.
+    /// Returns `None` only for `ModifiersChanged`; unknown identities stay absent.
+    ///
+    /// Keep the event for location, the unmodified key and press text. Iced
+    /// releases carry no text/repeat and iced has already erased dead-key detail.
+    /// IME is a separate input-method stream. The four aggregate modifier flags
+    /// do not convey complete knowledge, sides, `AltGr` or Fn state.
+    #[must_use]
+    fn to_observation(&self) -> Option<KeyboardObservation>;
+}
+
+impl IcedEventExt for Event {
+    fn to_observation(&self) -> Option<KeyboardObservation> {
+        let (physical, logical, modifiers, transition) = match self {
+            Event::KeyPressed {
+                physical_key,
+                modified_key,
+                modifiers,
+                repeat,
+                ..
+            } => (
+                physical_key,
+                modified_key,
+                modifiers,
+                if *repeat {
+                    KeyTransition::Repeat
+                } else {
+                    KeyTransition::Press
+                },
             ),
-            logical: None,
-        }),
-        transition,
-    })
+            Event::KeyReleased {
+                physical_key,
+                modified_key,
+                modifiers,
+                ..
+            } => (
+                physical_key,
+                modified_key,
+                modifiers,
+                KeyTransition::Release,
+            ),
+            Event::ModifiersChanged(_) => return None,
+        };
+        Some(KeyboardObservation {
+            physical: match physical {
+                key::Physical::Code(key::Code::Meta) => None,
+                _ => physical.to_key(),
+            },
+            logical: match logical {
+                Key::Character(text) => Some(LogicalKeyValue::Character(text.to_string()).into()),
+                Key::Named(named) => named_key(*named),
+                Key::Unidentified => None,
+            },
+            modifiers: modifiers.to_modifiers(),
+            modifier_observation: Some(ModifierObservation {
+                physical: ModifierState::new(modifiers.to_modifiers(), ModifierSet::STANDARD),
+                logical: None,
+            }),
+            transition,
+        })
+    }
+
+    fn to_hotkey(&self) -> Option<Hotkey> {
+        let (physical_key, modifiers) = match self {
+            Event::KeyPressed {
+                physical_key,
+                modifiers,
+                ..
+            }
+            | Event::KeyReleased {
+                physical_key,
+                modifiers,
+                ..
+            } => (physical_key, modifiers),
+            Event::ModifiersChanged(_) => return None,
+        };
+
+        let key = physical_key.to_key()?;
+        let mut mods = modifiers.to_modifiers();
+
+        // Strip the modifier that corresponds to the key itself.
+        if let Some(self_modifier) = Modifier::from_key(key) {
+            mods = mods.without(self_modifier);
+        }
+
+        Some(Hotkey::with_modifiers(key, mods))
+    }
 }
 
 #[allow(deprecated)] // Preserve explicitly reported legacy Hyper.
@@ -386,6 +472,8 @@ fn named_key(key: key::Named) -> Option<LogicalKey> {
 
 #[cfg(test)]
 mod tests {
+    use iced_core::keyboard::Event;
+    use iced_core::keyboard::Key;
     use iced_core::keyboard::Location;
     use iced_core::keyboard::Modifiers;
     use kbd::action::Action;
@@ -394,6 +482,7 @@ mod tests {
     use kbd::dispatcher::MatchResult;
     use kbd::hotkey::ModifierSet;
     use kbd::key::Key as Physical;
+    use kbd::key_state::KeyTransition;
     use kbd::observation::BindingPattern;
 
     use super::*;

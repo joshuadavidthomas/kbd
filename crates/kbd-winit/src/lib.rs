@@ -122,10 +122,15 @@ use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
 use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
+use kbd::observation::KeyboardObservation;
 use winit::event::KeyEvent;
 use winit::keyboard::KeyCode;
 use winit::keyboard::ModifiersState;
 use winit::keyboard::PhysicalKey;
+
+mod observation;
+
+pub use observation::WinitObservationExt;
 
 mod private {
     pub trait Sealed {}
@@ -133,6 +138,7 @@ mod private {
     impl Sealed for winit::keyboard::PhysicalKey {}
     impl Sealed for winit::keyboard::ModifiersState {}
     impl Sealed for winit::event::KeyEvent {}
+    impl Sealed for kbd::observation::KeyboardObservation {}
 }
 
 /// Convert a winit key type to a `kbd` [`Key`].
@@ -399,8 +405,6 @@ impl WinitKeyExt for PhysicalKey {
     }
 }
 
-mod observation;
-
 /// Convert winit [`ModifiersState`] bitflags to a [`ModifierSet`].
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
@@ -529,7 +533,7 @@ pub trait WinitEventExt: private::Sealed {
     /// }
     /// ```
     #[must_use]
-    fn to_observation(&self, modifiers: ModifiersState) -> kbd::observation::KeyboardObservation;
+    fn to_observation(&self, modifiers: ModifiersState) -> KeyboardObservation;
 }
 
 impl WinitEventExt for KeyEvent {
@@ -537,8 +541,8 @@ impl WinitEventExt for KeyEvent {
         winit_key_to_hotkey(self.physical_key, modifiers)
     }
 
-    fn to_observation(&self, modifiers: ModifiersState) -> kbd::observation::KeyboardObservation {
-        observation::from_parts(
+    fn to_observation(&self, modifiers: ModifiersState) -> KeyboardObservation {
+        KeyboardObservation::from_winit(
             self.physical_key,
             &self.logical_key,
             modifiers,

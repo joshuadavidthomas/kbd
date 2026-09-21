@@ -19,7 +19,7 @@
 //!
 //! - [`EguiKeyExt`] — converts an [`egui::Key`] to a [`kbd::key::Key`].
 //! - [`EguiModifiersExt`] — converts [`egui::Modifiers`] to a
-//!   [`ModifierSet`](kbd::hotkey::ModifierSet).
+//!   [`ModifierSet`].
 //! - [`EguiEventExt`] — converts a full [`egui::Event`] keyboard event
 //!   to a [`kbd::hotkey::Hotkey`].
 //!
@@ -73,11 +73,17 @@
 //! assert_eq!(hotkey, Some(Hotkey::new(Key::C).modifier(Modifier::Ctrl)));
 //! ```
 
+use egui::Event;
 use egui::Key as EguiKey;
 use egui::Modifiers;
 use kbd::hotkey::Hotkey;
 use kbd::hotkey::Modifier;
+use kbd::hotkey::ModifierSet;
 use kbd::key::Key;
+use kbd::key_state::KeyTransition;
+use kbd::observation::KeyboardObservation;
+use kbd::observation::ModifierObservation;
+use kbd::observation::ModifierState;
 
 mod private {
     pub trait Sealed {}
@@ -261,7 +267,7 @@ impl EguiKeyExt for EguiKey {
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait EguiModifiersExt: private::Sealed {
-    /// Convert these egui modifiers to a kbd [`ModifierSet`](kbd::hotkey::ModifierSet).
+    /// Convert these egui modifiers to a kbd [`ModifierSet`].
     ///
     /// # Examples
     ///
@@ -278,11 +284,11 @@ pub trait EguiModifiersExt: private::Sealed {
     /// assert!(mods.to_modifiers().contains(Modifier::Shift));
     /// ```
     #[must_use]
-    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet;
+    fn to_modifiers(&self) -> ModifierSet;
 }
 
 impl EguiModifiersExt for Modifiers {
-    fn to_modifiers(&self) -> kbd::hotkey::ModifierSet {
+    fn to_modifiers(&self) -> ModifierSet {
         Modifier::collect_active([
             (self.ctrl, Modifier::Ctrl),
             (self.shift, Modifier::Shift),
@@ -341,18 +347,64 @@ pub trait EguiEventExt: private::Sealed {
     /// macOS Meta, and AltGr/Fn and modifier sides are unavailable. Repeat is the
     /// supplied egui value (integrations may leave it false until input processing).
     #[must_use]
-    fn to_observation(&self) -> Option<kbd::observation::KeyboardObservation>;
+    fn to_observation(&self) -> Option<KeyboardObservation>;
 }
 
-mod observation;
-
-impl EguiEventExt for egui::Event {
-    fn to_observation(&self) -> Option<kbd::observation::KeyboardObservation> {
-        observation::convert(self)
+impl EguiEventExt for Event {
+    fn to_observation(&self) -> Option<KeyboardObservation> {
+        let Event::Key {
+            physical_key,
+            pressed,
+            repeat,
+            modifiers,
+            ..
+        } = self
+        else {
+            return None;
+        };
+        Some(KeyboardObservation {
+            physical: physical_key.and_then(|key| match key {
+                // egui-winit merges distinct physical codes into these values.
+                EguiKey::Num0
+                | EguiKey::Num1
+                | EguiKey::Num2
+                | EguiKey::Num3
+                | EguiKey::Num4
+                | EguiKey::Num5
+                | EguiKey::Num6
+                | EguiKey::Num7
+                | EguiKey::Num8
+                | EguiKey::Num9
+                | EguiKey::Enter
+                | EguiKey::Slash
+                | EguiKey::Minus => None,
+                _ => key.to_key(),
+            }),
+            // Even a named shortcut can originate from a physical fallback.
+            logical: None,
+            modifiers: modifiers.to_modifiers(),
+            modifier_observation: Some(ModifierObservation {
+                // mac_cmd=true is positive evidence; false does not establish
+                // Super's absence on non-Mac hosts. `command` is only an alias.
+                physical: ModifierState::new(
+                    modifiers.to_modifiers(),
+                    ModifierSet::CTRL
+                        .union(ModifierSet::SHIFT)
+                        .union(ModifierSet::ALT),
+                )
+                .with_extra_active(modifiers.command && !modifiers.ctrl && !modifiers.mac_cmd),
+                logical: None,
+            }),
+            transition: match (*pressed, *repeat) {
+                (false, _) => KeyTransition::Release,
+                (true, true) => KeyTransition::Repeat,
+                (true, false) => KeyTransition::Press,
+            },
+        })
     }
 
     fn to_hotkey(&self) -> Option<Hotkey> {
-        if let egui::Event::Key { key, modifiers, .. } = self {
+        if let Event::Key { key, modifiers, .. } = self {
             let kbd_key = key.to_key()?;
             let mods = modifiers.to_modifiers();
             Some(Hotkey::with_modifiers(kbd_key, mods))
@@ -364,6 +416,8 @@ impl EguiEventExt for egui::Event {
 
 #[cfg(test)]
 mod tests {
+    use egui::Event;
+    use egui::ImeEvent;
     use egui::Key as EguiKey;
     use egui::Modifiers;
     use kbd::hotkey::Hotkey;
@@ -636,5 +690,146 @@ mod tests {
             modifiers: Modifiers::NONE,
         };
         assert_eq!(event.to_hotkey(), Some(Hotkey::new(Key::SPACE)));
+    }
+
+    fn observation_event(physical_key: Option<EguiKey>, pressed: bool, repeat: bool) -> Event {
+        Event::Key {
+            key: EguiKey::A,
+            physical_key,
+            pressed,
+            repeat,
+            modifiers: Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn command_alias_does_not_establish_super_knowledge() {
+        let mut source = observation_event(Some(EguiKey::A), true, false);
+        if let Event::Key { modifiers, .. } = &mut source {
+            modifiers.command = true;
+        }
+        let observed = source.to_observation().unwrap();
+        assert!(
+            !observed
+                .physical_modifiers()
+                .known()
+                .contains(kbd::hotkey::Modifier::Super)
+        );
+        assert!(observed.physical_modifiers().active().is_empty());
+        assert!(observed.physical_modifiers().extra_active());
+        assert!(!kbd::observation::BindingPattern::Physical(Key::A.into()).matches(&observed));
+        assert!(observed.physical_hotkey().is_none());
+        if let Event::Key { modifiers, .. } = &mut source {
+            modifiers.mac_cmd = true;
+        }
+        let observed = source.to_observation().unwrap();
+        assert!(
+            observed
+                .physical_modifiers()
+                .known()
+                .contains(kbd::hotkey::Modifier::Super)
+        );
+        assert_eq!(observed.physical_modifiers().active(), KbdModifiers::SUPER);
+    }
+
+    #[test]
+    fn physical_identity_never_comes_from_shortcut_labels() {
+        let source = observation_event(Some(EguiKey::Q), true, false);
+        let observed = source.to_observation().unwrap();
+        assert_eq!(observed.physical, Some(Key::Q));
+        assert_eq!(observed.logical, None);
+        assert_eq!(source.to_hotkey().unwrap().key(), Key::A);
+        assert_eq!(
+            observation_event(None, true, false)
+                .to_observation()
+                .unwrap()
+                .physical,
+            None
+        );
+    }
+
+    #[test]
+    fn merged_and_shifted_positions_remain_unknown() {
+        for key in [
+            EguiKey::Num0,
+            EguiKey::Num1,
+            EguiKey::Num9,
+            EguiKey::Enter,
+            EguiKey::Slash,
+            EguiKey::Minus,
+            EguiKey::Plus,
+            EguiKey::Colon,
+            EguiKey::Questionmark,
+        ] {
+            let observed = observation_event(Some(key), true, false)
+                .to_observation()
+                .unwrap();
+            assert_eq!(observed.physical, None, "{key:?}");
+            assert_eq!(observed.logical, None);
+        }
+        assert_eq!(
+            observation_event(Some(EguiKey::Equals), true, false)
+                .to_observation()
+                .unwrap()
+                .physical,
+            Some(Key::EQUAL)
+        );
+    }
+
+    #[test]
+    fn transition_and_modifier_aliases_are_not_invented() {
+        for (pressed, repeat, expected) in [
+            (true, false, KeyTransition::Press),
+            (true, true, KeyTransition::Repeat),
+            (false, true, KeyTransition::Release),
+        ] {
+            assert_eq!(
+                observation_event(None, pressed, repeat)
+                    .to_observation()
+                    .unwrap()
+                    .transition,
+                expected
+            );
+        }
+        let source = Event::Key {
+            key: EguiKey::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers {
+                command: true,
+                ..Modifiers::NONE
+            },
+        };
+        assert_eq!(
+            source.to_observation().unwrap().modifiers,
+            KbdModifiers::NONE
+        );
+        let source = Event::Key {
+            key: EguiKey::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers {
+                command: true,
+                mac_cmd: true,
+                ..Modifiers::NONE
+            },
+        };
+        assert_eq!(
+            source.to_observation().unwrap().modifiers,
+            KbdModifiers::SUPER
+        );
+    }
+
+    #[test]
+    fn text_and_ime_do_not_become_keyboard_events() {
+        for source in [
+            Event::Text("é".into()),
+            Event::Paste("A".into()),
+            Event::Ime(ImeEvent::Commit("👩‍💻".into())),
+        ] {
+            assert_eq!(source.to_observation(), None);
+        }
     }
 }
