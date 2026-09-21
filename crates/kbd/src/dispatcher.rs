@@ -41,7 +41,6 @@ use crate::binding::BindingId;
 use crate::binding::SequenceBinding;
 use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
-use crate::hotkey::Modifier;
 use crate::key::Key;
 use crate::key_state::KeyTransition;
 use crate::layer::LayerName;
@@ -594,13 +593,10 @@ impl Dispatcher {
         event: &KeyboardObservation,
         device: Option<&DeviceContext<'_>>,
     ) -> BindingMatch {
-        if !matches!(event.transition, KeyTransition::Press) {
+        let Some(event) = resolve::binding_event(event) else {
             return BindingMatch::Ignored;
-        }
-
-        if event.physical.and_then(Modifier::from_key).is_some() {
-            return BindingMatch::Ignored;
-        }
+        };
+        let event = event.as_ref();
 
         if let Some(outcome) = self.match_active_sequences(event) {
             return outcome;
@@ -766,7 +762,15 @@ impl Dispatcher {
 
         if !candidates.is_empty() {
             let pending_standalone =
-                self.pending_standalone_from_match(self.match_global_event(event, device));
+                self.match_global_event(event, device)
+                    .map(|binding| PendingStandalone {
+                        inner: StandaloneMatch {
+                            binding_ref: MatchedBindingRef::Global(binding.id()),
+                            propagation: binding.propagation(),
+                            repeat_policy: binding.options().repeat_policy(),
+                        },
+                        layer_effect: LayerEffect::from_action(binding.action()),
+                    });
             if let Some(outcome) =
                 self.start_sequences(candidates, now, &mut next_priority, pending_standalone)
             {
@@ -774,14 +778,12 @@ impl Dispatcher {
             }
         }
 
-        if let Some((binding_ref, propagation, repeat_policy)) =
-            self.match_global_event(event, device)
-        {
+        if let Some(binding) = self.match_global_event(event, device) {
             return BindingMatch::Matched {
-                layer_effect: LayerEffect::from_action(self.resolve_binding(&binding_ref)),
-                binding_ref,
-                propagation,
-                repeat_policy,
+                layer_effect: LayerEffect::from_action(binding.action()),
+                binding_ref: MatchedBindingRef::Global(binding.id()),
+                propagation: binding.propagation(),
+                repeat_policy: binding.options().repeat_policy(),
             };
         }
 
@@ -810,7 +812,7 @@ impl Dispatcher {
         &self,
         event: &KeyboardObservation,
         device: Option<&DeviceContext<'_>>,
-    ) -> Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)> {
+    ) -> Option<&Binding> {
         // Only look up the observed identities, with aggregate and (if different)
         // device-local modifiers. Do not scan unrelated registered bindings.
         let scoped = device.and_then(|device| device.scoped_event(event));
@@ -832,13 +834,6 @@ impl Dispatcher {
                     registry::SourcePriority::from(binding.options()),
                     binding.hotkey().is_some(),
                     self.registration_order_by_id[&binding.id()],
-                )
-            })
-            .map(|binding| {
-                (
-                    MatchedBindingRef::Global(binding.id()),
-                    binding.propagation(),
-                    binding.options().repeat_policy(),
                 )
             })
     }
@@ -869,6 +864,7 @@ mod tests {
     use crate::binding::BindingOptions;
     use crate::device::DeviceFilter;
     use crate::device::DeviceInfo;
+    use crate::hotkey::Modifier;
     use crate::hotkey::ModifierSet;
     use crate::key::Key;
     use crate::layer::Layer;

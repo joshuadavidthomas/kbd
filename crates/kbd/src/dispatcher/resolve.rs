@@ -1,12 +1,60 @@
+use std::borrow::Cow;
+
 use super::DeviceContext;
 use crate::binding::Binding;
 #[cfg(test)]
 use crate::hotkey::Hotkey;
 #[cfg(test)]
 use crate::hotkey::HotkeySequence;
+use crate::hotkey::Modifier;
+use crate::key_state::KeyTransition;
 use crate::layer::StoredLayer;
 use crate::observation::KeyboardObservation;
+use crate::observation::LogicalKeyValue;
+use crate::observation::NamedKey;
 use crate::sequence::BindingSequence;
+
+/// Apply the legacy modifier-position exclusion only to matching, not held identity.
+/// A remapped non-modifier logical key still participates in dispatch. Ordinary
+/// modifier presses remain ignored so they do not interrupt pending sequences.
+#[allow(deprecated)] // Legacy Hyper/Super identities are still modifier presses.
+pub(super) fn binding_event(event: &KeyboardObservation) -> Option<Cow<'_, KeyboardObservation>> {
+    if event.transition != KeyTransition::Press {
+        return None;
+    }
+    if event
+        .physical
+        .is_some_and(|key| Modifier::from_key(key).is_none())
+    {
+        return Some(Cow::Borrowed(event));
+    }
+    let Some(logical) = event.logical.as_ref() else {
+        return event.physical.is_none().then_some(Cow::Borrowed(event));
+    };
+    if matches!(
+        logical.0,
+        LogicalKeyValue::Named(
+            NamedKey::Alt
+                | NamedKey::AltGraph
+                | NamedKey::Control
+                | NamedKey::Fn
+                | NamedKey::Meta
+                | NamedKey::Shift
+                | NamedKey::Symbol
+                | NamedKey::Hyper
+                | NamedKey::Super
+        )
+    ) {
+        return None;
+    }
+    if event.physical.is_none() {
+        return Some(Cow::Borrowed(event));
+    }
+    // Lock keys remain actionable, just as they are at non-modifier positions.
+    let mut logical_event = event.clone();
+    logical_event.physical = None;
+    Some(Cow::Owned(logical_event))
+}
 
 /// Result of classifying all sequence bindings within a scope against a hotkey.
 ///

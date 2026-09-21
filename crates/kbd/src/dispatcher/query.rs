@@ -1,5 +1,4 @@
 use super::Dispatcher;
-use super::MatchedBindingRef;
 use super::resolve;
 use super::resolve::LayerMatch;
 use super::resolve::SequencePrefixMatch;
@@ -7,7 +6,6 @@ use crate::binding::BindingId;
 use crate::binding::SequenceBinding;
 use crate::device::DeviceContext;
 use crate::hotkey::Hotkey;
-use crate::hotkey::Modifier;
 use crate::introspection::ActiveLayerInfo;
 use crate::introspection::BindingInfo;
 use crate::introspection::BindingLocation;
@@ -286,13 +284,8 @@ impl Dispatcher {
         event: &KeyboardObservation,
         device: Option<&DeviceContext<'_>>,
     ) -> Option<BindingInfo> {
-        // Modifier-only keys never fire bindings in the real dispatcher,
-        // so they can't match here either.
-        if !matches!(event.transition, KeyTransition::Press)
-            || event.physical.and_then(Modifier::from_key).is_some()
-        {
-            return None;
-        }
+        let event = resolve::binding_event(event)?;
+        let event = event.as_ref();
 
         // Walk layer stack top-down, same as the dispatcher.
         // classify_observation checks sequences before immediate patterns.
@@ -360,14 +353,7 @@ impl Dispatcher {
         }
 
         // Fall through to global immediate bindings.
-        let binding = self.match_global_event(event, device).and_then(|matched| {
-            if let (MatchedBindingRef::Global(id), _, _) = matched {
-                self.bindings_by_id.get(&id)
-            } else {
-                None
-            }
-        });
-        if let Some(binding) = binding {
+        if let Some(binding) = self.match_global_event(event, device) {
             return Some(BindingInfo {
                 hotkey: binding.pattern().clone(),
                 description: binding.options().description().map(Box::from),

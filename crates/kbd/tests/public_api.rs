@@ -695,6 +695,132 @@ mod observations {
     }
 
     #[test]
+    fn remapped_modifier_position_matches_logical_bindings_and_queries() {
+        for layered in [false, true] {
+            let mut dispatcher = Dispatcher::new();
+            let pattern: BindingPattern = "logical:Escape".parse().unwrap();
+            if layered {
+                dispatcher
+                    .define_layer(
+                        Layer::new("remap")
+                            .bind(Key::CONTROL_LEFT, emit(Key::X))
+                            .unwrap()
+                            .bind_pattern(pattern.clone(), emit(Key::Y), BindingOptions::default()),
+                    )
+                    .unwrap();
+                dispatcher.push_layer("remap").unwrap();
+            } else {
+                dispatcher
+                    .register(Key::CONTROL_LEFT, emit(Key::X))
+                    .unwrap();
+                dispatcher
+                    .register_pattern(pattern.clone(), emit(Key::Y), BindingOptions::default())
+                    .unwrap();
+            }
+            let mut observed = event(Some(Key::CONTROL_LEFT), "");
+            observed.logical = Some(kbd::observation::NamedKey::Escape.into());
+            assert_eq!(
+                dispatcher.bindings_for_event(&observed).unwrap().pattern(),
+                &pattern
+            );
+            assert_eq!(emitted(dispatcher.process_event(&observed)), Key::Y);
+            observed.logical = None;
+            assert!(dispatcher.bindings_for_event(&observed).is_none());
+            assert!(matches!(
+                dispatcher.process_event(&observed),
+                MatchResult::Ignored
+            ));
+        }
+    }
+
+    #[test]
+    fn remapped_modifier_position_participates_in_sequence_resolution() {
+        use kbd::observation::NamedKey;
+        use kbd::sequence::SequenceOptions;
+
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence_pattern(
+                "A, logical:Escape".parse().unwrap(),
+                emit(Key::Y),
+                SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+            )
+            .unwrap();
+        dispatcher
+            .register_pattern(logical("x"), emit(Key::X), BindingOptions::default())
+            .unwrap();
+        let mut observed = event(Some(Key::CONTROL_LEFT), "");
+        observed.logical = Some(NamedKey::Escape.into());
+        for logical_modifier in [None, Some(NamedKey::Control.into())] {
+            dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
+            let mut modifier = observed.clone();
+            modifier.logical = logical_modifier;
+            assert!(matches!(
+                dispatcher.process_event(&modifier),
+                MatchResult::Ignored
+            ));
+            // Expected logical step wins even when it is also the abort key.
+            assert_eq!(emitted(dispatcher.process_event(&observed)), Key::Y);
+        }
+        dispatcher.process(Hotkey::new(Key::A), KeyTransition::Press);
+        assert_eq!(
+            emitted(dispatcher.process_event(&event(Some(Key::CONTROL_LEFT), "x"))),
+            Key::X
+        );
+        assert!(dispatcher.pending_sequence().is_none());
+
+        dispatcher
+            .register_sequence_pattern(
+                "B, C".parse().unwrap(),
+                emit(Key::Z),
+                SequenceOptions::default().with_logical_abort_key(NamedKey::Escape),
+            )
+            .unwrap();
+        dispatcher.process(Hotkey::new(Key::B), KeyTransition::Press);
+        dispatcher.process_event(&observed);
+        assert!(dispatcher.pending_sequence().is_none());
+    }
+
+    #[test]
+    fn logical_only_modifier_preserves_sequence_but_not_at_actionable_physical_position() {
+        use kbd::observation::NamedKey;
+        use kbd::sequence::SequenceOptions;
+
+        let mut dispatcher = Dispatcher::new();
+        dispatcher
+            .register_sequence_pattern(
+                "logical:\"g\", Ctrl+logical:\"c\"".parse().unwrap(),
+                emit(Key::Y),
+                SequenceOptions::default(),
+            )
+            .unwrap();
+        dispatcher
+            .register_pattern(
+                BindingPattern::logical(NamedKey::Control, ModifierSet::CTRL),
+                emit(Key::Z),
+                BindingOptions::default(),
+            )
+            .unwrap();
+        dispatcher.process_event(&event(None, "g"));
+        let mut modifier = event(None, "");
+        modifier.logical = Some(NamedKey::Control.into());
+        modifier.modifiers = ModifierSet::CTRL;
+        assert!(dispatcher.bindings_for_event(&modifier).is_none());
+        assert!(matches!(
+            dispatcher.process_event(&modifier),
+            MatchResult::Ignored
+        ));
+        let mut last = event(None, "c");
+        last.modifiers = ModifierSet::CTRL;
+        assert_eq!(emitted(dispatcher.process_event(&last)), Key::Y);
+
+        dispatcher.register("Ctrl+A", emit(Key::X)).unwrap();
+        modifier.physical = Some(Key::A);
+        assert!(dispatcher.bindings_for_event(&modifier).is_some());
+        assert_eq!(emitted(dispatcher.process_event(&modifier)), Key::X);
+    }
+
+    #[test]
     fn asymmetric_identities_match_only_their_own_domain() {
         let observed = event(Some(Key::Q), "a");
         let mut dispatcher = Dispatcher::new();

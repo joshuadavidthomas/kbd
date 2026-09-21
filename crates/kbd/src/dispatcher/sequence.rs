@@ -223,23 +223,6 @@ impl Dispatcher {
         Some(BindingMatch::NoMatch)
     }
 
-    pub(super) fn pending_standalone_from_match(
-        &self,
-        binding_match: Option<(MatchedBindingRef, KeyPropagation, RepeatPolicy)>,
-    ) -> Option<PendingStandalone> {
-        binding_match.map(|(binding_ref, propagation, repeat_policy)| {
-            let layer_effect = LayerEffect::from_action(self.resolve_binding(&binding_ref));
-            PendingStandalone {
-                inner: StandaloneMatch {
-                    binding_ref,
-                    propagation,
-                    repeat_policy,
-                },
-                layer_effect,
-            }
-        })
-    }
-
     pub(super) fn check_sequence_timeouts(&mut self, now: Instant) -> Option<PendingTimeout> {
         if self.active_sequences.is_empty() {
             return None;
