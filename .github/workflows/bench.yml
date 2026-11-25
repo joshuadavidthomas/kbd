@@ -41,7 +41,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30
         with:
           cache: true
 
@@ -51,7 +51,7 @@ jobs:
         run: cargo codspeed build -p kbd-bench
 
       - name: Run the benchmarks
-        uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8
+        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f
         with:
           mode: instrumentation
           run: cargo codspeed run -p kbd-bench
